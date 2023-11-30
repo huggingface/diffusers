@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from contextlib import nullcontext
 from typing import Callable, Dict, List, Optional, Union
 
@@ -748,18 +748,34 @@ class UNet2DConditionLoadersMixin:
             embed_dims = state_dict["image_proj"]["proj_in.weight"].shape[1]
             output_dims = state_dict["image_proj"]["proj_out.weight"].shape[0]
             hidden_dims = state_dict["image_proj"]["latents"].shape[2]
-            num_heads = state_dict["image_proj"]["layers.0.0.to_q.weight"].shape[0] // 64
+            heads = state_dict["image_proj"]["layers.0.0.to_q.weight"].shape[0] // 64
 
             image_projection = Resampler(
                 embed_dims=embed_dims,
                 output_dims=output_dims,
                 hidden_dims=hidden_dims,
-                num_heads=num_heads,
+                heads=heads,
                 num_queries=num_image_text_embeds,
             )
 
             image_proj_state_dict = state_dict["image_proj"]
-            image_projection.load_state_dict(image_proj_state_dict)
+            new_sd = OrderedDict()
+            for k, v in image_proj_state_dict.items():
+                if "norm1" in k:
+                    new_sd[k.replace("norm1", "norm_cross")] = v
+                elif "norm2" in k:
+                    new_sd[k.replace("norm2", "layer_norm")] = v
+                elif "to_kv" in k:
+                    v_chunk = v.chunk(2, dim=0)
+                    new_sd[k.replace("to_kv", "to_k")] = v_chunk[0]
+                    new_sd[k.replace("to_kv", "to_v")] = v_chunk[1]
+                elif "to_out" in k:
+                    new_sd[k.replace("to_out", "to_out.0")] = v
+                else:
+                    new_sd[k] = v
+
+            image_projection.load_state_dict(new_sd)
+            del image_proj_state_dict
 
         self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
         self.config.encoder_hid_dim_type = "ip_image_proj"

@@ -84,6 +84,13 @@ class Attention(nn.Module):
         processor (`AttnProcessor`, *optional*, defaults to `None`):
             The attention processor to use. If `None`, defaults to `AttnProcessor2_0` if `torch 2.x` is used and
             `AttnProcessor` otherwise.
+        query_layer_norm (`bool`, defaults to `False`):
+            Set to `True` to use layer norm for the query.
+        scale_qk_factor (`float`, *optional*, defaults to `None`):
+            A factor to scale the query and key by. If `None`, defaults to `1 / math.sqrt(query.size(-1))`
+            if `scale_qk` is `True`.
+        concat_kv_input (`bool`, defaults to `False`):
+            Set to `True` to concatenate the hidden_states and encoder_hidden_states for kv inputs.
     """
 
     def __init__(
@@ -109,6 +116,9 @@ class Attention(nn.Module):
         residual_connection: bool = False,
         _from_deprecated_attn_block: bool = False,
         processor: Optional["AttnProcessor"] = None,
+        query_layer_norm: bool = False,
+        scale_qk_factor: Optional[float] = None,
+        concat_kv_input: bool = False,
     ):
         super().__init__()
         self.inner_dim = dim_head * heads
@@ -118,13 +128,19 @@ class Attention(nn.Module):
         self.rescale_output_factor = rescale_output_factor
         self.residual_connection = residual_connection
         self.dropout = dropout
+        self.concat_kv_input = concat_kv_input
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
         self._from_deprecated_attn_block = _from_deprecated_attn_block
 
         self.scale_qk = scale_qk
-        self.scale = dim_head**-0.5 if self.scale_qk else 1.0
+        if scale_qk_factor is not None:
+            self.scale = scale_qk_factor
+        elif self.scale_qk:
+            self.scale = dim_head**-0.5
+        else:
+            self.scale = 1.0
 
         self.heads = heads
         # for slice_size > 0 the attention score computation
@@ -149,6 +165,11 @@ class Attention(nn.Module):
             self.spatial_norm = SpatialNorm(f_channels=query_dim, zq_channels=spatial_norm_dim)
         else:
             self.spatial_norm = None
+
+        if query_layer_norm:
+            self.layer_norm = nn.LayerNorm(query_dim)
+        else:
+            self.layer_norm = None
 
         if cross_attention_norm is None:
             self.norm_cross = None
@@ -726,12 +747,18 @@ class AttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
+        if attn.layer_norm is not None:
+            hidden_states = attn.layer_norm(hidden_states)
+
         query = attn.to_q(hidden_states, *args)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        if attn.concat_kv_input:
+            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         key = attn.to_k(encoder_hidden_states, *args)
         value = attn.to_v(encoder_hidden_states, *args)
@@ -986,7 +1013,7 @@ class AttnAddedKVProcessor2_0:
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
         )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, residual.shape[1])
 
@@ -1127,12 +1154,18 @@ class XFormersAttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
+        if attn.layer_norm is not None:
+            hidden_states = attn.layer_norm(hidden_states)
+
         query = attn.to_q(hidden_states, *args)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        if attn.concat_kv_input:
+            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         key = attn.to_k(encoder_hidden_states, *args)
         value = attn.to_v(encoder_hidden_states, *args)
@@ -1207,6 +1240,9 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
+        if attn.layer_norm is not None:
+            hidden_states = attn.layer_norm(hidden_states)
+
         args = () if USE_PEFT_BACKEND else (scale,)
         query = attn.to_q(hidden_states, *args)
 
@@ -1214,6 +1250,9 @@ class AttnProcessor2_0:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        if attn.concat_kv_input:
+            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         key = attn.to_k(encoder_hidden_states, *args)
         value = attn.to_v(encoder_hidden_states, *args)
@@ -1229,7 +1268,7 @@ class AttnProcessor2_0:
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -1461,7 +1500,7 @@ class CustomDiffusionAttnProcessor2_0(nn.Module):
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -1517,6 +1556,9 @@ class SlicedAttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
+        if attn.layer_norm is not None:
+            hidden_states = attn.layer_norm(hidden_states)
+
         query = attn.to_q(hidden_states)
         dim = query.shape[-1]
         query = attn.head_to_batch_dim(query)
@@ -1525,6 +1567,9 @@ class SlicedAttnProcessor:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        if attn.concat_kv_input:
+            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -2031,12 +2076,18 @@ class IPAdapterAttnProcessor(nn.Module):
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
+        if attn.layer_norm is not None:
+            hidden_states = attn.layer_norm(hidden_states)
+
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        if attn.concat_kv_input:
+            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         # split hidden states
         end_pos = encoder_hidden_states.shape[1] - self.num_tokens
@@ -2151,12 +2202,18 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
+        if attn.layer_norm is not None:
+            hidden_states = attn.layer_norm(hidden_states)
+
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        if attn.concat_kv_input:
+            encoder_hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=-2)
 
         # split hidden states
         end_pos = encoder_hidden_states.shape[1] - self.num_tokens
@@ -2179,7 +2236,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -2195,7 +2252,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         ip_hidden_states = F.scaled_dot_product_attention(
-            query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
+            query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=attn.scale
         )
 
         ip_hidden_states = ip_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
