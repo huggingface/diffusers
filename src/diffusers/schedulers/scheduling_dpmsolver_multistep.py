@@ -260,7 +260,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             )
 
         sigmas = np.array(self.sigmas)
-        log_sigmas = np.log(self.sigmas)
+        log_sigmas = np.log(sigmas)
 
         if self.config.use_karras_sigmas:
             sigmas = np.flip(sigmas).copy()
