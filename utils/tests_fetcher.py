@@ -66,19 +66,6 @@ PATH_TO_EXAMPLES = PATH_TO_REPO / "examples"
 PATH_TO_DIFFUSERS = PATH_TO_REPO / "src/diffusers"
 PATH_TO_TESTS = PATH_TO_REPO / "tests"
 
-# List here the pipelines to always test.
-IMPORTANT_PIPELINES = [
-    "controlnet",
-    "stable_diffusion",
-    "stable_diffusion_2",
-    "stable_diffusion_xl",
-    "deepfloyd_if",
-    "kandinsky",
-    "kandinsky2_2",
-    "text_to_video_synthesis",
-    "wuerstchen",
-]
-
 # Ignore fixtures in tests folder
 # Ignore lora since they are always tested
 MODULES_TO_IGNORE = ["fixtures", "lora"]
@@ -778,7 +765,7 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
 
 
 def create_module_to_test_map(
-    reverse_map: Dict[str, List[str]] = None, filter_models: bool = False
+    reverse_map: Dict[str, List[str]] = None
 ) -> Dict[str, List[str]]:
     """
     Extract the tests from the reverse_dependency_map and potentially filters the model tests.
@@ -787,14 +774,12 @@ def create_module_to_test_map(
         reverse_map (`Dict[str, List[str]]`, *optional*):
             The reverse dependency map as created by `create_reverse_dependency_map`. Will default to the result of
             that function if not provided.
-        filter_models (`bool`, *optional*, defaults to `False`):
-            Whether or not to filter model tests to only include core models if a file impacts a lot of models.
+        filter_pipelines (`bool`, *optional*, defaults to `False`):
+            Whether or not to filter pipeline tests to only include core pipelines if a file impacts a lot of models.
 
     Returns:
         `Dict[str, List[str]]`: A dictionary that maps each file to the tests to execute if that file was modified.
     """
-    import ipdb; ipdb.set_trace()
-
     if reverse_map is None:
         reverse_map = create_reverse_dependency_map()
 
@@ -808,25 +793,8 @@ def create_module_to_test_map(
 
     # Build the test map
     test_map = {module: [f for f in deps if is_test(f)] for module, deps in reverse_map.items()}
-    tests_to_run = {module: (filter_tests(tests) if has_many_pipelines(tests) else tests) for module, tests in test_map.items()}
 
-    if not filter_models:
-        return test_map
-
-    # Now we deal with the filtering if `filter_models` is True.
-    num_pipelines_tests = len(list(PATH_TO_TESTS.glob("pipelines/*")))
-
-    def has_many_pipelines(tests):
-        # We filter to core models when a given file impacts more than half the model tests.
-        pipeline_tests = {Path(t).parts[2] for t in tests if t.startswith("tests/pipelines/")}
-        return len(pipeline_tests) > num_pipelines_tests // 2
-
-    def filter_tests(tests):
-        return [t for t in tests if not t.startswith("tests/pipelines/") or Path(t).parts[2] in IMPORTANT_PIPELINES]
-
-    tests_to_run = {module: (filter_tests(tests) if has_many_pipelines(tests) else tests) for module, tests in test_map.items()}
-
-    return tests_to_run
+    return test_map
 
 def check_imports_all_exist():
     """
@@ -895,7 +863,6 @@ def create_json_map(test_files_to_run: List[str], json_output_file: str):
 def infer_tests_to_run(
     output_file: str,
     diff_with_last_commit: bool = False,
-    filter_models: bool = True,
     json_output_file: Optional[str] = None,
 ):
     """
@@ -933,8 +900,6 @@ def infer_tests_to_run(
     impacted_files = sorted(set(impacted_files))
     print(f"\n### IMPACTED FILES ###\n{_print_list(impacted_files)}")
 
-    import ipdb; ipdb.set_trace()
-
     # Grab the corresponding test files:
     if any(x in modified_files for x in ["setup.py"]):
         test_files_to_run = ["tests", "examples"]
@@ -948,7 +913,7 @@ def infer_tests_to_run(
             f for f in modified_files if f.startswith("tests") and f.split(os.path.sep)[-1].startswith("test")
         ]
         # Then we grab the corresponding test files.
-        test_map = create_module_to_test_map(reverse_map=reverse_map, filter_models=filter_models)
+        test_map = create_module_to_test_map(reverse_map=reverse_map)
         for f in modified_files:
             if f in test_map:
                 test_files_to_run.extend(test_map[f])
@@ -1074,8 +1039,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.print_dependencies_of is not None:
         print_tree_deps_of(args.print_dependencies_of)
-    elif args.filter_tests:
-        filter_tests(args.output_file, ["pipelines", "repo_utils"])
     else:
         repo = Repo(PATH_TO_REPO)
         commit_message = repo.head.commit.message
@@ -1099,7 +1062,6 @@ if __name__ == "__main__":
                     args.output_file,
                     diff_with_last_commit=diff_with_last_commit,
                     json_output_file=args.json_output_file,
-                    filter_models=not commit_flags["no_filter"],
                 )
                 filter_tests(args.output_file, ["repo_utils"])
             except Exception as e:
