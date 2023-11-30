@@ -325,7 +325,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             residual = hidden_states
 
             hidden_states = self.norm(hidden_states)
-
             if not self.use_linear_projection:
                 hidden_states = (
                     self.proj_in(hidden_states, scale=lora_scale)

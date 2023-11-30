@@ -66,10 +66,10 @@ EXAMPLE_DOC_STRING = """
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5
         >>> controlnet = ControlNetXSModel.from_pretrained(
-        ...     "UmerHA/ConrolNetXS-SD2.1-canny", torch_dtype=torch.float32
+        ...     "UmerHA/ConrolNetXS-SD2.1-canny", torch_dtype=torch.float16
         ... )
         >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-1", controlnet=controlnet, torch_dtype=torch.float32
+        ...     "stabilityai/stable-diffusion-2-1", controlnet=controlnet, torch_dtype=torch.float16
         ... )
         >>> pipe.enable_model_cpu_offload()
 

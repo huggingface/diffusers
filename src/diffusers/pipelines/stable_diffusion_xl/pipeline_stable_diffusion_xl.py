@@ -1129,10 +1129,8 @@ class StableDiffusionXLPipeline(
 
                 # predict the noise residual
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-
                 if ip_adapter_image is not None:
                     added_cond_kwargs["image_embeds"] = image_embeds
-
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
