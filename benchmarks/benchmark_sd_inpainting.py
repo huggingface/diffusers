@@ -3,7 +3,7 @@ import sys
 
 
 sys.path.append(".")
-from benchmarks.base_classes import InpatingBenchmark  # noqa: E402
+from benchmarks.base_classes import InpaintingBenchmark  # noqa: E402
 
 
 if __name__ == "__main__":
@@ -24,5 +24,5 @@ if __name__ == "__main__":
     parser.add_argument("--run_compile", action="store_true")
     args = parser.parse_args()
 
-    benchmark_pipe = InpatingBenchmark(args)
+    benchmark_pipe = InpaintingBenchmark(args)
     benchmark_pipe.benchmark()

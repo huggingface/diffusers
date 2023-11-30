@@ -95,7 +95,7 @@ class ImageToImageBenchmark(TextToImageBenchmark):
         )
 
 
-class InpatingBenchmark(ImageToImageBenchmark):
+class InpaintingBenchmark(ImageToImageBenchmark):
     pipeline_class = AutoPipelineForInpainting
     mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
     mask = load_image(mask_url).convert("RGB")

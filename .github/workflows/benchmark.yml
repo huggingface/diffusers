@@ -45,10 +45,9 @@ jobs:
             HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
           cd benchmarks && mkdir benchmark_outputs && \
-            python benchmark_sd.py && \
-            python benchmark_sd.py --batch_size 4 && \
-            python benchmark_sd.py --run_compile && \
-            python benchmark_sd.py --batch_size 4 --run_compile && \
+            python benchmark_sd.py && python benchmark_sd.py --run_compile && \
+            python benchmark_sd_img.py  && python benchmark_sd_img.py --run_compile && \
+            python benchmark_sd_inpainting.py  && python benchmark_sd_inpainting.py --run_compile && \
             python push_results.py
 
       - name: Test suite reports artifacts
