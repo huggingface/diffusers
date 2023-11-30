@@ -852,7 +852,7 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # 12. Optimizer creation
-    params_to_optimize = list(filter(lambda p: p.requires_grad, unet.parameters()))
+    params_to_optimize = filter(lambda p: p.requires_grad, unet.parameters())
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -1167,7 +1167,10 @@ def main(args):
                 # Notice that we're disabling the adapter layers within the `unet` and then it becomes a
                 # regular teacher. This way, we don't have to separately initialize a teacher UNet.
                 # using_cuda = "cuda" in str(accelerator.device)
-                unet.disable_adapters()
+                unet.disable_adapters() 
+                params_to_optimize_after_disable = filter(lambda p: p.requires_grad, unet.parameters())
+                print("Any difference in trainable params after disable:")
+                print(set(list(params_to_optimize)).difference(set(list(params_to_optimize_after_disable))))
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 # ):
@@ -1215,6 +1218,9 @@ def main(args):
 
                 # re-enable unet adapters
                 unet.enable_adapters()
+                params_to_optimize_after_disable = filter(lambda p: p.requires_grad, unet.parameters())
+                print("Any difference in trainable params after disable:")
+                print(set(list(params_to_optimize)).difference(set(list(params_to_optimize_after_disable))))
 
                 # Get target LCM prediction on x_prev, w, c, t_n
                 # with torch.no_grad() and torch.autocast(
