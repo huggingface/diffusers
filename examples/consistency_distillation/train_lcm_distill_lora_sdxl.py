@@ -860,6 +860,8 @@ def main(args):
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
+    params_to_optimize_named = [n for n, p in unet.named_parameters() if p.requires_grad]
+    print(f"Optimizing parameters: {params_to_optimize_named}")
 
     # 13. Dataset creation and data processing
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
@@ -1171,8 +1173,6 @@ def main(args):
                 params_to_optimize_after_disable = filter(lambda p: p.requires_grad, unet.parameters())
                 print("Any difference in trainable params after disable:")
                 print(set(list(params_to_optimize)).difference(set(list(params_to_optimize_after_disable))))
-                params_to_optimize_named = [n for n, p in unet.named_parameters() if p.requires_grad]
-                print(f"Optimizing parameters: {params_to_optimize_named}")
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 # ):
