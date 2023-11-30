@@ -1032,7 +1032,6 @@ def parse_commit_message(commit_message: str) -> Dict[str, bool]:
         `Dict[str, bool]`: A dictionary of strings to bools with keys the following keys: `"skip"`,
         `"test_all_models"` and `"test_all"`.
     """
-    import ipdb; ipdb.set_trace()
     if commit_message is None:
         return {"skip": False, "no_filter": False, "test_all": False}
 
@@ -1116,7 +1115,6 @@ if __name__ == "__main__":
                 commit_flags["test_all"] = True
 
         if commit_flags["test_all"]:
-            import ipdb; ipdb.set_trace()
             with open(args.output_file, "w", encoding="utf-8") as f:
                 f.write("tests")
             example_file = Path(args.output_file).parent / "examples_test_list.txt"
