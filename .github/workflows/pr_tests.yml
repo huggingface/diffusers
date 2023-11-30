@@ -115,7 +115,7 @@ jobs:
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
-          examples/test_examples.py
+          examples
 
     - name: Failure short reports
       if: ${{ failure() }}
