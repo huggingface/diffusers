@@ -822,6 +822,7 @@ def create_module_to_test_map(
         # add entire core pipline modules instead
         pipeline_tests.extend([PATH_TO_TESTS / f"pipelines/{pipe}" for pipe in IMPORTANT_PIPELINES])
         test_map["pipelines"] = pipeline_tests
+        import ipdb; ipdb.set_trace()
 
     return test_map
 
