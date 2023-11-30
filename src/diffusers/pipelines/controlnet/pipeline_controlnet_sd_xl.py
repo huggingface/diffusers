@@ -37,7 +37,7 @@ from ...loaders import (
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
-from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
@@ -489,15 +489,15 @@ class StableDiffusionXLControlNetPipeline(
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt):
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
         image = image.to(device=device, dtype=dtype)
-        if self.image_encoder.config.output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image).hidden_states[-2]
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
             image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
             uncond_image_enc_hidden_states = self.image_encoder(
                 torch.zeros_like(image), output_hidden_states=True
@@ -1180,7 +1180,10 @@ class StableDiffusionXLControlNetPipeline(
 
         # 3.2 Encode ip_adapter_image
         if ip_adapter_image is not None:
-            image_embeds, negative_image_embeds = self.encode_image(ip_adapter_image, device, num_images_per_prompt)
+            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
+            image_embeds, negative_image_embeds = self.encode_image(
+                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+            )
             if self.do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
