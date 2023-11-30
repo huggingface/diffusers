@@ -60,7 +60,7 @@ def prepare_image(pil_image):
 
 
 class Kandinsky3Img2ImgPipeline(DiffusionPipeline, LoraLoaderMixin):
-    model_cpu_offload_seq = "text_encoder->unet->movq"
+    model_cpu_offload_seq = "text_encoder->movq->unet->movq"
     _callback_tensor_inputs = [
         "latents",
         "prompt_embeds",
