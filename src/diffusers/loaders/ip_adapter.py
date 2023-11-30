@@ -148,6 +148,10 @@ class IPAdapterMixin:
         if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
             self.feature_extractor = CLIPImageProcessor()
 
+        if "proj.weight" not in state_dict["image_proj"]:
+            # IP-Adapter Plus
+            self.image_encoder.config.output_hidden_states = True
+
         # load ip-adapter into unet
         self.unet._load_ip_adapter_weights(state_dict)
 
