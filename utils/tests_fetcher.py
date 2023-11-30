@@ -83,12 +83,6 @@ IMPORTANT_PIPELINES = [
 # Ignore lora since they are always tested
 MODULES_TO_IGNORE = ["fixtures", "lora"]
 
-repo = Repo(PATH_TO_REPO)
-print(type(repo.refs))
-print(repo.refs)
-print(repo.remotes.origin.refs)
-print("main", repo.remotes.origin.refs.main.commit)
-
 @contextmanager
 def checkout_commit(repo: Repo, commit_id: str):
     """
@@ -294,11 +288,13 @@ def get_modified_python_files(diff_with_last_commit: bool = False) -> List[str]:
     repo = Repo(PATH_TO_REPO)
 
     if not diff_with_last_commit:
-        main_branch = repo.remotes.origin.refs.main
-        print(f"main is at {main_branch.commit}")
+        # Need to fetch refs for main using remotes when running with github actions.
+        upstream_main = repo.remotes.origin.refs.main
+
+        print(f"main is at {upstream_main.commit}")
         print(f"Current head is at {repo.head.commit}")
 
-        branching_commits = repo.merge_base(main_branch, repo.head)
+        branching_commits = repo.merge_base(upstream_main, repo.head)
         for commit in branching_commits:
             print(f"Branching commit: {commit}")
         return get_diff(repo, repo.head.commit, branching_commits)
@@ -421,10 +417,11 @@ def get_doctest_files(diff_with_last_commit: bool = False) -> List[str]:
 
     test_files_to_run = []  # noqa
     if not diff_with_last_commit:
-        print(f"main is at {repo.refs.main.commit}")
+        upstream_main = repo.remotes.origin.refs.main
+        print(f"main is at {upstream_main.commit}")
         print(f"Current head is at {repo.head.commit}")
 
-        branching_commits = repo.merge_base(repo.refs.main, repo.head)
+        branching_commits = repo.merge_base(upstream_main, repo.head)
         for commit in branching_commits:
             print(f"Branching commit: {commit}")
         test_files_to_run = get_diff_for_doctesting(repo, repo.head.commit, branching_commits)
@@ -438,7 +435,7 @@ def get_doctest_files(diff_with_last_commit: bool = False) -> List[str]:
     all_test_files_to_run = get_all_doctest_files()
 
     # Add to the test files to run any removed entry from "utils/not_doctested.txt".
-    new_test_files = get_new_doctest_files(repo, repo.head.commit, repo.refs.main.commit)
+    new_test_files = get_new_doctest_files(repo, repo.head.commit, upstream_main.commit)
     test_files_to_run = list(set(test_files_to_run + new_test_files))
 
     # Do not run slow doctest tests on CircleCI
@@ -814,18 +811,20 @@ def create_module_to_test_map(
         return test_map
 
     # Now we deal with the filtering if `filter_models` is True.
-    num_model_tests = len(list(PATH_TO_TESTS.glob("models/*")))
+    num_pipelines_tests = len(list(PATH_TO_TESTS.glob("pipelines/*")))
 
-    def has_many_models(tests):
+    def has_many_pipelines(tests):
         # We filter to core models when a given file impacts more than half the model tests.
-        model_tests = {Path(t).parts[2] for t in tests if t.startswith("tests/models/")}
-        return len(model_tests) > num_model_tests // 2
+        pipeline_tests = {Path(t).parts[2] for t in tests if t.startswith("tests/pipelines/")}
+        return len(pipeline_tests) > num_pipelines_tests // 2
 
     def filter_tests(tests):
-        return [t for t in tests if not t.startswith("tests/models/") or Path(t).parts[2] in IMPORTANT_PIPELINES]
+        return [t for t in tests if not t.startswith("tests/pipelines/") or Path(t).parts[2] in IMPORTANT_PIPELINES]
 
-    return {module: (filter_tests(tests) if has_many_models(tests) else tests) for module, tests in test_map.items()}
+    tests_to_run = {module: (filter_tests(tests) if has_many_pipelines(tests) else tests) for module, tests in test_map.items()}
+    import ipdb; ipdb.set_trace()
 
+    return tests_to_run
 
 def check_imports_all_exist():
     """
