@@ -210,7 +210,7 @@ class StableDiffusionXLPipeline(
         "text_encoder",
         "text_encoder_2",
         "image_encoder",
-        "safety_checker"
+        "safety_checker",
         "feature_extractor",
     ]
     _callback_tensor_inputs = [

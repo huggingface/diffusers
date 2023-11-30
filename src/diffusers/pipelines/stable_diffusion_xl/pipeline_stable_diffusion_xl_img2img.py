@@ -25,7 +25,9 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import (
@@ -56,7 +58,6 @@ from ...utils import (
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import CustomStableDiffusionXLPipelineOutput
-
 
 if is_invisible_watermark_available():
     from .watermark import StableDiffusionXLWatermarker
@@ -231,7 +232,7 @@ class StableDiffusionXLImg2ImgPipeline(
         "text_encoder",
         "text_encoder_2",
         "image_encoder",
-        "safety_checker"
+        "safety_checker",
         "feature_extractor",
     ]
     _callback_tensor_inputs = [
