@@ -1,7 +1,9 @@
-from typing import Union
+from typing import Union, Tuple, List
 
 import numpy as np
 import torch
+import torch.nn.functional as F
+import math
 from PIL import Image
 
 from ...models.attention_processor import Attention
@@ -106,8 +108,8 @@ class AttentionStore():
             attention = self.attention_store[step]
         return attention
 
-    def aggregate_attention(self, attention_maps, prompts, res: Union[int, tuple[int]],
-                            from_where: list[str], is_cross: bool, select: int
+    def aggregate_attention(self, attention_maps, prompts, res: Union[int, Tuple[int]],
+                            from_where: List[str], is_cross: bool, select: int
                             ):
         out = [[] for x in range(self.batch_size)]
         if isinstance(res, int):
@@ -202,3 +204,35 @@ class CrossAttnProcessor:
         hidden_states = hidden_states / attn.rescale_output_factor
         return hidden_states
 
+# Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionAttendAndExcitePipeline.GaussianSmoothing
+class GaussianSmoothing():
+
+    def __init__(self, device):
+        kernel_size = [3, 3]
+        sigma = [0.5, 0.5]
+
+        # The gaussian kernel is the product of the gaussian function of each dimension.
+        kernel = 1
+        meshgrids = torch.meshgrid([torch.arange(size, dtype=torch.float32) for size in kernel_size])
+        for size, std, mgrid in zip(kernel_size, sigma, meshgrids):
+            mean = (size - 1) / 2
+            kernel *= 1 / (std * math.sqrt(2 * math.pi)) * torch.exp(-(((mgrid - mean) / (2 * std)) ** 2))
+
+        # Make sure sum of values in gaussian kernel equals 1.
+        kernel = kernel / torch.sum(kernel)
+
+        # Reshape to depthwise convolutional weight
+        kernel = kernel.view(1, 1, *kernel.size())
+        kernel = kernel.repeat(1, *[1] * (kernel.dim() - 1))
+
+        self.weight = kernel.to(device)
+
+    def __call__(self, input):
+        """
+        Arguments:
+        Apply gaussian filter to input.
+            input (torch.Tensor): Input to apply gaussian filter on.
+        Returns:
+            filtered (torch.Tensor): Filtered output.
+        """
+        return F.conv2d(input, weight=self.weight.to(input.dtype))
