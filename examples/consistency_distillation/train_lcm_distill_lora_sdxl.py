@@ -861,6 +861,7 @@ def main(args):
         eps=args.adam_epsilon,
     )
     params_to_optimize_named = [n for n, p in unet.named_parameters() if p.requires_grad]
+    print(f"Number of params to optimize: {len(list(params_to_optimize))}")
     print(f"Optimizing parameters: {params_to_optimize_named}")
 
     # 13. Dataset creation and data processing
