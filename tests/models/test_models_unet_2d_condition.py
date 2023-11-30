@@ -18,6 +18,7 @@ import gc
 import os
 import tempfile
 import unittest
+from collections import OrderedDict
 
 import torch
 from parameterized import parameterized
@@ -128,10 +129,23 @@ def create_ip_adapter_plus_state_dict(model):
     # "image_proj" (ImageProjection layer weights)
     cross_attention_dim = model.config["cross_attention_dim"]
     image_projection = Resampler(
-        embed_dims=cross_attention_dim, output_dims=cross_attention_dim, hidden_dims=32, num_heads=2, num_queries=4
+        embed_dims=cross_attention_dim, output_dims=cross_attention_dim, dim_head=32, heads=2, num_queries=4
     )
 
-    ip_image_projection_state_dict = image_projection.state_dict()
+    ip_image_projection_state_dict = OrderedDict()
+    for k, v in image_projection.state_dict().items():
+        if "norm_cross" in k:
+            ip_image_projection_state_dict[k.replace("norm_cross", "norm1")] = v
+        elif "layer_norm" in k:
+            ip_image_projection_state_dict[k.replace("layer_norm", "norm2")] = v
+        elif "to_k" in k:
+            ip_image_projection_state_dict[k.replace("to_k", "to_kv")] = torch.cat([v, v], dim=0)
+        elif "to_v" in k:
+            continue
+        elif "to_out.0" in k:
+            ip_image_projection_state_dict[k.replace("to_out.0", "to_out")] = v
+        else:
+            ip_image_projection_state_dict[k] = v
 
     ip_state_dict = {}
     ip_state_dict.update({"image_proj": ip_image_projection_state_dict, "ip_adapter": ip_cross_attn_state_dict})

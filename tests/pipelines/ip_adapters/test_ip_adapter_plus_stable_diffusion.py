@@ -119,7 +119,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.3015, 0.2615, 0.2200, 0.2725, 0.2510, 0.2021, 0.2498, 0.2415, 0.2131])
+        expected_slice = np.array([0.3013, 0.2615, 0.2202, 0.2722, 0.2510, 0.2023, 0.2498, 0.2415, 0.2139])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -138,7 +138,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.3518, 0.2554, 0.2495, 0.2363, 0.1836, 0.3823, 0.1414, 0.1868, 0.5386])
+        expected_slice = np.array([0.3550, 0.2600, 0.2520, 0.2412, 0.1870, 0.3831, 0.1453, 0.1880, 0.5371])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -157,7 +157,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.2756, 0.2422, 0.2214, 0.2346, 0.2102, 0.2060, 0.2188, 0.2043, 0.1941])
+        expected_slice = np.array([0.2744, 0.2410, 0.2202, 0.2334, 0.2090, 0.2053, 0.2175, 0.2033, 0.1934])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -186,7 +186,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.0587, 0.0567, 0.0454, 0.0537, 0.0553, 0.0518, 0.0494, 0.0535, 0.0497])
+        expected_slice = np.array([0.0592, 0.0573, 0.0459, 0.0542, 0.0559, 0.0523, 0.0500, 0.0540, 0.0501])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -211,7 +211,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.0711, 0.0700, 0.0734, 0.0758, 0.0742, 0.0688, 0.0751, 0.0827, 0.0851])
+        expected_slice = np.array([0.0708, 0.0701, 0.0735, 0.0760, 0.0739, 0.0679, 0.0756, 0.0824, 0.0837])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -237,6 +237,6 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         image_slice = images[0, :3, :3, -1].flatten()
         image_slice.tolist()
 
-        expected_slice = np.array([0.1398, 0.1476, 0.1407, 0.1441, 0.1470, 0.1480, 0.1448, 0.1481, 0.1494])
+        expected_slice = np.array([0.1398, 0.1476, 0.1407, 0.1442, 0.1470, 0.1480, 0.1449, 0.1481, 0.1494])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)

@@ -86,9 +86,6 @@ class Attention(nn.Module):
             `AttnProcessor` otherwise.
         query_layer_norm (`bool`, defaults to `False`):
             Set to `True` to use layer norm for the query.
-        scale_qk_factor (`float`, *optional*, defaults to `None`):
-            A factor to scale the query and key by. If `None`, defaults to `1 / math.sqrt(query.size(-1))`
-            if `scale_qk` is `True`.
         concat_kv_input (`bool`, defaults to `False`):
             Set to `True` to concatenate the hidden_states and encoder_hidden_states for kv inputs.
     """
@@ -117,7 +114,6 @@ class Attention(nn.Module):
         _from_deprecated_attn_block: bool = False,
         processor: Optional["AttnProcessor"] = None,
         query_layer_norm: bool = False,
-        scale_qk_factor: Optional[float] = None,
         concat_kv_input: bool = False,
     ):
         super().__init__()
@@ -135,12 +131,7 @@ class Attention(nn.Module):
         self._from_deprecated_attn_block = _from_deprecated_attn_block
 
         self.scale_qk = scale_qk
-        if scale_qk_factor is not None:
-            self.scale = scale_qk_factor
-        elif self.scale_qk:
-            self.scale = dim_head**-0.5
-        else:
-            self.scale = 1.0
+        self.scale = dim_head**-0.5 if self.scale_qk else 1.0
 
         self.heads = heads
         # for slice_size > 0 the attention score computation
@@ -1013,7 +1004,7 @@ class AttnAddedKVProcessor2_0:
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, residual.shape[1])
 
@@ -1268,7 +1259,7 @@ class AttnProcessor2_0:
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -1500,7 +1491,7 @@ class CustomDiffusionAttnProcessor2_0(nn.Module):
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -2236,7 +2227,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         hidden_states = F.scaled_dot_product_attention(
-            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False, scale=attn.scale
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
         )
 
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
@@ -2252,7 +2243,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         # the output of sdp = (batch, num_heads, seq_len, head_dim)
         # TODO: add support for attn.scale when we move to Torch 2.1
         ip_hidden_states = F.scaled_dot_product_attention(
-            query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=attn.scale
+            query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
         )
 
         ip_hidden_states = ip_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)

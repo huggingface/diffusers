@@ -679,6 +679,10 @@ class UNet2DConditionLoadersMixin:
             # IP-Adapter Plus
             num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
 
+        # Set encoder_hid_proj after loading ip_adapter weights,
+        # because `Resampler` also has `attn_processors`.
+        self.encoder_hid_proj = None
+
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
         key_id = 1

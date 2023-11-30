@@ -831,7 +831,6 @@ class Resampler(nn.Module):
         self.norm_out = nn.LayerNorm(output_dims)
 
         self.layers = nn.ModuleList([])
-        scale_qk_factor = 1 / math.sqrt(math.sqrt(dim_head))
         for _ in range(depth):
             self.layers.append(
                 nn.ModuleList(
@@ -842,7 +841,6 @@ class Resampler(nn.Module):
                             heads=heads,
                             query_layer_norm=True,
                             cross_attention_norm="layer_norm",
-                            scale_qk_factor=scale_qk_factor,
                             residual_connection=True,
                             out_bias=False,
                             concat_kv_input=True,
