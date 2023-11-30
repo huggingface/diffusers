@@ -70,6 +70,19 @@ PATH_TO_TESTS = PATH_TO_REPO / "tests"
 # Ignore lora since they are always tested
 MODULES_TO_IGNORE = ["fixtures", "lora"]
 
+IMPORTANT_PIPELINES = [
+    "controlnet",
+    "stable_diffusion",
+    "stable_diffusion_2",
+    "stable_diffusion_xl",
+    "stable_video_diffusion",
+    "deepfloyd_if",
+    "kandinsky",
+    "kandinsky2_2",
+    "text_to_video_synthesis",
+    "wuerstchen",
+]
+
 @contextmanager
 def checkout_commit(repo: Repo, commit_id: str):
     """
@@ -793,6 +806,22 @@ def create_module_to_test_map(
 
     # Build the test map
     test_map = {module: [f for f in deps if is_test(f)] for module, deps in reverse_map.items()}
+
+    # Always test core pipelines
+    if "pipelines" not in test_map:
+        test_map["pipelines"] = [PATH_TO_TESTS / f"pipelines/{pipe}" for pipe in IMPORTANT_PIPELINES]
+
+    else:
+        pipeline_tests = []
+        # first remove individual test files from core pipeline modules that might have been added
+        for pipe in test_map["pipelines"]:
+            if Path(pipe).parts(2) in IMPORTANT_PIPELINES:
+                continue
+            pipeline_tests.append(pipe)
+
+        # add entire core pipline modules instead
+        pipeline_tests.extend([PATH_TO_TESTS / f"pipelines/{pipe}" for pipe in IMPORTANT_PIPELINES])
+        test_map["pipelines"] = pipeline_tests
 
     return test_map
 
