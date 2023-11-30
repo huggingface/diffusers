@@ -20,8 +20,8 @@ from torch import nn
 
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
-from .lora import LoRACompatibleLinear
 from .attention_processor import Attention
+from .lora import LoRACompatibleLinear
 
 
 def get_timestep_embedding(
