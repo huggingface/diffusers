@@ -807,23 +807,6 @@ def create_module_to_test_map(
     # Build the test map
     test_map = {module: [f for f in deps if is_test(f)] for module, deps in reverse_map.items()}
 
-    # Always test core pipelines
-    if "pipelines" not in test_map:
-        test_map["pipelines"] = [PATH_TO_TESTS / f"pipelines/{pipe}" for pipe in IMPORTANT_PIPELINES]
-
-    else:
-        pipeline_tests = []
-        # first remove individual test files from core pipeline modules that might have been added
-        for pipe in test_map["pipelines"]:
-            if Path(pipe).parts(2) in IMPORTANT_PIPELINES:
-                continue
-            pipeline_tests.append(pipe)
-
-        # add entire core pipline modules instead
-        pipeline_tests.extend([PATH_TO_TESTS / f"pipelines/{pipe}" for pipe in IMPORTANT_PIPELINES])
-        test_map["pipelines"] = pipeline_tests
-        import ipdb; ipdb.set_trace()
-
     return test_map
 
 def check_imports_all_exist():
@@ -849,7 +832,37 @@ def _print_list(l) -> str:
     return "\n".join([f"- {f}" for f in l])
 
 
-def create_json_map(test_files_to_run: List[str], json_output_file: str):
+def update_test_map_with_core_pipelines(json_output_file: str):
+    print(f"\n### ADD CORE PIPELINE TESTS ###\n{_print_list(IMPORTANT_PIPELINES)}")
+    with open(json_output_file, 'rb') as fp:
+        test_map = json.load(fp)
+
+    # Add core pipelines as their own test group
+    test_map["core_pipelines"] = " ".join(sorted([str(PATH_TO_TESTS / f"pipelines/{pipe}") for pipe in IMPORTANT_PIPELINES]))
+
+    # If there are no existing pipeline tests save the map
+    if "pipelines" not in test_map:
+        with open(json_output_file, "w", encoding="UTF-8") as fp:
+            json.dump(test_map, fp, ensure_ascii=False)
+
+    pipeline_tests = test_map.pop("pipelines")
+    pipeline_tests = pipeline_tests.split(" ")
+
+    # Remove core pipeline tests from the fetched pipeline tests
+    updated_pipeline_tests = []
+    for pipe in pipeline_tests:
+        if pipe == "tests/pipelines" or Path(pipe).parts[2] in IMPORTANT_PIPELINES:
+            continue
+        updated_pipeline_tests.append(pipe)
+
+    if len(updated_pipeline_tests) > 0:
+        test_map["pipelines"] = " ".join(sorted(updated_pipeline_tests))
+
+    with open(json_output_file, "w", encoding="UTF-8") as fp:
+        json.dump(test_map, fp, ensure_ascii=False)
+
+
+def create_json_map(test_files_to_run: List[str], json_output_file: Optional[str] = None):
     """
     Creates a map from a list of tests to run to easily split them by category, when running parallelism of slow tests.
 
@@ -886,9 +899,9 @@ def create_json_map(test_files_to_run: List[str], json_output_file: str):
     # sort the keys & values
     keys = sorted(test_map.keys())
     test_map = {k: " ".join(sorted(test_map[k])) for k in keys}
+
     with open(json_output_file, "w", encoding="UTF-8") as fp:
         json.dump(test_map, fp, ensure_ascii=False)
-
 
 def infer_tests_to_run(
     output_file: str,
@@ -931,10 +944,9 @@ def infer_tests_to_run(
     print(f"\n### IMPACTED FILES ###\n{_print_list(impacted_files)}")
 
     # Grab the corresponding test files:
-    """
     if any(x in modified_files for x in ["setup.py"]):
         test_files_to_run = ["tests", "examples"]
-    """
+
     # in order to trigger pipeline tests even if no code change at all
     if "tests/utils/tiny_model_summary.json" in modified_files:
         test_files_to_run = ["tests"]
@@ -1096,6 +1108,8 @@ if __name__ == "__main__":
                     json_output_file=args.json_output_file,
                 )
                 filter_tests(args.output_file, ["repo_utils"])
+                update_test_map_with_core_pipelines(json_output_file=args.json_output_file)
+
             except Exception as e:
                 print(f"\nError when trying to grab the relevant tests: {e}\n\nRunning all tests.")
                 commit_flags["test_all"] = True
@@ -1109,3 +1123,4 @@ if __name__ == "__main__":
 
             test_files_to_run = get_all_tests()
             create_json_map(test_files_to_run, args.json_output_file)
+            update_test_map_with_core_pipelines(json_output_file=args.json_output_file)
