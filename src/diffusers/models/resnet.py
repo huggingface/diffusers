@@ -756,7 +756,7 @@ class ResnetBlock2D(nn.Module):
             hidden_states = hidden_states * (1 + scale) + shift
 
         hidden_states = self.nonlinearity(hidden_states)
-        
+
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
 
