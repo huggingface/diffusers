@@ -20,8 +20,10 @@ _dummy_objects = {}
 _import_structure = {
     "controlnet": [],
     "latent_diffusion": [],
+    "ledits_pp": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
+
 }
 
 try:
