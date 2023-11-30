@@ -578,7 +578,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 if i < len(timesteps) - 1:
                     noise_timestep = timesteps[i + 1]
                     init_latents_proper = self.scheduler.add_noise(
-                        image_latents, mask_noise, torch.tensor([noise_timestep])
+                        init_image_latents, mask_noise, torch.tensor([noise_timestep])
                     )
 
                     latents = (1 - init_mask) * init_latents_proper + init_mask * latents
