@@ -30,12 +30,7 @@ from .attention_processor import (
 )
 from .embeddings import TextImageProjection, TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .unet_2d_blocks import (
-    CrossAttnDownBlock2D,
-    DownBlock2D,
-    UNetMidBlock2DCrossAttn,
-    get_down_block,
-)
+from .unet_2d_blocks import CrossAttnDownBlock2D, DownBlock2D, UNetMidBlock2D, UNetMidBlock2DCrossAttn, get_down_block
 from .unet_2d_condition import UNet2DConditionModel
 
 
@@ -191,6 +186,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
+        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
@@ -409,20 +405,35 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         controlnet_block = zero_module(controlnet_block)
         self.controlnet_mid_block = controlnet_block
 
-        self.mid_block = UNetMidBlock2DCrossAttn(
-            transformer_layers_per_block=transformer_layers_per_block[-1],
-            in_channels=mid_block_channel,
-            temb_channels=time_embed_dim,
-            resnet_eps=norm_eps,
-            resnet_act_fn=act_fn,
-            output_scale_factor=mid_block_scale_factor,
-            resnet_time_scale_shift=resnet_time_scale_shift,
-            cross_attention_dim=cross_attention_dim,
-            num_attention_heads=num_attention_heads[-1],
-            resnet_groups=norm_num_groups,
-            use_linear_projection=use_linear_projection,
-            upcast_attention=upcast_attention,
-        )
+        if mid_block_type == "UNetMidBlock2DCrossAttn":
+            self.mid_block = UNetMidBlock2DCrossAttn(
+                transformer_layers_per_block=transformer_layers_per_block[-1],
+                in_channels=mid_block_channel,
+                temb_channels=time_embed_dim,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+                cross_attention_dim=cross_attention_dim,
+                num_attention_heads=num_attention_heads[-1],
+                resnet_groups=norm_num_groups,
+                use_linear_projection=use_linear_projection,
+                upcast_attention=upcast_attention,
+            )
+        elif mid_block_type == "UNetMidBlock2D":
+            self.mid_block = UNetMidBlock2D(
+                in_channels=block_out_channels[-1],
+                temb_channels=time_embed_dim,
+                num_layers=0,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                resnet_groups=norm_num_groups,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+                add_attention=False,
+            )
+        else:
+            raise ValueError(f"unknown mid_block_type : {mid_block_type}")
 
     @classmethod
     def from_unet(
@@ -431,6 +442,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
         load_weights_from_unet: bool = True,
+        conditioning_channels: int = 3,
     ):
         r"""
         Instantiate a [`ControlNetModel`] from [`UNet2DConditionModel`].
@@ -477,8 +489,10 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             upcast_attention=unet.config.upcast_attention,
             resnet_time_scale_shift=unet.config.resnet_time_scale_shift,
             projection_class_embeddings_input_dim=unet.config.projection_class_embeddings_input_dim,
+            mid_block_type=unet.config.mid_block_type,
             controlnet_conditioning_channel_order=controlnet_conditioning_channel_order,
             conditioning_embedding_out_channels=conditioning_embedding_out_channels,
+            conditioning_channels=conditioning_channels,
         )
 
         if load_weights_from_unet:
@@ -797,13 +811,16 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
 
         # 4. mid
         if self.mid_block is not None:
-            sample = self.mid_block(
-                sample,
-                emb,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
-                cross_attention_kwargs=cross_attention_kwargs,
-            )
+            if hasattr(self.mid_block, "has_cross_attention") and self.mid_block.has_cross_attention:
+                sample = self.mid_block(
+                    sample,
+                    emb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    attention_mask=attention_mask,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                )
+            else:
+                sample = self.mid_block(sample, emb)
 
         # 5. Control net blocks
 
