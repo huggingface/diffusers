@@ -1115,6 +1115,7 @@ if __name__ == "__main__":
                 commit_flags["test_all"] = True
 
         if commit_flags["test_all"]:
+            import ipdb; ipdb.set_trace()
             with open(args.output_file, "w", encoding="utf-8") as f:
                 f.write("tests")
             example_file = Path(args.output_file).parent / "examples_test_list.txt"
