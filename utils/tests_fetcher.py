@@ -86,7 +86,7 @@ MODULES_TO_IGNORE = ["fixtures", "lora"]
 repo = Repo(PATH_TO_REPO)
 print(type(repo.refs))
 print(repo.refs)
-print("Main is at: ", repo.refs.main.commit)
+print("main", repo.remotes.origin.refs.main.commit)
 
 @contextmanager
 def checkout_commit(repo: Repo, commit_id: str):
@@ -293,10 +293,11 @@ def get_modified_python_files(diff_with_last_commit: bool = False) -> List[str]:
     repo = Repo(PATH_TO_REPO)
 
     if not diff_with_last_commit:
-        print(f"main is at {repo.refs.main.commit}")
+        main_branch = repo.remotes.origin.refs.main
+        print(f"main is at {main_branch.commit}")
         print(f"Current head is at {repo.head.commit}")
 
-        branching_commits = repo.merge_base(repo.refs.main, repo.head)
+        branching_commits = repo.merge_base(main_branch, repo.head)
         for commit in branching_commits:
             print(f"Branching commit: {commit}")
         return get_diff(repo, repo.head.commit, branching_commits)
