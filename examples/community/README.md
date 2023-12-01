@@ -2490,7 +2490,7 @@ This code implements a pipeline for the Stable Diffusion model, enabling the div
 ### Usage
 ### Sample Code
 ```
-from from examples.community.regional_prompting import RegionalPromptingStableDiffusionPipeline
+from from examples.community.regional_prompting_stable_diffusion import RegionalPromptingStableDiffusionPipeline
 pipe = RegionalPromptingStableDiffusionPipeline.from_single_file(model_path, vae=vae)
 
 rp_args = {
