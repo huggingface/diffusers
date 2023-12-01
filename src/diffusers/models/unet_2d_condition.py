@@ -794,7 +794,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
-    def _enable_qkv_fuse_projection(self):
+    def _enable_fused_qkv_projections(self):
         from .attention_processor import Attention
 
         for module in self.modules():
