@@ -290,6 +290,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
+        print(f"From set_timesteps: {self.sigmas.device}")
         self._step_index = None
 
     def _sigma_to_t(self, sigma, log_sigmas):
