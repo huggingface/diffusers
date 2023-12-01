@@ -195,7 +195,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.config.timestep_spacing in ["linspace", "trailing"]:
             return max_sigma
 
-        return (max_sigma ** 2 + 1) ** 0.5
+        return (max_sigma**2 + 1) ** 0.5
 
     @property
     def step_index(self):
@@ -421,7 +421,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if self.step_index is None:
             self._init_step_index(timestep)
-        
+
         sigma = self.sigmas[self.step_index]
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
