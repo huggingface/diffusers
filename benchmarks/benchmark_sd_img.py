@@ -25,4 +25,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     benchmark_pipe = ImageToImageBenchmark(args)
-    benchmark_pipe.benchmark()
+    benchmark_pipe.benchmark(args)
