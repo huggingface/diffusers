@@ -719,8 +719,11 @@ class StableDiffusionXLPipeline(
         self.unet.disable_freeu()
 
     def _enable_fused_qkv_projections(self):
+        from ...models.attention_processor import _FusedAttnProcessor2_0
+
         self.original_unet_attn_processor = self.unet.attn_processor
         self.unet.enable_fused_qkv_projections(device=self.device, dtype=self.dtype)
+        self.unet.set_attn_processor(_FusedAttnProcessor2_0())
 
     def _disable_fused_qkv_projections(self):
         self.unet.set_attn_processor(self.original_unet_attn_processor)
