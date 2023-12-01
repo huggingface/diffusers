@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 from typing import Dict, Optional, Tuple, Union
 
 import torch
@@ -19,7 +18,6 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalVAEMixin
-from ..utils import BaseOutput
 from ..utils.accelerate_utils import apply_forward_hook
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -28,22 +26,9 @@ from .attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
 )
+from .modeling_outputs import AutoencoderKLOutput
 from .modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
-
-
-@dataclass
-class AutoencoderKLOutput(BaseOutput):
-    """
-    Output of AutoencoderKL encoding method.
-
-    Args:
-        latent_dist (`DiagonalGaussianDistribution`):
-            Encoded outputs of `Encoder` represented as the mean and logvar of `DiagonalGaussianDistribution`.
-            `DiagonalGaussianDistribution` allows for sampling latents from the distribution.
-    """
-
-    latent_dist: "DiagonalGaussianDistribution"
 
 
 class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
