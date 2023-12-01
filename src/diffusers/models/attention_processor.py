@@ -1335,7 +1335,7 @@ class _FusedAttnProcessor2_0:
             query = attn.to_q(hidden_states, *args)
 
             kv = attn.to_kv(encoder_hidden_states, *args)
-            split_size = qkv.shape[-1] // 2
+            split_size = kv.shape[-1] // 2
             key, value = torch.split(kv, split_size, dim=-1)
 
         inner_dim = key.shape[-1]
