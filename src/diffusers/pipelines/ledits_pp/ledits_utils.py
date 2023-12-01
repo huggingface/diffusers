@@ -33,30 +33,34 @@ def load_images(image_path, sizes=(512, 768), left=0, right=0, top=0, bottom=0, 
                 resized = Image.fromarray(image).resize((sizes[0], sizes[1]))
             else:
                 resized = Image.fromarray(image).resize((sizes[1], sizes[0]))
-            image = np.array(resized)
         else:
-            image = np.array(Image.fromarray(image).resize((sizes[0], sizes[0])))
+            resized = Image.fromarray(image).resize((sizes[0], sizes[0]))
+        image = np.array(resized)
         if image.shape != org_size:
             print(
                 f'Input image has been resized to {image.shape[1]}x{image.shape[0]}px (from {org_size[1]}x{org_size[0]}px)')
         image = torch.from_numpy(image).float().permute(2, 0, 1)
-        return image
+        return image, resized
 
     tmps = []
+    resized_imgs = []
     if isinstance(image_path, list):
         for item in image_path:
-            prep = pre_process(item, sizes, left, right, top, bottom)
+            prep, resized = pre_process(item, sizes, left, right, top, bottom)
             if len(tmps) > 0 and prep.shape != tmps[0].shape:
                 raise ValueError(
                     f"Mixed image resolution not supported in batch processing. Target resolution set to {tmps[0].shape[2]}x{tmps[0].shape[1]}px,"
                     f"but found image with resolution {prep.shape[2]}x{prep.shape[1]}px")
             tmps.append(prep)
+            resized_imgs.append(resized)
     else:
-        tmps.append(pre_process(image_path, sizes, left, right, top, bottom))
+        prep, resized = pre_process(image_path, sizes, left, right, top, bottom)
+        tmps.append(prep)
+        resized_imgs.append(resized)
     image = torch.stack(tmps) / 127.5 - 1
 
     image = image.to(device=device, dtype=dtype)
-    return image
+    return image, resized_imgs
 
 class AttentionStore():
     @staticmethod
