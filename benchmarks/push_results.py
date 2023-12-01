@@ -28,7 +28,11 @@ def push_to_hf_dataset():
         current_results = pd.read_csv(FINAL_CSV_FILE)
         previous_results = pd.read_csv(csv_path)
         numeric_columns = current_results.select_dtypes(include=["float64", "int64"]).columns
-        numeric_columns = [c for c in numeric_columns if c not in ["batch_size", "num_inference_steps"]]
+        numeric_columns = [
+            c
+            for c in numeric_columns
+            if c not in ["batch_size", "num_inference_steps", "actual_gpu_memory (gbs)", "github_sha"]
+        ]
 
         for column in numeric_columns:
             # Calculate the percentage change
