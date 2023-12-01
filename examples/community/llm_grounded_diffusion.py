@@ -23,7 +23,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.attention import Attention, GatedSelfAttentionDense
@@ -272,10 +272,19 @@ class LLMGroundedDiffusionPipeline(StableDiffusionPipeline):
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
+        image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__(
-            vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
+            vae,
+            text_encoder,
+            tokenizer,
+            unet,
+            scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
+            requires_safety_checker=requires_safety_checker,
         )
 
         self.register_attn_hooks(unet)
