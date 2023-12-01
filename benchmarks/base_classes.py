@@ -87,9 +87,11 @@ class ImageToImageBenchmark(TextToImageBenchmark):
     url = "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/1665_Girl_with_a_Pearl_Earring.jpg/800px-1665_Girl_with_a_Pearl_Earring.jpg"
     image = load_image(url).convert("RGB")
 
-    def run_inference(self, pipe, args):
+    def __init__(self, args):
+        super.__init__(args)
         self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
 
+    def run_inference(self, pipe, args):
         _ = pipe(
             prompt=PROMPT,
             image=self.image,
@@ -103,10 +105,12 @@ class InpaintingBenchmark(ImageToImageBenchmark):
     mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
     mask = load_image(mask_url).convert("RGB")
 
-    def run_inference(self, pipe, args):
+    def __init__(self, args):
+        super.__init__(args)
         self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
         self.mask = self.mask.resize(RESOLUTION_MAPPING[args.ckpt])
 
+    def run_inference(self, pipe, args):
         _ = pipe(
             prompt=PROMPT,
             image=self.image,
@@ -116,15 +120,19 @@ class InpaintingBenchmark(ImageToImageBenchmark):
         )
 
 
-class ControlNetBenchmark(BaseBenchmak): # Pick up
+class ControlNetBenchmark(BaseBenchmak): 
     pipeline_class = StableDiffusionControlNetPipeline 
     aux_network_class = ControlNetModel
+
+    # TODO: change the URL.
     image_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
-    mask = load_image(image_url).convert("RGB")
+    image = load_image(image_url).convert("RGB")
+
+    def __init__(self, args):
+        
+        self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
 
     def run_inference(self, pipe, args):
-        self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
-        self.mask = self.mask.resize(RESOLUTION_MAPPING[args.ckpt])
 
         _ = pipe(
             prompt=PROMPT,
