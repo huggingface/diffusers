@@ -2483,7 +2483,7 @@ images[0].save("controlnet_and_adapter_inpaint.png")
 ```
 ### Regional Prompting Pipeline
 This pipeline is a port of the [Regional Prompter extension](https://github.com/hako-mikan/sd-webui-regional-prompter) for [Stable Diffusion web UI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) to diffusers.
-This code implements a pipeline for the Stable Diffusion model, enabling the division of the canvas into multiple regions, with different prompts applicable to each area. Users can specify regions in two ways: using `Cols` and `Rows` modes for grid-like divisions, or the `Prompt` mode for areas calculated based on prompts.
+This code implements a pipeline for the Stable Diffusion model, enabling the division of the canvas into multiple regions, with different prompts applicable to each region. Users can specify regions in two ways: using `Cols` and `Rows` modes for grid-like divisions, or the `Prompt` mode for regions calculated based on prompts.
 
 ![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline1.png)
 
@@ -2523,9 +2523,9 @@ for image in images:
     image.save(fileName)
 ```
 ### Cols, Rows mode
-In the Cols, Rows mode, you can split the screen vertically and horizontally and assign prompts to each area. The split ratio can be specified by 'div', and you can set the division ratio like '3;3;2' or '0.1;0.5'. Furthermore, as will be described later, you can also subdivide the split Cols, Rows to specify more complex areas.
+In the Cols, Rows mode, you can split the screen vertically and horizontally and assign prompts to each region. The split ratio can be specified by 'div', and you can set the division ratio like '3;3;2' or '0.1;0.5'. Furthermore, as will be described later, you can also subdivide the split Cols, Rows to specify more complex regions.
 
-In this image, the image is divided into three parts, and a separate prompt is applied to each. The prompts are divided by 'BREAK', and each is applied to the respective area.  
+In this image, the image is divided into three parts, and a separate prompt is applied to each. The prompts are divided by 'BREAK', and each is applied to the respective region.  
 ![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline2.png)
 ```
 green hair twintail BREAK
@@ -2534,7 +2534,7 @@ blue skirt
 ```
 
 ### 2-Dimentional division
-The prompt consists of instructions separated by the term `BREAK` and is assigned to different areas of a two-dimensional space. The image is initially split in the main splitting direction, which in this case is rows, due to the presence of a single semicolon`;`, dividing the space into an upper and a lower section. Additional sub-splitting is then applied, indicated by commas. The upper row is split into ratios of `2:1:1`, while the lower row is split into a ratio of `4:6`. Rows themselves are split in a `1:1` ratio. According to the reference image, the blue sky is designated as the first area, green hair as the second, the bookshelf as the third, and so on, in a sequence based on their position from the top left. The terrarium is placed on the desk in the fourth area, and the orange dress and sofa are in the fifth area, conforming to their respective splits.
+The prompt consists of instructions separated by the term `BREAK` and is assigned to different regions of a two-dimensional space. The image is initially split in the main splitting direction, which in this case is rows, due to the presence of a single semicolon`;`, dividing the space into an upper and a lower section. Additional sub-splitting is then applied, indicated by commas. The upper row is split into ratios of `2:1:1`, while the lower row is split into a ratio of `4:6`. Rows themselves are split in a `1:2` ratio. According to the reference image, the blue sky is designated as the first region, green hair as the second, the bookshelf as the third, and so on, in a sequence based on their position from the top left. The terrarium is placed on the desk in the fourth region, and the orange dress and sofa are in the fifth region, conforming to their respective splits.
 ```
 rp_args = {
     "mode":"rows",
@@ -2552,7 +2552,7 @@ orange dress and sofa
 ![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline4.png)
 
 ### Prompt Mode
-There are limitations to methods of specifying areas in advance. This is because specifying areas can be a hindrance when designating complex shapes or dynamic compositions. In the region specified by the prompt, the area is determined after the image generation has begun. This allows us to accommodate compositions and complex areas.
+There are limitations to methods of specifying regions in advance. This is because specifying regions can be a hindrance when designating complex shapes or dynamic compositions. In the region specified by the prompt, the regions is determined after the image generation has begun. This allows us to accommodate compositions and complex regions.
 For further infomagen, see [here](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/main/prompt_en.md).
 ### syntax
 ```
@@ -2571,7 +2571,7 @@ effect2 ,target2
 is also effective.
 
 ### Sample
-In this example, masks are calculated for shirt, tie, skirt, and color prompts are specified only for those areas.
+In this example, masks are calculated for shirt, tie, skirt, and color prompts are specified only for those regions.
 ```
 rp_args = {
     "mode":"prompt-ex",
@@ -2588,7 +2588,7 @@ blue , skirt
 ```
 ![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline3.png)
 ### threshold
-The threshold used to determine the mask created by the prompt. This can be set as many times as there are masks, as the range varies widely depending on the target prompt. If multiple areas are used, enter them separated by commas. For example, hair tends to be ambiguous and requires a small value, while face tends to be large and requires a small value. These should be ordered by BREAK.
+The threshold used to determine the mask created by the prompt. This can be set as many times as there are masks, as the range varies widely depending on the target prompt. If multiple regions are used, enter them separated by commas. For example, hair tends to be ambiguous and requires a small value, while face tends to be large and requires a small value. These should be ordered by BREAK.
 
 ```
 a lady ,hair, face  BREAK
@@ -2599,10 +2599,10 @@ tanned ,face
 If only one input is given for multiple regions, they are all assumed to be the same value.
 
 ### Prompt and Prompt-EX
-The difference is that in Prompt, duplicate areas are added, whereas in Prompt-EX, duplicate areas are overwritten sequentially. Since they are processed in order, setting a TARGET with a large area first makes it easier for the effect of small areas to remain unmuffled.
+The difference is that in Prompt, duplicate regions are added, whereas in Prompt-EX, duplicate regions are overwritten sequentially. Since they are processed in order, setting a TARGET with a large regions first makes it easier for the effect of small regions to remain unmuffled.
 
 ### Accuracy
-In the case of a 512 x 512 image, Attention mode reduces the size of the region to about 8 x 8 pixels deep in the U-Net, so that small areas get mixed up; Latent mode calculates 64*64, so that the region is exact.  
+In the case of a 512 x 512 image, Attention mode reduces the size of the region to about 8 x 8 pixels deep in the U-Net, so that small regions get mixed up; Latent mode calculates 64*64, so that the region is exact.  
 ```
 girl hair twintail frills,ribbons, dress, face BREAK
 girl, ,face
@@ -2613,7 +2613,7 @@ When an image is generated, the generated mask is displayed. It is generated at 
 
 
 ### Use common prompt
-You can attach the prompt up to ADDCOMM to all prompts by separating it first with ADDCOMM. This is useful when you want to include elements common to all areas. For example, when generating pictures of three people with different appearances, it's necessary to include the instruction of 'three people' in all areas. It's also useful when inserting quality tags and other things."For example, if you write as follows:
+You can attach the prompt up to ADDCOMM to all prompts by separating it first with ADDCOMM. This is useful when you want to include elements common to all regions. For example, when generating pictures of three people with different appearances, it's necessary to include the instruction of 'three people' in all regions. It's also useful when inserting quality tags and other things."For example, if you write as follows:
 ```
 best quality, 3persons in garden, ADDCOMM
 a girl white dress BREAK
@@ -2626,7 +2626,8 @@ best quality, 3persons in garden, a girl white dress BREAK
 best quality, 3persons in garden, a boy blue shirt BREAK
 best quality, 3persons in garden, an old man red suit
 ```
-
+### Negative prompt
+Negative prompts are equally effective across all regions, but it is possible to set region-specific prompts for negative prompts as well. The number of BREAKs must be the same as the number of prompts. If the number of prompts does not match, the negative prompts will be used without being divided into regions.
 
 ### Parameters
 To activate Regional Prompter, it is necessary to enter settings in rp_args. The items that can be set are as follows. rp_args is a dictionary type.
