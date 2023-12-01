@@ -9,7 +9,7 @@ from diffusers.utils import load_image
 
 sys.path.append(".")
 
-from benchmarks.utils import (  # noqa: E402
+from utils import (  # noqa: E402
     BASE_PATH,
     PROMPT,
     BenchmarkInfo,

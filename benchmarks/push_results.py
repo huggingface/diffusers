@@ -6,7 +6,7 @@ from huggingface_hub import hf_hub_download, upload_file
 
 
 sys.path.append(".")
-from benchmarks.utils import BASE_PATH, FINAL_CSV_FILE, GITHUB_SHA, REPO_ID, collate_csv  # noqa: E402
+from utils import BASE_PATH, FINAL_CSV_FILE, GITHUB_SHA, REPO_ID, collate_csv  # noqa: E402
 
 
 def has_previous_benchmark() -> str:

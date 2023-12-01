@@ -3,7 +3,7 @@ import sys
 
 
 sys.path.append(".")
-from benchmarks.base_classes import ImageToImageBenchmark  # noqa: E402
+from base_classes import ImageToImageBenchmark  # noqa: E402
 
 
 if __name__ == "__main__":
