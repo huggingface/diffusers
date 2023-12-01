@@ -692,6 +692,7 @@ class Attention(nn.Module):
 
         return encoder_hidden_states
 
+    @torch.no_grad()
     def _enable_fused_projections(self, fuse_projections=True, is_cross_attention=False):
         self.fuse_projections = fuse_projections
 
