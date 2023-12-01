@@ -88,7 +88,7 @@ class ImageToImageBenchmark(TextToImageBenchmark):
     image = load_image(url).convert("RGB")
 
     def __init__(self, args):
-        super.__init__(args)
+        super().__init__(args)
         self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
 
     def run_inference(self, pipe, args):
@@ -106,7 +106,7 @@ class InpaintingBenchmark(ImageToImageBenchmark):
     mask = load_image(mask_url).convert("RGB")
 
     def __init__(self, args):
-        super.__init__(args)
+        super().__init__(args)
         self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
         self.mask = self.mask.resize(RESOLUTION_MAPPING[args.ckpt])
 
