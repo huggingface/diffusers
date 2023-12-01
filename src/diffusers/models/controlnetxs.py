@@ -261,7 +261,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         cross_attention_dim: Union[int, Tuple[int]] = 1280,
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
         attention_head_dim: Union[int, Tuple[int]] = 8,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
+        num_attention_heads: Optional[Union[int, Tuple[int]]] = 8,
         use_linear_projection: bool = False,
         upcast_attention: bool = False,
     ):
