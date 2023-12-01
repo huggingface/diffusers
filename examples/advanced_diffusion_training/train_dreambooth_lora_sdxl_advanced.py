@@ -132,8 +132,8 @@ def save_model_card(
             for key, value in token_abstraction_dict.items():
                 tokens = "".join(value)
                 trigger_str += f"""
-                to trigger concept {key}-> use {tokens} in your prompt \n
-                """
+to trigger concept `{key}->` use `{tokens}` in your prompt \n
+"""
 
     yaml = f"""
 ---
