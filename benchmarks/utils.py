@@ -22,9 +22,13 @@ BENCHMARK_FIELDS = [
     "actual_gpu_memory (gbs)",
     "github_sha",
 ]
+
 PROMPT = "ghibli style, a fantasy landscape with castles"
 BASE_PATH = "benchmark_outputs"
 TOTAL_GPU_MEMORY = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+
+REPO_ID = "diffusers/benchmarks"
+FINAL_CSV_FILE = "collated_results.csv"
 
 
 @dataclass
