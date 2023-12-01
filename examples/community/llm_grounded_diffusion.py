@@ -1308,6 +1308,8 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
     # Below are methods copied from StableDiffusionPipeline
     # The design choice of not inheriting from StableDiffusionPipeline is discussed here: https://github.com/huggingface/diffusers/pull/5993#issuecomment-1834258517
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -1315,6 +1317,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         """
         self.vae.enable_slicing()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
@@ -1322,6 +1325,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         """
         self.vae.disable_slicing()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -1330,6 +1334,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         """
         self.vae.enable_tiling()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
@@ -1337,6 +1342,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         """
         self.vae.disable_tiling()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
         prompt,
@@ -1371,6 +1377,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
         return prompt_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt,
@@ -1576,6 +1583,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
         return prompt_embeds, negative_prompt_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
@@ -1591,6 +1599,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         uncond_image_embeds = torch.zeros_like(image_embeds)
         return image_embeds, uncond_image_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
             has_nsfw_concept = None
@@ -1611,6 +1620,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             )
         return image, has_nsfw_concept
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
         deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
         deprecate("decode_latents", "1.0.0",
@@ -1623,6 +1633,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -1644,6 +1655,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -1678,6 +1690,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
 
@@ -1700,6 +1713,7 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             raise ValueError("The pipeline must have `unet` for using FreeU.")
         self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
     def disable_freeu(self):
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
@@ -1733,14 +1747,17 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.guidance_scale
     @property
     def guidance_scale(self):
         return self._guidance_scale
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.guidance_rescale
     @property
     def guidance_rescale(self):
         return self._guidance_rescale
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.clip_skip
     @property
     def clip_skip(self):
         return self._clip_skip
@@ -1748,14 +1765,17 @@ class LLMGroundedDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixi
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
     # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.do_classifier_free_guidance
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1 and self.unet.config.time_cond_proj_dim is None
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.cross_attention_kwargs
     @property
     def cross_attention_kwargs(self):
         return self._cross_attention_kwargs
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.num_timesteps
     @property
     def num_timesteps(self):
         return self._num_timesteps
