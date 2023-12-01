@@ -1327,9 +1327,7 @@ class _FusedAttnProcessor2_0:
         args = () if USE_PEFT_BACKEND else (scale,)
         if encoder_hidden_states is None:
             qkv = attn.to_qkv(hidden_states, *args)
-            out = qkv.unbind(2)
-            for k in out:
-                print(k.shape)
+            print(f"qkv: {qkv.shape}")
             query, key, value = qkv.unbind(2)
         else:
             query = attn.to_q(hidden_states, *args)
