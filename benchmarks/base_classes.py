@@ -67,13 +67,14 @@ class TextToImageBenchmark(BaseBenchmak):
         memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
         benchmark_info = BenchmarkInfo(time=time, memory=memory)
 
+        pipeline_class_name = str(self.pipe.__class__.__name__)
         csv_dict = generate_csv_dict(
-            pipeline_cls=str(self.pipe.__class__.__name__), ckpt=args.ckpt, args=args, benchmark_info=benchmark_info
+            pipeline_cls=pipeline_class_name, ckpt=args.ckpt, args=args, benchmark_info=benchmark_info
         )
         name = (
             args.ckpt.replace("/", "_")
             + "_"
-            + self.pipe.__class__.__name
+            + pipeline_class_name
             + +f"-bs@{args.batch_size}-steps@{args.num_inference_steps}-mco@{args.model_cpu_offload}-compile@{args.run_compile}.csv"
         )
         filepath = os.path.join(BASE_PATH, name)
