@@ -182,7 +182,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = timesteps
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
-        print(f"From scheduler: {self.sigmas.device}")
 
         self.is_scale_input_called = False
         self.use_karras_sigmas = use_karras_sigmas
@@ -291,7 +290,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
-        print(f"From set_timesteps: {self.sigmas.device}")
         if "cuda" in str(sigmas.device):
             self.sigmas = self.sigmas.tolist()
         self._step_index = None
@@ -423,7 +421,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if self.step_index is None:
             self._init_step_index(timestep)
-        # print(f"From step: {self.sigmas.device}")
+        
         sigma = self.sigmas[self.step_index]
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
