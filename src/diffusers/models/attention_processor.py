@@ -1296,7 +1296,6 @@ class _FusedAttnProcessor2_0:
         scale: float = 1.0,
     ) -> torch.FloatTensor:
         residual = hidden_states
-        print(f"Hidden states: {hidden_states.shape}")
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
