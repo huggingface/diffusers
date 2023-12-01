@@ -106,7 +106,7 @@ def save_model_card(
     base_model=str,
     train_text_encoder=False,
     train_text_encoder_ti=False,
-    token_abstraction_dict = None,
+    token_abstraction_dict=None,
     instance_prompt=str,
     validation_prompt=str,
     repo_folder=None,
@@ -124,13 +124,15 @@ def save_model_card(
 
     trigger_str = f"You should use {instance_prompt} to trigger the image generation."
     if train_text_encoder_ti:
-        trigger_str = "To trigger image generation of trained concept(or concepts) replace each concept identifier " \
-                      "in you prompt with the new inserted tokens:\n"
+        trigger_str = (
+            "To trigger image generation of trained concept(or concepts) replace each concept identifier "
+            "in you prompt with the new inserted tokens:\n"
+        )
         if token_abstraction_dict:
-            for key,value in token_abstraction_dict.items():
+            for key, value in token_abstraction_dict.items():
                 tokens = "".join(value)
                 trigger_str += f"""
-                to trigger concept {key}-> use {tokens} in your prompt \n        
+                to trigger concept {key}-> use {tokens} in your prompt \n
                 """
 
     yaml = f"""
@@ -1981,7 +1983,7 @@ def main(args):
                 base_model=args.pretrained_model_name_or_path,
                 train_text_encoder=args.train_text_encoder,
                 train_text_encoder_ti=args.train_text_encoder_ti,
-                token_abstraction_dict = train_dataset.token_abstraction_dict,
+                token_abstraction_dict=train_dataset.token_abstraction_dict,
                 instance_prompt=args.instance_prompt,
                 validation_prompt=args.validation_prompt,
                 repo_folder=args.output_dir,
