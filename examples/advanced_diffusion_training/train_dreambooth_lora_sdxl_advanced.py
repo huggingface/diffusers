@@ -106,6 +106,7 @@ def save_model_card(
     base_model=str,
     train_text_encoder=False,
     train_text_encoder_ti=False,
+    token_abstraction_dict = None,
     instance_prompt=str,
     validation_prompt=str,
     repo_folder=None,
@@ -120,6 +121,17 @@ def save_model_card(
             url:
                 "image_{i}.png"
         """
+
+    trigger_str = f"You should use {instance_prompt} to trigger the image generation."
+    if train_text_encoder_ti:
+        trigger_str = "To trigger image generation of trained concept(or concepts) replace each concept identifier " \
+                      "in you prompt with the new inserted tokens:\n"
+        if token_abstraction_dict:
+            for key,value in token_abstraction_dict.items():
+                tokens = "".join(value)
+                trigger_str += f"""
+                to trigger concept {key}-> use {tokens} in your prompt \n        
+                """
 
     yaml = f"""
 ---
@@ -156,7 +168,7 @@ Special VAE used for training: {vae_path}.
 
 ## Trigger words
 
-You should use {instance_prompt} to trigger the image generation.
+{trigger_str}
 
 ## Download model
 
@@ -281,6 +293,7 @@ def parse_args(input_args=None):
 
     parser.add_argument(
         "--num_new_tokens_per_abstraction",
+        type=int,
         default=2,
         help="number of new tokens inserted to the tokenizers per token_abstraction value when "
         "--train_text_encoder_ti = True. By default, each --token_abstraction (e.g. TOK) is mapped to 2 new "
@@ -1968,6 +1981,7 @@ def main(args):
                 base_model=args.pretrained_model_name_or_path,
                 train_text_encoder=args.train_text_encoder,
                 train_text_encoder_ti=args.train_text_encoder_ti,
+                token_abstraction_dict = train_dataset.token_abstraction_dict,
                 instance_prompt=args.instance_prompt,
                 validation_prompt=args.validation_prompt,
                 repo_folder=args.output_dir,
