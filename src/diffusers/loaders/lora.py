@@ -393,7 +393,7 @@ class LoraLoaderMixin:
 
         if all(key.startswith("unet.unet") for key in keys):
             deprecation_message = "Keys starting with 'unet.unet' are deprecated."
-            deprecate("unet.unet keys", "0.25", deprecation_message)
+            deprecate("unet.unet keys", "0.27", deprecation_message)
 
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
