@@ -762,8 +762,9 @@ def main(args):
             "time_emb_proj",
         ],
     )
-    unet.add_adapter(lora_config)
     unet.train()
+    unet.add_adapter(lora_config)
+    unet.enable_adapters()
 
     # 9. Handle mixed precision and device placement
     # For mixed precision training we cast all non-trainable weigths to half-precision
@@ -860,9 +861,9 @@ def main(args):
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-    params_to_optimize_named = [n for n, p in unet.named_parameters() if p.requires_grad]
+    # params_to_optimize_named = [n for n, p in unet.named_parameters() if p.requires_grad]
     print(f"Number of params to optimize: {len(list(params_to_optimize))}")
-    print(f"Optimizing parameters: {params_to_optimize_named}")
+    # print(f"Optimizing parameters: {params_to_optimize_named}")
 
     # 13. Dataset creation and data processing
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
