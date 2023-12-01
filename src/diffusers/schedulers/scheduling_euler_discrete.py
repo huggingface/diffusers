@@ -423,7 +423,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if self.step_index is None:
             self._init_step_index(timestep)
-        print(f"From step: {self.sigmas.device}")
+        # print(f"From step: {self.sigmas.device}")
         sigma = self.sigmas[self.step_index]
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
