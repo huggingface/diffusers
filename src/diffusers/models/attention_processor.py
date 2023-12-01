@@ -1208,9 +1208,6 @@ class AttnProcessor2_0:
         scale: float = 1.0,
     ) -> torch.FloatTensor:
         residual = hidden_states
-
-        print(f"Hidden states: {hidden_states.shape}")
-
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -1235,7 +1232,6 @@ class AttnProcessor2_0:
 
         args = () if USE_PEFT_BACKEND else (scale,)
         query = attn.to_q(hidden_states, *args)
-        print(f"Query: {query.shape}")
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
@@ -1244,7 +1240,6 @@ class AttnProcessor2_0:
 
         key = attn.to_k(encoder_hidden_states, *args)
         value = attn.to_v(encoder_hidden_states, *args)
-        print(f"key: {key.shape}, value: {value.shape}")
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
