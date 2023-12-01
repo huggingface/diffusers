@@ -1208,7 +1208,7 @@ class AttnProcessor2_0:
         scale: float = 1.0,
     ) -> torch.FloatTensor:
         residual = hidden_states
-        
+
         print(f"Hidden states: {hidden_states.shape}")
 
         if attn.spatial_norm is not None:
@@ -1327,14 +1327,16 @@ class _FusedAttnProcessor2_0:
         args = () if USE_PEFT_BACKEND else (scale,)
         if encoder_hidden_states is None:
             qkv = attn.to_qkv(hidden_states, *args)
-            print(f"qkv: {qkv.shape}")
-            query, key, value = qkv.unbind(2)
+            split_size = qkv.shape[-1] // 3
+            query, key, value = torch.split(qkv, split_size, dim=-1)
         else:
             if attn.norm_cross:
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
             query = attn.to_q(hidden_states, *args)
+
             kv = attn.to_kv(encoder_hidden_states, *args)
-            key, value = kv.unbind(2)
+            split_size = qkv.shape[-1] // 2
+            key, value = torch.split(kv, split_size, dim=-1)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
