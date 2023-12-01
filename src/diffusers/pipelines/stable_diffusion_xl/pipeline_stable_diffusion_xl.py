@@ -721,12 +721,12 @@ class StableDiffusionXLPipeline(
     def _enable_fused_qkv_projections(self):
         from ...models.attention_processor import _FusedAttnProcessor2_0
 
-        self.original_unet_attn_processor = self.unet.attn_processor
+        self.original_unet_attn_processors = self.unet.attn_processors
         self.unet.enable_fused_qkv_projections(device=self.device, dtype=self.dtype)
         self.unet.set_attn_processor(_FusedAttnProcessor2_0())
 
     def _disable_fused_qkv_projections(self):
-        self.unet.set_attn_processor(self.original_unet_attn_processor)
+        self.unet.set_attn_processor(self.original_unet_attn_processors)
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
