@@ -182,6 +182,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = timesteps
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
+        print(f"From scheduler: {self.sigmas.device}")
 
         self.is_scale_input_called = False
         self.use_karras_sigmas = use_karras_sigmas
