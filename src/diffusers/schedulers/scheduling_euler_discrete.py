@@ -291,7 +291,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
         print(f"From set_timesteps: {self.sigmas.device}")
-        if "cuda" in sigmas.device:
+        if "cuda" in str(sigmas.device):
             self.sigmas = self.sigmas.tolist()
         self._step_index = None
 
