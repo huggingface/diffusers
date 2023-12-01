@@ -48,6 +48,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   Latent Consistency Pipeline                                                                                                    | Implementation of [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Latent Consistency Pipeline](#latent-consistency-pipeline)      | - |              [Simian Luo](https://github.com/luosiallen) |
 |   Latent Consistency Img2img Pipeline                                                                                                    | Img2img pipeline for Latent Consistency Models                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Img2Img Pipeline](#latent-consistency-img2img-pipeline)      | - |              [Logan Zoellner](https://github.com/nagolinc) |
 |   Latent Consistency Interpolation Pipeline                                                                                                    | Interpolate the latent space of Latent Consistency Models with multiple prompts                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Interpolation Pipeline](#latent-consistency-interpolation-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pK3NrLWJSiJsBynLns1K1-IDTW9zbPvl?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
+|   Regional Prompting Pipeline                                                                                               | Assign multiple prompts for different regions                                                                                                                                                                                                                                                                                                                                                    |  [Regional Prompting Pipeline](#regional-prompting-pipeline) | - | [hako-mikan](https://github.com/hako-mikan) |
 | LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
 |
 
@@ -2523,6 +2524,181 @@ images = pipe(
 images[0].save("controlnet_and_adapter_inpaint.png")
 
 ```
+
+### Regional Prompting Pipeline
+This pipeline is a port of the [Regional Prompter extension](https://github.com/hako-mikan/sd-webui-regional-prompter) for [Stable Diffusion web UI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) to diffusers.
+This code implements a pipeline for the Stable Diffusion model, enabling the division of the canvas into multiple regions, with different prompts applicable to each region. Users can specify regions in two ways: using `Cols` and `Rows` modes for grid-like divisions, or the `Prompt` mode for regions calculated based on prompts.
+
+![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline1.png)
+
+### Usage
+### Sample Code
+```
+from from examples.community.regional_prompting_stable_diffusion import RegionalPromptingStableDiffusionPipeline
+pipe = RegionalPromptingStableDiffusionPipeline.from_single_file(model_path, vae=vae)
+
+rp_args = {
+    "mode":"rows",
+    "div": "1;1;1"
+}  
+
+prompt ="""
+green hair twintail BREAK
+red blouse BREAK
+blue skirt
+"""
+
+images = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    guidance_scale=7.5,
+    height = 768,
+    width = 512,
+    num_inference_steps =20,
+    num_images_per_prompt = 1,
+    rp_args = rp_args
+        ).images
+
+time = time.strftime(r"%Y%m%d%H%M%S")
+i = 1
+for image in images:
+    i += 1
+    fileName = f'img-{time}-{i+1}.png'
+    image.save(fileName)
+```
+### Cols, Rows mode
+In the Cols, Rows mode, you can split the screen vertically and horizontally and assign prompts to each region. The split ratio can be specified by 'div', and you can set the division ratio like '3;3;2' or '0.1;0.5'. Furthermore, as will be described later, you can also subdivide the split Cols, Rows to specify more complex regions.
+
+In this image, the image is divided into three parts, and a separate prompt is applied to each. The prompts are divided by 'BREAK', and each is applied to the respective region.  
+![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline2.png)
+```
+green hair twintail BREAK
+red blouse BREAK
+blue skirt
+```
+
+### 2-Dimentional division
+The prompt consists of instructions separated by the term `BREAK` and is assigned to different regions of a two-dimensional space. The image is initially split in the main splitting direction, which in this case is rows, due to the presence of a single semicolon`;`, dividing the space into an upper and a lower section. Additional sub-splitting is then applied, indicated by commas. The upper row is split into ratios of `2:1:1`, while the lower row is split into a ratio of `4:6`. Rows themselves are split in a `1:2` ratio. According to the reference image, the blue sky is designated as the first region, green hair as the second, the bookshelf as the third, and so on, in a sequence based on their position from the top left. The terrarium is placed on the desk in the fourth region, and the orange dress and sofa are in the fifth region, conforming to their respective splits.
+```
+rp_args = {
+    "mode":"rows",
+    "div": "1,2,1,1;2,4,6"
+}
+
+prompt ="""
+blue sky BREAK
+green hair BREAK
+book shelf BREAK
+terrarium on desk BREAK
+orange dress and sofa
+"""
+```
+![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline4.png)
+
+### Prompt Mode
+There are limitations to methods of specifying regions in advance. This is because specifying regions can be a hindrance when designating complex shapes or dynamic compositions. In the region specified by the prompt, the regions is determined after the image generation has begun. This allows us to accommodate compositions and complex regions.
+For further infomagen, see [here](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/main/prompt_en.md).
+### syntax
+```
+baseprompt target1 target2 BREAK
+effect1, target1 BREAK
+effect2 ,target2
+```
+
+First, write the base prompt. In the base prompt, write the words (target1, target2) for which you want to create a mask. Next, separate them with BREAK. Next, write the prompt corresponding to target1. Then enter a comma and write target1. The order of the targets in the base prompt and the order of the BREAK-separated targets can be back to back.
+
+```
+target2 baseprompt target1  BREAK
+effect1, target1 BREAK
+effect2 ,target2
+```
+is also effective.
+
+### Sample
+In this example, masks are calculated for shirt, tie, skirt, and color prompts are specified only for those regions.
+```
+rp_args = {
+    "mode":"prompt-ex",
+    "save_mask":True,
+    "th": "0.4,0.6,0.6",
+}
+
+prompt ="""
+a girl in street with shirt, tie, skirt BREAK
+red, shirt BREAK
+green, tie BREAK
+blue , skirt 
+"""
+```
+![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline3.png)
+### threshold
+The threshold used to determine the mask created by the prompt. This can be set as many times as there are masks, as the range varies widely depending on the target prompt. If multiple regions are used, enter them separated by commas. For example, hair tends to be ambiguous and requires a small value, while face tends to be large and requires a small value. These should be ordered by BREAK.
+
+```
+a lady ,hair, face  BREAK
+red, hair BREAK
+tanned ,face
+```
+`threshold : 0.4,0.6`
+If only one input is given for multiple regions, they are all assumed to be the same value.
+
+### Prompt and Prompt-EX
+The difference is that in Prompt, duplicate regions are added, whereas in Prompt-EX, duplicate regions are overwritten sequentially. Since they are processed in order, setting a TARGET with a large regions first makes it easier for the effect of small regions to remain unmuffled.
+
+### Accuracy
+In the case of a 512 x 512 image, Attention mode reduces the size of the region to about 8 x 8 pixels deep in the U-Net, so that small regions get mixed up; Latent mode calculates 64*64, so that the region is exact.  
+```
+girl hair twintail frills,ribbons, dress, face BREAK
+girl, ,face
+```
+
+### Mask
+When an image is generated, the generated mask is displayed. It is generated at the same size as the image, but is actually used at a much smaller size.
+
+
+### Use common prompt
+You can attach the prompt up to ADDCOMM to all prompts by separating it first with ADDCOMM. This is useful when you want to include elements common to all regions. For example, when generating pictures of three people with different appearances, it's necessary to include the instruction of 'three people' in all regions. It's also useful when inserting quality tags and other things."For example, if you write as follows:
+```
+best quality, 3persons in garden, ADDCOMM
+a girl white dress BREAK
+a boy blue shirt BREAK
+an old man red suit
+```
+If common is enabled, this prompt is converted to the following:
+```
+best quality, 3persons in garden, a girl white dress BREAK
+best quality, 3persons in garden, a boy blue shirt BREAK
+best quality, 3persons in garden, an old man red suit
+```
+### Negative prompt
+Negative prompts are equally effective across all regions, but it is possible to set region-specific prompts for negative prompts as well. The number of BREAKs must be the same as the number of prompts. If the number of prompts does not match, the negative prompts will be used without being divided into regions.
+
+### Parameters
+To activate Regional Prompter, it is necessary to enter settings in rp_args. The items that can be set are as follows. rp_args is a dictionary type.
+
+### Input Parameters
+Parameters are specified through the `rp_arg`(dictionary type).  
+
+```
+rp_args = {
+    "mode":"rows",
+    "div": "1;1;1"
+}  
+
+pipe(prompt =prompt, rp_args = rp_args)
+```
+
+
+
+### Required Parameters
+- `mode`: Specifies the method for defining regions. Choose from `Cols`, `Rows`, `Prompt` or `Prompt-Ex`. This parameter is case-insensitive.
+- `divide`: Used in `Cols` and `Rows` modes. Details on how to specify this are provided under the respective `Cols` and `Rows` sections.
+- `th`: Used in `Prompt` mode. The method of specification is detailed under the `Prompt` section.
+
+### Optional Parameters
+- `save_mask`: In `Prompt` mode, choose whether to output the generated mask along with the image. The default is `False`.
+
+The Pipeline supports `compel` syntax. Input prompts using the `compel` structure will be automatically applied and processed.
 
 ## Diffusion Posterior Sampling Pipeline
 * Reference paper
