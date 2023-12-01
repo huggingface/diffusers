@@ -448,3 +448,13 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             return (dec,)
 
         return DecoderOutput(sample=dec)
+    
+    def _enable_fused_qkv_projections(self, device, dtype):
+        from .attention_processor import Attention
+
+        for module in self.modules():
+            if isinstance(module, Attention):
+                is_cross_attention = module.to_q.weight.shape != module.to_k.weight.shape
+                module._enable_fused_projections(
+                    device=device, dtype=dtype, fuse_projections=True, is_cross_attention=is_cross_attention
+                )
