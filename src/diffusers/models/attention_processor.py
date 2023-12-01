@@ -703,7 +703,7 @@ class Attention(nn.Module):
             out_features = concatenated_weights.shape[0]
 
             # create a new single projection layer and copy over the weights.
-            self.to_qkv = self.linear_cls(in_features, out_features, bias=False)
+            self.to_qkv = self.linear_cls(in_features, out_features, bias=False, device=self.to_q.device)
             self.to_qkv.weight.copy_(concatenated_weights)
 
         else:
@@ -711,7 +711,7 @@ class Attention(nn.Module):
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
-            self.to_kv = self.linear_cls(in_features, out_features, bias=False)
+            self.to_kv = self.linear_cls(in_features, out_features, bias=False, device=self.to_q.device)
             self.to_kv.weight.copy_(concatenated_weights)
 
         # TODO: delete the separate matrices to free memory?
