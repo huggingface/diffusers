@@ -72,7 +72,9 @@ class TextToImageBenchmark(BaseBenchmak):
         )
         name = (
             args.ckpt.replace("/", "_")
-            + f"-bs@{args.batch_size}-steps@{args.num_inference_steps}-mco@{args.model_cpu_offload}-compile@{args.run_compile}.csv"
+            + "_"
+            + self.pipe.__class__.__name
+            + +f"-bs@{args.batch_size}-steps@{args.num_inference_steps}-mco@{args.model_cpu_offload}-compile@{args.run_compile}.csv"
         )
         filepath = os.path.join(BASE_PATH, name)
         write_to_csv(filepath, csv_dict)
