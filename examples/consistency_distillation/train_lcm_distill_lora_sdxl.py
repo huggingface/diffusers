@@ -730,7 +730,6 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
     )
-    unet.train()
 
     # Check that all trainable models are in full precision
     low_precision_error_string = (
@@ -764,6 +763,7 @@ def main(args):
         ],
     )
     unet.add_adapter(lora_config)
+    unet.train()
 
     # 9. Handle mixed precision and device placement
     # For mixed precision training we cast all non-trainable weigths to half-precision
