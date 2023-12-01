@@ -693,7 +693,7 @@ class Attention(nn.Module):
         return encoder_hidden_states
 
     @torch.no_grad()
-    def _enable_fused_projections(self, fuse_projections=True, is_cross_attention=False):
+    def _enable_fused_projections(self, device, fuse_projections=True, is_cross_attention=False):
         self.fuse_projections = fuse_projections
 
         if not is_cross_attention:
@@ -703,7 +703,7 @@ class Attention(nn.Module):
             out_features = concatenated_weights.shape[0]
 
             # create a new single projection layer and copy over the weights.
-            self.to_qkv = self.linear_cls(in_features, out_features, bias=False, device=self.to_q.device)
+            self.to_qkv = self.linear_cls(in_features, out_features, bias=False, device=device)
             self.to_qkv.weight.copy_(concatenated_weights)
 
         else:
@@ -711,7 +711,7 @@ class Attention(nn.Module):
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
-            self.to_kv = self.linear_cls(in_features, out_features, bias=False, device=self.to_q.device)
+            self.to_kv = self.linear_cls(in_features, out_features, bias=False, device=device)
             self.to_kv.weight.copy_(concatenated_weights)
 
         # TODO: delete the separate matrices to free memory?
