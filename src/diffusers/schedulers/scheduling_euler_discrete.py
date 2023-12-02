@@ -213,7 +213,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if rescale_betas_zero_snr:
             # Close to 0 without being 0 so first sigma is not inf
             # FP16 smallest positive subnormal works well here
-            self.alphas_cumprod[-1] = 2 ** -24
+            self.alphas_cumprod[-1] = 2**-24
 
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
