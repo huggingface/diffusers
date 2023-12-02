@@ -823,6 +823,8 @@ class Resampler(nn.Module):
         ffn_ratio: float = 4,
     ) -> None:
         super().__init__()
+        from .attention import FeedForward  # Lazy import to avoid circular import
+
         self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dims) / hidden_dims**0.5)
 
         self.proj_in = nn.Linear(embed_dims, hidden_dims)
@@ -843,19 +845,13 @@ class Resampler(nn.Module):
                             heads=heads,
                             out_bias=False,
                         ),
-                        self._get_ffn(embed_dims=hidden_dims, ffn_ratio=ffn_ratio),
+                        nn.Sequential(
+                            nn.LayerNorm(hidden_dims),
+                            FeedForward(hidden_dims, hidden_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
+                        ),
                     ]
                 )
             )
-
-    def _get_ffn(self, embed_dims, ffn_ratio=4) -> nn.Sequential:
-        """Get feedforward network."""
-        from .attention import FeedForward  # Lazy import to avoid circular import
-
-        return nn.Sequential(
-            nn.LayerNorm(embed_dims),
-            FeedForward(embed_dims, embed_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
-        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass.
