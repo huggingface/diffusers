@@ -861,9 +861,6 @@ def main(args):
         weight_decay=args.adam_weight_decay,
         eps=args.adam_epsilon,
     )
-    # params_to_optimize_named = [n for n, p in unet.named_parameters() if p.requires_grad]
-    print(f"Number of params to optimize: {len(list(params_to_optimize))}")
-    # print(f"Optimizing parameters: {params_to_optimize_named}")
 
     # 13. Dataset creation and data processing
     # In distributed training, the load_dataset function guarantees that only one local process can concurrently
@@ -1172,11 +1169,6 @@ def main(args):
                 # regular teacher. This way, we don't have to separately initialize a teacher UNet.
                 # using_cuda = "cuda" in str(accelerator.device)
                 unet.disable_adapters() 
-                params_to_optimize_after_disable = filter(lambda p: p.requires_grad, unet.parameters())
-                print("Any difference in trainable params after disable:")
-                print(len(list(params_to_optimize)), len(list(params_to_optimize_after_disable)))
-                # params_to_optimize_named_after_disable = [n for n, p in unet.named_parameters() if p.requires_grad]
-                # print(set(params_to_optimize_named).difference(set(params_to_optimize_named_after_disable)))
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 # ):
@@ -1224,12 +1216,7 @@ def main(args):
 
                 # re-enable unet adapters
                 unet.enable_adapters()
-                params_to_optimize_after_enable = filter(lambda p: p.requires_grad, unet.parameters())
-                print("Any difference in trainable params after enable:")
-                print(len(list(params_to_optimize)), len(list(params_to_optimize_after_enable)))
-                # params_to_optimize_named_after_enable = [n for n, p in unet.named_parameters() if p.requires_grad]
-                # print(set(params_to_optimize_named).difference(set(params_to_optimize_named_after_enable)))
-
+            
                 # Get target LCM prediction on x_prev, w, c, t_n
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
