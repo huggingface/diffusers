@@ -142,10 +142,10 @@ def create_ip_adapter_plus_state_dict(model):
             k = k.replace("3.0.bias", "1.0.bias")
         elif "3.0.weight" in k:
             k = k.replace("3.0.weight", "1.0.weight")
-        elif "3.1.weight" in k:
-            k = k.replace("3.1.weight", "1.1.weight")
-        elif "3.3.weight" in k:
-            k = k.replace("3.3.weight", "1.3.weight")
+        elif "3.1.net.0.proj.weight" in k:
+            k = k.replace("3.1.net.0.proj.weight", "1.1.weight")
+        elif "3.net.2.weight" in k:
+            k = k.replace("3.net.2.weight", "1.3.weight")
         elif "layers.0.0" in k:
             k = k.replace("layers.0.0", "layers.0.0.norm1")
         elif "layers.0.1" in k:

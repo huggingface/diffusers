@@ -850,12 +850,11 @@ class Resampler(nn.Module):
 
     def _get_ffn(self, embed_dims, ffn_ratio=4) -> nn.Sequential:
         """Get feedforward network."""
-        inner_dim = int(embed_dims * ffn_ratio)
+        from .attention import FeedForward  # Lazy import to avoid circular import
+
         return nn.Sequential(
             nn.LayerNorm(embed_dims),
-            nn.Linear(embed_dims, inner_dim, bias=False),
-            nn.GELU(),
-            nn.Linear(inner_dim, embed_dims, bias=False),
+            FeedForward(embed_dims, embed_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

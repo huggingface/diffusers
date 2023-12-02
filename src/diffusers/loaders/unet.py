@@ -763,6 +763,7 @@ class UNet2DConditionLoadersMixin:
             )
 
             image_proj_state_dict = state_dict["image_proj"]
+
             new_sd = OrderedDict()
             for k, v in image_proj_state_dict.items():
                 if "0.to" in k:
@@ -771,12 +772,10 @@ class UNet2DConditionLoadersMixin:
                     k = k.replace("1.0.weight", "3.0.weight")
                 elif "1.0.bias" in k:
                     k = k.replace("1.0.bias", "3.0.bias")
-                elif "1.0.weight" in k:
-                    k = k.replace("1.0.weight", "3.0.weight")
                 elif "1.1.weight" in k:
-                    k = k.replace("1.1.weight", "3.1.weight")
+                    k = k.replace("1.1.weight", "3.1.net.0.proj.weight")
                 elif "1.3.weight" in k:
-                    k = k.replace("1.3.weight", "3.3.weight")
+                    k = k.replace("1.3.weight", "3.1.net.2.weight")
 
                 if "norm1" in k:
                     new_sd[k.replace("0.norm1", "0")] = v
