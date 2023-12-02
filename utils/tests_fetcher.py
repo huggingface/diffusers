@@ -83,6 +83,7 @@ IMPORTANT_PIPELINES = [
     "wuerstchen",
 ]
 
+
 @contextmanager
 def checkout_commit(repo: Repo, commit_id: str):
     """
@@ -777,9 +778,7 @@ def create_reverse_dependency_map() -> Dict[str, List[str]]:
     return reverse_map
 
 
-def create_module_to_test_map(
-    reverse_map: Dict[str, List[str]] = None
-) -> Dict[str, List[str]]:
+def create_module_to_test_map(reverse_map: Dict[str, List[str]] = None) -> Dict[str, List[str]]:
     """
     Extract the tests from the reverse_dependency_map and potentially filters the model tests.
 
@@ -809,6 +808,7 @@ def create_module_to_test_map(
 
     return test_map
 
+
 def check_imports_all_exist():
     """
     Isn't used per se by the test fetcher but might be used later as a quality check. Putting this here for now so the
@@ -834,11 +834,13 @@ def _print_list(l) -> str:
 
 def update_test_map_with_core_pipelines(json_output_file: str):
     print(f"\n### ADD CORE PIPELINE TESTS ###\n{_print_list(IMPORTANT_PIPELINES)}")
-    with open(json_output_file, 'rb') as fp:
+    with open(json_output_file, "rb") as fp:
         test_map = json.load(fp)
 
     # Add core pipelines as their own test group
-    test_map["core_pipelines"] = " ".join(sorted([str(PATH_TO_TESTS / f"pipelines/{pipe}") for pipe in IMPORTANT_PIPELINES]))
+    test_map["core_pipelines"] = " ".join(
+        sorted([str(PATH_TO_TESTS / f"pipelines/{pipe}") for pipe in IMPORTANT_PIPELINES])
+    )
 
     # If there are no existing pipeline tests save the map
     if "pipelines" not in test_map:
@@ -902,6 +904,7 @@ def create_json_map(test_files_to_run: List[str], json_output_file: Optional[str
 
     with open(json_output_file, "w", encoding="UTF-8") as fp:
         json.dump(test_map, fp, ensure_ascii=False)
+
 
 def infer_tests_to_run(
     output_file: str,
@@ -994,7 +997,6 @@ def infer_tests_to_run(
 
 
 def filter_tests(output_file: str, filters: List[str]):
-
     """
     Reads the content of the output file and filters out all the tests in a list of given folders.
 
