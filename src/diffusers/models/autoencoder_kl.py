@@ -448,7 +448,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             return (dec,)
 
         return DecoderOutput(sample=dec)
-    
+
     def _enable_fused_qkv_projections(self, device, dtype):
         from .attention_processor import Attention
 

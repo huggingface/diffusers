@@ -675,8 +675,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
-        if version.parse(__version__) > version.parse("0.23"):
-            deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.25", LORA_DEPRECATION_MESSAGE)
+        deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.27", LORA_DEPRECATION_MESSAGE)
 
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
@@ -704,8 +703,7 @@ class LoraLoaderMixin:
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
         """
-        if version.parse(__version__) > version.parse("0.23"):
-            deprecate("_modify_text_encoder", "0.25", LORA_DEPRECATION_MESSAGE)
+        deprecate("_modify_text_encoder", "0.27", LORA_DEPRECATION_MESSAGE)
 
         def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
             linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
@@ -948,8 +946,7 @@ class LoraLoaderMixin:
                         module.merge()
 
         else:
-            if version.parse(__version__) > version.parse("0.23"):
-                deprecate("fuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
+            deprecate("fuse_text_encoder_lora", "0.27", LORA_DEPRECATION_MESSAGE)
 
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
@@ -1006,8 +1003,7 @@ class LoraLoaderMixin:
                         module.unmerge()
 
         else:
-            if version.parse(__version__) > version.parse("0.23"):
-                deprecate("unfuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
+            deprecate("unfuse_text_encoder_lora", "0.27", LORA_DEPRECATION_MESSAGE)
 
             def unfuse_text_encoder_lora(text_encoder):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):

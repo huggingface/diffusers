@@ -1480,9 +1480,12 @@ def download_from_original_stable_diffusion_ckpt(
         config_name = "stabilityai/stable-diffusion-2"
         config_kwargs = {"subfolder": "text_encoder"}
 
-        text_model = convert_open_clip_checkpoint(
-            checkpoint, config_name, local_files_only=local_files_only, **config_kwargs
-        )
+        if text_encoder is None:
+            text_model = convert_open_clip_checkpoint(
+                checkpoint, config_name, local_files_only=local_files_only, **config_kwargs
+            )
+        else:
+            text_model = text_encoder
 
         try:
             tokenizer = CLIPTokenizer.from_pretrained(
