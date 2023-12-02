@@ -206,6 +206,11 @@ class StableDiffusionXLImg2ImgPipeline(
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
+            A `CLIPVisionModelWithProjection` to retrieve embeddings from images provided as image prompts when using
+            IP-Adapter functionality.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
         requires_aesthetics_score (`bool`, *optional*, defaults to `"False"`):
             Whether the `unet` requires an `aesthetic_score` condition to be passed during inference. Also see the
             config of `stabilityai/stable-diffusion-xl-refiner-1-0`.
@@ -246,8 +251,8 @@ class StableDiffusionXLImg2ImgPipeline(
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
-        image_encoder: CLIPVisionModelWithProjection = None,
-        feature_extractor: CLIPImageProcessor = None,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
+        feature_extractor: Optional[CLIPImageProcessor] = None,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
@@ -742,6 +747,21 @@ class StableDiffusionXLImg2ImgPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
+        r"""
+        Encodes the image into image encoder hidden states when using image prompts, i.e. IP Adapter functionality.
+
+        Args:
+            image (`PipelineImageInput`):
+                Input image to extract features from and generate embeddings.
+            device (`torch.device`):
+                Device to send the image to.
+            num_images_per_prompt (`int`):
+                Number of images that should be generated per prompt.
+
+        Returns:
+            `Tuple[torch.FloatTensor, torch.FloatTensor]`:
+                The conditional and unconditional embeddings of the feature-extracted image.
+        """
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):

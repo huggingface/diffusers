@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -232,6 +232,7 @@ class StableDiffusionInpaintPipeline(
         - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
         - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
+        - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
 
     Args:
         vae ([`AutoencoderKL`, `AsymmetricAutoencoderKL`]):
@@ -251,6 +252,9 @@ class StableDiffusionInpaintPipeline(
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
+        image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
+            A `CLIPVisionModelWithProjection` to retrieve embeddings from images provided as image prompts when using
+            IP-Adapter functionality.
     """
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
@@ -267,7 +271,7 @@ class StableDiffusionInpaintPipeline(
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        image_encoder: CLIPVisionModelWithProjection = None,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -361,11 +365,11 @@ class StableDiffusionInpaintPipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
         self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
+        prompt: Union[str, List[str]],
+        device: torch.device,
+        num_images_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
@@ -394,16 +398,16 @@ class StableDiffusionInpaintPipeline(
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
+        prompt: Union[str, List[str]],
+        device: torch.device,
+        num_images_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
-    ):
+    ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -432,6 +436,11 @@ class StableDiffusionInpaintPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+
+        Returns:
+            `Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]`:
+                The conditional and unconditional embeddings. The unconditional embeddings can be `None` if `do_classifier_free_guidance`
+                is `False`.
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
@@ -575,6 +584,21 @@ class StableDiffusionInpaintPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt):
+        r"""
+        Encodes the image into image encoder hidden states when using image prompts, i.e. IP Adapter functionality.
+
+        Args:
+            image (`PipelineImageInput`):
+                Input image to extract features from and generate embeddings.
+            device (`torch.device`):
+                Device to send the image to.
+            num_images_per_prompt (`int`):
+                Number of images that should be generated per prompt.
+
+        Returns:
+            `Tuple[torch.FloatTensor, torch.FloatTensor]`:
+                The conditional and unconditional embeddings of the feature-extracted image.
+        """
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):

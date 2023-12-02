@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from packaging import version
@@ -153,6 +153,9 @@ class AltDiffusionPipeline(
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
+        image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
+            A `CLIPVisionModelWithProjection` to retrieve embeddings from images provided as image prompts when using
+            IP-Adapter functionality.
     """
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
@@ -169,7 +172,7 @@ class AltDiffusionPipeline(
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        image_encoder: CLIPVisionModelWithProjection = None,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -283,11 +286,11 @@ class AltDiffusionPipeline(
 
     def _encode_prompt(
         self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
+        prompt: Union[str, List[str]],
+        device: torch.device,
+        num_images_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
@@ -315,16 +318,16 @@ class AltDiffusionPipeline(
 
     def encode_prompt(
         self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
+        prompt: Union[str, List[str]],
+        device: torch.device,
+        num_images_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
-    ):
+    ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -353,6 +356,11 @@ class AltDiffusionPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+
+        Returns:
+            `Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]`:
+                The conditional and unconditional embeddings. The unconditional embeddings can be `None` if `do_classifier_free_guidance`
+                is `False`.
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
@@ -494,7 +502,24 @@ class AltDiffusionPipeline(
 
         return prompt_embeds, negative_prompt_embeds
 
-    def encode_image(self, image, device, num_images_per_prompt):
+    def encode_image(
+        self, image: PipelineImageInput, device: torch.device, num_images_per_prompt: int
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+        r"""
+        Encodes the image into image encoder hidden states when using image prompts, i.e. IP Adapter functionality.
+
+        Args:
+            image (`PipelineImageInput`):
+                Input image to extract features from and generate embeddings.
+            device (`torch.device`):
+                Device to send the image to.
+            num_images_per_prompt (`int`):
+                Number of images that should be generated per prompt.
+
+        Returns:
+            `Tuple[torch.FloatTensor, torch.FloatTensor]`:
+                The conditional and unconditional embeddings of the feature-extracted image.
+        """
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
@@ -507,7 +532,9 @@ class AltDiffusionPipeline(
         uncond_image_embeds = torch.zeros_like(image_embeds)
         return image_embeds, uncond_image_embeds
 
-    def run_safety_checker(self, image, device, dtype):
+    def run_safety_checker(
+        self, image: PipelineImageInput, device: torch.device, dtype: torch.dtype
+    ) -> Tuple[PipelineImageInput, Optional[List[bool]]]:
         if self.safety_checker is None:
             has_nsfw_concept = None
         else:
@@ -521,7 +548,7 @@ class AltDiffusionPipeline(
             )
         return image, has_nsfw_concept
 
-    def decode_latents(self, latents):
+    def decode_latents(self, latents: torch.FloatTensor) -> torch.FloatTensor:
         deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
         deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
 
@@ -532,7 +559,7 @@ class AltDiffusionPipeline(
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
-    def prepare_extra_step_kwargs(self, generator, eta):
+    def prepare_extra_step_kwargs(self, generator: torch.Generator, eta: float) -> Dict[str, Any]:
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
@@ -601,7 +628,46 @@ class AltDiffusionPipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
+        self,
+        batch_size: int,
+        num_channels_latents: int,
+        height: int,
+        width: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        generator: Union[torch.Generator, List[torch.Generator]],
+        latents: Optional[torch.FloatTensor] = None,
+    ) -> torch.FloatTensor:
+        r"""
+        Prepare latents randomly or by passing a `torch.FloatTensor` of appropriate size. Prepared latents will have
+        scaled down dimensions of input `height` and `width`, and have a type of passed `dtype` on provided `device`.
+
+        Args:
+            batch_size (`int`):
+                The number of images to generate.
+            num_channel_latents (`int`):
+                Number of latent channels in UNet.
+            width (`int`):
+                Width of the generated images. The latents will be appropriately scaled using this.
+            height (`int`):
+                Height of the generated images. The latents will be appropriately scaled using this.
+            dtype (`torch.dtype`):
+                The data type to use for the latents.
+            device (`torch.device`):
+                The device the latents should be moved to.
+            generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
+                One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
+                to make generation deterministic.
+            latents (`torch.FloatTensor`, *optional*):
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
+                tensor will ge generated by sampling using the supplied random `generator`.
+
+        Returns:
+            `torch.FloatTensor`:
+                The prepared latents based on input conditions.
+        """
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
