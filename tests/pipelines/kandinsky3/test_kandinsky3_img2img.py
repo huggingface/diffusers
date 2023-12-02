@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import gc
+import random
 import unittest
 
 import numpy as np
@@ -23,8 +24,7 @@ from transformers import AutoTokenizer, T5EncoderModel
 
 from diffusers import (
     AutoPipelineForImage2Image,
-    AutoPipelineForText2Image,
-    Kandinsky3Pipeline,
+    Kandinsky3Img2ImgPipeline,
     Kandinsky3UNet,
     VQModel,
 )
@@ -32,16 +32,18 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers.scheduling_ddpm import DDPMScheduler
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    floats_tensor,
     load_image,
     require_torch_gpu,
     slow,
 )
 
 from ..pipeline_params import (
-    TEXT_TO_IMAGE_BATCH_PARAMS,
+    IMAGE_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
-    TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -49,14 +51,23 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = Kandinsky3Pipeline
-    params = TEXT_TO_IMAGE_PARAMS - {"cross_attention_kwargs"}
-    batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
-    image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = Kandinsky3Img2ImgPipeline
+    params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}
+    batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
     test_xformers_attention = False
+    required_optional_params = frozenset(
+        [
+            "num_inference_steps",
+            "num_images_per_prompt",
+            "generator",
+            "output_type",
+            "return_dict",
+        ]
+    )
 
     @property
     def dummy_movq_kwargs(self):
@@ -121,22 +132,27 @@ class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         return components
 
     def get_dummy_inputs(self, device, seed=0):
+        # create init_image
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(seed)).to(device)
+        image = image.cpu().permute(0, 2, 3, 1)[0]
+        init_image = Image.fromarray(np.uint8(image)).convert("RGB")
+
         if str(device).startswith("mps"):
             generator = torch.manual_seed(seed)
         else:
             generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
+            "image": init_image,
             "generator": generator,
-            "num_inference_steps": 2,
+            "strength": 0.75,
+            "num_inference_steps": 10,
             "guidance_scale": 6.0,
             "output_type": "np",
-            "width": 16,
-            "height": 16,
         }
         return inputs
 
-    def test_kandinsky3(self):
+    def test_kandinsky3_img2img(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -151,9 +167,11 @@ class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (1, 16, 16, 3)
+        assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.3768, 0.4373, 0.4865, 0.4890, 0.4299, 0.5122, 0.4921, 0.4924, 0.5599])
+        expected_slice = np.array(
+            [0.576259, 0.6132097, 0.41703486, 0.603196, 0.62062526, 0.4655338, 0.5434324, 0.5660727, 0.65433365]
+        )
 
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -168,38 +186,12 @@ class Kandinsky3PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
+class Kandinsky3Img2ImgPipelineIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-
-    def test_kandinskyV3(self):
-        pipe = AutoPipelineForText2Image.from_pretrained(
-            "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
-        prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-
-        image = pipe(prompt, num_inference_steps=25, generator=generator).images[0]
-
-        assert image.size == (1024, 1024)
-
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky3/t2i.png"
-        )
-
-        image_processor = VaeImageProcessor()
-
-        image_np = image_processor.pil_to_numpy(image)
-        expected_image_np = image_processor.pil_to_numpy(expected_image)
-
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=5e-2))
 
     def test_kandinskyV3_img2img(self):
         pipe = AutoPipelineForImage2Image.from_pretrained(
