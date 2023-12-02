@@ -719,6 +719,10 @@ class StableDiffusionXLPipeline(
         self.unet.disable_freeu()
 
     def _enable_fused_qkv_projections(self):
+        # TODOs (sayakpaul) before opening a PR
+        # 1. Check if the original attention processors have AddedKV and raise an error if so.
+        # 2. Add an option for enabling fusion for the VAE too. 
+        # 3. Propagate the changes to _disable_fused_qkv_projections. 
         from ...models.attention_processor import _FusedAttnProcessor2_0
 
         self.original_unet_attn_processors = self.unet.attn_processors
