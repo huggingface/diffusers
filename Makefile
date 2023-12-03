@@ -41,7 +41,7 @@ repo-consistency:
 
 quality:
 	ruff check $(check_dirs) setup.py
-	ruff format --check $(check_dirs) setup.py 
+	ruff format --check $(check_dirs) setup.py
 	python utils/check_doc_toc.py
 
 # Format source code automatically and check is there are any problems left that need manual fixing

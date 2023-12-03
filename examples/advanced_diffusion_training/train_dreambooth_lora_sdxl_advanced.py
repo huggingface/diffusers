@@ -62,7 +62,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.24.0.dev0")
+check_min_version("0.25.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -132,8 +132,8 @@ def save_model_card(
             for key, value in token_abstraction_dict.items():
                 tokens = "".join(value)
                 trigger_str += f"""
-                to trigger concept {key}-> use {tokens} in your prompt \n
-                """
+to trigger concept `{key}->` use `{tokens}` in your prompt \n
+"""
 
     yaml = f"""
 ---
