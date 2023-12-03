@@ -727,7 +727,7 @@ class StableDiffusionXLPipeline(
 
         This API is 🧪 experimental.
 
-        <Tip>
+        </Tip>
 
         Args:
             unet (`bool`, defaults to `True`): To apply fusion on the UNet.
@@ -760,7 +760,7 @@ class StableDiffusionXLPipeline(
 
         This API is 🧪 experimental.
 
-        <Tip>
+        </Tip>
 
         Args:
             unet (`bool`, defaults to `True`): To apply fusion on the UNet.

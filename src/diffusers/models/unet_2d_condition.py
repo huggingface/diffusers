@@ -803,7 +803,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         This API is 🧪 experimental.
 
-        <Tip>
+        </Tip>
 
         Args:
             device (`str`): Device on which the fused linear layer will be created.
@@ -836,7 +836,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         This API is 🧪 experimental.
 
-        <Tip>
+        </Tip>
 
         """
         if self.original_attn_processors is not None:

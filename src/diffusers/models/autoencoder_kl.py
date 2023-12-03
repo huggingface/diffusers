@@ -493,7 +493,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         This API is 🧪 experimental.
 
-        <Tip>
+        </Tip>
 
         """
         if self.original_attn_processors is not None:
