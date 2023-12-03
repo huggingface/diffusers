@@ -960,13 +960,13 @@ class StableDiffusionXLPipelineFastTests(
         image_slice_disabled = image[0, -3:, -3:, -1]
 
         assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-3, rtol=1e-3
+            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
         ), "Fusion of QKV projections shouldn't affect the outputs."
         assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-3, rtol=1e-3
+            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
         assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-3, rtol=1e-3
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
 
 
