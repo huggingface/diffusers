@@ -459,7 +459,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         This API is 🧪 experimental.
 
-        <Tip>
+        </Tip>
 
         Args:
             device (`str`): Device on which the fused linear layer will be created.

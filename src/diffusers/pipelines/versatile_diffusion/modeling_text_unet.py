@@ -1009,7 +1009,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         This API is 🧪 experimental.
 
-        <Tip>
+        </Tip>
 
         Args:
             device (`str`): Device on which the fused linear layer will be created.
@@ -1042,7 +1042,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         This API is 🧪 experimental.
 
-        <Tip>
+        </Tip>
 
         """
         if self.original_attn_processors is not None:
