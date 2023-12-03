@@ -1163,75 +1163,70 @@ def main(args):
                 # Get teacher model prediction on noisy_latents and conditional embedding
                 # Notice that we're disabling the adapter layers within the `unet` and then it becomes a
                 # regular teacher. This way, we don't have to separately initialize a teacher UNet.
-                # using_cuda = "cuda" in str(accelerator.device)
                 unet.disable_adapters()
-                # with torch.no_grad() and torch.autocast(
-                #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
-                # ):
-                cond_teacher_output = unet(
-                    noisy_model_input,
-                    start_timesteps,
-                    encoder_hidden_states=prompt_embeds,
-                    added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
-                ).sample
-                cond_pred_x0 = predicted_origin(
-                    cond_teacher_output,
-                    start_timesteps,
-                    noisy_model_input,
-                    noise_scheduler.config.prediction_type,
-                    alpha_schedule,
-                    sigma_schedule,
-                )
+                with torch.no_grad():
+                    cond_teacher_output = unet(
+                        noisy_model_input,
+                        start_timesteps,
+                        encoder_hidden_states=prompt_embeds,
+                        added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
+                    ).sample
+                    cond_pred_x0 = predicted_origin(
+                        cond_teacher_output,
+                        start_timesteps,
+                        noisy_model_input,
+                        noise_scheduler.config.prediction_type,
+                        alpha_schedule,
+                        sigma_schedule,
+                    )
 
-                # Create uncond embeds for classifier free guidance
-                uncond_prompt_embeds = torch.zeros_like(prompt_embeds)
-                uncond_pooled_prompt_embeds = torch.zeros_like(encoded_text["text_embeds"])
-                uncond_added_conditions = copy.deepcopy(encoded_text)
-                # Get teacher model prediction on noisy_latents and unconditional embedding
-                uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
-                uncond_teacher_output = unet(
-                    noisy_model_input,
-                    start_timesteps,
-                    encoder_hidden_states=uncond_prompt_embeds.to(weight_dtype),
-                    added_cond_kwargs={k: v.to(weight_dtype) for k, v in uncond_added_conditions.items()},
-                ).sample
-                uncond_pred_x0 = predicted_origin(
-                    uncond_teacher_output,
-                    start_timesteps,
-                    noisy_model_input,
-                    noise_scheduler.config.prediction_type,
-                    alpha_schedule,
-                    sigma_schedule,
-                )
+                    # Create uncond embeds for classifier free guidance
+                    uncond_prompt_embeds = torch.zeros_like(prompt_embeds)
+                    uncond_pooled_prompt_embeds = torch.zeros_like(encoded_text["text_embeds"])
+                    uncond_added_conditions = copy.deepcopy(encoded_text)
+                    # Get teacher model prediction on noisy_latents and unconditional embedding
+                    uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
+                    uncond_teacher_output = unet(
+                        noisy_model_input,
+                        start_timesteps,
+                        encoder_hidden_states=uncond_prompt_embeds.to(weight_dtype),
+                        added_cond_kwargs={k: v.to(weight_dtype) for k, v in uncond_added_conditions.items()},
+                    ).sample
+                    uncond_pred_x0 = predicted_origin(
+                        uncond_teacher_output,
+                        start_timesteps,
+                        noisy_model_input,
+                        noise_scheduler.config.prediction_type,
+                        alpha_schedule,
+                        sigma_schedule,
+                    )
 
-                # Perform "CFG" to get x_prev estimate (using the LCM paper's CFG formulation)
-                pred_x0 = cond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
-                pred_noise = cond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
-                x_prev = solver.ddim_step(pred_x0, pred_noise, index)
-                x_prev = x_prev.to(unet.dtype)
+                    # Perform "CFG" to get x_prev estimate (using the LCM paper's CFG formulation)
+                    pred_x0 = cond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
+                    pred_noise = cond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
+                    x_prev = solver.ddim_step(pred_x0, pred_noise, index)
+                    x_prev = x_prev.to(unet.dtype)
 
                 # re-enable unet adapters
                 unet.enable_adapters()
 
                 # Get target LCM prediction on x_prev, w, c, t_n
-                # with torch.no_grad() and torch.autocast(
-                #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
-                # ):
-                target_noise_pred = unet(
-                    x_prev,
-                    timesteps,
-                    encoder_hidden_states=prompt_embeds,
-                    added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
-                ).sample
-                pred_x_0 = predicted_origin(
-                    target_noise_pred,
-                    timesteps,
-                    x_prev,
-                    noise_scheduler.config.prediction_type,
-                    alpha_schedule,
-                    sigma_schedule,
-                )
-                target = c_skip * x_prev + c_out * pred_x_0
+                with torch.no_grad():
+                    target_noise_pred = unet(
+                        x_prev,
+                        timesteps,
+                        encoder_hidden_states=prompt_embeds,
+                        added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
+                    ).sample
+                    pred_x_0 = predicted_origin(
+                        target_noise_pred,
+                        timesteps,
+                        x_prev,
+                        noise_scheduler.config.prediction_type,
+                        alpha_schedule,
+                        sigma_schedule,
+                    )
+                    target = c_skip * x_prev + c_out * pred_x_0
 
                 # Calculate loss
                 if args.loss_type == "l2":
