@@ -718,19 +718,66 @@ class StableDiffusionXLPipeline(
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
 
-    def _enable_fused_qkv_projections(self):
-        # TODOs (sayakpaul) before opening a PR
-        # 1. Check if the original attention processors have AddedKV and raise an error if so.
-        # 2. Add an option for enabling fusion for the VAE too.
-        # 3. Propagate the changes to _disable_fused_qkv_projections.
-        from ...models.attention_processor import _FusedAttnProcessor2_0
+    def enable_fused_qkv_projections(self, unet: bool = True, vae: bool = True):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
 
-        self.original_unet_attn_processors = self.unet.attn_processors
-        self.unet._enable_fused_qkv_projections(device=self.device, dtype=self.dtype)
-        self.unet.set_attn_processor(_FusedAttnProcessor2_0())
+        <Tip warning={true}>
 
-    def _disable_fused_qkv_projections(self):
-        self.unet.set_attn_processor(self.original_unet_attn_processors)
+        This API is 🧪 experimental.
+
+        <Tip>
+
+        Args:
+            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
+        """
+        from ...models.attention_processor import FusedAttnProcessor2_0
+
+        self.fusing_unet = False
+        self.fusing_vae = False
+
+        if unet:
+            self.fusing_unet = True
+            self.unet.enable_fused_qkv_projections(device=self.device, dtype=self.dtype)
+            self.unet.set_attn_processor(FusedAttnProcessor2_0())
+
+        if vae:
+            if not isinstance(self.vae, AutoencoderKL):
+                raise ValueError(
+                    "`enable_fused_qkv_projections()` is only supported for the VAE of type `AutoencoderKL`."
+                )
+
+            self.fusing_vae = True
+            self.vae.enable_fused_qkv_projections(device=self.device, dtype=self.dtype)
+            self.vae.set_attn_processor(FusedAttnProcessor2_0())
+
+    def disable_fused_qkv_projections(self, unet: bool = True, vae: bool = True):
+        """Disable QKV projection fusion if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        <Tip>
+
+        Args:
+            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
+
+        """
+        if unet:
+            if not self.fusing_unet:
+                logger.warning("The UNet was not initially fused for QKV projections. Doing nothing.")
+                return
+            self.unet.disable_fused_qkv_projections()
+
+        if vae:
+            if not self.fusing_vae:
+                logger.warning("The VAE was not initially fused for QKV projections. Doing nothing.")
+                return
+            self.vae.disable_fused_qkv_projections()
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):

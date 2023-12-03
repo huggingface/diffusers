@@ -695,7 +695,7 @@ class Attention(nn.Module):
         return encoder_hidden_states
 
     @torch.no_grad()
-    def _enable_fused_projections(self, device, dtype, fuse_projections=True, is_cross_attention=False):
+    def enable_fused_projections(self, device, dtype, fuse_projections=True, is_cross_attention=False):
         self.fuse_projections = fuse_projections
 
         if not is_cross_attention:
@@ -715,8 +715,6 @@ class Attention(nn.Module):
 
             self.to_kv = self.linear_cls(in_features, out_features, bias=False, device=device, dtype=dtype)
             self.to_kv.weight.copy_(concatenated_weights)
-
-        # TODO: delete the separate matrices to free memory?
 
 
 class AttnProcessor:
@@ -1276,12 +1274,17 @@ class AttnProcessor2_0:
         return hidden_states
 
 
-class _FusedAttnProcessor2_0:
+class FusedAttnProcessor2_0:
     r"""
     Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    It uses fused projection layers.
+    It uses fused projection layers. For self-attention modules, all projection matrices (i.e., query,
+    key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
 
-    🧪 Experimental
+    <Tip warning={true}>
+
+    This API is currently 🧪 experimental in nature and can change in future.
+
+    </Tip>
     """
 
     def __init__(self):
@@ -2364,6 +2367,7 @@ CROSS_ATTENTION_PROCESSORS = (
 AttentionProcessor = Union[
     AttnProcessor,
     AttnProcessor2_0,
+    FusedAttnProcessor2_0,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
     AttnAddedKVProcessor,

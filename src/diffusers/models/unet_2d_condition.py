@@ -794,15 +794,53 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
-    def _enable_fused_qkv_projections(self, device, dtype):
+    def enable_fused_qkv_projections(self, device: str, dtype: str):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        <Tip>
+
+        Args:
+            device (`str`): Device on which the fused linear layer will be created.
+            dtype (`torch.dtype`): Dtype of the fused linear layer that will be created.
+        """
+
         from .attention_processor import Attention
+
+        self.original_attn_processors = None
+
+        for _, attn_processor in self.attn_processors.items():
+            if "Added" in str(attn_processor.__class__.__name__):
+                raise ValueError(
+                    "`enable_fused_qkv_projections()` is not supported for models having added KV projections."
+                )
+
+        self.original_attn_processors = self.attn_processors
 
         for module in self.modules():
             if isinstance(module, Attention):
                 is_cross_attention = module.to_q.weight.shape != module.to_k.weight.shape
-                module._enable_fused_projections(
+                module.enable_fused_projections(
                     device=device, dtype=dtype, fuse_projections=True, is_cross_attention=is_cross_attention
                 )
+
+    def disable_fused_qkv_projections(self):
+        """Disables the fused QKV projection if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        <Tip>
+
+        """
+        if self.original_attn_processors is not None:
+            self.set_attn_processor(self.original_attn_processors)
 
     def forward(
         self,
