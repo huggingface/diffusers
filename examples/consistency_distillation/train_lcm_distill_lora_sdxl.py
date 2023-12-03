@@ -1167,15 +1167,14 @@ def main(args):
                 # using_cuda = "cuda" in str(accelerator.device)
                 unet.disable_adapters()
                 params_to_optimize_disabled = [p for p in unet.parameters() if p.requires_grad]
-                print(f"params_to_optimize after disabled: {params_to_optimize_disabled}")
+                print(f"params_to_optimize after disabled: {len(params_to_optimize_disabled)}")
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 # ):
                 cond_teacher_output = unet(
-                    # noisy_model_input.to(weight_dtype),
                     noisy_model_input,
                     start_timesteps,
-                    encoder_hidden_states=prompt_embeds.to(weight_dtype),
+                    encoder_hidden_states=prompt_embeds,
                     added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
                 ).sample
                 cond_pred_x0 = predicted_origin(
@@ -1194,7 +1193,7 @@ def main(args):
                 # Get teacher model prediction on noisy_latents and unconditional embedding
                 uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
                 uncond_teacher_output = unet(
-                    noisy_model_input.to(weight_dtype),
+                    noisy_model_input,
                     start_timesteps,
                     encoder_hidden_states=uncond_prompt_embeds.to(weight_dtype),
                     added_cond_kwargs={k: v.to(weight_dtype) for k, v in uncond_added_conditions.items()},
@@ -1216,7 +1215,7 @@ def main(args):
                 # re-enable unet adapters
                 unet.enable_adapters()
                 params_to_optimize_enabled = [p for p in unet.parameters() if p.requires_grad]
-                print(f"params_to_optimize after enabled: {params_to_optimize_enabled}")
+                print(f"params_to_optimize after enabled: {len(params_to_optimize_enabled)}")
 
                 # Get target LCM prediction on x_prev, w, c, t_n
                 # with torch.no_grad() and torch.autocast(
@@ -1226,7 +1225,7 @@ def main(args):
                     x_prev,
                     timesteps,
                     encoder_hidden_states=prompt_embeds,
-                    added_cond_kwargs=encoded_text,
+                    added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
                 ).sample
                 pred_x_0 = predicted_origin(
                     target_noise_pred,
