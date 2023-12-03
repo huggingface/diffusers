@@ -535,8 +535,8 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
         return add_time_ids
 
     def get_views(self, height, width, window_size=128, stride=64, random_jitter=False):
-        height /= self.vae_scale_factor
-        width /= self.vae_scale_factor
+        height //= self.vae_scale_factor
+        width //= self.vae_scale_factor
         num_blocks_height = int((height - window_size) / stride - 1e-6) + 2 if height > window_size else 1
         num_blocks_width = int((width - window_size) / stride - 1e-6) + 2 if width > window_size else 1
         total_num_blocks = int(num_blocks_height * num_blocks_width)
