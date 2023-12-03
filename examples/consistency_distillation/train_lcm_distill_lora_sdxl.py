@@ -851,8 +851,12 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # 12. Optimizer creation
-    params_to_optimize = [p.to(torch.float32) for p in unet.parameters() if p.requires_grad]
-    print(f"params_to_optimize: {params_to_optimize}")
+    params_to_optimize = []
+    for param in unet.parameters():
+        if param.requires_grad:
+            param.data = param.to(torch.float32)
+            params_to_optimize.append(param)
+    print(f"params_to_optimize: {len(params_to_optimize)}")
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
