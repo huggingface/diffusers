@@ -1211,6 +1211,7 @@ def main(args):
                 pred_x0 = cond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
                 pred_noise = cond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
                 x_prev = solver.ddim_step(pred_x0, pred_noise, index)
+                x_prev = x_prev.to(unet.dtype)
 
                 # re-enable unet adapters
                 unet.enable_adapters()
@@ -1221,11 +1222,6 @@ def main(args):
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 # ):
-                print(f"x_prev: {x_prev.dtype}")
-                print(f"timesteps: {timesteps.dtype}")
-                print(f"prompt_embeds: {prompt_embeds}")
-                for k, v in encoded_text.items():
-                    print(k, v.dtype)
                 target_noise_pred = unet(
                     x_prev,
                     timesteps,
