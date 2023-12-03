@@ -53,8 +53,9 @@ frames = pipe(image, decode_chunk_size=8, generator=generator).frames[0]
 export_to_video(frames, "generated.mp4", fps=7)
 ```
 
-<video width="1024" height="576" controls>
-  <source src="https://i.imgur.com/jJzVDKw.mp4" type="video/mp4">
+<video controls width="1024" height="576">
+  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.webm" type="video/webm" />
+  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.mp4" type="video/mp4" />
 </video>
 
 <Tip>
