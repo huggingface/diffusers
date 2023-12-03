@@ -758,10 +758,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         torch_dtype = kwargs.pop("torch_dtype", None)
         if torch_dtype is not None:
-            deprecate("torch_dtype", "0.25.0", "")
+            deprecate("torch_dtype", "0.27.0", "")
         torch_device = kwargs.pop("torch_device", None)
         if torch_device is not None:
-            deprecate("torch_device", "0.25.0", "")
+            deprecate("torch_device", "0.27.0", "")
 
         dtype_kwarg = kwargs.pop("dtype", None)
         device_kwarg = kwargs.pop("device", None)
@@ -1688,7 +1688,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if module_candidate is None or not isinstance(module_candidate, str):
                     continue
 
-                candidate_file = os.path.join(component, module_candidate + ".py")
+                # We compute candidate file path on the Hub. Do not use `os.path.join`.
+                candidate_file = f"{component}/{module_candidate}.py"
 
                 if candidate_file in filenames:
                     custom_components[component] = module_candidate
