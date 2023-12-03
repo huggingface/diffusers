@@ -856,7 +856,6 @@ def main(args):
         if param.requires_grad:
             param.data = param.to(torch.float32)
             params_to_optimize.append(param)
-    print(f"params_to_optimize: {len(params_to_optimize)}")
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -1166,8 +1165,6 @@ def main(args):
                 # regular teacher. This way, we don't have to separately initialize a teacher UNet.
                 # using_cuda = "cuda" in str(accelerator.device)
                 unet.disable_adapters()
-                params_to_optimize_disabled = [p for p in unet.parameters() if p.requires_grad]
-                print(f"params_to_optimize after disabled: {len(params_to_optimize_disabled)}")
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 # ):
@@ -1215,8 +1212,6 @@ def main(args):
 
                 # re-enable unet adapters
                 unet.enable_adapters()
-                params_to_optimize_enabled = [p for p in unet.parameters() if p.requires_grad]
-                print(f"params_to_optimize after enabled: {len(params_to_optimize_enabled)}")
 
                 # Get target LCM prediction on x_prev, w, c, t_n
                 # with torch.no_grad() and torch.autocast(
