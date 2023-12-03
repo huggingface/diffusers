@@ -721,7 +721,7 @@ def main(args):
         revision=args.teacher_revision,
     )
 
-    # 6. Freeze teacher vae, text_encoders, and teacher_unet
+    # 6. Freeze teacher vae, text_encoders.
     vae.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
@@ -730,6 +730,7 @@ def main(args):
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
     )
+    unet.requires_grad_(False)
 
     # Check that all trainable models are in full precision
     low_precision_error_string = (
@@ -741,6 +742,22 @@ def main(args):
         raise ValueError(
             f"Controlnet loaded as datatype {accelerator.unwrap_model(unet).dtype}. {low_precision_error_string}"
         )
+
+    # 9. Handle mixed precision and device placement
+    # For mixed precision training we cast all non-trainable weigths to half-precision
+    # as these weights are only used for inference, keeping weights in full precision is not required.
+    weight_dtype = torch.float32
+    if accelerator.mixed_precision == "fp16":
+        weight_dtype = torch.float16
+    elif accelerator.mixed_precision == "bf16":
+        weight_dtype = torch.bfloat16
+
+    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    # The VAE is in float32 to avoid NaN losses.
+    unet.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=torch.float32)
+    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
     # 8. Add LoRA to the student U-Net, only the LoRA projection matrix will be updated by the optimizer.
     lora_config = LoraConfig(
@@ -762,26 +779,7 @@ def main(args):
             "time_emb_proj",
         ],
     )
-    unet.train()
     unet.add_adapter(lora_config)
-    unet.enable_adapters()
-
-    # 9. Handle mixed precision and device placement
-    # For mixed precision training we cast all non-trainable weigths to half-precision
-    # as these weights are only used for inference, keeping weights in full precision is not required.
-    weight_dtype = torch.float32
-    if accelerator.mixed_precision == "fp16":
-        weight_dtype = torch.float16
-    elif accelerator.mixed_precision == "bf16":
-        weight_dtype = torch.bfloat16
-
-    # Move unet, vae and text_encoder to device and cast to weight_dtype
-    # The VAE is in float32 to avoid NaN losses.
-    vae.to(accelerator.device)
-    if args.pretrained_vae_model_name_or_path is not None:
-        vae.to(dtype=weight_dtype)
-    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
     # Also move the alpha and sigma noise schedules to accelerator.device.
     alpha_schedule = alpha_schedule.to(accelerator.device)
@@ -853,7 +851,8 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # 12. Optimizer creation
-    params_to_optimize = filter(lambda p: p.requires_grad, unet.parameters())
+    params_to_optimize = [p.to(torch.float32) for p in unet.parameters() if p.requires_grad]
+    print(f"params_to_optimize: {params_to_optimize}")
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -1085,27 +1084,21 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
+    unet.train()
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
-                image, text, orig_size, crop_coords = (
+                pixel_values, text, orig_size, crop_coords = (
                     batch["pixel_values"],
                     batch["captions"],
                     batch["original_sizes"],
                     batch["crop_top_lefts"],
                 )
 
-                image = image.to(accelerator.device, non_blocking=True)
                 encoded_text = compute_embeddings_fn(text, orig_size, crop_coords)
 
-                if args.pretrained_vae_model_name_or_path is not None:
-                    pixel_values = image.to(dtype=weight_dtype)
-                    if vae.dtype != weight_dtype:
-                        vae.to(dtype=weight_dtype)
-                else:
-                    pixel_values = image
-
                 # encode pixel values with batch size of at most 8
+                pixel_values = pixel_values.to(dtype=vae.dtype)
                 latents = []
                 for i in range(0, pixel_values.shape[0], args.encode_batch_size):
                     latents.append(vae.encode(pixel_values[i : i + args.encode_batch_size]).latent_dist.sample())
@@ -1148,7 +1141,7 @@ def main(args):
                 noise_pred = unet(
                     noisy_model_input,
                     start_timesteps,
-                    encoder_hidden_states=prompt_embeds.float(),
+                    encoder_hidden_states=prompt_embeds,
                     added_cond_kwargs=encoded_text,
                 ).sample
 
@@ -1168,7 +1161,9 @@ def main(args):
                 # Notice that we're disabling the adapter layers within the `unet` and then it becomes a
                 # regular teacher. This way, we don't have to separately initialize a teacher UNet.
                 # using_cuda = "cuda" in str(accelerator.device)
-                unet.disable_adapters() 
+                unet.disable_adapters()
+                params_to_optimize_disabled = [p for p in unet.parameters() if p.requires_grad]
+                print(f"params_to_optimize after disabled: {params_to_optimize_disabled}")
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 # ):
@@ -1216,15 +1211,16 @@ def main(args):
 
                 # re-enable unet adapters
                 unet.enable_adapters()
-            
+                params_to_optimize_enabled = [p for p in unet.parameters() if p.requires_grad]
+                print(f"params_to_optimize after enabled: {params_to_optimize_enabled}")
+
                 # Get target LCM prediction on x_prev, w, c, t_n
                 # with torch.no_grad() and torch.autocast(
                 #     str(accelerator.device), dtype=weight_dtype if using_cuda else torch.bfloat16, enabled=using_cuda
                 # ):
                 target_noise_pred = unet(
-                    x_prev.float(),
+                    x_prev,
                     timesteps,
-                    # encoder_hidden_states=prompt_embeds.float(),
                     encoder_hidden_states=prompt_embeds,
                     added_cond_kwargs=encoded_text,
                 ).sample
