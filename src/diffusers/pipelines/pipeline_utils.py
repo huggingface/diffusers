@@ -259,7 +259,7 @@ def warn_deprecated_model_variant(pretrained_model_name_or_path, use_auth_token,
     comp_model_filenames, _ = variant_compatible_siblings(filenames, variant=revision)
     comp_model_filenames = [".".join(f.split(".")[:1] + f.split(".")[2:]) for f in comp_model_filenames]
 
-    if set(comp_model_filenames) == set(model_filenames):
+    if set(model_filenames).issubset(set(comp_model_filenames)):
         warnings.warn(
             f"You are loading the variant {revision} from {pretrained_model_name_or_path} via `revision='{revision}'` even though you can load it via `variant=`{revision}`. Loading model variants via `revision='{revision}'` is deprecated and will be removed in diffusers v1. Please use `variant='{revision}'` instead.",
             FutureWarning,
@@ -557,7 +557,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for name, module in kwargs.items():
             # retrieve library
-            if module is None:
+            if module is None or isinstance(module, (tuple, list)) and module[0] is None:
                 register_dict = {name: (None, None)}
             else:
                 # register the config from the original module, not the dynamo compiled one
@@ -758,10 +758,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         torch_dtype = kwargs.pop("torch_dtype", None)
         if torch_dtype is not None:
-            deprecate("torch_dtype", "0.25.0", "")
+            deprecate("torch_dtype", "0.27.0", "")
         torch_device = kwargs.pop("torch_device", None)
         if torch_device is not None:
-            deprecate("torch_device", "0.25.0", "")
+            deprecate("torch_device", "0.27.0", "")
 
         dtype_kwarg = kwargs.pop("dtype", None)
         device_kwarg = kwargs.pop("device", None)
@@ -1688,7 +1688,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if module_candidate is None or not isinstance(module_candidate, str):
                     continue
 
-                candidate_file = os.path.join(component, module_candidate + ".py")
+                # We compute candidate file path on the Hub. Do not use `os.path.join`.
+                candidate_file = f"{component}/{module_candidate}.py"
 
                 if candidate_file in filenames:
                     custom_components[component] = module_candidate
@@ -1906,12 +1907,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     " above."
                 ) from model_info_call_error
 
-    @staticmethod
-    def _get_signature_keys(obj):
+    @classmethod
+    def _get_signature_keys(cls, obj):
         parameters = inspect.signature(obj.__init__).parameters
         required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
         expected_modules = set(required_parameters.keys()) - {"self"}
+
+        optional_names = list(optional_parameters)
+        for name in optional_names:
+            if name in cls._optional_components:
+                expected_modules.add(name)
+                optional_parameters.remove(name)
+
         return expected_modules, optional_parameters
 
     @property

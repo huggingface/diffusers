@@ -50,6 +50,9 @@ def get_down_block(
     resnet_eps,
     resnet_act_fn,
     num_attention_heads,
+    transformer_layers_per_block,
+    attention_type,
+    attention_head_dim,
     resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
@@ -113,6 +116,10 @@ def get_up_block(
     resnet_eps,
     resnet_act_fn,
     num_attention_heads,
+    transformer_layers_per_block,
+    resolution_idx,
+    attention_type,
+    attention_head_dim,
     resnet_groups=None,
     cross_attention_dim=None,
     dual_cross_attention=False,
@@ -1221,6 +1228,15 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(image_embeds)
+        elif self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
+            if "image_embeds" not in added_cond_kwargs:
+                raise ValueError(
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                )
+            image_embeds = added_cond_kwargs.get("image_embeds")
+            image_embeds = self.encoder_hid_proj(image_embeds).to(encoder_hidden_states.dtype)
+            encoder_hidden_states = torch.cat([encoder_hidden_states, image_embeds], dim=1)
+
         # 2. pre-process
         sample = self.conv_in(sample)
 

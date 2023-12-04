@@ -40,7 +40,7 @@ from polygraphy.backend.trt import (
     save_engine,
 )
 from polygraphy.backend.trt import util as trt_util
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import (
@@ -624,6 +624,7 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         scheduler: DDIMScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
+        image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
         stages=["clip", "unet", "vae"],
         image_height: int = 768,
@@ -639,7 +640,15 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         timing_cache: str = "timing_cache",
     ):
         super().__init__(
-            vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
+            vae,
+            text_encoder,
+            tokenizer,
+            unet,
+            scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
+            requires_safety_checker=requires_safety_checker,
         )
 
         self.vae.forward = self.vae.decode
