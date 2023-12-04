@@ -298,7 +298,7 @@ def parse_args(input_args=None):
         default="TOK",
         help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
         "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma seperated string - e.g. "
-             "'TOK,TOK2,TOK3' etc.",
+        "'TOK,TOK2,TOK3' etc.",
     )
 
     parser.add_argument(
@@ -659,7 +659,7 @@ def parse_args(input_args=None):
     if args.train_text_encoder_ti:
         # we parse the provided token identifier (or identifiers) into a list. s.t. - "TOK" -> ["TOK"], "TOK,
         # TOK2" -> ["TOK", "TOK2"] etc.
-        args.token_abstraction = ''.join(args.token_abstraction.split()).split(",")
+        args.token_abstraction = "".join(args.token_abstraction.split()).split(",")
         logger.info(f"list of token identifiers: {args.token_abstraction}")
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
