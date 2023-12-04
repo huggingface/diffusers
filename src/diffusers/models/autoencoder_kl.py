@@ -461,10 +461,6 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         This API is 🧪 experimental.
 
         </Tip>
-
-        Args:
-            device (`str`): Device on which the fused linear layer will be created.
-            dtype (`torch.dtype`): Dtype of the fused linear layer that will be created.
         """
         self.original_attn_processors = None
 
@@ -476,10 +472,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         for module in self.modules():
             if isinstance(module, Attention):
-                is_cross_attention = module.to_q.weight.shape != module.to_k.weight.shape
-                module.fuse_projections(
-                    device=device, dtype=dtype, fuse_projections=True, is_cross_attention=is_cross_attention
-                )
+                module.fuse_projections(fuse=True)
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
     def unfuse_qkv_projections(self):

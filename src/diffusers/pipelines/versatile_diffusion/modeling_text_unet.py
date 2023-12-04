@@ -1000,7 +1000,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
-    def fuse_qkv_projections(self, device: str, dtype: str):
+    def fuse_qkv_projections(self):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
         key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
@@ -1010,10 +1010,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         This API is 🧪 experimental.
 
         </Tip>
-
-        Args:
-            device (`str`): Device on which the fused linear layer will be created.
-            dtype (`torch.dtype`): Dtype of the fused linear layer that will be created.
         """
         self.original_attn_processors = None
 
@@ -1025,10 +1021,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         for module in self.modules():
             if isinstance(module, Attention):
-                is_cross_attention = module.to_q.weight.shape != module.to_k.weight.shape
-                module.fuse_projections(
-                    device=device, dtype=dtype, fuse_projections=True, is_cross_attention=is_cross_attention
-                )
+                module.fuse_projections(fuse=True)
 
     def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
