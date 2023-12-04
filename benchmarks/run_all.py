@@ -10,7 +10,7 @@ def main():
 
     for file in python_files:
         subprocess.run(["python", file])
-        subprocess.run(["python", f"{file} --run_compile"])
+        subprocess.run(["python", file, "--run_compile"])
 
 
 if __name__ == "__main__":
