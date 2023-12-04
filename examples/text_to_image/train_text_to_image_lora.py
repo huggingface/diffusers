@@ -42,8 +42,8 @@ import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
 from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_snr
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.training_utils import compute_snr, replace_linear_cls
+from diffusers.utils import check_min_version, is_peft_available, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -466,6 +466,9 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
+    if is_peft_available():
+        replace_linear_cls(unet)
+
     # freeze parameters of models to save more memory
     unet.requires_grad_(False)
     vae.requires_grad_(False)

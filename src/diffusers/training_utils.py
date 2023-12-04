@@ -53,6 +53,19 @@ def compute_snr(noise_scheduler, timesteps):
     return snr
 
 
+def replace_linear_cls(model):
+    from .models.lora import LoRACompatibleLinear
+
+    for name, module in model.named_children():
+        if isinstance(module, torch.nn.Linear):
+            bias = True if hasattr(module, "bias") else False
+            new_linear_cls = LoRACompatibleLinear(module.in_features, module.out_features, bias=bias)
+            setattr(model, name, new_linear_cls)
+        elif len(list(module.children())) > 0:
+            # Recursively apply the same operation to child modules
+            replace_linear_cls(module)
+
+
 def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
     r"""
     Returns:
