@@ -232,20 +232,26 @@ def parse_args(input_args=None):
         help=(
             "The name of the Dataset (from the HuggingFace hub) containing the training data of instance images (could be your own, possibly private,"
             " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
-            " or to a folder containing files that 🤗 Datasets can understand."
+            " or to a folder containing files that 🤗 Datasets can understand.To load the custom captions, the training set directory needs to follow the structure of a "
+            "datasets ImageFolder, containing both the images and the corresponding caption for each image. see: "
+            "https://huggingface.co/docs/datasets/image_dataset for more information"
         ),
     )
     parser.add_argument(
         "--dataset_config_name",
         type=str,
         default=None,
-        help="The config of the Dataset, leave as None if there's only one config.",
+        help="The config of the Dataset. In some cases, a dataset may have more than one configuration (for example "
+        "if it contains different subsets of data within, and you only wish to load a specific subset - in that case specify the desired configuration using --dataset_config_name. Leave as "
+        "None if there's only one config.",
     )
     parser.add_argument(
         "--instance_data_dir",
         type=str,
         default=None,
-        help=("A folder containing the training data. "),
+        help="A path to local folder containing the training data of instance images. Specify this arg instead of "
+        "--dataset_name if you wish to train using a local folder without custom captions. If you wish to train with custom captions please specify "
+        "--dataset_name instead.",
     )
 
     parser.add_argument(
