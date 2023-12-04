@@ -8,7 +8,9 @@ from diffusers import (
     AutoPipelineForInpainting,
     AutoPipelineForText2Image,
     ControlNetModel,
+    StableDiffusionAdapterPipeline,
     StableDiffusionControlNetPipeline,
+    StableDiffusionXLAdapterPipeline,
     StableDiffusionXLControlNetPipeline,
 )
 from diffusers.utils import load_image
@@ -179,4 +181,14 @@ class ControlNetBenchmark(TextToImageBenchmark):
 
 class ControlNetSDXLBenchmark(ControlNetBenchmark):
     pipeline_class = StableDiffusionXLControlNetPipeline
+    root_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
+
+
+class T2IAdapterBenchmark(ControlNetBenchmark):
+    pipeline_class = StableDiffusionAdapterPipeline
+    root_ckpt = "CompVis/stable-diffusion-v1-4"
+
+
+class T2IAdapterSDXLBenchmark(T2IAdapterBenchmark):
+    pipeline_class = StableDiffusionXLAdapterPipeline
     root_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
