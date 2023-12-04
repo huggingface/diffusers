@@ -674,6 +674,7 @@ class StableDiffusionXLPipeline(
     def upcast_vae(self):
         dtype = self.vae.dtype
         self.vae.to(dtype=torch.float32)
+        print(f"self.vae.decoder.mid_block.attentions[0].processor")
         use_torch_2_0_or_xformers = isinstance(
             self.vae.decoder.mid_block.attentions[0].processor,
             (
@@ -838,6 +839,9 @@ class StableDiffusionXLPipeline(
     @property
     def num_timesteps(self):
         return self._num_timesteps
+    
+    def _enable_bfloat16_for_vae(self):
+        self.vae = self.vae.to(torch.bfloat16)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
