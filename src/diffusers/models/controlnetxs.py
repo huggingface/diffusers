@@ -145,7 +145,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             base_model (`UNet2DConditionModel`):
                 Base unet model. Needs to be either StableDiffusion or StableDiffusion-XL.
             is_sdxl (`bool`, defaults to `True`):
-                Wether passed `base_model` is a StableDiffusion-XL model.
+                Whether passed `base_model` is a StableDiffusion-XL model.
         """
 
         def get_dim_attn_heads(base_model: UNet2DConditionModel, size_ratio: float, num_attn_heads: int):
