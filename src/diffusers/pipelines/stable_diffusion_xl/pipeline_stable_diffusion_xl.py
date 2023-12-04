@@ -672,8 +672,6 @@ class StableDiffusionXLPipeline(
         return add_time_ids
 
     def upcast_vae(self):
-        from ...models.attention_processor import FusedAttnProcessor2_0
-
         dtype = self.vae.dtype
         self.vae.to(dtype=torch.float32)
         use_torch_2_0_or_xformers = isinstance(

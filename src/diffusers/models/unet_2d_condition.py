@@ -810,7 +810,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             device (`str`): Device on which the fused linear layer will be created.
             dtype (`torch.dtype`): Dtype of the fused linear layer that will be created.
         """
-
         self.original_attn_processors = None
 
         for _, attn_processor in self.attn_processors.items():
