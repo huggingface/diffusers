@@ -739,7 +739,7 @@ class StableDiffusionXLPipeline(
 
         if unet:
             self.fusing_unet = True
-            self.unet.fuse_qkv_projections(device=self.device, dtype=self.dtype)
+            self.unet.fuse_qkv_projections()
             self.unet.set_attn_processor(FusedAttnProcessor2_0())
 
         if vae:
@@ -747,7 +747,7 @@ class StableDiffusionXLPipeline(
                 raise ValueError("`fuse_qkv_projections()` is only supported for the VAE of type `AutoencoderKL`.")
 
             self.fusing_vae = True
-            self.vae.fuse_qkv_projections(device=self.device, dtype=self.dtype)
+            self.vae.fuse_qkv_projections()
             self.vae.set_attn_processor(FusedAttnProcessor2_0())
 
     def unfuse_qkv_projections(self, unet: bool = True, vae: bool = True):
@@ -768,13 +768,15 @@ class StableDiffusionXLPipeline(
             if not self.fusing_unet:
                 logger.warning("The UNet was not initially fused for QKV projections. Doing nothing.")
             else:
-                self.unet.disable_fused_qkv_projections()
+                self.unet.unfuse_qkv_projections()
+                self.fusing_unet = False
 
         if vae:
             if not self.fusing_vae:
                 logger.warning("The VAE was not initially fused for QKV projections. Doing nothing.")
             else:
-                self.vae.disable_fused_qkv_projections()
+                self.vae.unfuse_qkv_projections()
+                self.fusing_vae = False
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
