@@ -102,7 +102,7 @@ class TextToImageBenchmark(BaseBenchmak):
 
 class ImageToImageBenchmark(TextToImageBenchmark):
     pipeline_class = AutoPipelineForImage2Image
-    url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/1665_Girl_with_a_Pearl_Earring.jpg/800px-1665_Girl_with_a_Pearl_Earring.jpg"
+    url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/1665_Girl_with_a_Pearl_Earring.jpg"
     image = load_image(url).convert("RGB")
 
     def __init__(self, args):
