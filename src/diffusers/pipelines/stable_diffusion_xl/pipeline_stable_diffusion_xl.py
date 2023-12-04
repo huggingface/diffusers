@@ -1253,7 +1253,6 @@ class StableDiffusionXLPipeline(
 
             if hasattr(self, "is_vae_in_blfoat16") and self.is_vae_in_blfoat16:
                 latents = latents.to(self.vae.dtype)
-            print(f"latents dtype: {latents.dtype}")
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
 
             # cast back to fp16 if needed
