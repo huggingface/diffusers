@@ -3,7 +3,14 @@ import sys
 
 import torch
 
-from diffusers import ControlNetModel, StableDiffusionXLControlNetPipeline, AutoPipelineForImage2Image, AutoPipelineForInpainting, AutoPipelineForText2Image, StableDiffusionControlNetPipeline
+from diffusers import (
+    AutoPipelineForImage2Image,
+    AutoPipelineForInpainting,
+    AutoPipelineForText2Image,
+    ControlNetModel,
+    StableDiffusionControlNetPipeline,
+    StableDiffusionXLControlNetPipeline,
+)
 from diffusers.utils import load_image
 
 
@@ -15,6 +22,7 @@ from utils import (  # noqa: E402
     BenchmarkInfo,
     benchmark_fn,
     bytes_to_giga_bytes,
+    flush,
     generate_csv_dict,
     write_to_csv,
 )
@@ -22,9 +30,13 @@ from utils import (  # noqa: E402
 
 RESOLUTION_MAPPING = {
     "runwayml/stable-diffusion-v1-5": (512, 512),
+    "lllyasviel/sd-controlnet-canny": (512, 512),
+    "diffusers/controlnet-canny-sdxl-1.0": (1024, 1024),
     "stabilityai/stable-diffusion-2-1": (768, 768),
     "stabilityai/stable-diffusion-xl-refiner-1.0": (1024, 1024),
 }
+
+CONTROLNET_MAPPING = {}
 
 
 class BaseBenchmak:
@@ -38,6 +50,17 @@ class BaseBenchmak:
 
     def benchmark(self, args):
         raise NotImplementedError
+
+    def get_result_filepath(self, args):
+        pipeline_class_name = str(self.pipe.__class__.__name__)
+        name = (
+            args.ckpt.replace("/", "_")
+            + "_"
+            + pipeline_class_name
+            + f"-bs@{args.batch_size}-steps@{args.num_inference_steps}-mco@{args.model_cpu_offload}-compile@{args.run_compile}.csv"
+        )
+        filepath = os.path.join(BASE_PATH, name)
+        return filepath
 
 
 class TextToImageBenchmark(BaseBenchmak):
@@ -71,15 +94,10 @@ class TextToImageBenchmark(BaseBenchmak):
         csv_dict = generate_csv_dict(
             pipeline_cls=pipeline_class_name, ckpt=args.ckpt, args=args, benchmark_info=benchmark_info
         )
-        name = (
-            args.ckpt.replace("/", "_")
-            + "_"
-            + pipeline_class_name
-            + f"-bs@{args.batch_size}-steps@{args.num_inference_steps}-mco@{args.model_cpu_offload}-compile@{args.run_compile}.csv"
-        )
-        filepath = os.path.join(BASE_PATH, name)
+        filepath = self.get_result_filepath(args)
         write_to_csv(filepath, csv_dict)
         print(f"Logs written to: {filepath}")
+        flush()
 
 
 class ImageToImageBenchmark(TextToImageBenchmark):
@@ -120,24 +138,46 @@ class InpaintingBenchmark(ImageToImageBenchmark):
         )
 
 
-class ControlNetBenchmark(BaseBenchmak): 
-    pipeline_class = StableDiffusionControlNetPipeline 
+class ControlNetBenchmark(TextToImageBenchmark):
+    pipeline_class = StableDiffusionControlNetPipeline
     aux_network_class = ControlNetModel
 
-    # TODO: change the URL.
-    image_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+    image_url = (
+        "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_image_condition.png"
+    )
     image = load_image(image_url).convert("RGB")
 
     def __init__(self, args):
-        
+        if isinstance(self.pipeline_class, StableDiffusionControlNetPipeline):
+            root_ckpt = "runwayml/stable-diffusion-v1-5"
+        elif isinstance(self.pipeline_class, StableDiffusionXLControlNetPipeline):
+            root_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
+
+        aux_network = self.aux_network_class.from_pretrained(
+            args.ckpt, torch_dtype=torch.float16, use_safetensors=True
+        )
+        pipe = self.pipeline_class.from_pretrained(
+            root_ckpt, controlnet=aux_network, torch_dtype=torch.float16, use_safetensors=True
+        )
+        pipe = pipe.to("cuda")
+
+        if args.run_compile:
+            pipe.unet.to(memory_format=torch.channels_last)
+            pipe.controlnet.to(memory_format=torch.channels_last)
+            print("Run torch compile")
+            pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+            pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
+
         self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
 
     def run_inference(self, pipe, args):
-
         _ = pipe(
             prompt=PROMPT,
             image=self.image,
-            mask_image=self.mask,
             num_inference_steps=args.num_inference_steps,
             num_images_per_prompt=args.batch_size,
         )
+
+
+class ControlNetSDXLBenchmark(ControlNetBenchmark):
+    pipeline_class = StableDiffusionXLControlNetPipeline

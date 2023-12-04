@@ -50,6 +50,7 @@ jobs:
             python benchmark_sd.py && python benchmark_sd.py --run_compile && \
             python benchmark_sd_img.py  && python benchmark_sd_img.py --run_compile && \
             python benchmark_sd_inpainting.py  && python benchmark_sd_inpainting.py --run_compile && \
+            python benchmark_controlnet.py && python benchmark_sd_inpainting.py --run_compile && \
             python push_results.py
 
       - name: Test suite reports artifacts
