@@ -16,7 +16,7 @@ ControlNet-XS was introduced in [ControlNet-XS](https://vislearn.github.io/Contr
 
 Like the original ControlNet model, you can provide an additional control image to condition and control Stable Diffusion generation. For example, if you provide a depth map, the ControlNet model generates an image that'll preserve the spatial information from the depth map. It is a more flexible and accurate way to control the image generation process.
 
-Using ControlNet-XS instead of regular ControlNet will produce images of roughly the same quality, but 20-25% faster ([see benchmark](https://github.com/UmerHA/controlnet-xs-benchmark/blob/main/Speed%20Benchmark.ipynb) with StableDiffusion-XL) and with ~45% less memory usage.
+ControlNet-XS generates images with comparable quality to a regular ControlNet, but it is 20-25% faster ([see benchmark](https://github.com/UmerHA/controlnet-xs-benchmark/blob/main/Speed%20Benchmark.ipynb) with StableDiffusion-XL) and uses ~45% less memory.
 
 Here's the overview from the [project page](https://vislearn.github.io/ControlNet-XS/):
 
