@@ -683,7 +683,7 @@ class StableDiffusionXLPipeline(
                 XFormersAttnProcessor,
                 LoRAXFormersAttnProcessor,
                 LoRAAttnProcessor2_0,
-                FusedAttnProcessor2_0
+                FusedAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
@@ -841,7 +841,7 @@ class StableDiffusionXLPipeline(
     @property
     def num_timesteps(self):
         return self._num_timesteps
-    
+
     def _enable_bfloat16_for_vae(self):
         self.vae = self.vae.to(torch.bfloat16)
 
