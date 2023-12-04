@@ -48,10 +48,10 @@ def push_to_hf_dataset():
             previous_results[column] = previous_results[column].astype(float)
             percent_change = ((current_results[column] - previous_results[column]) / previous_results[column]) * 100
 
-        # Format the values with '+' or '-' sign and append to original values
-        current_results[column] = current_results[column].map(str) + percent_change.map(
-            lambda x: f" ({'+' if x > 0 else ''}{x:.2f}%)"
-        )
+            # Format the values with '+' or '-' sign and append to original values
+            current_results[column] = current_results[column].map(str) + percent_change.map(
+                lambda x: f" ({'+' if x > 0 else ''}{x:.2f}%)"
+            )
 
         # Overwrite the current result file.
         current_results.to_csv(FINAL_CSV_FILE, index=False)
