@@ -672,9 +672,10 @@ class StableDiffusionXLPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
     def upcast_vae(self):
+        from ...models.attention_processor import FusedAttnProcessor2_0
+
         dtype = self.vae.dtype
         self.vae.to(dtype=torch.float32)
-        print(f"Processor: {self.vae.decoder.mid_block.attentions[0].processor}")
         use_torch_2_0_or_xformers = isinstance(
             self.vae.decoder.mid_block.attentions[0].processor,
             (
@@ -682,6 +683,7 @@ class StableDiffusionXLPipeline(
                 XFormersAttnProcessor,
                 LoRAXFormersAttnProcessor,
                 LoRAAttnProcessor2_0,
+                FusedAttnProcessor2_0
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
