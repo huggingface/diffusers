@@ -12,6 +12,7 @@ from diffusers import (
     StableDiffusionControlNetPipeline,
     StableDiffusionXLAdapterPipeline,
     StableDiffusionXLControlNetPipeline,
+    T2IAdapter
 )
 from diffusers.utils import load_image
 
@@ -89,6 +90,8 @@ class TextToImageBenchmark(BaseBenchmak):
 
     def benchmark(self, args):
         flush()
+
+        print(f"Running benchmark with: {args}\n")
 
         time = benchmark_fn(self.run_inference, self.pipe, args)  # in seconds.
         memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
@@ -189,6 +192,7 @@ class ControlNetSDXLBenchmark(ControlNetBenchmark):
 
 class T2IAdapterBenchmark(ControlNetBenchmark):
     pipeline_class = StableDiffusionAdapterPipeline
+    aux_network_class = T2IAdapter
     root_ckpt = "CompVis/stable-diffusion-v1-4"
 
     def __init__(self, args):
