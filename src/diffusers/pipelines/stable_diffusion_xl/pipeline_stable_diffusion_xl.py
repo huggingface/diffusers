@@ -842,6 +842,22 @@ class StableDiffusionXLPipeline(
         self.vae = self.vae.to(torch.bfloat16)
         self.is_vae_in_blfoat16 = True
 
+    def _change_to_group_norm_32(self):
+        class GroupNorm32(torch.nn.GroupNorm):
+            def forward(self, x):
+                return super().forward(x.float()).type(x.dtype)
+
+        def recursive_fn(model):
+            for name, module in model.named_children():
+                if isinstance(module, torch.nn.GroupNorm):
+                    new_gn = GroupNorm32(module.num_groups, module.num_channels, module.eps, module.affine)
+                    setattr(model, name, new_gn)
+                elif len(list(module.children())) > 0:
+                    recursive_fn(module)
+
+        recursive_fn(self.unet)
+        recursive_fn(self.vae)
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
