@@ -109,15 +109,17 @@ class Attention(nn.Module):
         residual_connection: bool = False,
         _from_deprecated_attn_block: bool = False,
         processor: Optional["AttnProcessor"] = None,
+        out_dim: int = None,
     ):
         super().__init__()
-        self.inner_dim = dim_head * heads
+        self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
         self.rescale_output_factor = rescale_output_factor
         self.residual_connection = residual_connection
         self.dropout = dropout
+        self.out_dim = out_dim if out_dim is not None else query_dim
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
@@ -126,7 +128,7 @@ class Attention(nn.Module):
         self.scale_qk = scale_qk
         self.scale = dim_head**-0.5 if self.scale_qk else 1.0
 
-        self.heads = heads
+        self.heads = out_dim // dim_head if out_dim is not None else heads
         # for slice_size > 0 the attention score computation
         # is split across the batch axis to save memory
         # You can set slice_size with `set_attention_slice`
@@ -193,7 +195,7 @@ class Attention(nn.Module):
             self.add_v_proj = linear_cls(added_kv_proj_dim, self.inner_dim)
 
         self.to_out = nn.ModuleList([])
-        self.to_out.append(linear_cls(self.inner_dim, query_dim, bias=out_bias))
+        self.to_out.append(linear_cls(self.inner_dim, self.out_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor

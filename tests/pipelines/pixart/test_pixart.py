@@ -320,51 +320,21 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @slow
 @require_torch_gpu
 class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
+    ckpt_id_1024 = "PixArt-alpha/PixArt-XL-2-1024-MS"
+    ckpt_id_512 = "PixArt-alpha/PixArt-XL-2-512x512"
+    prompt = "A small cactus with a happy face in the Sahara desert."
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_pixart_1024_fast(self):
-        generator = torch.manual_seed(0)
-
-        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
-
-        prompt = "A small cactus with a happy face in the Sahara desert."
-
-        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
-
-        image_slice = image[0, -3:, -3:, -1]
-
-        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
-
-    def test_pixart_512_fast(self):
-        generator = torch.manual_seed(0)
-
-        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-512x512", torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
-
-        prompt = "A small cactus with a happy face in the Sahara desert."
-
-        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
-
-        image_slice = image[0, -3:, -3:, -1]
-
-        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
-
     def test_pixart_1024(self):
         generator = torch.manual_seed(0)
 
-        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
+        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
-        prompt = "A small cactus with a happy face in the Sahara desert."
+        prompt = self.prompt
 
         image = pipe(prompt, generator=generator, output_type="np").images
 
@@ -378,10 +348,10 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_512(self):
         generator = torch.manual_seed(0)
 
-        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-512x512", torch_dtype=torch.float16)
+        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
-        prompt = "A small cactus with a happy face in the Sahara desert."
+        prompt = self.prompt
 
         image = pipe(prompt, generator=generator, output_type="np").images
 
@@ -395,17 +365,66 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     def test_pixart_1024_without_resolution_binning(self):
         generator = torch.manual_seed(0)
 
-        pipe = PixArtAlphaPipeline.from_pretrained("PixArt-alpha/PixArt-XL-2-1024-MS", torch_dtype=torch.float16)
+        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
-        prompt = "A small cactus with a happy face in the Sahara desert."
+        prompt = self.prompt
+        height, width = 1024, 768
+        num_inference_steps = 10
 
-        image = pipe(prompt, generator=generator, num_inference_steps=5, output_type="np").images
+        image = pipe(
+            prompt,
+            height=height,
+            width=width,
+            generator=generator,
+            num_inference_steps=num_inference_steps,
+            output_type="np",
+        ).images
         image_slice = image[0, -3:, -3:, -1]
 
         generator = torch.manual_seed(0)
         no_res_bin_image = pipe(
-            prompt, generator=generator, num_inference_steps=5, output_type="np", use_resolution_binning=False
+            prompt,
+            height=height,
+            width=width,
+            generator=generator,
+            num_inference_steps=num_inference_steps,
+            output_type="np",
+            use_resolution_binning=False,
+        ).images
+        no_res_bin_image_slice = no_res_bin_image[0, -3:, -3:, -1]
+
+        assert not np.allclose(image_slice, no_res_bin_image_slice, atol=1e-4, rtol=1e-4)
+
+    def test_pixart_512_without_resolution_binning(self):
+        generator = torch.manual_seed(0)
+
+        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
+        pipe.enable_model_cpu_offload()
+
+        prompt = self.prompt
+        height, width = 512, 768
+        num_inference_steps = 10
+
+        image = pipe(
+            prompt,
+            height=height,
+            width=width,
+            generator=generator,
+            num_inference_steps=num_inference_steps,
+            output_type="np",
+        ).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        generator = torch.manual_seed(0)
+        no_res_bin_image = pipe(
+            prompt,
+            height=height,
+            width=width,
+            generator=generator,
+            num_inference_steps=num_inference_steps,
+            output_type="np",
+            use_resolution_binning=False,
         ).images
         no_res_bin_image_slice = no_res_bin_image[0, -3:, -3:, -1]
 
