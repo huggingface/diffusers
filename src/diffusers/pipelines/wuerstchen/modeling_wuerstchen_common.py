@@ -35,6 +35,7 @@ class TimestepBlock(nn.Module):
     def __init__(self, c, c_timestep):
         super().__init__()
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        self.linear_cls = linear_cls
         self.mapper = linear_cls(c_timestep, c * 2)
 
     def forward(self, x, t):

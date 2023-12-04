@@ -175,11 +175,8 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        if USE_PEFT_BACKEND:
-            linear_cls = nn.Linear
-        else:
-            linear_cls = LoRACompatibleLinear
-
+        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        self.linear_cls = linear_cls
         self.to_q = linear_cls(query_dim, self.inner_dim, bias=bias)
 
         if not self.only_cross_attention:

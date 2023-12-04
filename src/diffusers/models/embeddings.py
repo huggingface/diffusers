@@ -200,6 +200,7 @@ class TimestepEmbedding(nn.Module):
     ):
         super().__init__()
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        self.linear_cls = linear_cls
 
         self.linear_1 = linear_cls(in_channels, time_embed_dim)
 

@@ -43,6 +43,7 @@ class WuerstchenPrior(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         super().__init__()
         conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        self.linear_cls = linear_cls
 
         self.c_r = c_r
         self.projection = conv_cls(c_in, c, kernel_size=1)

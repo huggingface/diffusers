@@ -107,6 +107,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        self.linear_cls = linear_cls
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration

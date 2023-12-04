@@ -88,6 +88,7 @@ class GEGLU(nn.Module):
     def __init__(self, dim_in: int, dim_out: int, bias: bool = True):
         super().__init__()
         linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
+        self.linear_cls = linear_cls
 
         self.proj = linear_cls(dim_in, dim_out * 2, bias=bias)
 
