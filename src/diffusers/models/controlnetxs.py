@@ -143,7 +143,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
         Parameters:
             base_model (`UNet2DConditionModel`):
-                Base unet model. Needs to be either StableDiffusion or StableDiffusion-XL.
+                Base UNet model. Needs to be either StableDiffusion or StableDiffusion-XL.
             is_sdxl (`bool`, defaults to `True`):
                 Whether passed `base_model` is a StableDiffusion-XL model.
         """
