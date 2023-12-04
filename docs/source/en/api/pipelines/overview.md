@@ -40,6 +40,8 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Consistency Models](consistency_models) | unconditional image generation |
 | [ControlNet](controlnet) | text2image, image2image, inpainting |
 | [ControlNet with Stable Diffusion XL](controlnet_sdxl) | text2image |
+| [ControlNet-XS](controlnetxs) | text2image |
+| [ControlNet-XS with Stable Diffusion XL](controlnetxs_sdxl) | text2image |
 | [Cycle Diffusion](cycle_diffusion) | image2image |
 | [Dance Diffusion](dance_diffusion) | unconditional audio generation |
 | [DDIM](ddim) | unconditional image generation |
