@@ -156,6 +156,9 @@ class ControlNetBenchmark(TextToImageBenchmark):
         )
         pipe = pipe.to("cuda")
 
+        pipe.set_progress_bar_config(disable=True)
+        self.pipe = pipe
+
         if args.run_compile:
             pipe.unet.to(memory_format=torch.channels_last)
             pipe.controlnet.to(memory_format=torch.channels_last)
