@@ -69,9 +69,9 @@ from diffusers.utils.import_utils import is_xformers_available
 MAX_SEQ_LENGTH = 77
 
 # Adjust for your dataset
-WDS_JSON_WIDTH = "width"      # original_width for LAION
-WDS_JSON_HEIGHT = "height"    # original_height for LAION
-MIN_SIZE = 700                # ~960 for LAION, ideal: 1024 if the dataset contains large images
+WDS_JSON_WIDTH = "width"  # original_width for LAION
+WDS_JSON_HEIGHT = "height"  # original_height for LAION
+MIN_SIZE = 700  # ~960 for LAION, ideal: 1024 if the dataset contains large images
 
 if is_wandb_available():
     import wandb
