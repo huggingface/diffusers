@@ -18,6 +18,11 @@ def has_previous_benchmark() -> str:
         csv_path = None
     return csv_path
 
+def filter_float(value):
+    if isinstance(value, str):
+        return value.split()[0]
+    return value
+
 
 def push_to_hf_dataset():
     all_csvs = sorted(glob.glob(f"{BASE_PATH}/*.csv"))
@@ -37,7 +42,7 @@ def push_to_hf_dataset():
         ]
 
         for column in numeric_columns:
-            previous_results[column] = previous_results[column].apply(lambda x: x.split()[0])
+            previous_results[column] = previous_results[column].apply(lambda x: filter_float(x))
 
             # Calculate the percentage change
             current_results[column] = current_results[column].astype(float)
