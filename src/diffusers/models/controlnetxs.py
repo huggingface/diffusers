@@ -127,7 +127,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         time_embedding_dim (`int`, defaults to 1280):
             Dimension of output from time embedding. Needs to be same as in the base model.
         learn_embedding (`bool`, defaults to `False`):
-            Wether to use time embedding of the control model. If yes, the time embedding is a linear interpolation of
+            Whether to use time embedding of the control model. If yes, the time embedding is a linear interpolation of
             the time embeddings of the control and base model with interpolation parameter `time_embedding_mix**3`.
         time_embedding_mix (`float`, defaults to 1.0):
             Linear interpolation parameter used if `learn_embedding` is `True`. A value of 1.0 means only the
@@ -147,14 +147,25 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             is_sdxl (`bool`, defaults to `True`):
                 Wether passed `base_model` is a StableDiffusion-XL model.
         """
+
+        def get_dim_attn_heads(base_model: UNet2DConditionModel, size_ratio: float, num_attn_heads: int):
+            """
+            Currently, diffusers can only set the dimension of attention heads (see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why).
+            The original ControlNet-XS model, however, define the number of attention heads.
+            That's why compute the dimensions needed to get the correct number of attention heads.
+            """
+            block_out_channels = [int(size_ratio * c) for c in base_model.config.block_out_channels]
+            dim_attn_heads = [math.ceil(c / num_attn_heads) for c in block_out_channels]
+            return dim_attn_heads
+
         if is_sdxl:
             return ControlNetXSModel.from_unet(
                 base_model,
                 time_embedding_mix=0.95,
                 learn_embedding=True,
                 size_ratio=0.1,
-                dim_attention_heads=64,
                 conditioning_embedding_out_channels=(16, 32, 96, 256),
+                num_attention_heads=get_dim_attn_heads(base_model, 0.1, 64),
             )
         else:
             return ControlNetXSModel.from_unet(
@@ -162,8 +173,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 time_embedding_mix=1.0,
                 learn_embedding=True,
                 size_ratio=0.0125,
-                dim_attention_heads=8,
                 conditioning_embedding_out_channels=(16, 32, 96, 256),
+                num_attention_heads=get_dim_attn_heads(base_model, 0.0125, 8),
             )
 
     @classmethod
@@ -261,7 +272,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         cross_attention_dim: Union[int, Tuple[int]] = 1280,
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = 8,
-        use_linear_projection: bool = False,
         upcast_attention: bool = False,
     ):
         super().__init__()
@@ -275,9 +285,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             norm_num_groups=norm_num_groups,
             cross_attention_dim=cross_attention_dim,
             transformer_layers_per_block=transformer_layers_per_block,
-            attention_head_dim=attention_head_dim,
-            num_attention_heads=num_attention_heads,
-            use_linear_projection=use_linear_projection,
+            attention_head_dim=num_attention_heads,
+            use_linear_projection=True,
             upcast_attention=upcast_attention,
             time_embedding_dim=time_embedding_dim,
         )
@@ -363,8 +372,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         time_embedding_mix: float = 1.0,
         block_out_channels: Optional[Tuple[int]] = None,
         size_ratio: Optional[float] = None,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
-        dim_attention_heads: Optional[int] = None,
+        num_attention_heads: Optional[Union[int, Tuple[int]]] = 8,
         norm_num_groups: Optional[int] = None,
     ):
         r"""
@@ -386,14 +394,15 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             time_embedding_mix (`float`, defaults to 1.0):
                 Linear interpolation parameter used if `learn_embedding` is `True`.
             block_out_channels (`Tuple[int]`, *optional*):
-                Down blocks output channels in control model. Either this or `block_out_channels` must be given.
+                Down blocks output channels in control model. Either this or `size_ratio` must be given.
             size_ratio (float, *optional*):
                 When given, block_out_channels is set to a relative fraction of the base model's block_out_channels.
-                Either this or `size_ratio` must be given.
+                Either this or `block_out_channels` must be given.
+            num_attention_heads (`Union[int, Tuple[int]]`, *optional*):
+                The dimension of the attention heads. The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
             norm_num_groups (int, *optional*, defaults to `None`):
                 The number of groups to use for the normalization of the control unet. If `None`,
                 `int(unet.config.norm_num_groups * size_ratio)` is taken.
-
         """
 
         # Check input
@@ -404,15 +413,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 "Pass exactly one of `block_out_channels` (for absolute sizing) or `control_model_ratio` (for relative sizing)."
             )
 
-        if num_attention_heads is not None and dim_attention_heads is not None:
-            raise ValueError("Pass only one of `num_attention_heads` or `dim_attention_heads`.")
-
         # Create model
         if block_out_channels is None:
             block_out_channels = [int(size_ratio * c) for c in unet.config.block_out_channels]
-
-        if dim_attention_heads is not None:
-            num_attention_heads = [math.ceil(c / dim_attention_heads) for c in block_out_channels]
 
         # Check that attention heads and group norms match channel sizes
         # - attention heads
@@ -422,10 +425,10 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             else:
                 return all(c % attn_heads == 0 for c in channel_sizes)
 
-        attention_head_dim = num_attention_heads or unet.config.attention_head_dim
-        if not attn_heads_match_channel_sizes(attention_head_dim, block_out_channels):
+        num_attention_heads = num_attention_heads or unet.config.attention_head_dim
+        if not attn_heads_match_channel_sizes(num_attention_heads, block_out_channels):
             raise ValueError(
-                f"The number of attention heads ({attention_head_dim}) must divide `block_out_channels` ({block_out_channels}). If you didn't set `num_attention_heads` or `attention_head_dim` the default settings don't match your model. Set one of them  manually."
+                f"The dimension of attention heads ({num_attention_heads}) must divide `block_out_channels` ({block_out_channels}). If you didn't set `num_attention_heads` the default settings don't match your model. Set `num_attention_heads` manually."
             )
 
         # - group norms
@@ -444,7 +447,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                     )
                 else:
                     raise ValueError(
-                        f"`block_out_channels` ({block_out_channels}) don't match the base models `norm_num_groups` ({unet.config.norm_num_groups}). Setting `norm_num_groups` to `min(norm_num_groups)` ({norm_num_groups}) didn't fix this. Pass `norm_num_groups` explicitly so it divides all block_out_channels."
+                        f"`block_out_channels` ({block_out_channels}) don't match the base models `norm_num_groups` ({unet.config.norm_num_groups}). Setting `norm_num_groups` to `min(block_out_channels)` ({norm_num_groups}) didn't fix this. Pass `norm_num_groups` explicitly so it divides all block_out_channels."
                     )
 
         def get_time_emb_input_dim(unet: UNet2DConditionModel):
@@ -458,20 +461,16 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         #    (ii)  it's not used for the time embedding (as time embedding of control model is never used), and
         #    (iii) it's not set further below anyway
         to_keep = [
-            "attention_head_dim",
             "cross_attention_dim",
             "down_block_types",
             "sample_size",
             "transformer_layers_per_block",
             "up_block_types",
             "upcast_attention",
-            "use_linear_projection",
-            "num_attention_heads",
         ]
         kwargs = {k: v for k, v in dict(unet.config).items() if k in to_keep}
         kwargs.update(block_out_channels=block_out_channels)
-        if num_attention_heads is not None:
-            kwargs.update(attention_head_dim=attention_head_dim)
+        kwargs.update(num_attention_heads=num_attention_heads)
         kwargs.update(norm_num_groups=norm_num_groups)
 
         # Add controlnetxs-specific params

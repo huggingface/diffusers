@@ -30,8 +30,6 @@ This model was contributed by [UmerHA](https://twitter.com/UmerHAdil). ❤️
 
 </Tip>
 
-If you don't see a checkpoint you're interested in, you can train your own SDXL ControlNet with our [training script](../../../../../examples/controlnet/README_sdxl).
-
 <Tip>
 
 Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.

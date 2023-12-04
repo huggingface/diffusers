@@ -135,7 +135,7 @@ class ControlNetXSPipelineFastTests(
             learn_embedding=True,
             size_ratio=0.5,
             conditioning_embedding_out_channels=(16, 32),
-            dim_attention_heads=2,
+            num_attention_heads=2,
         )
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
