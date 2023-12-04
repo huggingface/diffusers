@@ -656,13 +656,6 @@ def parse_args(input_args=None):
             "inversion training check `--train_text_encoder_ti`"
         )
 
-    if args.train_text_encoder_ti:
-        # we parse the provided token identifier (or identifiers) into a list. s.t. - "TOK" -> ["TOK"], "TOK,
-        # TOK2" -> ["TOK", "TOK2"] etc.
-        args.token_abstraction = "".join(args.token_abstraction.split()).split(",")
-        # logger is not available yet
-        warnings.warn(f"list of token identifiers: {args.token_abstraction}")
-
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -1135,9 +1128,14 @@ def main(args):
     )
 
     if args.train_text_encoder_ti:
+        # we parse the provided token identifier (or identifiers) into a list. s.t. - "TOK" -> ["TOK"], "TOK,
+        # TOK2" -> ["TOK", "TOK2"] etc.
+        token_abstraction_list = "".join(args.token_abstraction.split()).split(",")
+        logger.info(f"list of token identifiers: {token_abstraction_list}")
+
         token_abstraction_dict = {}
         token_idx = 0
-        for i, token in enumerate(args.token_abstraction):
+        for i, token in enumerate(token_abstraction_list):
             token_abstraction_dict[token] = [
                 f"<s{token_idx + i + j}>" for j in range(args.num_new_tokens_per_abstraction)
             ]
