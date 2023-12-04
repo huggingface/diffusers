@@ -816,10 +816,10 @@ class LoraLoaderMixin:
             raise ValueError("You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers`.")
 
         if unet_lora_layers:
-            state_dict.update(pack_weights(unet_lora_layers, "unet"))
+            state_dict.update(pack_weights(unet_lora_layers, cls.unet_name))
 
         if text_encoder_lora_layers:
-            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+            state_dict.update(pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
 
         # Save the model
         cls.write_lora_layers(
@@ -1376,10 +1376,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             )
 
         if unet_lora_layers:
-            state_dict.update(pack_weights(unet_lora_layers, "unet"))
+            state_dict.update(pack_weights(unet_lora_layers, cls.unet_name))
 
         if text_encoder_lora_layers and text_encoder_2_lora_layers:
-            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+            state_dict.update(pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
             state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
         cls.write_lora_layers(
