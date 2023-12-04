@@ -163,7 +163,7 @@ class ControlNetBenchmark(TextToImageBenchmark):
         if args.run_compile:
             pipe.unet.to(memory_format=torch.channels_last)
             pipe.controlnet.to(memory_format=torch.channels_last)
-            
+
             print("Run torch compile")
             pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
             pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
@@ -192,6 +192,9 @@ class T2IAdapterBenchmark(ControlNetBenchmark):
     aux_network_class = T2IAdapter
     root_ckpt = "CompVis/stable-diffusion-v1-4"
 
+    url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_for_adapter.png"
+    image = load_image(url).convert("RGB")
+
     def __init__(self, args):
         aux_network = self.aux_network_class.from_pretrained(args.ckpt, torch_dtype=torch.float16)
         pipe = self.pipeline_class.from_pretrained(self.root_ckpt, adapter=aux_network, torch_dtype=torch.float16)
@@ -203,7 +206,7 @@ class T2IAdapterBenchmark(ControlNetBenchmark):
         if args.run_compile:
             pipe.unet.to(memory_format=torch.channels_last)
             pipe.adapter.to(memory_format=torch.channels_last)
-            
+
             print("Run torch compile")
             pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
             pipe.adapter = torch.compile(pipe.adapter, mode="reduce-overhead", fullgraph=True)

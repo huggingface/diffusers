@@ -5,8 +5,10 @@ from typing import List
 
 PATTERN = "benchmark_*.py"
 
+
 class SubprocessCallException(Exception):
     pass
+
 
 # Taken from `test_examples_utils.py`
 def run_command(command: List[str], return_stdout=False):
