@@ -2879,12 +2879,22 @@ pipe = pipe.to("cuda")
 prompt = "Envision a portrait of an elderly woman, her face a canvas of time, framed by a headscarf with muted tones of rust and cream. Her eyes, blue like faded denim. Her attire, simple yet dignified."
 negative_prompt = "blurry, ugly, duplicate, poorly drawn, deformed, mosaic"
 
-images = pipe(prompt, negative_prompt=negative_prompt,
-              height=3072, width=3072, view_batch_size=16, stride=64,
-              num_inference_steps=50, guidance_scale=7.5,
-              cosine_scale_1=3, cosine_scale_2=1, cosine_scale_3=1, sigma=0.8,
-              multi_decoder=True, show_image=True
-             )
+images = pipe(
+    prompt, 
+    negative_prompt=negative_prompt,
+    height=3072, 
+    width=3072, 
+    view_batch_size=16, 
+    stride=64,
+    num_inference_steps=50, 
+    guidance_scale=7.5,
+    cosine_scale_1=3, 
+    cosine_scale_2=1, 
+    cosine_scale_3=1, 
+    sigma=0.8,
+    multi_decoder=True, 
+    show_image=True
+)
 ```
 You can display and save the generated images as:
 ```
