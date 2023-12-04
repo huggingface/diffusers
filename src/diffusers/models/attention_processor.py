@@ -698,8 +698,8 @@ class Attention(nn.Module):
     @torch.no_grad()
     def fuse_projections(self, fuse=True):
         is_cross_attention = self.cross_attention_dim == self.query_dim
-        device = self.to_q.device
-        dtype = self.to_q.dtype
+        device = self.to_q.weight.data.device
+        dtype = self.to_q.weight.data.dtype
 
         if not is_cross_attention:
             # fetch weight matrices.
