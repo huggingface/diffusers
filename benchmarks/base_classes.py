@@ -12,7 +12,7 @@ from diffusers import (
     StableDiffusionControlNetPipeline,
     StableDiffusionXLAdapterPipeline,
     StableDiffusionXLControlNetPipeline,
-    T2IAdapter
+    T2IAdapter,
 )
 from diffusers.utils import load_image
 
@@ -70,7 +70,7 @@ class TextToImageBenchmark(BaseBenchmak):
     pipeline_class = AutoPipelineForText2Image
 
     def __init__(self, args):
-        pipe = self.pipeline_class.from_pretrained(args.ckpt, torch_dtype=torch.float16, use_safetensors=True)
+        pipe = self.pipeline_class.from_pretrained(args.ckpt, torch_dtype=torch.float16)
         pipe = pipe.to("cuda")
 
         if args.run_compile:
@@ -91,7 +91,7 @@ class TextToImageBenchmark(BaseBenchmak):
     def benchmark(self, args):
         flush()
 
-        print(f"Running benchmark with: {args}\n")
+        print(f"Running benchmark with: {dict(args)}\n")
 
         time = benchmark_fn(self.run_inference, self.pipe, args)  # in seconds.
         memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
@@ -153,12 +153,8 @@ class ControlNetBenchmark(TextToImageBenchmark):
     image = load_image(url).convert("RGB")
 
     def __init__(self, args):
-        aux_network = self.aux_network_class.from_pretrained(
-            args.ckpt, torch_dtype=torch.float16, use_safetensors=True
-        )
-        pipe = self.pipeline_class.from_pretrained(
-            self.root_ckpt, controlnet=aux_network, torch_dtype=torch.float16, use_safetensors=True
-        )
+        aux_network = self.aux_network_class.from_pretrained(args.ckpt, torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(self.root_ckpt, controlnet=aux_network, torch_dtype=torch.float16)
         pipe = pipe.to("cuda")
 
         pipe.set_progress_bar_config(disable=True)

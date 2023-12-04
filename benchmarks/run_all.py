@@ -9,7 +9,7 @@ def main():
     python_files = glob.glob(PATTERN)
 
     for file in python_files:
-        print(f"Running {file}.")
+        print(f"******Running file: {file} ******")
         subprocess.run(["python", file])
         subprocess.run(["python", file, "--run_compile"])
 
