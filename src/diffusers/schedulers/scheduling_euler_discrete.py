@@ -290,7 +290,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
-        if "cuda" in str(sigmas.device):
+        if sigmas.device.type == "cuda":
             self.sigmas = self.sigmas.tolist()
         self._step_index = None
 
