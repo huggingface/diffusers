@@ -142,10 +142,10 @@ class ControlNetBenchmark(TextToImageBenchmark):
     pipeline_class = StableDiffusionControlNetPipeline
     aux_network_class = ControlNetModel
 
-    image_url = (
+    url = (
         "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_image_condition.png"
     )
-    image = load_image(image_url).convert("RGB")
+    image = load_image(url).convert("RGB")
 
     def __init__(self, args):
         if isinstance(self.pipeline_class, StableDiffusionControlNetPipeline):
