@@ -45,7 +45,7 @@ jobs:
             HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
             BASE_PATH: benchmark_outputs
         run: |
-          python -c "import torch; print(torch.cuda.get_device_properties(0).total_memory / (1024**3))"
+          export TOTAL_GPU_MEMORY=$(python -c "import torch; print(torch.cuda.get_device_properties(0).total_memory / (1024**3))")
           cd benchmarks && mkdir ${BASE_PATH} && python run_all.py && python push_results.py
 
       - name: Test suite reports artifacts
