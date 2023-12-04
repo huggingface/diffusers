@@ -102,7 +102,7 @@ class TextToImageBenchmark(BaseBenchmak):
 
 class ImageToImageBenchmark(TextToImageBenchmark):
     pipeline_class = AutoPipelineForImage2Image
-    url = "https://upload.wikimedia.org/wikipedia/commons/thumb/0/0f/1665_Girl_with_a_Pearl_Earring.jpg/800px-1665_Girl_with_a_Pearl_Earring.jpg"
+    url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/1665_Girl_with_a_Pearl_Earring.jpg/800px-1665_Girl_with_a_Pearl_Earring.jpg"
     image = load_image(url).convert("RGB")
 
     def __init__(self, args):
@@ -120,7 +120,7 @@ class ImageToImageBenchmark(TextToImageBenchmark):
 
 class InpaintingBenchmark(ImageToImageBenchmark):
     pipeline_class = AutoPipelineForInpainting
-    mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+    mask_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/overture-creations-5sI6fQgYIuo_mask.png"
     mask = load_image(mask_url).convert("RGB")
 
     def __init__(self, args):
@@ -142,9 +142,7 @@ class ControlNetBenchmark(TextToImageBenchmark):
     pipeline_class = StableDiffusionControlNetPipeline
     aux_network_class = ControlNetModel
 
-    url = (
-        "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_image_condition.png"
-    )
+    url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_image_condition.png"
     image = load_image(url).convert("RGB")
 
     def __init__(self, args):
