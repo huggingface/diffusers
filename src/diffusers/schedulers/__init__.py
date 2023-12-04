@@ -77,6 +77,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["scheduling_ddim_flax"] = ["FlaxDDIMScheduler"]
     _import_structure["scheduling_ddpm_flax"] = ["FlaxDDPMScheduler"]
+    _import_structure["scheduling_lcm_flax"] = ["FlaxLCMScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_flax"] = ["FlaxDPMSolverMultistepScheduler"]
     _import_structure["scheduling_euler_discrete_flax"] = ["FlaxEulerDiscreteScheduler"]
     _import_structure["scheduling_karras_ve_flax"] = ["FlaxKarrasVeScheduler"]
@@ -165,6 +166,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_ddim_flax import FlaxDDIMScheduler
         from .scheduling_ddpm_flax import FlaxDDPMScheduler
         from .scheduling_dpmsolver_multistep_flax import FlaxDPMSolverMultistepScheduler
+        from .scheduling_lcm_flax import FlaxLCMScheduler
         from .scheduling_euler_discrete_flax import FlaxEulerDiscreteScheduler
         from .scheduling_karras_ve_flax import FlaxKarrasVeScheduler
         from .scheduling_lms_discrete_flax import FlaxLMSDiscreteScheduler

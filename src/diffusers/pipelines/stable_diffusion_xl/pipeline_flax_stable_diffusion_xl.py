@@ -28,6 +28,7 @@ from ...schedulers import (
     FlaxDPMSolverMultistepScheduler,
     FlaxLMSDiscreteScheduler,
     FlaxPNDMScheduler,
+    FlaxLCMScheduler
 )
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
 from .pipeline_output import FlaxStableDiffusionXLPipelineOutput
@@ -49,7 +50,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         tokenizer_2: CLIPTokenizer,
         unet: FlaxUNet2DConditionModel,
         scheduler: Union[
-            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler
+            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler, FlaxLCMScheduler
         ],
         dtype: jnp.dtype = jnp.float32,
     ):
