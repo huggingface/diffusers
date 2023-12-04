@@ -28,6 +28,7 @@ def push_to_hf_dataset():
     if csv_path is not None:
         current_results = pd.read_csv(FINAL_CSV_FILE)
         previous_results = pd.read_csv(csv_path)
+
         numeric_columns = current_results.select_dtypes(include=["float64", "int64"]).columns
         numeric_columns = [
             c
@@ -36,6 +37,8 @@ def push_to_hf_dataset():
         ]
 
         for column in numeric_columns:
+            previous_results[column] = previous_results[column].apply(lambda x: x.split()[0])
+
             # Calculate the percentage change
             current_results[column] = current_results[column].astype(float)
             previous_results[column] = previous_results[column].astype(float)
