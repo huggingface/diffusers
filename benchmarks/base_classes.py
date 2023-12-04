@@ -193,7 +193,7 @@ class T2IAdapterBenchmark(ControlNetBenchmark):
     root_ckpt = "CompVis/stable-diffusion-v1-4"
 
     url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_for_adapter.png"
-    image = load_image(url).convert("RGB")
+    image = load_image(url)
 
     def __init__(self, args):
         aux_network = self.aux_network_class.from_pretrained(args.ckpt, torch_dtype=torch.float16)
