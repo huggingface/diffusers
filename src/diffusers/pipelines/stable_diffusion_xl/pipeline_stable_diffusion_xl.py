@@ -770,14 +770,14 @@ class StableDiffusionXLPipeline(
         if unet:
             if not self.fusing_unet:
                 logger.warning("The UNet was not initially fused for QKV projections. Doing nothing.")
-                return
-            self.unet.disable_fused_qkv_projections()
+            else:
+                self.unet.disable_fused_qkv_projections()
 
         if vae:
             if not self.fusing_vae:
                 logger.warning("The VAE was not initially fused for QKV projections. Doing nothing.")
-                return
-            self.vae.disable_fused_qkv_projections()
+            else:
+                self.vae.disable_fused_qkv_projections()
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
