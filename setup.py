@@ -121,6 +121,7 @@ _deps = [
     "ruff>=0.1.5,<=0.2",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
+    "GitPython<3.1.19",
     "scipy",
     "onnx",
     "regex!=2019.12.17",
@@ -206,6 +207,7 @@ extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
     "compel",
+    "GitPython",
     "datasets",
     "Jinja2",
     "invisible-watermark",
