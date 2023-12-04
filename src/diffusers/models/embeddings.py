@@ -453,7 +453,7 @@ class ImageProjection(nn.Module):
 
     def forward(self, image_embeds: torch.FloatTensor):
         batch_size = image_embeds.shape[0]
-        
+
         # image
         image_embeds = self.image_embeds(image_embeds)
         image_embeds = image_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
