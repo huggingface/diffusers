@@ -32,7 +32,7 @@ def main():
     python_files = glob.glob(PATTERN)
 
     for file in python_files:
-        print(f"******Running file: {file} ******")
+        print(f"****** Running file: {file} ******")
         run_command(f"python {file}".split())
         run_command(f"python {file} --run_compile".split())
 
