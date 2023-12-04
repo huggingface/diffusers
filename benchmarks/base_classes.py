@@ -41,8 +41,6 @@ RESOLUTION_MAPPING = {
     "stabilityai/stable-diffusion-xl-refiner-1.0": (1024, 1024),
 }
 
-CONTROLNET_MAPPING = {}
-
 
 class BaseBenchmak:
     pipeline_class = None
@@ -156,11 +154,7 @@ class ControlNetBenchmark(TextToImageBenchmark):
 
     def __init__(self, args):
         aux_network = self.aux_network_class.from_pretrained(args.ckpt, torch_dtype=torch.float16)
-
-        if self.aux_network_class == ControlNetModel:
-            pipe = self.pipeline_class.from_pretrained(self.root_ckpt, controlnet=aux_network, torch_dtype=torch.float16)
-        else:
-            pipe = self.pipeline_class.from_pretrained(self.root_ckpt, adapter=aux_network, torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(self.root_ckpt, controlnet=aux_network, torch_dtype=torch.float16)
         pipe = pipe.to("cuda")
 
         pipe.set_progress_bar_config(disable=True)
@@ -168,17 +162,11 @@ class ControlNetBenchmark(TextToImageBenchmark):
 
         if args.run_compile:
             pipe.unet.to(memory_format=torch.channels_last)
-            if self.aux_network_class == ControlNetModel:
-                pipe.controlnet.to(memory_format=torch.channels_last)
-            else:
-                pipe.adapter.to(memory_format=torch.channels_last)
+            pipe.controlnet.to(memory_format=torch.channels_last)
             
             print("Run torch compile")
             pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-            if self.aux_network_class == ControlNetModel:
-                pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
-            else:
-                pipe.adapter = torch.compile(pipe.adapter, mode="reduce-overhead", fullgraph=True)
+            pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
 
         self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
 
@@ -205,7 +193,22 @@ class T2IAdapterBenchmark(ControlNetBenchmark):
     root_ckpt = "CompVis/stable-diffusion-v1-4"
 
     def __init__(self, args):
-        super().__init__(args)
+        aux_network = self.aux_network_class.from_pretrained(args.ckpt, torch_dtype=torch.float16)
+        pipe = self.pipeline_class.from_pretrained(self.root_ckpt, adapter=aux_network, torch_dtype=torch.float16)
+        pipe = pipe.to("cuda")
+
+        pipe.set_progress_bar_config(disable=True)
+        self.pipe = pipe
+
+        if args.run_compile:
+            pipe.unet.to(memory_format=torch.channels_last)
+            pipe.adapter.to(memory_format=torch.channels_last)
+            
+            print("Run torch compile")
+            pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+            pipe.adapter = torch.compile(pipe.adapter, mode="reduce-overhead", fullgraph=True)
+
+        self.image = self.image.resize(RESOLUTION_MAPPING[args.ckpt])
 
 
 class T2IAdapterSDXLBenchmark(T2IAdapterBenchmark):
