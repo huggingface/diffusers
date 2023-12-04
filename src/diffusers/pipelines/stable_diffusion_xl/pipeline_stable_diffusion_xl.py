@@ -670,10 +670,7 @@ class StableDiffusionXLPipeline(
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         return add_time_ids
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
     def upcast_vae(self):
-        from ...models.attention_processor import FusedAttnProcessor2_0
-
         dtype = self.vae.dtype
         self.vae.to(dtype=torch.float32)
         use_torch_2_0_or_xformers = isinstance(
@@ -683,7 +680,6 @@ class StableDiffusionXLPipeline(
                 XFormersAttnProcessor,
                 LoRAXFormersAttnProcessor,
                 LoRAAttnProcessor2_0,
-                FusedAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
