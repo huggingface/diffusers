@@ -1,13 +1,12 @@
 import inspect
 import os
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
-import matplotlib.pyplot as plt
-
-import torch
-import torch.nn.functional as F
-import numpy as np
 import random
 import warnings
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import matplotlib.pyplot as plt
+import torch
+import torch.nn.functional as F
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers.image_processor import VaeImageProcessor
@@ -24,6 +23,7 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     is_accelerate_available,
@@ -33,8 +33,6 @@ from diffusers.utils import (
     replace_example_docstring,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
 
 
 if is_invisible_watermark_available():
@@ -59,21 +57,24 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 def gaussian_kernel(kernel_size=3, sigma=1.0, channels=3):
     x_coord = torch.arange(kernel_size)
-    gaussian_1d = torch.exp(-(x_coord - (kernel_size - 1) / 2) ** 2 / (2 * sigma ** 2))
+    gaussian_1d = torch.exp(-((x_coord - (kernel_size - 1) / 2) ** 2) / (2 * sigma**2))
     gaussian_1d = gaussian_1d / gaussian_1d.sum()
     gaussian_2d = gaussian_1d[:, None] * gaussian_1d[None, :]
     kernel = gaussian_2d[None, None, :, :].repeat(channels, 1, 1, 1)
-    
+
     return kernel
+
 
 def gaussian_filter(latents, kernel_size=3, sigma=1.0):
     channels = latents.shape[1]
     kernel = gaussian_kernel(kernel_size, sigma, channels).to(latents.device, latents.dtype)
-    blurred_latents = F.conv2d(latents, kernel, padding=kernel_size//2, groups=channels)
-    
+    blurred_latents = F.conv2d(latents, kernel, padding=kernel_size // 2, groups=channels)
+
     return blurred_latents
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
@@ -135,6 +136,7 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
             watermark output images. If not defined, it will default to True if the package is installed, otherwise no
             watermarker will be used.
     """
+
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
 
     def __init__(
@@ -494,7 +496,9 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
 
         # DemoFusion specific checks
         if max(height, width) % 1024 != 0:
-            raise ValueError(f"the larger one of `height` and `width` has to be divisible by 1024 but are {height} and {width}.")
+            raise ValueError(
+                f"the larger one of `height` and `width` has to be divisible by 1024 but are {height} and {width}."
+            )
 
         if num_images_per_prompt != 1:
             warnings.warn("num_images_per_prompt != 1 is not supported by DemoFusion and will be ignored.")
@@ -576,45 +580,54 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
                     h_jitter = random.randint(-jitter_range, 0)
                 elif (h_start != 0) and (h_end == height):
                     h_jitter = random.randint(0, jitter_range)
-                h_start += (h_jitter + jitter_range)
-                h_end += (h_jitter + jitter_range)
-                w_start += (w_jitter + jitter_range)
-                w_end += (w_jitter + jitter_range)
-            
+                h_start += h_jitter + jitter_range
+                h_end += h_jitter + jitter_range
+                w_start += w_jitter + jitter_range
+                w_end += w_jitter + jitter_range
+
             views.append((h_start, h_end, w_start, w_end))
         return views
 
     def tiled_decode(self, latents, current_height, current_width):
-        sample_size = self.unet.config.sample_size
         core_size = self.unet.config.sample_size // 4
         core_stride = core_size
         pad_size = self.unet.config.sample_size // 4 * 3
         decoder_view_batch_size = 1
-        
+
         views = self.get_views(current_height, current_width, stride=core_stride, window_size=core_size)
         views_batch = [views[i : i + decoder_view_batch_size] for i in range(0, len(views), decoder_view_batch_size)]
-        latents_ = F.pad(latents, (pad_size, pad_size, pad_size, pad_size), 'constant', 0)
+        latents_ = F.pad(latents, (pad_size, pad_size, pad_size, pad_size), "constant", 0)
         image = torch.zeros(latents.size(0), 3, current_height, current_width).to(latents.device)
         count = torch.zeros_like(image).to(latents.device)
         # get the latents corresponding to the current view coordinates
         with self.progress_bar(total=len(views_batch)) as progress_bar:
             for j, batch_view in enumerate(views_batch):
-                vb_size = len(batch_view)
+                len(batch_view)
                 latents_for_view = torch.cat(
                     [
-                        latents_[:, :, h_start:h_end+pad_size*2, w_start:w_end+pad_size*2]
+                        latents_[:, :, h_start : h_end + pad_size * 2, w_start : w_end + pad_size * 2]
                         for h_start, h_end, w_start, w_end in batch_view
                     ]
                 )
                 image_patch = self.vae.decode(latents_for_view / self.vae.config.scaling_factor, return_dict=False)[0]
                 h_start, h_end, w_start, w_end = views[j]
-                h_start, h_end, w_start, w_end = h_start * self.vae_scale_factor, h_end * self.vae_scale_factor, w_start * self.vae_scale_factor, w_end * self.vae_scale_factor
-                p_h_start, p_h_end, p_w_start, p_w_end = pad_size * self.vae_scale_factor, image_patch.size(2) - pad_size * self.vae_scale_factor, pad_size * self.vae_scale_factor, image_patch.size(3) - pad_size * self.vae_scale_factor
+                h_start, h_end, w_start, w_end = (
+                    h_start * self.vae_scale_factor,
+                    h_end * self.vae_scale_factor,
+                    w_start * self.vae_scale_factor,
+                    w_end * self.vae_scale_factor,
+                )
+                p_h_start, p_h_end, p_w_start, p_w_end = (
+                    pad_size * self.vae_scale_factor,
+                    image_patch.size(2) - pad_size * self.vae_scale_factor,
+                    pad_size * self.vae_scale_factor,
+                    image_patch.size(3) - pad_size * self.vae_scale_factor,
+                )
                 image[:, :, h_start:h_end, w_start:w_end] += image_patch[:, :, p_h_start:p_h_end, p_w_start:p_w_end]
                 count[:, :, h_start:h_end, w_start:w_end] += 1
                 progress_bar.update()
         image = image / count
-        
+
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
@@ -674,9 +687,9 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
         view_batch_size: int = 16,
         multi_decoder: bool = True,
         stride: Optional[int] = 64,
-        cosine_scale_1: Optional[float] = 3.,
-        cosine_scale_2: Optional[float] = 1.,
-        cosine_scale_3: Optional[float] = 1.,
+        cosine_scale_1: Optional[float] = 3.0,
+        cosine_scale_2: Optional[float] = 1.0,
+        cosine_scale_3: Optional[float] = 1.0,
         sigma: Optional[float] = 0.8,
         show_image: bool = False,
     ):
@@ -828,7 +841,7 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
         Returns:
             a `list` with the generated images at each phase.
         """
-        
+
         # 0. Default height and width to unet
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
@@ -958,21 +971,16 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
             timesteps = timesteps[:num_inference_steps]
 
         output_images = []
-        
-    ############################################################### Phase 1 #################################################################
+
+        ############################################################### Phase 1 #################################################################
 
         print("### Phase 1 Denoising ###")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-
                 latents_for_view = latents
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = (
-                    latents.repeat_interleave(2, dim=0)
-                    if do_classifier_free_guidance
-                    else latents
-                )
+                latent_model_input = latents.repeat_interleave(2, dim=0) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
@@ -1004,13 +1012,13 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
-                        
+
             anchor_mean = latents.mean()
             anchor_std = latents.std()
             if not output_type == "latent":
                 # make sure the VAE is in float32 mode, as it overflows in float16
                 needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
-    
+
                 if needs_upcasting:
                     self.upcast_vae()
                     latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
@@ -1019,17 +1027,17 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
                 # cast back to fp16 if needed
                 if needs_upcasting:
                     self.vae.to(dtype=torch.float16)
-    
+
             image = self.image_processor.postprocess(image, output_type=output_type)
             if show_image:
                 plt.figure(figsize=(10, 10))
                 plt.imshow(image[0])
-                plt.axis('off')  # Turn off axis numbers and ticks
+                plt.axis("off")  # Turn off axis numbers and ticks
                 plt.show()
             output_images.append(image[0])
-                        
-    ####################################################### Phase 2+ #####################################################
-        
+
+        ####################################################### Phase 2+ #####################################################
+
         for current_scale_num in range(2, scale_num + 1):
             print("### Phase {} Denoising ###".format(current_scale_num))
             current_height = self.unet.config.sample_size * self.vae_scale_factor * current_scale_num
@@ -1038,8 +1046,12 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
                 current_width = int(current_width * aspect_ratio)
             else:
                 current_height = int(current_height * aspect_ratio)
-        
-            latents = F.interpolate(latents, size=(int(current_height / self.vae_scale_factor), int(current_width / self.vae_scale_factor)), mode='bicubic')
+
+            latents = F.interpolate(
+                latents,
+                size=(int(current_height / self.vae_scale_factor), int(current_width / self.vae_scale_factor)),
+                mode="bicubic",
+            )
 
             noise_latents = []
             noise = torch.randn_like(latents)
@@ -1047,27 +1059,43 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
                 noise_latent = self.scheduler.add_noise(latents, noise, timestep.unsqueeze(0))
                 noise_latents.append(noise_latent)
             latents = noise_latents[0]
-    
+
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     count = torch.zeros_like(latents)
                     value = torch.zeros_like(latents)
-                    cosine_factor = 0.5 * (1 + torch.cos(torch.pi * (self.scheduler.config.num_train_timesteps - t) / self.scheduler.config.num_train_timesteps)).cpu()
+                    cosine_factor = (
+                        0.5
+                        * (
+                            1
+                            + torch.cos(
+                                torch.pi
+                                * (self.scheduler.config.num_train_timesteps - t)
+                                / self.scheduler.config.num_train_timesteps
+                            )
+                        ).cpu()
+                    )
 
-                    c1 = cosine_factor ** cosine_scale_1
+                    c1 = cosine_factor**cosine_scale_1
                     latents = latents * (1 - c1) + noise_latents[i] * c1
-                    
+
                     ############################################# MultiDiffusion #############################################
-                    
-                    views = self.get_views(current_height, current_width, stride=stride, window_size=self.unet.config.sample_size, random_jitter=True)
+
+                    views = self.get_views(
+                        current_height,
+                        current_width,
+                        stride=stride,
+                        window_size=self.unet.config.sample_size,
+                        random_jitter=True,
+                    )
                     views_batch = [views[i : i + view_batch_size] for i in range(0, len(views), view_batch_size)]
 
                     jitter_range = (self.unet.config.sample_size - stride) // 4
-                    latents_ = F.pad(latents, (jitter_range, jitter_range, jitter_range, jitter_range), 'constant', 0)
+                    latents_ = F.pad(latents, (jitter_range, jitter_range, jitter_range, jitter_range), "constant", 0)
 
                     count_local = torch.zeros_like(latents_)
                     value_local = torch.zeros_like(latents_)
-                    
+
                     for j, batch_view in enumerate(views_batch):
                         vb_size = len(batch_view)
 
@@ -1115,12 +1143,15 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
 
                         if do_classifier_free_guidance and guidance_rescale > 0.0:
                             # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                            noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+                            noise_pred = rescale_noise_cfg(
+                                noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
+                            )
 
                         # compute the previous noisy sample x_t -> x_t-1
                         self.scheduler._init_step_index(t)
                         latents_denoised_batch = self.scheduler.step(
-                            noise_pred, t, latents_for_view, **extra_step_kwargs, return_dict=False)[0]
+                            noise_pred, t, latents_for_view, **extra_step_kwargs, return_dict=False
+                        )[0]
 
                         # extract value from batch
                         for latents_view_denoised, (h_start, h_end, w_start, w_end) in zip(
@@ -1129,47 +1160,55 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
                             value_local[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
                             count_local[:, :, h_start:h_end, w_start:w_end] += 1
 
-                    value_local = value_local[: ,:, jitter_range: jitter_range + current_height // self.vae_scale_factor, jitter_range: jitter_range + current_width // self.vae_scale_factor]
-                    count_local = count_local[: ,:, jitter_range: jitter_range + current_height // self.vae_scale_factor, jitter_range: jitter_range + current_width // self.vae_scale_factor]
-                    
-                    c2 = cosine_factor ** cosine_scale_2
+                    value_local = value_local[
+                        :,
+                        :,
+                        jitter_range : jitter_range + current_height // self.vae_scale_factor,
+                        jitter_range : jitter_range + current_width // self.vae_scale_factor,
+                    ]
+                    count_local = count_local[
+                        :,
+                        :,
+                        jitter_range : jitter_range + current_height // self.vae_scale_factor,
+                        jitter_range : jitter_range + current_width // self.vae_scale_factor,
+                    ]
+
+                    c2 = cosine_factor**cosine_scale_2
 
                     value += value_local / count_local * (1 - c2)
                     count += torch.ones_like(value_local) * (1 - c2)
-                        
+
                     ############################################# Dilated Sampling #############################################
 
                     views = [[h, w] for h in range(current_scale_num) for w in range(current_scale_num)]
                     views_batch = [views[i : i + view_batch_size] for i in range(0, len(views), view_batch_size)]
-                    
+
                     h_pad = (current_scale_num - (latents.size(2) % current_scale_num)) % current_scale_num
                     w_pad = (current_scale_num - (latents.size(3) % current_scale_num)) % current_scale_num
-                    latents_ = F.pad(latents, (w_pad, 0, h_pad, 0), 'constant', 0)
-                    
+                    latents_ = F.pad(latents, (w_pad, 0, h_pad, 0), "constant", 0)
+
                     count_global = torch.zeros_like(latents_)
                     value_global = torch.zeros_like(latents_)
 
-                    c3 = 0.99 * cosine_factor ** cosine_scale_3 + 1e-2
+                    c3 = 0.99 * cosine_factor**cosine_scale_3 + 1e-2
                     std_, mean_ = latents_.std(), latents_.mean()
-                    latents_gaussian = gaussian_filter(latents_, kernel_size=(2*current_scale_num-1), sigma=sigma*c3)
-                    latents_gaussian = (latents_gaussian - latents_gaussian.mean()) / latents_gaussian.std() * std_ + mean_
+                    latents_gaussian = gaussian_filter(
+                        latents_, kernel_size=(2 * current_scale_num - 1), sigma=sigma * c3
+                    )
+                    latents_gaussian = (
+                        latents_gaussian - latents_gaussian.mean()
+                    ) / latents_gaussian.std() * std_ + mean_
 
                     for j, batch_view in enumerate(views_batch):
                         latents_for_view = torch.cat(
-                            [
-                                latents_[:, :, h::current_scale_num, w::current_scale_num]
-                                for h, w in batch_view
-                            ]
+                            [latents_[:, :, h::current_scale_num, w::current_scale_num] for h, w in batch_view]
                         )
                         latents_for_view_gaussian = torch.cat(
-                            [
-                                latents_gaussian[:, :, h::current_scale_num, w::current_scale_num]
-                                for h, w in batch_view
-                            ]
+                            [latents_gaussian[:, :, h::current_scale_num, w::current_scale_num] for h, w in batch_view]
                         )
-                    
+
                         vb_size = latents_for_view.size(0)
-    
+
                         # expand the latents if we are doing classifier free guidance
                         latent_model_input = latents_for_view_gaussian
                         latent_model_input = (
@@ -1178,11 +1217,11 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
                             else latent_model_input
                         )
                         latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-    
+
                         prompt_embeds_input = torch.cat([prompt_embeds] * vb_size)
                         add_text_embeds_input = torch.cat([add_text_embeds] * vb_size)
                         add_time_ids_input = torch.cat([add_time_ids] * vb_size)
-    
+
                         # predict the noise residual
                         added_cond_kwargs = {"text_embeds": add_text_embeds_input, "time_ids": add_time_ids_input}
                         noise_pred = self.unet(
@@ -1193,38 +1232,39 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
                             added_cond_kwargs=added_cond_kwargs,
                             return_dict=False,
                         )[0]
-    
+
                         if do_classifier_free_guidance:
                             noise_pred_uncond, noise_pred_text = noise_pred[::2], noise_pred[1::2]
                             noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-    
+
                         if do_classifier_free_guidance and guidance_rescale > 0.0:
                             # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                            noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
+                            noise_pred = rescale_noise_cfg(
+                                noise_pred, noise_pred_text, guidance_rescale=guidance_rescale
+                            )
 
                         # compute the previous noisy sample x_t -> x_t-1
                         self.scheduler._init_step_index(t)
                         latents_denoised_batch = self.scheduler.step(
-                            noise_pred, t, latents_for_view, **extra_step_kwargs, return_dict=False)[0]
-    
+                            noise_pred, t, latents_for_view, **extra_step_kwargs, return_dict=False
+                        )[0]
+
                         # extract value from batch
-                        for latents_view_denoised, (h, w) in zip(
-                            latents_denoised_batch.chunk(vb_size), batch_view
-                        ):
+                        for latents_view_denoised, (h, w) in zip(latents_denoised_batch.chunk(vb_size), batch_view):
                             value_global[:, :, h::current_scale_num, w::current_scale_num] += latents_view_denoised
                             count_global[:, :, h::current_scale_num, w::current_scale_num] += 1
 
-                    c2 = cosine_factor ** cosine_scale_2
+                    c2 = cosine_factor**cosine_scale_2
 
-                    value_global = value_global[: ,:, h_pad:, w_pad:]
-    
+                    value_global = value_global[:, :, h_pad:, w_pad:]
+
                     value += value_global * c2
                     count += torch.ones_like(value_global) * c2
-                    
-                           ###########################################################
-                
+
+                    ###########################################################
+
                     latents = torch.where(count > 0, value / count, value)
-                
+
                     # call the callback, if provided
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
@@ -1232,35 +1272,35 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
                             step_idx = i // getattr(self.scheduler, "order", 1)
                             callback(step_idx, t, latents)
 
-    #########################################################################################################################################
+                #########################################################################################################################################
 
                 latents = (latents - latents.mean()) / latents.std() * anchor_std + anchor_mean
                 if not output_type == "latent":
                     # make sure the VAE is in float32 mode, as it overflows in float16
                     needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
-        
+
                     if needs_upcasting:
                         self.upcast_vae()
                         latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-                    
+
                     print("### Phase {} Decoding ###".format(current_scale_num))
                     if multi_decoder:
                         image = self.tiled_decode(latents, current_height, current_width)
                     else:
                         image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
-        
+
                     # cast back to fp16 if needed
                     if needs_upcasting:
                         self.vae.to(dtype=torch.float16)
                 else:
                     image = latents
-        
+
                 if not output_type == "latent":
                     image = self.image_processor.postprocess(image, output_type=output_type)
                     if show_image:
                         plt.figure(figsize=(10, 10))
                         plt.imshow(image[0])
-                        plt.axis('off')  # Turn off axis numbers and ticks
+                        plt.axis("off")  # Turn off axis numbers and ticks
                         plt.show()
                     output_images.append(image[0])
 
