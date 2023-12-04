@@ -111,7 +111,7 @@ jobs:
       continue-on-error: true
       run: |
         cat reports/${{ matrix.modules }}_tests_cpu_stats.txt
-        cat reports/${{ matrix.modules }}_tests_cpu/failures_short.txt
+        cat reports/${{ matrix.modules }}_tests_cpu_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}
