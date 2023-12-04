@@ -33,6 +33,7 @@ deps = {
     "ruff": "ruff>=0.1.5,<=0.2",
     "safetensors": "safetensors>=0.3.1",
     "sentencepiece": "sentencepiece>=0.1.91,!=0.1.92",
+    "GitPython": "GitPython<3.1.19",
     "scipy": "scipy",
     "onnx": "onnx",
     "regex": "regex!=2019.12.17",
