@@ -91,7 +91,7 @@ class TextToImageBenchmark(BaseBenchmak):
     def benchmark(self, args):
         flush()
 
-        print(f"Running benchmark with: {dict(args)}\n")
+        print(f"Running benchmark with: {vars(args)}\n")
 
         time = benchmark_fn(self.run_inference, self.pipe, args)  # in seconds.
         memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
