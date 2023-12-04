@@ -3,7 +3,7 @@ import sys
 
 
 sys.path.append(".")
-from base_classes import ControlNetBenchmark, ControlNetSDXLBenchmark  # noqa: E402
+from base_classes import T2IAdapterBenchmark, T2IAdapterSDXLBenchmark  # noqa: E402
 
 
 if __name__ == "__main__":
@@ -21,6 +21,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     benchmark_pipe = (
-        ControlNetBenchmark(args) if args.ckpt == "lllyasviel/sd-controlnet-canny" else ControlNetSDXLBenchmark(args)
+        T2IAdapterBenchmark(args)
+        if args.ckpt == "TencentARC/t2iadapter_canny_sd14v1"
+        else T2IAdapterSDXLBenchmark(args)
     )
     benchmark_pipe.benchmark(args)

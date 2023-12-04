@@ -18,6 +18,7 @@ def has_previous_benchmark() -> str:
         csv_path = None
     return csv_path
 
+
 def filter_float(value):
     if isinstance(value, str):
         return value.split()[0]
