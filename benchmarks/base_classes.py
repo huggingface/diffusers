@@ -141,21 +141,17 @@ class InpaintingBenchmark(ImageToImageBenchmark):
 class ControlNetBenchmark(TextToImageBenchmark):
     pipeline_class = StableDiffusionControlNetPipeline
     aux_network_class = ControlNetModel
+    root_ckpt = "runwayml/stable-diffusion-v1-5"
 
     url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_image_condition.png"
     image = load_image(url).convert("RGB")
 
     def __init__(self, args):
-        if isinstance(self.pipeline_class, StableDiffusionControlNetPipeline):
-            root_ckpt = "runwayml/stable-diffusion-v1-5"
-        elif isinstance(self.pipeline_class, StableDiffusionXLControlNetPipeline):
-            root_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
-
         aux_network = self.aux_network_class.from_pretrained(
             args.ckpt, torch_dtype=torch.float16, use_safetensors=True
         )
         pipe = self.pipeline_class.from_pretrained(
-            root_ckpt, controlnet=aux_network, torch_dtype=torch.float16, use_safetensors=True
+            self.root_ckpt, controlnet=aux_network, torch_dtype=torch.float16, use_safetensors=True
         )
         pipe = pipe.to("cuda")
 
@@ -179,3 +175,4 @@ class ControlNetBenchmark(TextToImageBenchmark):
 
 class ControlNetSDXLBenchmark(ControlNetBenchmark):
     pipeline_class = StableDiffusionXLControlNetPipeline
+    root_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
