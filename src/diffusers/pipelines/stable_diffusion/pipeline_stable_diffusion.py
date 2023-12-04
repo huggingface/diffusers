@@ -403,9 +403,7 @@ class StableDiffusionPipeline(
                 prompt_embeds = prompt_embeds[0]
             else:
                 prompt_embeds = self.text_encoder(
-                    text_input_ids.to(device),
-                    attention_mask=attention_mask,
-                    output_hidden_states=True,
+                    text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
                 )
                 # Access the `hidden_states` first, that contains a tuple of
                 # all the hidden states from the encoder layers. Then index into
@@ -609,23 +607,8 @@ class StableDiffusionPipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    def prepare_latents(
-        self,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        latents=None,
-    ):
-        shape = (
-            batch_size,
-            num_channels_latents,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-        )
+    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -971,11 +954,7 @@ class StableDiffusionPipeline(
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(
-                        noise_pred,
-                        noise_pred_text,
-                        guidance_rescale=self.guidance_rescale,
-                    )
+                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
@@ -998,11 +977,9 @@ class StableDiffusionPipeline(
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(
-                latents / self.vae.config.scaling_factor,
-                return_dict=False,
-                generator=generator,
-            )[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
+                0
+            ]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
