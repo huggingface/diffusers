@@ -456,7 +456,7 @@ def convert_ldm_unet_checkpoint(
         new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
 
     # Relevant to StableDiffusionUpscalePipeline
-    if config["num_class_embeds"] is not None:
+    if (config["num_class_embeds"] is not None) and ("label_emb.weight" in unet_state_dict):
         new_checkpoint["class_embedding.weight"] = unet_state_dict["label_emb.weight"]
 
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
