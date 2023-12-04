@@ -86,6 +86,8 @@ class TextToImageBenchmark(BaseBenchmak):
         )
 
     def benchmark(self, args):
+        flush()
+
         time = benchmark_fn(self.run_inference, self.pipe, args)  # in seconds.
         memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
         benchmark_info = BenchmarkInfo(time=time, memory=memory)
@@ -97,7 +99,6 @@ class TextToImageBenchmark(BaseBenchmak):
         filepath = self.get_result_filepath(args)
         write_to_csv(filepath, csv_dict)
         print(f"Logs written to: {filepath}")
-        flush()
 
 
 class ImageToImageBenchmark(TextToImageBenchmark):
