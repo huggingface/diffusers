@@ -22,6 +22,7 @@ from ..utils.accelerate_utils import apply_forward_hook
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
+    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
@@ -449,8 +450,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         return DecoderOutput(sample=dec)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.enable_fused_qkv_projections
-    def enable_fused_qkv_projections(self, device, dtype):
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    def fuse_qkv_projections(self, device, dtype):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
         key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
@@ -465,28 +466,23 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             device (`str`): Device on which the fused linear layer will be created.
             dtype (`torch.dtype`): Dtype of the fused linear layer that will be created.
         """
-
-        from .attention_processor import Attention
-
         self.original_attn_processors = None
 
         for _, attn_processor in self.attn_processors.items():
             if "Added" in str(attn_processor.__class__.__name__):
-                raise ValueError(
-                    "`enable_fused_qkv_projections()` is not supported for models having added KV projections."
-                )
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
 
         self.original_attn_processors = self.attn_processors
 
         for module in self.modules():
             if isinstance(module, Attention):
                 is_cross_attention = module.to_q.weight.shape != module.to_k.weight.shape
-                module.enable_fused_projections(
+                module.fuse_projections(
                     device=device, dtype=dtype, fuse_projections=True, is_cross_attention=is_cross_attention
                 )
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.disable_fused_qkv_projections
-    def disable_fused_qkv_projections(self):
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
+    def unfuse_qkv_projections(self):
         """Disables the fused QKV projection if enabled.
 
         <Tip warning={true}>

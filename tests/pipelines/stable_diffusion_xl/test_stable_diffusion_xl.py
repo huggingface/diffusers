@@ -949,12 +949,12 @@ class StableDiffusionXLPipelineFastTests(
         image = sd_pipe(**inputs).images
         original_image_slice = image[0, -3:, -3:, -1]
 
-        sd_pipe.enable_fused_qkv_projections()
+        sd_pipe.fuse_qkv_projections()
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice_fused = image[0, -3:, -3:, -1]
 
-        sd_pipe.disable_fused_qkv_projections()
+        sd_pipe.unfuse_qkv_projections()
         inputs = self.get_dummy_inputs(device)
         image = sd_pipe(**inputs).images
         image_slice_disabled = image[0, -3:, -3:, -1]

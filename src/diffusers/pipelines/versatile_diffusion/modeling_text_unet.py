@@ -10,10 +10,10 @@ from diffusers.utils import deprecate
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.activations import get_activation
-from ...models.attention import Attention
 from ...models.attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
+    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
@@ -1015,9 +1015,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             device (`str`): Device on which the fused linear layer will be created.
             dtype (`torch.dtype`): Dtype of the fused linear layer that will be created.
         """
-
-        from .attention_processor import Attention
-
         self.original_attn_processors = None
 
         for _, attn_processor in self.attn_processors.items():
@@ -1031,7 +1028,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         for module in self.modules():
             if isinstance(module, Attention):
                 is_cross_attention = module.to_q.weight.shape != module.to_k.weight.shape
-                module.enable_fused_projections(
+                module.fuse_projections(
                     device=device, dtype=dtype, fuse_projections=True, is_cross_attention=is_cross_attention
                 )
 

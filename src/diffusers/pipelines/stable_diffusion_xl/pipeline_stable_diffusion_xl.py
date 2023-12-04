@@ -34,6 +34,7 @@ from ...loaders import (
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
+    FusedAttnProcessor2_0,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
@@ -720,7 +721,7 @@ class StableDiffusionXLPipeline(
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
 
-    def enable_fused_qkv_projections(self, unet: bool = True, vae: bool = True):
+    def fuse_qkv_projections(self, unet: bool = True, vae: bool = True):
         """
         Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
         key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
@@ -735,27 +736,23 @@ class StableDiffusionXLPipeline(
             unet (`bool`, defaults to `True`): To apply fusion on the UNet.
             vae (`bool`, defaults to `True`): To apply fusion on the VAE.
         """
-        from ...models.attention_processor import FusedAttnProcessor2_0
-
         self.fusing_unet = False
         self.fusing_vae = False
 
         if unet:
             self.fusing_unet = True
-            self.unet.enable_fused_qkv_projections(device=self.device, dtype=self.dtype)
+            self.unet.fuse_qkv_projections(device=self.device, dtype=self.dtype)
             self.unet.set_attn_processor(FusedAttnProcessor2_0())
 
         if vae:
             if not isinstance(self.vae, AutoencoderKL):
-                raise ValueError(
-                    "`enable_fused_qkv_projections()` is only supported for the VAE of type `AutoencoderKL`."
-                )
+                raise ValueError("`fuse_qkv_projections()` is only supported for the VAE of type `AutoencoderKL`.")
 
             self.fusing_vae = True
-            self.vae.enable_fused_qkv_projections(device=self.device, dtype=self.dtype)
+            self.vae.fuse_qkv_projections(device=self.device, dtype=self.dtype)
             self.vae.set_attn_processor(FusedAttnProcessor2_0())
 
-    def disable_fused_qkv_projections(self, unet: bool = True, vae: bool = True):
+    def unfuse_qkv_projections(self, unet: bool = True, vae: bool = True):
         """Disable QKV projection fusion if enabled.
 
         <Tip warning={true}>

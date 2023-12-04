@@ -113,13 +113,14 @@ class Attention(nn.Module):
     ):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
+        self.query_dim = query_dim
         self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
         self.rescale_output_factor = rescale_output_factor
         self.residual_connection = residual_connection
         self.dropout = dropout
-        self.fuse_projections = False
+        self.fused_projections = False
         self.out_dim = out_dim if out_dim is not None else query_dim
 
         # we make use of this private variable to know whether this class is loaded
@@ -695,8 +696,10 @@ class Attention(nn.Module):
         return encoder_hidden_states
 
     @torch.no_grad()
-    def enable_fused_projections(self, device, dtype, fuse_projections=True, is_cross_attention=False):
-        self.fuse_projections = fuse_projections
+    def fuse_projections(self, fuse=True):
+        is_cross_attention = self.cross_attention_dim == self.query_dim
+        device = self.to_q.device
+        dtype = self.to_q.dtype
 
         if not is_cross_attention:
             # fetch weight matrices.
@@ -715,6 +718,8 @@ class Attention(nn.Module):
 
             self.to_kv = self.linear_cls(in_features, out_features, bias=False, device=device, dtype=dtype)
             self.to_kv.weight.copy_(concatenated_weights)
+
+        self.fused_projections = fuse
 
 
 class AttnProcessor:
@@ -1289,7 +1294,9 @@ class FusedAttnProcessor2_0:
 
     def __init__(self):
         if not hasattr(F, "scaled_dot_product_attention"):
-            raise ImportError("FusedAttnProcessor2_0 requires at least PyTorch 2.0, to use it. Please upgrade PyTorch to > 2.0.")
+            raise ImportError(
+                "FusedAttnProcessor2_0 requires at least PyTorch 2.0, to use it. Please upgrade PyTorch to > 2.0."
+            )
 
     def __call__(
         self,
