@@ -113,7 +113,7 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
             prev_x = self.unet(x.permute(0, 2, 1), timesteps).sample.permute(0, 2, 1)
 
             # TODO: verify deprecation of this kwarg
-            x = self.scheduler.step(prev_x, i, x, predict_epsilon=False)["prev_sample"]
+            x = self.scheduler.step(prev_x, i, x)["prev_sample"]
 
             # apply conditions to the trajectory (set the initial state)
             x = self.reset_x0(x, conditions, self.action_dim)

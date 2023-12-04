@@ -35,6 +35,7 @@ if is_torch_available():
     _import_structure["controlnetxs"] = ["ControlNetXSModel"]
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
+    _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["prior_transformer"] = ["PriorTransformer"]
     _import_structure["t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformer_2d"] = ["Transformer2DModel"]
@@ -43,7 +44,7 @@ if is_torch_available():
     _import_structure["unet_2d"] = ["UNet2DModel"]
     _import_structure["unet_2d_condition"] = ["UNet2DConditionModel"]
     _import_structure["unet_3d_condition"] = ["UNet3DConditionModel"]
-    _import_structure["unet_kandi3"] = ["Kandinsky3UNet"]
+    _import_structure["unet_kandinsky3"] = ["Kandinsky3UNet"]
     _import_structure["unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
     _import_structure["unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
     _import_structure["vq_model"] = ["VQModel"]
@@ -65,6 +66,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .controlnet import ControlNetModel
         from .controlnetxs import ControlNetXSModel
         from .dual_transformer_2d import DualTransformer2DModel
+        from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
         from .prior_transformer import PriorTransformer
         from .t5_film_transformer import T5FilmDecoder
@@ -74,7 +76,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .unet_2d import UNet2DModel
         from .unet_2d_condition import UNet2DConditionModel
         from .unet_3d_condition import UNet3DConditionModel
-        from .unet_kandi3 import Kandinsky3UNet
+        from .unet_kandinsky3 import Kandinsky3UNet
         from .unet_motion_model import MotionAdapter, UNetMotionModel
         from .unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel
         from .vq_model import VQModel

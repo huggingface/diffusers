@@ -391,6 +391,10 @@ class LoraLoaderMixin:
         # their prefixes.
         keys = list(state_dict.keys())
 
+        if all(key.startswith("unet.unet") for key in keys):
+            deprecation_message = "Keys starting with 'unet.unet' are deprecated."
+            deprecate("unet.unet keys", "0.27", deprecation_message)
+
         if all(key.startswith(cls.unet_name) or key.startswith(cls.text_encoder_name) for key in keys):
             # Load the layers corresponding to UNet.
             logger.info(f"Loading {cls.unet_name}.")
@@ -407,8 +411,9 @@ class LoraLoaderMixin:
         else:
             # Otherwise, we're dealing with the old format. This means the `state_dict` should only
             # contain the module names of the `unet` as its keys WITHOUT any prefix.
-            warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
-            logger.warn(warn_message)
+            if not USE_PEFT_BACKEND:
+                warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
+                logger.warn(warn_message)
 
         if USE_PEFT_BACKEND and len(state_dict.keys()) > 0:
             from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
@@ -675,8 +680,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def _remove_text_encoder_monkey_patch_classmethod(cls, text_encoder):
-        if version.parse(__version__) > version.parse("0.23"):
-            deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.25", LORA_DEPRECATION_MESSAGE)
+        deprecate("_remove_text_encoder_monkey_patch_classmethod", "0.27", LORA_DEPRECATION_MESSAGE)
 
         for _, attn_module in text_encoder_attn_modules(text_encoder):
             if isinstance(attn_module.q_proj, PatchedLoraProjection):
@@ -704,8 +708,7 @@ class LoraLoaderMixin:
         r"""
         Monkey-patches the forward passes of attention modules of the text encoder.
         """
-        if version.parse(__version__) > version.parse("0.23"):
-            deprecate("_modify_text_encoder", "0.25", LORA_DEPRECATION_MESSAGE)
+        deprecate("_modify_text_encoder", "0.27", LORA_DEPRECATION_MESSAGE)
 
         def create_patched_linear_lora(model, network_alpha, rank, dtype, lora_parameters):
             linear_layer = model.regular_linear_layer if isinstance(model, PatchedLoraProjection) else model
@@ -802,29 +805,21 @@ class LoraLoaderMixin:
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
-        # Create a flat dictionary.
         state_dict = {}
 
-        # Populate the dictionary.
-        if unet_lora_layers is not None:
-            weights = (
-                unet_lora_layers.state_dict() if isinstance(unet_lora_layers, torch.nn.Module) else unet_lora_layers
-            )
+        def pack_weights(layers, prefix):
+            layers_weights = layers.state_dict() if isinstance(layers, torch.nn.Module) else layers
+            layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
+            return layers_state_dict
 
-            unet_lora_state_dict = {f"{cls.unet_name}.{module_name}": param for module_name, param in weights.items()}
-            state_dict.update(unet_lora_state_dict)
+        if not (unet_lora_layers or text_encoder_lora_layers):
+            raise ValueError("You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers`.")
 
-        if text_encoder_lora_layers is not None:
-            weights = (
-                text_encoder_lora_layers.state_dict()
-                if isinstance(text_encoder_lora_layers, torch.nn.Module)
-                else text_encoder_lora_layers
-            )
+        if unet_lora_layers:
+            state_dict.update(pack_weights(unet_lora_layers, "unet"))
 
-            text_encoder_lora_state_dict = {
-                f"{cls.text_encoder_name}.{module_name}": param for module_name, param in weights.items()
-            }
-            state_dict.update(text_encoder_lora_state_dict)
+        if text_encoder_lora_layers:
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
 
         # Save the model
         cls.write_lora_layers(
@@ -948,8 +943,7 @@ class LoraLoaderMixin:
                         module.merge()
 
         else:
-            if version.parse(__version__) > version.parse("0.23"):
-                deprecate("fuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
+            deprecate("fuse_text_encoder_lora", "0.27", LORA_DEPRECATION_MESSAGE)
 
             def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
@@ -1006,8 +1000,7 @@ class LoraLoaderMixin:
                         module.unmerge()
 
         else:
-            if version.parse(__version__) > version.parse("0.23"):
-                deprecate("unfuse_text_encoder_lora", "0.25", LORA_DEPRECATION_MESSAGE)
+            deprecate("unfuse_text_encoder_lora", "0.27", LORA_DEPRECATION_MESSAGE)
 
             def unfuse_text_encoder_lora(text_encoder):
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
