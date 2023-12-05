@@ -41,7 +41,7 @@ def push_to_hf_dataset():
         ]
 
         for column in numeric_columns:
-            previous_results[column] = previous_results[column].apply(lambda x: filter_float(x))
+            previous_results[column] = previous_results[column].map(lambda x: filter_float(x))
 
             # Calculate the percentage change
             current_results[column] = current_results[column].astype(float)
@@ -52,6 +52,7 @@ def push_to_hf_dataset():
             current_results[column] = current_results[column].map(str) + percent_change.map(
                 lambda x: f" ({'+' if x > 0 else ''}{x:.2f}%)"
             )
+            # There might be newly added rows. So, filter out the NaNs.
             current_results[column] = current_results[column].map(lambda x: x.replace(" (nan%)", ""))
 
         # Overwrite the current result file.
