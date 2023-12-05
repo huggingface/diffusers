@@ -2041,7 +2041,7 @@ def main(args):
                         }
                     )
 
-        
+
         if args.train_text_encoder_ti:
             embedding_handler.save_embeddings(
                 f"{args.output_dir}/embeddings.safetensors",
