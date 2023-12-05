@@ -13,7 +13,7 @@ from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
-from ...image_processor import VaeImageProcessor
+from ...image_processor import VaeImageProcessor, PipelineImageInput
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -40,10 +40,36 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> import PIL
+        >>> import requests
         >>> import torch
+        >>> from io import BytesIO
+
         >>> from diffusers import LEditsPPPipelineStableDiffusion
 
-        TODO
+        >>> pipe = LEditsPPPipelineStableDiffusion.from_pretrained(
+        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ... )
+        >>> pipe = pipe.to("cuda")
+
+        >>> def download_image(url):
+        ...     response = requests.get(url)
+        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+        >>> img_url = "TODO"
+        >>> image = download_image(img_url)
+
+        >>> _ = pipe.invert(
+        ...     image = image,
+        ...     num_inversion_steps=50,
+        ...     skip=0.1
+        ... )
+
+        >>> edited_image = pipe(
+        ...     editing_prompt=["cherry blossom"],
+        ...     edit_guidance_scale=10.0,
+        ...     edit_threshold=0.75,
+        ).images[0]
         ```
 """
 
@@ -536,7 +562,6 @@ class LEditsPPPipelineStableDiffusion(
             edit_cooldown_steps: Optional[Union[int, List[int]]] = None,
             edit_threshold: Optional[Union[float, List[float]]] = 0.9,
             user_mask: Optional[torch.FloatTensor] = None,
-            edit_weights: Optional[List[float]] = None,
             sem_guidance: Optional[List[torch.Tensor]] = None,
             use_cross_attn_mask: bool = False,
             use_intersect_mask: bool = True,
@@ -564,11 +589,10 @@ class LEditsPPPipelineStableDiffusion(
                 Whether or not to return a [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] instead of a
                 plain tuple.
             editing_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to use for Semantic guidance. Semantic guidance is disabled by setting
-                `editing_prompt = None`. Guidance direction of prompt should be specified via
-                `reverse_editing_direction`.
+                The prompt or prompts to guide the image generation. The image is reconstructed by setting
+                `editing_prompt = None`. Guidance direction of prompt should be specified via `reverse_editing_direction`.
             editing_prompt_embeddings (`torch.Tensor>`, *optional*):
-                Pre-computed embeddings to use for semantic guidance. Guidance direction of embedding should be
+                Pre-computed embeddings to use for guiding the image generation. Guidance direction of embedding should be
                 specified via `reverse_editing_direction`.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
@@ -576,30 +600,30 @@ class LEditsPPPipelineStableDiffusion(
             reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
                 Whether the corresponding prompt in `editing_prompt` should be increased or decreased.
             edit_guidance_scale (`float` or `List[float]`, *optional*, defaults to 5):
-                Guidance scale for semantic guidance. If provided as list values should correspond to `editing_prompt`.
-                `edit_guidance_scale` is defined as `s_e` of equation 6 of [SEGA
-                Paper](https://arxiv.org/pdf/2301.12247.pdf).
+                Guidance scale for guiding the image generation. If provided as list values should correspond to `editing_prompt`.
+                `edit_guidance_scale` is defined as `s_e` of equation 12 of
+                [LEDITS++ Paper](https://arxiv.org/pdf/2301.12247.pdf).
             edit_warmup_steps (`float` or `List[float]`, *optional*, defaults to 10):
-                Number of diffusion steps (for each prompt) for which semantic guidance will not be applied. Momentum
-                will still be calculated for those steps and applied once all warmup periods are over.
-                `edit_warmup_steps` is defined as `delta` (δ) of [SEGA Paper](https://arxiv.org/pdf/2301.12247.pdf).
+                Number of diffusion steps (for each prompt) for which guidance will not be applied.
             edit_cooldown_steps (`float` or `List[float]`, *optional*, defaults to `None`):
-                Number of diffusion steps (for each prompt) after which semantic guidance will no longer be applied.
+                Number of diffusion steps (for each prompt) after which guidance will no longer be applied.
             edit_threshold (`float` or `List[float]`, *optional*, defaults to 0.9):
-                Threshold of semantic guidance.
+                Masking threshold of guidance. Threshold should be proportional to the image region that is modified.
+                'edit_threshold' is defined as 'λ' of equation 12 of [LEDITS++ Paper](https://arxiv.org/pdf/2301.12247.pdf).
             user_mask:
-                TODO
-            edit_weights (`List[float]`, *optional*, defaults to `None`):
-                Indicates how much each individual concept should influence the overall guidance. If no weights are
-                provided all concepts are applied equally. `edit_mom_beta` is defined as `g_i` of equation 9 of [SEGA
-                Paper](https://arxiv.org/pdf/2301.12247.pdf).
+                User-provided mask for even better control over the editing process. This is helpful when LEDITS++'s implicit
+                masks do not meet user preferences.
             sem_guidance (`List[torch.Tensor]`, *optional*):
                 List of pre-generated guidance vectors to be applied at generation. Length of the list has to
                 correspond to `num_inference_steps`.
             use_cross_attn_mask:
-                TODO
+                Whether cross-attention masks are used. Cross-attention masks are always used when use_intersect_mask
+                is set to true. Cross-attention masks are defined as 'M^1' of equation 12 of
+                [LEDITS++ paper](https://arxiv.org/pdf/2311.16711.pdf).
             use_intersect_mask:
-                TODO
+                Whether the masking term is calculated as intersection of cross-attention masks and masks derived
+                from the noise estimate. Cross-attention mask are defined as 'M^1' and masks derived from the noise
+                estimate are defined as 'M^2' of equation 12 of [LEDITS++ paper](https://arxiv.org/pdf/2311.16711.pdf).
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -774,12 +798,14 @@ class LEditsPPPipelineStableDiffusion(
                 noise_pred_uncond = noise_pred_out[0]
                 noise_pred_edit_concepts = noise_pred_out[1:]
 
-                # default text guidance
-                noise_guidance = torch.zeros_like(noise_pred_uncond)
+                noise_guidance_edit = torch.zeros(
+                    noise_pred_uncond.shape,
+                    device=self.device,
+                    dtype=noise_pred_uncond.dtype,
+                )
 
                 if sem_guidance is not None and len(sem_guidance) > i:
-                    edit_guidance = sem_guidance[i].to(self.device)
-                    noise_guidance = noise_guidance + edit_guidance
+                    noise_guidance_edit += sem_guidance[i].to(self.device)
 
                 elif enable_edit_guidance:
                     if self.activation_mask is None:
@@ -789,17 +815,6 @@ class LEditsPPPipelineStableDiffusion(
 
                     if self.sem_guidance is None:
                         self.sem_guidance = torch.zeros((len(timesteps), *noise_pred_uncond.shape))
-
-                    concept_weights = torch.zeros(
-                        (len(noise_pred_edit_concepts), noise_guidance.shape[0]),
-                        device=self.device,
-                        dtype=noise_guidance.dtype,
-                    )
-                    noise_guidance_edit = torch.zeros(
-                        (len(noise_pred_edit_concepts), *noise_guidance.shape),
-                        device=self.device,
-                        dtype=noise_guidance.dtype,
-                    )
 
                     for c, noise_pred_edit_concept in enumerate(noise_pred_edit_concepts):
                         if isinstance(edit_warmup_steps, list):
@@ -822,10 +837,6 @@ class LEditsPPPipelineStableDiffusion(
                             reverse_editing_direction_c = reverse_editing_direction[c]
                         else:
                             reverse_editing_direction_c = reverse_editing_direction
-                        if edit_weights:
-                            edit_weight_c = edit_weights[c]
-                        else:
-                            edit_weight_c = 1.0
 
                         if isinstance(edit_cooldown_steps, list):
                             edit_cooldown_steps_c = edit_cooldown_steps[c]
@@ -835,17 +846,12 @@ class LEditsPPPipelineStableDiffusion(
                             edit_cooldown_steps_c = edit_cooldown_steps
 
                         if i >= edit_cooldown_steps_c:
-                            noise_guidance_edit[c, :, :, :, :] = torch.zeros_like(noise_pred_edit_concept)
                             continue
 
                         noise_guidance_edit_tmp = noise_pred_edit_concept - noise_pred_uncond
-                        # tmp_weights = (noise_pred_text - noise_pred_edit_concept).sum(dim=(1, 2, 3))
-                        tmp_weights = (noise_guidance - noise_pred_edit_concept).sum(dim=(1, 2, 3))
 
-                        tmp_weights = torch.full_like(tmp_weights, edit_weight_c)  # * (1 / enabled_editing_prompts)
                         if reverse_editing_direction_c:
                             noise_guidance_edit_tmp = noise_guidance_edit_tmp * -1
-                        concept_weights[c, :] = tmp_weights
 
                         noise_guidance_edit_tmp = noise_guidance_edit_tmp * edit_guidance_scale_c
 
@@ -871,8 +877,19 @@ class LEditsPPPipelineStableDiffusion(
                             attn_map = F.pad(attn_map.unsqueeze(1), (1, 1, 1, 1), mode="reflect")
                             attn_map = self.smoothing(attn_map).squeeze(1)
 
-                            # create binary mask
-                            tmp = torch.quantile(attn_map.flatten(start_dim=1), edit_threshold_c, dim=1)
+                            # torch.quantile function expects float32
+                            if attn_map.dtype == torch.float32:
+                                tmp = torch.quantile(
+                                    attn_map.flatten(start_dim=1),
+                                    edit_threshold_c,
+                                    dim=1
+                                )
+                            else:
+                                tmp = torch.quantile(
+                                    attn_map.flatten(start_dim=1).to(torch.float32),
+                                    edit_threshold_c,
+                                    dim=1
+                                ).to(attn_map.dtype)
                             attn_mask = torch.where(attn_map >= tmp.unsqueeze(1).unsqueeze(1).repeat(1,*att_res), 1.0, 0.0)
 
                             # resolution must match latent space dimension
@@ -956,14 +973,11 @@ class LEditsPPPipelineStableDiffusion(
                                 torch.zeros_like(noise_guidance_edit_tmp),
                             )
 
-                        noise_guidance_edit[c, :, :, :, :] = noise_guidance_edit_tmp
+                        noise_guidance_edit += noise_guidance_edit_tmp
 
-                    noise_guidance_edit = torch.einsum("cb,cbijk->bijk", concept_weights, noise_guidance_edit)
-
-                    noise_guidance = noise_guidance + noise_guidance_edit
                     self.sem_guidance[i] = noise_guidance_edit.detach().cpu()
 
-                noise_pred = noise_pred_uncond + noise_guidance
+                noise_pred = noise_pred_uncond + noise_guidance_edit
 
                 if enable_edit_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
@@ -1045,7 +1059,7 @@ class LEditsPPPipelineStableDiffusion(
 
     @torch.no_grad()
     def invert(self,
-               image_path: str,
+               image: PipelineImageInput,
                source_prompt: str = "",
                source_guidance_scale=3.5,
                num_inversion_steps: int = 30,
@@ -1076,7 +1090,7 @@ class LEditsPPPipelineStableDiffusion(
         uncond_embedding = self.encode_text("")
 
         # 2. encode image
-        x0, resized = self.encode_image(image_path, dtype=uncond_embedding.dtype)
+        x0, resized = self.encode_image(image, dtype=uncond_embedding.dtype)
         self.batch_size = x0.shape[0]
 
         if not source_prompt == "":
@@ -1127,9 +1141,6 @@ class LEditsPPPipelineStableDiffusion(
 
                 progress_bar.update()
 
-        # TODO: I don't think that the noise map for the last step should be discarded ?!
-        # if not zs is None:
-        #     zs[-1] = torch.zeros_like(zs[-1])
         self.init_latents = xts[-1].expand(self.batch_size, -1, -1, -1)
         zs = zs.flip(0)
         self.zs = zs
@@ -1137,9 +1148,10 @@ class LEditsPPPipelineStableDiffusion(
         return LEditsPPInversionPipelineOutput(images=resized, vae_reconstruction_images=image_rec)
 
     @torch.no_grad()
-    def encode_image(self, image_path, dtype=None):
-        image, resized = load_images(image_path,
-                         sizes=(self.unet.sample_size * self.vae_scale_factor,int(self.unet.sample_size * self.vae_scale_factor *1.5)),
+    def encode_image(self, image, dtype=None):
+        image, resized = load_images(image,
+                        sizes=(self.unet.sample_size * self.vae_scale_factor,
+                                int(self.unet.sample_size * self.vae_scale_factor *1.5)),
                          device=self.device,
                          dtype=dtype)
         x0 = self.vae.encode(image).latent_dist.mode()
