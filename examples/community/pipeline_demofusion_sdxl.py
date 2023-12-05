@@ -36,7 +36,9 @@ from diffusers.utils.torch_utils import randn_tensor
 
 
 if is_invisible_watermark_available():
-    from .watermark import StableDiffusionXLWatermarker
+    from diffusers.pipelines.stable_diffusion_xl.watermark import (
+        StableDiffusionXLWatermarker,
+    )
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
