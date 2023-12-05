@@ -33,14 +33,22 @@ def main():
 
     for file in python_files:
         print(f"****** Running file: {file} ******")
-        command = f"python {file}"
-        run_command(command.split())
 
-        command += " --run_compile"
-        run_command(command.split())
+        if file != "benchmark_text_to_image.py":
+            command = f"python {file}"
+            run_command(command.split())
 
-        if file == "benchmark_sd.py":
-            for ckpt in ["segmind/SSD-1B", "stabilityai/stable-diffusion-xl-base-1.0"]:
+            command += " --run_compile"
+            run_command(command.split())
+
+        if file == "benchmark_text_to_image.py":
+            for ckpt in [
+                "runwayml/stable-diffusion-v1-5",
+                "segmind/SSD-1B",
+                "stabilityai/stable-diffusion-xl-base-1.0",
+                "kandinsky-community/kandinsky-2-2-decoder",
+                "warp-ai/wuerstchen",
+            ]:
                 command = f"python {file} --ckpt {ckpt}"
                 run_command(command.split())
 

@@ -15,8 +15,9 @@ if __name__ == "__main__":
         choices=[
             "runwayml/stable-diffusion-v1-5",
             "segmind/SSD-1B",
-            "stabilityai/stable-diffusion-2-1",
             "stabilityai/stable-diffusion-xl-base-1.0",
+            "kandinsky-community/kandinsky-2-2-decoder",
+            "warp-ai/wuerstchen",
         ],
     )
     parser.add_argument("--batch_size", type=int, default=1)

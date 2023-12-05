@@ -79,6 +79,10 @@ class TextToImageBenchmark(BaseBenchmak):
             print("Run torch compile")
             pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
+            if hasattr(pipe, "movq") and getattr(pipe, "movq", None) is not None:
+                pipe.movq.to(memory_format=torch.channels_last)
+                pipe.movq = torch.compile(pipe.movq, mode="reduce-overhead", fullgraph=True)
+
         pipe.set_progress_bar_config(disable=True)
         self.pipe = pipe
 
