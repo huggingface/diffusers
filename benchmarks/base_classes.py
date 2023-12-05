@@ -13,6 +13,7 @@ from diffusers import (
     StableDiffusionXLAdapterPipeline,
     StableDiffusionXLControlNetPipeline,
     T2IAdapter,
+    WuerstchenCombinedPipeline,
 )
 from diffusers.utils import load_image
 
@@ -75,13 +76,18 @@ class TextToImageBenchmark(BaseBenchmak):
         pipe = pipe.to("cuda")
 
         if args.run_compile:
-            pipe.unet.to(memory_format=torch.channels_last)
-            print("Run torch compile")
-            pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+            if not isinstance(pipe, WuerstchenCombinedPipeline):
+                pipe.unet.to(memory_format=torch.channels_last)
+                print("Run torch compile")
+                pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
-            if hasattr(pipe, "movq") and getattr(pipe, "movq", None) is not None:
-                pipe.movq.to(memory_format=torch.channels_last)
-                pipe.movq = torch.compile(pipe.movq, mode="reduce-overhead", fullgraph=True)
+                if hasattr(pipe, "movq") and getattr(pipe, "movq", None) is not None:
+                    pipe.movq.to(memory_format=torch.channels_last)
+                    pipe.movq = torch.compile(pipe.movq, mode="reduce-overhead", fullgraph=True)
+            else:
+                print("Run torch compile")
+                pipe.decoder = torch.compile(pipe.decoder, mode="reduce-overhead", fullgraph=True)
+                pipe.vqgan = torch.compile(pipe.vqgan, mode="reduce-overhead", fullgraph=True)
 
         pipe.set_progress_bar_config(disable=True)
         self.pipe = pipe
