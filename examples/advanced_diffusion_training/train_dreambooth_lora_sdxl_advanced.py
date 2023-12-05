@@ -130,14 +130,14 @@ def save_model_card(
             "To trigger image generation of trained concept(or concepts) replace each concept identifier "
             "in you prompt with the new inserted tokens:\n"
         )
-        diffusers_imports_pivotal = '''from huggingface_hub import hf_hub_download
+        diffusers_imports_pivotal = """from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
-        '''
-        diffusers_example_pivotal = f'''embedding_path = hf_hub_download(repo_id="{repo_id}", filename="embeddings.safetensors", repo_type="model")
+        """
+        diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id="{repo_id}", filename="embeddings.safetensors", repo_type="model")
 state_dict = load_file(embedding_path)
 pipeline.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
 pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
-        '''
+        """
         if token_abstraction_dict:
             for key, value in token_abstraction_dict.items():
                 tokens = "".join(value)
@@ -1125,9 +1125,7 @@ def main(args):
         model_id = args.hub_model_id or Path(args.output_dir).name
         repo_id = None
         if args.push_to_hub:
-            repo_id = create_repo(
-                repo_id=model_id, exist_ok=True, token=args.hub_token
-            ).repo_id
+            repo_id = create_repo(repo_id=model_id, exist_ok=True, token=args.hub_token).repo_id
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
@@ -1506,7 +1504,7 @@ def main(args):
         class_num=args.num_class_images,
         size=args.resolution,
         repeats=args.repeats,
-        center_crop=args.center_crop
+        center_crop=args.center_crop,
     )
 
     train_dataloader = torch.utils.data.DataLoader(
@@ -2040,7 +2038,6 @@ def main(args):
                             ]
                         }
                     )
-
 
         if args.train_text_encoder_ti:
             embedding_handler.save_embeddings(
