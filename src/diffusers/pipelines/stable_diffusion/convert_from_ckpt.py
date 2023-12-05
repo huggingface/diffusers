@@ -446,7 +446,7 @@ def convert_ldm_unet_checkpoint(
         new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
 
     # Relevant to StableDiffusionUpscalePipeline
-    if "num_class_embeds" in config:
+    if (config["num_class_embeds"] is not None) and ("label_emb.weight" in unet_state_dict):
         new_checkpoint["class_embedding.weight"] = unet_state_dict["label_emb.weight"]
 
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
@@ -1480,9 +1480,12 @@ def download_from_original_stable_diffusion_ckpt(
         config_name = "stabilityai/stable-diffusion-2"
         config_kwargs = {"subfolder": "text_encoder"}
 
-        text_model = convert_open_clip_checkpoint(
-            checkpoint, config_name, local_files_only=local_files_only, **config_kwargs
-        )
+        if text_encoder is None:
+            text_model = convert_open_clip_checkpoint(
+                checkpoint, config_name, local_files_only=local_files_only, **config_kwargs
+            )
+        else:
+            text_model = text_encoder
 
         try:
             tokenizer = CLIPTokenizer.from_pretrained(

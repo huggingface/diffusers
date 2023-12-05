@@ -21,8 +21,8 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["kandinsky3_pipeline"] = ["Kandinsky3Pipeline"]
-    _import_structure["kandinsky3img2img_pipeline"] = ["Kandinsky3Img2ImgPipeline"]
+    _import_structure["pipeline_kandinsky3"] = ["Kandinsky3Pipeline"]
+    _import_structure["pipeline_kandinsky3_img2img"] = ["Kandinsky3Img2ImgPipeline"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -33,8 +33,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .kandinsky3_pipeline import Kandinsky3Pipeline
-        from .kandinsky3img2img_pipeline import Kandinsky3Img2ImgPipeline
+        from .pipeline_kandinsky3 import Kandinsky3Pipeline
+        from .pipeline_kandinsky3_img2img import Kandinsky3Img2ImgPipeline
 else:
     import sys
 
