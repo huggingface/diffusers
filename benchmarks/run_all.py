@@ -47,6 +47,26 @@ def main():
                 command += " --run_compile"
                 run_command(command.split())
 
+        elif file in ["benchmark_sd_img.py", "benchmark_sd_inpainting.py"]:
+            sdxl_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
+            command = f"python {file} --ckpt {sdxl_ckpt}"
+            run_command(command.split())
+
+            command += " --run_compile"
+            run_command(command.split())
+
+        elif file in ["benchmark_controlnet.py", "benchmark_t2i_adapter.py"]:
+            sdxl_ckpt = (
+                "diffusers/controlnet-canny-sdxl-1.0"
+                if "controlnet" == file
+                else "TencentARC/t2i-adapter-canny-sdxl-1.0"
+            )
+            command = f"python {file} --ckpt {sdxl_ckpt}"
+            run_command(command.split())
+
+            command += " --run_compile"
+            run_command(command.split())
+
 
 if __name__ == "__main__":
     main()
