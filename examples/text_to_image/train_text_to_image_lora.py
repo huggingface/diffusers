@@ -536,6 +536,7 @@ def main():
         unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
         unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
 
+    unet.to(accelerator.device, dtype=weight_dtype)
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
             import xformers
