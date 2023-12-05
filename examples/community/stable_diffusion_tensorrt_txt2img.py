@@ -27,6 +27,7 @@ import onnx_graphsurgeon as gs
 import tensorrt as trt
 import torch
 from huggingface_hub import snapshot_download
+from huggingface_hub.utils import validate_hf_hub_args
 from onnx import shape_inference
 from polygraphy import cuda
 from polygraphy.backend.common import bytes_from_path
@@ -49,7 +50,7 @@ from diffusers.pipelines.stable_diffusion import (
     StableDiffusionSafetyChecker,
 )
 from diffusers.schedulers import DDIMScheduler
-from diffusers.utils import DIFFUSERS_CACHE, logging
+from diffusers.utils import logging
 
 
 """
@@ -691,12 +692,13 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             self.models["vae"] = make_VAE(self.vae, **models_args)
 
     @classmethod
+    @validate_hf_hub_args
     def set_cached_folder(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
 
         cls.cached_folder = (
@@ -708,7 +710,7 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
             )
         )
