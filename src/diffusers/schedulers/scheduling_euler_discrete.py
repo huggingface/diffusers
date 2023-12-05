@@ -281,7 +281,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         # Checking 'sigmas' type before datatype conversion
-        if isinstance(sigmas, np.ndarray)
+        if isinstance(sigmas, np.ndarray):
             sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
         else:
             sigmas = sigmas.to(dtype=torch.float32, device=device)
