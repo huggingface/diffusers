@@ -52,6 +52,7 @@ def push_to_hf_dataset():
             current_results[column] = current_results[column].map(str) + percent_change.map(
                 lambda x: f" ({'+' if x > 0 else ''}{x:.2f}%)"
             )
+            current_results[column] = current_results[column].map(lambda x: x.replace(" (nan%)", ""))
 
         # Overwrite the current result file.
         current_results.to_csv(FINAL_CSV_FILE, index=False)
