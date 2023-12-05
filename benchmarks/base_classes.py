@@ -221,5 +221,8 @@ class T2IAdapterSDXLBenchmark(T2IAdapterBenchmark):
     pipeline_class = StableDiffusionXLAdapterPipeline
     root_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
 
+    url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/canny_for_adapter_sdxl.png"
+    image = load_image(url)
+
     def __init__(self, args):
         super().__init__(args)
