@@ -92,6 +92,7 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
+# Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
 def rescale_zero_terminal_snr(betas):
     """
     Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
