@@ -38,6 +38,7 @@ RESOLUTION_MAPPING = {
     "TencentARC/t2iadapter_canny_sd14v1": (512, 512),
     "TencentARC/t2i-adapter-canny-sdxl-1.0": (1024, 1024),
     "stabilityai/stable-diffusion-2-1": (768, 768),
+    "stabilityai/stable-diffusion-xl-base-1.0": (1024, 1024),
     "stabilityai/stable-diffusion-xl-refiner-1.0": (1024, 1024),
 }
 
