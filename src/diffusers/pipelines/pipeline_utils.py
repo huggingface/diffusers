@@ -34,8 +34,8 @@ from huggingface_hub import (
     hf_hub_download,
     model_info,
     snapshot_download,
-    validate_hf_hub_args,
 )
+from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
