@@ -542,7 +542,7 @@ image = pipeline(
     <figcaption class="mt-2 text-center text-sm text-gray-500">input image</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/documentation-images/resolve/main/diffusers/ipadapter_full_face_output.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ipadapter_full_face_output.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">output image</figcaption>
   </div>
 </div>
