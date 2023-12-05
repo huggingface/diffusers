@@ -285,7 +285,6 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
         else:
             sigmas = sigmas.to(dtype=torch.float32, device=device)
-    
 
         # TODO: Support the full EDM scalings for all prediction types and timestep types
         if self.config.timestep_type == "continuous" and self.config.prediction_type == "v_prediction":
