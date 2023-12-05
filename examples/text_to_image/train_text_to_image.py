@@ -965,7 +965,8 @@ def main():
                     ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
-                accelerator.log({"train_loss": train_loss}, step=global_step)
+                step_loss = loss.detach().item()
+                accelerator.log({"train_loss": train_loss, "step_loss": step_loss}, step=global_step)
                 train_loss = 0.0
 
                 if global_step % args.checkpointing_steps == 0:
@@ -994,7 +995,7 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {"step_loss": step_loss, "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
