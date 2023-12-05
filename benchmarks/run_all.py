@@ -33,8 +33,19 @@ def main():
 
     for file in python_files:
         print(f"****** Running file: {file} ******")
-        run_command(f"python {file}".split())
-        run_command(f"python {file} --run_compile".split())
+        command = f"python {file}"
+        run_command(command.split())
+
+        command += " --run_compile"
+        run_command(command.split())
+
+        if file == "benchmark_sd.py":
+            for ckpt in ["segmind/SSD-1B", "stabilityai/stable-diffusion-xl-base-1.0"]:
+                command = f"python {file} --ckpt {ckpt}"
+                run_command(command.split())
+
+                command += " --run_compile"
+                run_command(command.split())
 
 
 if __name__ == "__main__":
