@@ -118,7 +118,7 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "python>=3.8.0",
-    "ruff>=0.1.5,<=0.2",
+    "ruff==0.1.5",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
