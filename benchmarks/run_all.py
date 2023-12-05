@@ -48,7 +48,11 @@ def main():
                 run_command(command.split())
 
         elif file in ["benchmark_sd_img.py", "benchmark_sd_inpainting.py"]:
-            sdxl_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
+            sdxl_ckpt = (
+                "stabilityai/stable-diffusion-xl-refiner-1.0"
+                if "inpainting" not in file
+                else "stabilityai/stable-diffusion-xl-base-1.0"
+            )
             command = f"python {file} --ckpt {sdxl_ckpt}"
             run_command(command.split())
 
