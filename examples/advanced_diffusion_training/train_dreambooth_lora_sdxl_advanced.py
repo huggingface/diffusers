@@ -123,16 +123,26 @@ def save_model_card(
         """
 
     trigger_str = f"You should use {instance_prompt} to trigger the image generation."
+    diffusers_imports_pivotal = ""
+    diffusers_example_pivotal = ""
     if train_text_encoder_ti:
         trigger_str = (
             "To trigger image generation of trained concept(or concepts) replace each concept identifier "
             "in you prompt with the new inserted tokens:\n"
         )
+        diffusers_imports_pivotal = '''from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
+        '''
+        diffusers_example_pivotal = f'''embedding_path = hf_hub_download(repo_id="{repo_id}", filename="embeddings.safetensors", repo_type="model")
+state_dict = load_file(embedding_path)
+pipeline.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
+pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
+        '''
         if token_abstraction_dict:
             for key, value in token_abstraction_dict.items():
                 tokens = "".join(value)
                 trigger_str += f"""
-to trigger concept `{key}->` use `{tokens}` in your prompt \n
+to trigger concept `{key}` → use `{tokens}` in your prompt \n
 """
 
     yaml = f"""
@@ -172,7 +182,21 @@ Special VAE used for training: {vae_path}.
 
 {trigger_str}
 
-## Download model
+## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
+
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+{diffusers_imports_pivotal}
+pipeline = AutoPipelineForText2Image.from_pretrained('stabilityai/stable-diffusion-xl-base-1.0', torch_dtype=torch.float16).to('cuda')
+pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
+{diffusers_example_pivotal}
+image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
+```
+
+For more details, including weighting, merging and fusing LoRAs, check the [documentation on loading LoRAs in diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters)
+
+## Download model (use it with UIs such as AUTO1111, Comfy, SD.Next, Invoke)
 
 Weights for this model are available in Safetensors format.
 
@@ -1093,9 +1117,11 @@ def main(args):
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+        model_id = args.hub_model_id or Path(args.output_dir).name
+        repo_id = None
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+                repo_id=model_id, exist_ok=True, token=args.hub_token
             ).repo_id
 
     # Load the tokenizers
@@ -2004,23 +2030,24 @@ def main(args):
                         }
                     )
 
-        if args.push_to_hub:
-            if args.train_text_encoder_ti:
-                embedding_handler.save_embeddings(
-                    f"{args.output_dir}/embeddings.safetensors",
-                )
-            save_model_card(
-                repo_id,
-                images=images,
-                base_model=args.pretrained_model_name_or_path,
-                train_text_encoder=args.train_text_encoder,
-                train_text_encoder_ti=args.train_text_encoder_ti,
-                token_abstraction_dict=train_dataset.token_abstraction_dict,
-                instance_prompt=args.instance_prompt,
-                validation_prompt=args.validation_prompt,
-                repo_folder=args.output_dir,
-                vae_path=args.pretrained_vae_model_name_or_path,
+        
+        if args.train_text_encoder_ti:
+            embedding_handler.save_embeddings(
+                f"{args.output_dir}/embeddings.safetensors",
             )
+        save_model_card(
+            model_id if not args.push_to_hub else repo_id,
+            images=images,
+            base_model=args.pretrained_model_name_or_path,
+            train_text_encoder=args.train_text_encoder,
+            train_text_encoder_ti=args.train_text_encoder_ti,
+            token_abstraction_dict=train_dataset.token_abstraction_dict,
+            instance_prompt=args.instance_prompt,
+            validation_prompt=args.validation_prompt,
+            repo_folder=args.output_dir,
+            vae_path=args.pretrained_vae_model_name_or_path,
+        )
+        if args.push_to_hub:
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
