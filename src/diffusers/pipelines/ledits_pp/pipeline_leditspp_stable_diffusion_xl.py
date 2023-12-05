@@ -42,7 +42,7 @@ from ...models.attention_processor import (
 import torch.nn.functional as F
 
 from .ledits_utils import *
-from .pipeline_output import LEditsPPDiffusionPipelineOutput
+from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
 from ..pipeline_utils import DiffusionPipeline
 
 from ...schedulers import DDIMScheduler, DPMSolverMultistepScheduler, KarrasDiffusionSchedulers
@@ -920,12 +920,11 @@ class LEditsPPPipelineStableDiffusionXL(
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         if ip_adapter_image is not None:
+            # TODO: fix image encoding
             image_embeds, negative_image_embeds = self.encode_image(ip_adapter_image, device, num_images_per_prompt)
             if self.do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
                 image_embeds = image_embeds.to(device)
-
-
 
         # 8. Denoising loop
         self.sem_guidance = None
@@ -1249,7 +1248,7 @@ class LEditsPPPipelineStableDiffusionXL(
     @torch.no_grad()
     def encode_image(self, image_path, dtype=None):
 
-        image = load_images(image_path,
+        image, resized = load_images(image_path,
                             sizes=(self.unet.sample_size * self.vae_scale_factor,
                                    int(self.unet.sample_size * self.vae_scale_factor * 1.5)),
                             device=self.device,
@@ -1262,7 +1261,7 @@ class LEditsPPPipelineStableDiffusionXL(
         x0 = self.vae.encode(image).latent_dist.mode()
         x0 = x0.to(dtype)
         x0 = self.vae.config.scaling_factor * x0
-        return x0
+        return x0, resized
 
     @torch.no_grad()
     def invert(self,
@@ -1318,7 +1317,7 @@ class LEditsPPPipelineStableDiffusionXL(
         )
 
         # 4. prepare image
-        x0 = self.encode_image(image_path, dtype=self.text_encoder_2.dtype)
+        x0, resized = self.encode_image(image_path, dtype=self.text_encoder_2.dtype)
         width = x0.shape[2] * self.vae_scale_factor
         height = x0.shape[3] * self.vae_scale_factor
         self.size = (height, width)
@@ -1431,9 +1430,9 @@ class LEditsPPPipelineStableDiffusionXL(
 
         self.init_latents = xts[-1]
         zs = zs.flip(0)
-        self.zs = zs
         zs[-num_zero_noise_steps:] = torch.zeros_like(zs[-num_zero_noise_steps:])
-        return zs, xts, image_rec
+        self.zs = zs
+        return LEditsPPInversionPipelineOutput(images=resized, vae_reconstruction_images=image_rec)
 
 
 # Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.reset_dpm
