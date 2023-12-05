@@ -1392,6 +1392,45 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             lora_image_slice_fusion, loaded_lora_image_slice, atol=1e-03
         ), "The pipeline was serialized with LoRA parameters fused inside of the respected modules. The loaded pipeline should yield proper outputs, henceforth."
 
+    def test_lora_padding_mode(self):
+        pipeline_components, lora_components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, pipeline_inputs = self.get_dummy_inputs()
+
+        original_images = sd_pipe(**pipeline_inputs).images
+        orig_image_slice = original_images[0, -3:, -3:, -1]
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            StableDiffusionXLPipeline.save_lora_weights(
+                save_directory=tmpdirname,
+                unet_lora_layers=lora_components["unet_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_one_lora_layers"],
+                text_encoder_2_lora_layers=lora_components["text_encoder_two_lora_layers"],
+            )
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
+            sd_pipe.load_lora_weights(tmpdirname)
+
+        # Modify the padding mode of Conv2d
+        def set_pad_mode(network, mode="circular"):
+            for _, module in network.named_children():
+                if len(module._modules) > 0:
+                    set_pad_mode(module, mode)
+                else:
+                    if isinstance(module, torch.nn.Conv2d):
+                        module.padding_mode = mode
+
+        set_pad_mode(sd_pipe.vae, "circular")
+        set_pad_mode(sd_pipe.unet, "circular")
+
+        lora_images = sd_pipe(**pipeline_inputs).images
+        lora_image_slice = lora_images[0, -3:, -3:, -1]
+
+        # Outputs shouldn't match.
+        self.assertFalse(torch.allclose(torch.from_numpy(orig_image_slice), torch.from_numpy(lora_image_slice)))
+
 
 @deprecate_after_peft_backend
 class UNet2DConditionLoRAModelTests(unittest.TestCase):
