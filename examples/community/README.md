@@ -2870,10 +2870,14 @@ The original repo can be found at [repo](https://github.com/PRIS-CV/DemoFusion).
 - `show_image` (`bool`, defaults to False):
   Determine whether to show intermediate results during generation.
 ```
-from pipeline_demofusion_sdxl import DemoFusionSDXLPipeline
+from diffusers import DiffusionPipeline
 
-model_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
-pipe = DemoFusionSDXLPipeline.from_pretrained(model_ckpt, torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    custom_pipeline="pipeline_demofusion_sdxl",
+    custom_revision="main",
+    torch_dtype=torch.float16,
+)
 pipe = pipe.to("cuda")
 
 prompt = "Envision a portrait of an elderly woman, her face a canvas of time, framed by a headscarf with muted tones of rust and cream. Her eyes, blue like faded denim. Her attire, simple yet dignified."

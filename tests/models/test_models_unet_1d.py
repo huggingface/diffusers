@@ -18,7 +18,12 @@ import unittest
 import torch
 
 from diffusers import UNet1DModel
-from diffusers.utils.testing_utils import floats_tensor, slow, torch_device
+from diffusers.utils.testing_utils import (
+    backend_manual_seed,
+    floats_tensor,
+    slow,
+    torch_device,
+)
 
 from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
@@ -103,8 +108,7 @@ class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def test_output_pretrained(self):
         model = UNet1DModel.from_pretrained("bglick13/hopper-medium-v2-value-function-hor32", subfolder="unet")
         torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
+        backend_manual_seed(torch_device, 0)
 
         num_features = model.config.in_channels
         seq_len = 16
@@ -244,8 +248,7 @@ class UNetRLModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             "bglick13/hopper-medium-v2-value-function-hor32", output_loading_info=True, subfolder="value_function"
         )
         torch.manual_seed(0)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(0)
+        backend_manual_seed(torch_device, 0)
 
         num_features = value_function.config.in_channels
         seq_len = 14
