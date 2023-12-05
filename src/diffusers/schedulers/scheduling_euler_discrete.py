@@ -280,7 +280,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
-        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
+        sigmas = (
+            torch.from_numpy(sigmas).to(dtype=torch.float32, device=device)
+            if not isinstance(sigmas, torch.Tensor)
+            else sigmas
+        )
 
         # TODO: Support the full EDM scalings for all prediction types and timestep types
         if self.config.timestep_type == "continuous" and self.config.prediction_type == "v_prediction":
