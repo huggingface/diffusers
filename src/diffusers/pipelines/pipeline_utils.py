@@ -381,7 +381,6 @@ def _get_pipeline_class(
             custom_pipeline,
             module_file=file_name,
             class_name=class_name,
-            repo_id=repo_id,
             cache_dir=cache_dir,
             revision=revision,
         )
