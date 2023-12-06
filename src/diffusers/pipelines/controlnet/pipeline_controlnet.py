@@ -487,8 +487,7 @@ class StableDiffusionControlNetPipeline(
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-<<<<<<< HEAD
-    def encode_image(self, image, device, num_images_per_prompt):
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
         r"""
         Encodes the image into image encoder hidden states when using image prompts, i.e. IP Adapter functionality.
 
@@ -504,9 +503,6 @@ class StableDiffusionControlNetPipeline(
             `Tuple[torch.FloatTensor, torch.FloatTensor]`:
                 The conditional and unconditional embeddings of the feature-extracted image.
         """
-=======
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
->>>>>>> f427345ab165910ab954ed7453a1a7129627bfdd
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
