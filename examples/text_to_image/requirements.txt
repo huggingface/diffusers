@@ -5,4 +5,4 @@ datasets
 ftfy
 tensorboard
 Jinja2
-peft @ git+https://github.com/huggingface/peft.git
+peft==0.7.0
