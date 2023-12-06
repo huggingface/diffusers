@@ -123,16 +123,26 @@ def save_model_card(
         """
 
     trigger_str = f"You should use {instance_prompt} to trigger the image generation."
+    diffusers_imports_pivotal = ""
+    diffusers_example_pivotal = ""
     if train_text_encoder_ti:
         trigger_str = (
             "To trigger image generation of trained concept(or concepts) replace each concept identifier "
             "in you prompt with the new inserted tokens:\n"
         )
+        diffusers_imports_pivotal = """from huggingface_hub import hf_hub_download
+from safetensors.torch import load_file
+        """
+        diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id="{repo_id}", filename="embeddings.safetensors", repo_type="model")
+state_dict = load_file(embedding_path)
+pipeline.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
+pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
+        """
         if token_abstraction_dict:
             for key, value in token_abstraction_dict.items():
                 tokens = "".join(value)
                 trigger_str += f"""
-to trigger concept `{key}->` use `{tokens}` in your prompt \n
+to trigger concept `{key}` → use `{tokens}` in your prompt \n
 """
 
     yaml = f"""
@@ -172,7 +182,21 @@ Special VAE used for training: {vae_path}.
 
 {trigger_str}
 
-## Download model
+## Use it with the [🧨 diffusers library](https://github.com/huggingface/diffusers)
+
+```py
+from diffusers import AutoPipelineForText2Image
+import torch
+{diffusers_imports_pivotal}
+pipeline = AutoPipelineForText2Image.from_pretrained('stabilityai/stable-diffusion-xl-base-1.0', torch_dtype=torch.float16).to('cuda')
+pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
+{diffusers_example_pivotal}
+image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
+```
+
+For more details, including weighting, merging and fusing LoRAs, check the [documentation on loading LoRAs in diffusers](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters)
+
+## Download model (use it with UIs such as AUTO1111, Comfy, SD.Next, Invoke)
 
 Weights for this model are available in Safetensors format.
 
@@ -226,26 +250,38 @@ def parse_args(input_args=None):
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
+    )
+    parser.add_argument(
         "--dataset_name",
         type=str,
         default=None,
         help=(
             "The name of the Dataset (from the HuggingFace hub) containing the training data of instance images (could be your own, possibly private,"
             " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
-            " or to a folder containing files that 🤗 Datasets can understand."
+            " or to a folder containing files that 🤗 Datasets can understand.To load the custom captions, the training set directory needs to follow the structure of a "
+            "datasets ImageFolder, containing both the images and the corresponding caption for each image. see: "
+            "https://huggingface.co/docs/datasets/image_dataset for more information"
         ),
     )
     parser.add_argument(
         "--dataset_config_name",
         type=str,
         default=None,
-        help="The config of the Dataset, leave as None if there's only one config.",
+        help="The config of the Dataset. In some cases, a dataset may have more than one configuration (for example "
+        "if it contains different subsets of data within, and you only wish to load a specific subset - in that case specify the desired configuration using --dataset_config_name. Leave as "
+        "None if there's only one config.",
     )
     parser.add_argument(
         "--instance_data_dir",
         type=str,
         default=None,
-        help=("A folder containing the training data. "),
+        help="A path to local folder containing the training data of instance images. Specify this arg instead of "
+        "--dataset_name if you wish to train using a local folder without custom captions. If you wish to train with custom captions please specify "
+        "--dataset_name instead.",
     )
 
     parser.add_argument(
@@ -288,16 +324,18 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--token_abstraction",
+        type=str,
         default="TOK",
         help="identifier specifying the instance(or instances) as used in instance_prompt, validation prompt, "
-        "captions - e.g. TOK",
+        "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma seperated string - e.g. "
+        "'TOK,TOK2,TOK3' etc.",
     )
 
     parser.add_argument(
         "--num_new_tokens_per_abstraction",
         type=int,
         default=2,
-        help="number of new tokens inserted to the tokenizers per token_abstraction value when "
+        help="number of new tokens inserted to the tokenizers per token_abstraction identifier when "
         "--train_text_encoder_ti = True. By default, each --token_abstraction (e.g. TOK) is mapped to 2 new "
         "tokens - <si><si+1> ",
     )
@@ -648,17 +686,6 @@ def parse_args(input_args=None):
             "inversion training check `--train_text_encoder_ti`"
         )
 
-    if args.train_text_encoder_ti:
-        if isinstance(args.token_abstraction, str):
-            args.token_abstraction = [args.token_abstraction]
-        elif isinstance(args.token_abstraction, List):
-            args.token_abstraction = args.token_abstraction
-        else:
-            raise ValueError(
-                f"Unsupported type for --args.token_abstraction: {type(args.token_abstraction)}. "
-                f"Supported types are: str (for a single instance identifier) or List[str] (for multiple concepts)"
-            )
-
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -788,6 +815,12 @@ class DreamBoothDataset(Dataset):
         instance_data_root,
         instance_prompt,
         class_prompt,
+        dataset_name,
+        dataset_config_name,
+        cache_dir,
+        image_column,
+        caption_column,
+        train_text_encoder_ti,
         class_data_root=None,
         class_num=None,
         token_abstraction_dict=None,  # token mapping for textual inversion
@@ -802,10 +835,10 @@ class DreamBoothDataset(Dataset):
         self.custom_instance_prompts = None
         self.class_prompt = class_prompt
         self.token_abstraction_dict = token_abstraction_dict
-
+        self.train_text_encoder_ti = train_text_encoder_ti
         # if --dataset_name is provided or a metadata jsonl file is provided in the local --instance_data directory,
         # we load the training data using load_dataset
-        if args.dataset_name is not None:
+        if dataset_name is not None:
             try:
                 from datasets import load_dataset
             except ImportError:
@@ -818,26 +851,25 @@ class DreamBoothDataset(Dataset):
             # See more about loading custom images at
             # https://huggingface.co/docs/datasets/v2.0.0/en/dataset_script
             dataset = load_dataset(
-                args.dataset_name,
-                args.dataset_config_name,
-                cache_dir=args.cache_dir,
+                dataset_name,
+                dataset_config_name,
+                cache_dir=cache_dir,
             )
             # Preprocessing the datasets.
             column_names = dataset["train"].column_names
 
             # 6. Get the column names for input/target.
-            if args.image_column is None:
+            if image_column is None:
                 image_column = column_names[0]
                 logger.info(f"image column defaulting to {image_column}")
             else:
-                image_column = args.image_column
                 if image_column not in column_names:
                     raise ValueError(
-                        f"`--image_column` value '{args.image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
+                        f"`--image_column` value '{image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
                     )
             instance_images = dataset["train"][image_column]
 
-            if args.caption_column is None:
+            if caption_column is None:
                 logger.info(
                     "No caption column provided, defaulting to instance_prompt for all images. If your dataset "
                     "contains captions/prompts for the images, make sure to specify the "
@@ -845,11 +877,11 @@ class DreamBoothDataset(Dataset):
                 )
                 self.custom_instance_prompts = None
             else:
-                if args.caption_column not in column_names:
+                if caption_column not in column_names:
                     raise ValueError(
-                        f"`--caption_column` value '{args.caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
+                        f"`--caption_column` value '{caption_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
                     )
-                custom_instance_prompts = dataset["train"][args.caption_column]
+                custom_instance_prompts = dataset["train"][caption_column]
                 # create final list of captions according to --repeats
                 self.custom_instance_prompts = []
                 for caption in custom_instance_prompts:
@@ -904,7 +936,7 @@ class DreamBoothDataset(Dataset):
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
             if caption:
-                if args.train_text_encoder_ti:
+                if self.train_text_encoder_ti:
                     # replace instances of --token_abstraction in caption with the new tokens: "<si><si+1>" etc.
                     for token_abs, token_replacement in self.token_abstraction_dict.items():
                         caption = caption.replace(token_abs, "".join(token_replacement))
@@ -1058,6 +1090,7 @@ def main(args):
                 args.pretrained_model_name_or_path,
                 torch_dtype=torch_dtype,
                 revision=args.revision,
+                variant=args.variant,
             )
             pipeline.set_progress_bar_config(disable=True)
 
@@ -1089,17 +1122,25 @@ def main(args):
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+        model_id = args.hub_model_id or Path(args.output_dir).name
+        repo_id = None
         if args.push_to_hub:
-            repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-            ).repo_id
+            repo_id = create_repo(repo_id=model_id, exist_ok=True, token=args.hub_token).repo_id
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+        variant=args.variant,
+        use_fast=False,
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_2",
+        revision=args.revision,
+        variant=args.variant,
+        use_fast=False,
     )
 
     # import correct text encoder classes
@@ -1113,10 +1154,10 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
     )
     vae_path = (
         args.pretrained_model_name_or_path
@@ -1124,16 +1165,24 @@ def main(args):
         else args.pretrained_vae_model_name_or_path
     )
     vae = AutoencoderKL.from_pretrained(
-        vae_path, subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None, revision=args.revision
+        vae_path,
+        subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+        revision=args.revision,
+        variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
     if args.train_text_encoder_ti:
+        # we parse the provided token identifier (or identifiers) into a list. s.t. - "TOK" -> ["TOK"], "TOK,
+        # TOK2" -> ["TOK", "TOK2"] etc.
+        token_abstraction_list = "".join(args.token_abstraction.split()).split(",")
+        logger.info(f"list of token identifiers: {token_abstraction_list}")
+
         token_abstraction_dict = {}
         token_idx = 0
-        for i, token in enumerate(args.token_abstraction):
+        for i, token in enumerate(token_abstraction_list):
             token_abstraction_dict[token] = [
                 f"<s{token_idx + i + j}>" for j in range(args.num_new_tokens_per_abstraction)
             ]
@@ -1444,6 +1493,12 @@ def main(args):
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         class_prompt=args.class_prompt,
+        dataset_name=args.dataset_name,
+        dataset_config_name=args.dataset_config_name,
+        cache_dir=args.cache_dir,
+        image_column=args.image_column,
+        train_text_encoder_ti=args.train_text_encoder_ti,
+        caption_column=args.caption_column,
         class_data_root=args.class_data_dir if args.with_prior_preservation else None,
         token_abstraction_dict=token_abstraction_dict if args.train_text_encoder_ti else None,
         class_num=args.num_class_images,
@@ -1837,10 +1892,16 @@ def main(args):
                 # create pipeline
                 if freeze_text_encoder:
                     text_encoder_one = text_encoder_cls_one.from_pretrained(
-                        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+                        args.pretrained_model_name_or_path,
+                        subfolder="text_encoder",
+                        revision=args.revision,
+                        variant=args.variant,
                     )
                     text_encoder_two = text_encoder_cls_two.from_pretrained(
-                        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
+                        args.pretrained_model_name_or_path,
+                        subfolder="text_encoder_2",
+                        revision=args.revision,
+                        variant=args.variant,
                     )
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
@@ -1849,6 +1910,7 @@ def main(args):
                     text_encoder_2=accelerator.unwrap_model(text_encoder_two),
                     unet=accelerator.unwrap_model(unet),
                     revision=args.revision,
+                    variant=args.variant,
                     torch_dtype=weight_dtype,
                 )
 
@@ -1926,10 +1988,15 @@ def main(args):
             vae_path,
             subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
             revision=args.revision,
+            variant=args.variant,
             torch_dtype=weight_dtype,
         )
         pipeline = StableDiffusionXLPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, vae=vae, revision=args.revision, torch_dtype=weight_dtype
+            args.pretrained_model_name_or_path,
+            vae=vae,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
         )
 
         # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
@@ -1972,23 +2039,23 @@ def main(args):
                         }
                     )
 
-        if args.push_to_hub:
-            if args.train_text_encoder_ti:
-                embedding_handler.save_embeddings(
-                    f"{args.output_dir}/embeddings.safetensors",
-                )
-            save_model_card(
-                repo_id,
-                images=images,
-                base_model=args.pretrained_model_name_or_path,
-                train_text_encoder=args.train_text_encoder,
-                train_text_encoder_ti=args.train_text_encoder_ti,
-                token_abstraction_dict=train_dataset.token_abstraction_dict,
-                instance_prompt=args.instance_prompt,
-                validation_prompt=args.validation_prompt,
-                repo_folder=args.output_dir,
-                vae_path=args.pretrained_vae_model_name_or_path,
+        if args.train_text_encoder_ti:
+            embedding_handler.save_embeddings(
+                f"{args.output_dir}/embeddings.safetensors",
             )
+        save_model_card(
+            model_id if not args.push_to_hub else repo_id,
+            images=images,
+            base_model=args.pretrained_model_name_or_path,
+            train_text_encoder=args.train_text_encoder,
+            train_text_encoder_ti=args.train_text_encoder_ti,
+            token_abstraction_dict=train_dataset.token_abstraction_dict,
+            instance_prompt=args.instance_prompt,
+            validation_prompt=args.validation_prompt,
+            repo_folder=args.output_dir,
+            vae_path=args.pretrained_vae_model_name_or_path,
+        )
+        if args.push_to_hub:
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
