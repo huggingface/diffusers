@@ -353,6 +353,8 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
+        self, image: PipelineImageInput, device: torch.device, dtype: torch.dtype
+    ) -> Tuple[PipelineImageInput, Optional[List[bool]]]:
         if self.safety_checker is None:
             has_nsfw_concept = None
         else:

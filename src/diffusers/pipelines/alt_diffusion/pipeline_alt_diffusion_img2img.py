@@ -193,6 +193,9 @@ class AltDiffusionImg2ImgPipeline(
             about a model's potential harms.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
+        image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
+            A `CLIPVisionModelWithProjection` to retrieve embeddings from images provided as image prompts when using
+            IP-Adapter functionality.
     """
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
@@ -294,11 +297,11 @@ class AltDiffusionImg2ImgPipeline(
 
     def _encode_prompt(
         self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
+        prompt: Union[str, List[str]],
+        device: torch.device,
+        num_images_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
@@ -326,16 +329,16 @@ class AltDiffusionImg2ImgPipeline(
 
     def encode_prompt(
         self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
+        prompt: Union[str, List[str]],
+        device: torch.device,
+        num_images_per_prompt: int,
+        do_classifier_free_guidance: bool,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
-    ):
+    ) -> Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]:
         r"""
         Encodes the prompt into text encoder hidden states.
 
@@ -364,6 +367,11 @@ class AltDiffusionImg2ImgPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+
+        Returns:
+            `Tuple[torch.FloatTensor, Optional[torch.FloatTensor]]`:
+                The conditional and unconditional embeddings. The unconditional embeddings can be `None` if `do_classifier_free_guidance`
+                is `False`.
         """
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
@@ -506,6 +514,21 @@ class AltDiffusionImg2ImgPipeline(
         return prompt_embeds, negative_prompt_embeds
 
     def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        r"""
+        Encodes the image into image encoder hidden states when using image prompts, i.e. IP Adapter functionality.
+
+        Args:
+            image (`PipelineImageInput`):
+                Input image to extract features from and generate embeddings.
+            device (`torch.device`):
+                Device to send the image to.
+            num_images_per_prompt (`int`):
+                Number of images that should be generated per prompt.
+
+        Returns:
+            `Tuple[torch.FloatTensor, torch.FloatTensor]`:
+                The conditional and unconditional embeddings of the feature-extracted image.
+        """
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):

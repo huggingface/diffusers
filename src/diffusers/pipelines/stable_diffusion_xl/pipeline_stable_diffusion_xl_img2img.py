@@ -747,6 +747,8 @@ class StableDiffusionXLImg2ImgPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        self, image: PipelineImageInput, device: torch.device, num_images_per_prompt: int, output_hidden_states=None
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         r"""
         Encodes the image into image encoder hidden states when using image prompts, i.e. IP Adapter functionality.
 

@@ -370,6 +370,8 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
+        self, image: PipelineImageInput, device: torch.device, dtype: torch.dtype
+    ) -> Tuple[PipelineImageInput, Optional[List[bool]]]:
         if self.safety_checker is None:
             has_nsfw_concept = None
         else:
@@ -481,6 +483,16 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        self,
+        batch_size: int,
+        num_channels_latents: int,
+        height: int,
+        width: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        generator: Union[torch.Generator, List[torch.Generator]],
+        latents: Optional[torch.FloatTensor] = None,
+    ) -> torch.FloatTensor:
         r"""
         Prepare latents randomly or by passing a `torch.FloatTensor` of appropriate size. Prepared latents will have
         scaled down dimensions of input `height` and `width`, and have a type of passed `dtype` on provided `device`.
