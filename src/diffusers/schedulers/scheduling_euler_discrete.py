@@ -191,10 +191,11 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
     @property
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
+        max_sigma = max(self.sigmas) if isinstance(self.sigmas, list) else self.sigmas.max()
         if self.config.timestep_spacing in ["linspace", "trailing"]:
-            return self.sigmas.max()
+            return max_sigma
 
-        return (self.sigmas.max() ** 2 + 1) ** 0.5
+        return (max_sigma**2 + 1) ** 0.5
 
     @property
     def step_index(self):
@@ -289,6 +290,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps.astype(np.float32)).to(device=device)
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
+        if sigmas.device.type == "cuda":
+            self.sigmas = self.sigmas.tolist()
         self._step_index = None
 
     def _sigma_to_t(self, sigma, log_sigmas):
