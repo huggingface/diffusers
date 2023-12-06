@@ -2904,7 +2904,6 @@ export_to_gif(result.frames[0], "result.gif")
     <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/eb7d2952-72e4-44fa-b664-077c79b4fc70" alt="gif-2"></td>
   </tr>
 </table>
-=======
 ### DemoFusion
 This pipeline is the official implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973).
 The original repo can be found at [repo](https://github.com/PRIS-CV/DemoFusion).
