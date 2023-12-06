@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -974,7 +974,7 @@ class StableDiffusionInpaintPipeline(
         mask: PIL.Image.Image,
         init_image: PIL.Image.Image,
         image: PIL.Image.Image,
-        crop_coords: Optional[tuple[int, int, int, int]] = None,
+        crop_coords: Optional[Tuple[int, int, int, int]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
     ) -> PIL.Image.Image:
