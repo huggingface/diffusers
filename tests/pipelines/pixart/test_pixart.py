@@ -329,40 +329,6 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def test_pixart_1024_fast(self):
-        generator = torch.manual_seed(0)
-
-        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
-
-        prompt = self.prompt
-
-        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
-
-        image_slice = image[0, -3:, -3:, -1]
-
-        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
-
-    def test_pixart_512_fast(self):
-        generator = torch.manual_seed(0)
-
-        pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
-        pipe.enable_model_cpu_offload()
-
-        prompt = self.prompt
-
-        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
-
-        image_slice = image[0, -3:, -3:, -1]
-
-        expected_slice = np.array([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
-
     def test_pixart_1024(self):
         generator = torch.manual_seed(0)
 

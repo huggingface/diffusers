@@ -110,7 +110,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-             prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`, *optional*):
                 torch device to place the resulting embeddings on
@@ -365,7 +365,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             timesteps (`List[int]`, *optional*):

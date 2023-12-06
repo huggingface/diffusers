@@ -282,7 +282,7 @@ class FromSingleFileMixin:
         )
 
         if torch_dtype is not None:
-            pipe.to(torch_dtype=torch_dtype)
+            pipe.to(dtype=torch_dtype)
 
         return pipe
 
