@@ -25,14 +25,13 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 import safetensors
 import torch
 from huggingface_hub import create_repo
+from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
 from ..utils import (
     CONFIG_NAME,
-    DIFFUSERS_CACHE,
     FLAX_WEIGHTS_NAME,
-    HF_HUB_OFFLINE,
     MIN_PEFT_VERSION,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
@@ -535,6 +534,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
     @classmethod
+    @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
@@ -571,7 +571,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             local_files_only(`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -640,15 +640,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
         """
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
         from_flax = kwargs.pop("from_flax", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
@@ -718,7 +718,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
+            token=token,
             revision=revision,
             subfolder=subfolder,
             device_map=device_map,
@@ -740,7 +740,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 subfolder=subfolder,
                 user_agent=user_agent,
@@ -763,7 +763,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
+                        token=token,
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
@@ -782,7 +782,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,

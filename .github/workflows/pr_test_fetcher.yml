@@ -1,12 +1,6 @@
 name: Fast tests for PRs - Test Fetcher
 
-on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - ci-*
+on: workflow_dispatch
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -35,14 +29,15 @@ jobs:
     - name: Checkout diffusers
       uses: actions/checkout@v3
       with:
-        fetch-depth: 2
+        fetch-depth: 0
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
-        python -m pip install -e .
+        python -m pip install -e .[quality,test]
     - name: Environment
       run: |
         python utils/print_env.py
+        echo $(git --version)
     - name: Fetch Tests
       run: |
         python utils/tests_fetcher.py | tee test_preparation.txt
@@ -110,7 +105,7 @@ jobs:
       continue-on-error: true
       run: |
         cat reports/${{ matrix.modules }}_tests_cpu_stats.txt
-        cat reports/${{ matrix.modules }}_tests_cpu/failures_short.txt
+        cat reports/${{ matrix.modules }}_tests_cpu_failures_short.txt
 
     - name: Test suite reports artifacts
       if: ${{ always() }}

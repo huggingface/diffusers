@@ -18,6 +18,7 @@ from enum import Enum
 from typing import Optional, Union
 
 import torch
+from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import BaseOutput, PushToHubMixin
 
@@ -81,6 +82,7 @@ class SchedulerMixin(PushToHubMixin):
     has_compatibles = True
 
     @classmethod
+    @validate_hf_hub_args
     def from_pretrained(
         cls,
         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
@@ -120,7 +122,7 @@ class SchedulerMixin(PushToHubMixin):
             local_files_only(`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):

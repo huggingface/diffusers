@@ -113,12 +113,14 @@ class Attention(nn.Module):
     ):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
+        self.query_dim = query_dim
         self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
         self.rescale_output_factor = rescale_output_factor
         self.residual_connection = residual_connection
         self.dropout = dropout
+        self.fused_projections = False
         self.out_dim = out_dim if out_dim is not None else query_dim
 
         # we make use of this private variable to know whether this class is loaded
@@ -180,6 +182,7 @@ class Attention(nn.Module):
         else:
             linear_cls = LoRACompatibleLinear
 
+        self.linear_cls = linear_cls
         self.to_q = linear_cls(query_dim, self.inner_dim, bias=bias)
 
         if not self.only_cross_attention:
@@ -692,6 +695,32 @@ class Attention(nn.Module):
 
         return encoder_hidden_states
 
+    @torch.no_grad()
+    def fuse_projections(self, fuse=True):
+        is_cross_attention = self.cross_attention_dim != self.query_dim
+        device = self.to_q.weight.data.device
+        dtype = self.to_q.weight.data.dtype
+
+        if not is_cross_attention:
+            # fetch weight matrices.
+            concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
+            in_features = concatenated_weights.shape[1]
+            out_features = concatenated_weights.shape[0]
+
+            # create a new single projection layer and copy over the weights.
+            self.to_qkv = self.linear_cls(in_features, out_features, bias=False, device=device, dtype=dtype)
+            self.to_qkv.weight.copy_(concatenated_weights)
+
+        else:
+            concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
+            in_features = concatenated_weights.shape[1]
+            out_features = concatenated_weights.shape[0]
+
+            self.to_kv = self.linear_cls(in_features, out_features, bias=False, device=device, dtype=dtype)
+            self.to_kv.weight.copy_(concatenated_weights)
+
+        self.fused_projections = fuse
+
 
 class AttnProcessor:
     r"""
@@ -1184,9 +1213,6 @@ class AttnProcessor2_0:
         scale: float = 1.0,
     ) -> torch.FloatTensor:
         residual = hidden_states
-
-        args = () if USE_PEFT_BACKEND else (scale,)
-
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
 
@@ -1225,6 +1251,103 @@ class AttnProcessor2_0:
 
         query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states, *args)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class FusedAttnProcessor2_0:
+    r"""
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
+    It uses fused projection layers. For self-attention modules, all projection matrices (i.e., query,
+    key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+    <Tip warning={true}>
+
+    This API is currently 🧪 experimental in nature and can change in future.
+
+    </Tip>
+    """
+
+    def __init__(self):
+        if not hasattr(F, "scaled_dot_product_attention"):
+            raise ImportError(
+                "FusedAttnProcessor2_0 requires at least PyTorch 2.0, to use it. Please upgrade PyTorch to > 2.0."
+            )
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        temb: Optional[torch.FloatTensor] = None,
+        scale: float = 1.0,
+    ) -> torch.FloatTensor:
+        residual = hidden_states
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        args = () if USE_PEFT_BACKEND else (scale,)
+        if encoder_hidden_states is None:
+            qkv = attn.to_qkv(hidden_states, *args)
+            split_size = qkv.shape[-1] // 3
+            query, key, value = torch.split(qkv, split_size, dim=-1)
+        else:
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+            query = attn.to_q(hidden_states, *args)
+
+            kv = attn.to_kv(encoder_hidden_states, *args)
+            split_size = kv.shape[-1] // 2
+            key, value = torch.split(kv, split_size, dim=-1)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
         value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
@@ -2251,6 +2374,7 @@ CROSS_ATTENTION_PROCESSORS = (
 AttentionProcessor = Union[
     AttnProcessor,
     AttnProcessor2_0,
+    FusedAttnProcessor2_0,
     XFormersAttnProcessor,
     SlicedAttnProcessor,
     AttnAddedKVProcessor,

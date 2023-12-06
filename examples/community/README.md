@@ -51,6 +51,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   Regional Prompting Pipeline                                                                                               | Assign multiple prompts for different regions                                                                                                                                                                                                                                                                                                                                                    |  [Regional Prompting Pipeline](#regional-prompting-pipeline) | - | [hako-mikan](https://github.com/hako-mikan) |
 | LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
 | AnimateDiff ControlNet Pipeline                                                                                                    | Combines AnimateDiff with precise motion control using ControlNets                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff ControlNet Pipeline](#animatediff-controlnet-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SKboYeGjEQmQPWoFC0aLYpBlYdHXkvAu?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) and [Edoardo Botta](https://github.com/EdoardoBotta) |
+|   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -512,7 +513,6 @@ device = torch.device('cpu' if not has_cuda else 'cuda')
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
         safety_checker=None,
-    use_auth_token=True,
     custom_pipeline="imagic_stable_diffusion",
     scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 ).to(device)
@@ -552,7 +552,6 @@ device = th.device('cpu' if not has_cuda else 'cuda')
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="seed_resize_stable_diffusion"
 ).to(device)
 
@@ -588,7 +587,6 @@ generator = th.Generator("cuda").manual_seed(0)
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
 ).to(device)
 
@@ -607,7 +605,6 @@ image.save('./seed_resize/seed_resize_{w}_{h}_image.png'.format(w=width, h=heigh
 
 pipe_compare = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
 ).to(device)
 
@@ -2907,3 +2904,86 @@ export_to_gif(result.frames[0], "result.gif")
     <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/eb7d2952-72e4-44fa-b664-077c79b4fc70" alt="gif-2"></td>
   </tr>
 </table>
+=======
+### DemoFusion
+This pipeline is the official implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973).
+The original repo can be found at [repo](https://github.com/PRIS-CV/DemoFusion).
+- `view_batch_size` (`int`, defaults to 16):
+  The batch size for multiple denoising paths. Typically, a larger batch size can result in higher efficiency but comes with increased GPU memory requirements.
+
+- `stride` (`int`, defaults to 64):
+  The stride of moving local patches. A smaller stride is better for alleviating seam issues, but it also introduces additional computational overhead and inference time.
+
+- `cosine_scale_1` (`float`, defaults to 3):
+  Control the strength of skip-residual. For specific impacts, please refer to Appendix C in the DemoFusion paper.
+
+- `cosine_scale_2` (`float`, defaults to 1):
+  Control the strength of dilated sampling. For specific impacts, please refer to Appendix C in the DemoFusion paper.
+
+- `cosine_scale_3` (`float`, defaults to 1):
+  Control the strength of the Gaussian filter. For specific impacts, please refer to Appendix C in the DemoFusion paper.
+
+- `sigma` (`float`, defaults to 1):
+  The standard value of the Gaussian filter. Larger sigma promotes the global guidance of dilated sampling, but has the potential of over-smoothing.
+
+- `multi_decoder` (`bool`, defaults to True):
+  Determine whether to use a tiled decoder. Generally, when the resolution exceeds 3072x3072, a tiled decoder becomes necessary.
+
+- `show_image` (`bool`, defaults to False):
+  Determine whether to show intermediate results during generation.
+```
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    custom_pipeline="pipeline_demofusion_sdxl",
+    custom_revision="main",
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+
+prompt = "Envision a portrait of an elderly woman, her face a canvas of time, framed by a headscarf with muted tones of rust and cream. Her eyes, blue like faded denim. Her attire, simple yet dignified."
+negative_prompt = "blurry, ugly, duplicate, poorly drawn, deformed, mosaic"
+
+images = pipe(
+    prompt, 
+    negative_prompt=negative_prompt,
+    height=3072, 
+    width=3072, 
+    view_batch_size=16, 
+    stride=64,
+    num_inference_steps=50, 
+    guidance_scale=7.5,
+    cosine_scale_1=3, 
+    cosine_scale_2=1, 
+    cosine_scale_3=1, 
+    sigma=0.8,
+    multi_decoder=True, 
+    show_image=True
+)
+```
+You can display and save the generated images as:
+```
+def image_grid(imgs, save_path=None):
+
+    w = 0
+    for i, img in enumerate(imgs):
+        h_, w_ = imgs[i].size
+        w += w_
+    h = h_
+    grid = Image.new('RGB', size=(w, h))
+    grid_w, grid_h = grid.size
+
+    w = 0
+    for i, img in enumerate(imgs):
+        h_, w_ = imgs[i].size
+        grid.paste(img, box=(w, h - h_))
+        if save_path != None:
+            img.save(save_path + "/img_{}.jpg".format((i + 1) * 1024))
+        w += w_
+        
+    return grid
+
+image_grid(images, save_path="./outputs/")
+```
+ ![output_example](https://github.com/PRIS-CV/DemoFusion/blob/main/output_example.png)
