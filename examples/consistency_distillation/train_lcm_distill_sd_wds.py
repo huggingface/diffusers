@@ -1106,7 +1106,7 @@ def main(args):
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
-                image, text, _, _ = batch
+                image, text = batch
 
                 image = image.to(accelerator.device, non_blocking=True)
                 encoded_text = compute_embeddings_fn(text)
