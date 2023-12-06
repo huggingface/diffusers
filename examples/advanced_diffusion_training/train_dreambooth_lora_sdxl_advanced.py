@@ -198,7 +198,7 @@ All [Files & versions](/{repo_id}/tree/main).
 
 ## Details
 
-The weights were trained using [🧨 diffusers Advanced Dreambooth Training Script](https://github.com/huggingface/diffusers/blob/main/examples/advanced_diffusion_training/train_dreambooth_lora_sdxl_advanced.py). 
+The weights were trained using [🧨 diffusers Advanced Dreambooth Training Script](https://github.com/huggingface/diffusers/blob/main/examples/advanced_diffusion_training/train_dreambooth_lora_sdxl_advanced.py).
 
 LoRA for the text encoder was enabled. {train_text_encoder}.
 
