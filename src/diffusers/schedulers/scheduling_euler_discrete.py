@@ -270,7 +270,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.config.interpolation_type == "linear":
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
         elif self.config.interpolation_type == "log_linear":
-            sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp()
+            sigmas = torch.linspace(np.log(sigmas[-1]), np.log(sigmas[0]), num_inference_steps + 1).exp().numpy()
         else:
             raise ValueError(
                 f"{self.config.interpolation_type} is not implemented. Please specify interpolation_type to either"
