@@ -12,12 +12,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import unittest
 from typing import Tuple
 
 import torch
 
-from diffusers.utils.testing_utils import floats_tensor, require_torch, torch_all_close, torch_device
+from diffusers.utils.testing_utils import (
+    floats_tensor,
+    require_torch,
+    require_torch_accelerator_with_training,
+    torch_all_close,
+    torch_device,
+)
 from diffusers.utils.torch_utils import randn_tensor
 
 
@@ -104,7 +109,7 @@ class UNetBlockTesterMixin:
         expected_slice = torch.tensor(expected_slice).to(torch_device)
         assert torch_all_close(output_slice.flatten(), expected_slice, atol=5e-3)
 
-    @unittest.skipIf(torch_device == "mps", "Training is not supported in mps")
+    @require_torch_accelerator_with_training
     def test_training(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
         model = self.block_class(**init_dict)
