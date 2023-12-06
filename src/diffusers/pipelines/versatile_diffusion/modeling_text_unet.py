@@ -10,10 +10,10 @@ from diffusers.utils import deprecate
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.activations import get_activation
-from ...models.attention import Attention
 from ...models.attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
+    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
@@ -50,6 +50,9 @@ def get_down_block(
     resnet_eps,
     resnet_act_fn,
     num_attention_heads,
+    transformer_layers_per_block,
+    attention_type,
+    attention_head_dim,
     resnet_groups=None,
     cross_attention_dim=None,
     downsample_padding=None,
@@ -113,6 +116,10 @@ def get_up_block(
     resnet_eps,
     resnet_act_fn,
     num_attention_heads,
+    transformer_layers_per_block,
+    resolution_idx,
+    attention_type,
+    attention_head_dim,
     resnet_groups=None,
     cross_attention_dim=None,
     dual_cross_attention=False,
@@ -992,6 +999,42 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             for k in freeu_keys:
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
+
+    def fuse_qkv_projections(self):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+        """
+        self.original_attn_processors = None
+
+        for _, attn_processor in self.attn_processors.items():
+            if "Added" in str(attn_processor.__class__.__name__):
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+
+        self.original_attn_processors = self.attn_processors
+
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.fuse_projections(fuse=True)
+
+    def unfuse_qkv_projections(self):
+        """Disables the fused QKV projection if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        """
+        if self.original_attn_processors is not None:
+            self.set_attn_processor(self.original_attn_processors)
 
     def forward(
         self,

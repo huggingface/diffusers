@@ -17,7 +17,7 @@ from contextlib import contextmanager
 from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -57,6 +57,17 @@ USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 
 if is_torch_available():
     import torch
+
+    # Set a backend environment variable for any extra module import required for a custom accelerator
+    if "DIFFUSERS_TEST_BACKEND" in os.environ:
+        backend = os.environ["DIFFUSERS_TEST_BACKEND"]
+        try:
+            _ = importlib.import_module(backend)
+        except ModuleNotFoundError as e:
+            raise ModuleNotFoundError(
+                f"Failed to import `DIFFUSERS_TEST_BACKEND` '{backend}'! This should be the name of an installed module \
+                    to enable a specified backend.):\n{e}"
+            ) from e
 
     if "DIFFUSERS_TEST_DEVICE" in os.environ:
         torch_device = os.environ["DIFFUSERS_TEST_DEVICE"]
@@ -208,6 +219,36 @@ def require_torch_gpu(test_case):
     return unittest.skipUnless(is_torch_available() and torch_device == "cuda", "test requires PyTorch+CUDA")(
         test_case
     )
+
+
+# These decorators are for accelerator-specific behaviours that are not GPU-specific
+def require_torch_accelerator(test_case):
+    """Decorator marking a test that requires an accelerator backend and PyTorch."""
+    return unittest.skipUnless(is_torch_available() and torch_device != "cpu", "test requires accelerator+PyTorch")(
+        test_case
+    )
+
+
+def require_torch_accelerator_with_fp16(test_case):
+    """Decorator marking a test that requires an accelerator with support for the FP16 data type."""
+    return unittest.skipUnless(_is_torch_fp16_available(torch_device), "test requires accelerator with fp16 support")(
+        test_case
+    )
+
+
+def require_torch_accelerator_with_fp64(test_case):
+    """Decorator marking a test that requires an accelerator with support for the FP64 data type."""
+    return unittest.skipUnless(_is_torch_fp64_available(torch_device), "test requires accelerator with fp64 support")(
+        test_case
+    )
+
+
+def require_torch_accelerator_with_training(test_case):
+    """Decorator marking a test that requires an accelerator with support for training."""
+    return unittest.skipUnless(
+        is_torch_available() and backend_supports_training(torch_device),
+        "test requires accelerator with training support",
+    )(test_case)
 
 
 def skip_mps(test_case):
@@ -766,3 +807,139 @@ def disable_full_determinism():
     os.environ["CUDA_LAUNCH_BLOCKING"] = "0"
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ""
     torch.use_deterministic_algorithms(False)
+
+
+# Utils for custom and alternative accelerator devices
+def _is_torch_fp16_available(device):
+    if not is_torch_available():
+        return False
+
+    import torch
+
+    device = torch.device(device)
+
+    try:
+        x = torch.zeros((2, 2), dtype=torch.float16).to(device)
+        _ = x @ x
+    except Exception as e:
+        if device.type == "cuda":
+            raise ValueError(
+                f"You have passed a device of type 'cuda' which should work with 'fp16', but 'cuda' does not seem to be correctly installed on your machine: {e}"
+            )
+
+        return False
+
+
+def _is_torch_fp64_available(device):
+    if not is_torch_available():
+        return False
+
+    import torch
+
+    try:
+        x = torch.zeros((2, 2), dtype=torch.float64).to(device)
+        _ = x @ x
+    except Exception as e:
+        if device.type == "cuda":
+            raise ValueError(
+                f"You have passed a device of type 'cuda' which should work with 'fp64', but 'cuda' does not seem to be correctly installed on your machine: {e}"
+            )
+
+        return False
+
+
+# Guard these lookups for when Torch is not used - alternative accelerator support is for PyTorch
+if is_torch_available():
+    # Behaviour flags
+    BACKEND_SUPPORTS_TRAINING = {"cuda": True, "cpu": True, "mps": False, "default": True}
+
+    # Function definitions
+    BACKEND_EMPTY_CACHE = {"cuda": torch.cuda.empty_cache, "cpu": None, "mps": None, "default": None}
+    BACKEND_DEVICE_COUNT = {"cuda": torch.cuda.device_count, "cpu": lambda: 0, "mps": lambda: 0, "default": 0}
+    BACKEND_MANUAL_SEED = {"cuda": torch.cuda.manual_seed, "cpu": torch.manual_seed, "default": torch.manual_seed}
+
+
+# This dispatches a defined function according to the accelerator from the function definitions.
+def _device_agnostic_dispatch(device: str, dispatch_table: Dict[str, Callable], *args, **kwargs):
+    if device not in dispatch_table:
+        return dispatch_table["default"](*args, **kwargs)
+
+    fn = dispatch_table[device]
+
+    # Some device agnostic functions return values. Need to guard against 'None' instead at
+    # user level
+    if fn is None:
+        return None
+
+    return fn(*args, **kwargs)
+
+
+# These are callables which automatically dispatch the function specific to the accelerator
+def backend_manual_seed(device: str, seed: int):
+    return _device_agnostic_dispatch(device, BACKEND_MANUAL_SEED, seed)
+
+
+def backend_empty_cache(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_EMPTY_CACHE)
+
+
+def backend_device_count(device: str):
+    return _device_agnostic_dispatch(device, BACKEND_DEVICE_COUNT)
+
+
+# These are callables which return boolean behaviour flags and can be used to specify some
+# device agnostic alternative where the feature is unsupported.
+def backend_supports_training(device: str):
+    if not is_torch_available():
+        return False
+
+    if device not in BACKEND_SUPPORTS_TRAINING:
+        device = "default"
+
+    return BACKEND_SUPPORTS_TRAINING[device]
+
+
+# Guard for when Torch is not available
+if is_torch_available():
+    # Update device function dict mapping
+    def update_mapping_from_spec(device_fn_dict: Dict[str, Callable], attribute_name: str):
+        try:
+            # Try to import the function directly
+            spec_fn = getattr(device_spec_module, attribute_name)
+            device_fn_dict[torch_device] = spec_fn
+        except AttributeError as e:
+            # If the function doesn't exist, and there is no default, throw an error
+            if "default" not in device_fn_dict:
+                raise AttributeError(
+                    f"`{attribute_name}` not found in '{device_spec_path}' and no default fallback function found."
+                ) from e
+
+    if "DIFFUSERS_TEST_DEVICE_SPEC" in os.environ:
+        device_spec_path = os.environ["DIFFUSERS_TEST_DEVICE_SPEC"]
+        if not Path(device_spec_path).is_file():
+            raise ValueError(f"Specified path to device specification file is not found. Received {device_spec_path}")
+
+        try:
+            import_name = device_spec_path[: device_spec_path.index(".py")]
+        except ValueError as e:
+            raise ValueError(f"Provided device spec file is not a Python file! Received {device_spec_path}") from e
+
+        device_spec_module = importlib.import_module(import_name)
+
+        try:
+            device_name = device_spec_module.DEVICE_NAME
+        except AttributeError:
+            raise AttributeError("Device spec file did not contain `DEVICE_NAME`")
+
+        if "DIFFUSERS_TEST_DEVICE" in os.environ and torch_device != device_name:
+            msg = f"Mismatch between environment variable `DIFFUSERS_TEST_DEVICE` '{torch_device}' and device found in spec '{device_name}'\n"
+            msg += "Either unset `DIFFUSERS_TEST_DEVICE` or ensure it matches device spec name."
+            raise ValueError(msg)
+
+        torch_device = device_name
+
+        # Add one entry here for each `BACKEND_*` dictionary.
+        update_mapping_from_spec(BACKEND_MANUAL_SEED, "MANUAL_SEED_FN")
+        update_mapping_from_spec(BACKEND_EMPTY_CACHE, "EMPTY_CACHE_FN")
+        update_mapping_from_spec(BACKEND_DEVICE_COUNT, "DEVICE_COUNT_FN")
+        update_mapping_from_spec(BACKEND_SUPPORTS_TRAINING, "SUPPORTS_TRAINING")

@@ -118,9 +118,10 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "python>=3.8.0",
-    "ruff>=0.1.5,<=0.2",
+    "ruff==0.1.5",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
+    "GitPython<3.1.19",
     "scipy",
     "onnx",
     "regex!=2019.12.17",
@@ -206,6 +207,7 @@ extras["docs"] = deps_list("hf-doc-builder")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
 extras["test"] = deps_list(
     "compel",
+    "GitPython",
     "datasets",
     "Jinja2",
     "invisible-watermark",
@@ -249,13 +251,13 @@ version_range_max = max(sys.version_info[1], 10) + 1
 
 setup(
     name="diffusers",
-    version="0.24.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
+    version="0.25.0.dev0",  # expected format is one of x.y.z.dev0, or x.y.z.rc1 or x.y.z (no to dashes, yes to dots)
     description="State-of-the-art diffusion in PyTorch and JAX.",
     long_description=open("README.md", "r", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     keywords="deep learning diffusion jax pytorch stable diffusion audioldm",
-    license="Apache",
-    author="The HuggingFace team",
+    license="Apache 2.0 License",
+    author="The Hugging Face team (past and future) with the help of all our contributors (https://github.com/huggingface/diffusers/graphs/contributors)",
     author_email="patrick@huggingface.co",
     url="https://github.com/huggingface/diffusers",
     package_dir={"": "src"},
@@ -279,24 +281,3 @@ setup(
     + [f"Programming Language :: Python :: 3.{i}" for i in range(8, version_range_max)],
     cmdclass={"deps_table_update": DepsTableUpdateCommand},
 )
-
-
-# Release checklist
-# 1. Change the version in __init__.py and setup.py.
-# 2. Commit these changes with the message: "Release: Release"
-# 3. Add a tag in git to mark the release: "git tag RELEASE -m 'Adds tag RELEASE for PyPI'"
-#    Push the tag to git: git push --tags origin main
-# 4. Run the following commands in the top-level directory:
-#      python setup.py bdist_wheel
-#      python setup.py sdist
-# 5. Upload the package to the PyPI test server first:
-#      twine upload dist/* -r pypitest
-#      twine upload dist/* -r pypitest --repository-url=https://test.pypi.org/legacy/
-# 6. Check that you can install it in a virtualenv by running:
-#      pip install -i https://testpypi.python.org/pypi diffusers
-#      diffusers env
-#      diffusers test
-# 7. Upload the final version to the actual PyPI:
-#      twine upload dist/* -r pypi
-# 8. Add release notes to the tag in GitHub once everything is looking hunky-dory.
-# 9. Update the version in __init__.py, setup.py to the new version "-dev" and push to main.

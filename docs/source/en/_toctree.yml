@@ -72,6 +72,8 @@
       title: Overview
     - local: using-diffusers/sdxl
       title: Stable Diffusion XL
+    - local: using-diffusers/sdxl_turbo
+      title: SDXL Turbo
     - local: using-diffusers/kandinsky
       title: Kandinsky
     - local: using-diffusers/controlnet
@@ -94,6 +96,8 @@
       title: Latent Consistency Model-LoRA
     - local: using-diffusers/inference_with_lcm
       title: Latent Consistency Model
+    - local: using-diffusers/svd
+      title: Stable Video Diffusion
     title: Specific pipeline examples
   - sections:
     - local: training/overview
@@ -129,6 +133,8 @@
         title: LoRA
       - local: training/custom_diffusion
         title: Custom Diffusion
+      - local: training/lcm_distill
+        title: Latent Consistency Distillation
       - local: training/ddpo
         title: Reinforcement learning training with DDPO
       title: Methods
@@ -278,6 +284,8 @@
       title: Kandinsky 2.1
     - local: api/pipelines/kandinsky_v22
       title: Kandinsky 2.2
+    - local: api/pipelines/kandinsky3
+      title: Kandinsky 3
     - local: api/pipelines/latent_consistency_models
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
@@ -327,12 +335,14 @@
         title: Stable Diffusion 2
       - local: api/pipelines/stable_diffusion/stable_diffusion_xl
         title: Stable Diffusion XL
+      - local: api/pipelines/stable_diffusion/sdxl_turbo
+        title: SDXL Turbo
       - local: api/pipelines/stable_diffusion/latent_upscale
         title: Latent upscaler
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-resolution
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
-        title: LDM3D Text-to-(RGB, Depth)
+        title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
       - local: api/pipelines/stable_diffusion/adapter
         title: Stable Diffusion T2I-Adapter
       - local: api/pipelines/stable_diffusion/gligen
