@@ -484,7 +484,9 @@ def main():
     for param in unet.parameters():
         param.requires_grad_(False)
 
-    unet_lora_config = LoraConfig(r=args.rank, target_modules=["to_k", "to_q", "to_v"])
+    unet_lora_config = LoraConfig(
+        r=args.rank, init_lora_weights="gaussian", target_modules=["to_k", "to_q", "to_v", "to_out.0"]
+    )
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)

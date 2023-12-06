@@ -858,12 +858,18 @@ def main(args):
             text_encoder.gradient_checkpointing_enable()
 
     # now we will add new LoRA weights to the attention layers
-    unet_lora_config = LoraConfig(r=args.rank, target_modules=["to_k", "to_q", "to_v", "add_k_proj", "add_v_proj"])
+    unet_lora_config = LoraConfig(
+        r=args.rank,
+        init_lora_weights="gaussian",
+        target_modules=["to_k", "to_q", "to_v", "to_out.0", "add_k_proj", "add_v_proj"],
+    )
     unet.add_adapter(unet_lora_config)
 
     # The text encoder comes from 🤗 transformers, we will also attach adapters to it.
     if args.train_text_encoder:
-        text_lora_config = LoraConfig(r=args.rank, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"])
+        text_lora_config = LoraConfig(
+            r=args.rank, init_lora_weights="gaussian", target_modules=["q_proj", "k_proj", "v_proj", "out_proj"]
+        )
         text_encoder.add_adapter(text_lora_config)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
