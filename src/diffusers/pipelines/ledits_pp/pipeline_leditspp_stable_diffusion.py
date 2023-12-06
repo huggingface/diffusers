@@ -56,7 +56,7 @@ EXAMPLE_DOC_STRING = """
         ...     response = requests.get(url)
         ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
 
-        >>> img_url = "TODO"
+        >>> img_url = "https://www.aiml.informatik.tu-darmstadt.de/people/mbrack/cherry_blossom.png"
         >>> image = download_image(img_url)
 
         >>> _ = pipe.invert(
@@ -258,7 +258,7 @@ class LEditsPPPipelineStableDiffusion(
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    def prepare_extra_step_kwargs(self, eta):
+    def prepare_extra_step_kwargs(self,  eta, generator=None):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
         # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
@@ -269,6 +269,10 @@ class LEditsPPPipelineStableDiffusion(
         if accepts_eta:
             extra_step_kwargs["eta"] = eta
 
+        # check if the scheduler accepts generator
+        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
+        if accepts_generator:
+            extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
@@ -565,6 +569,8 @@ class LEditsPPPipelineStableDiffusion(
             sem_guidance: Optional[List[torch.Tensor]] = None,
             use_cross_attn_mask: bool = False,
             use_intersect_mask: bool = True,
+            attn_store_steps: Optional[List[int]] = [],
+            store_averaged_over_steps: bool = True,
             cross_attention_kwargs: Optional[Dict[str, Any]] = None,
             guidance_rescale: float = 0.0,
             clip_skip: Optional[int] = None,
@@ -624,6 +630,11 @@ class LEditsPPPipelineStableDiffusion(
                 Whether the masking term is calculated as intersection of cross-attention masks and masks derived
                 from the noise estimate. Cross-attention mask are defined as 'M^1' and masks derived from the noise
                 estimate are defined as 'M^2' of equation 12 of [LEDITS++ paper](https://arxiv.org/pdf/2311.16711.pdf).
+            attn_store_steps:
+                Steps for which the attention maps are stored in the AttentionStore. Just for visualization purposes.
+            store_averaged_over_steps:
+                Whether the attention maps for the 'attn_store_steps' are stored averaged over the diffusion steps.
+                If False, attention maps for each step are stores separately. Just for visualization purposes.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -749,7 +760,7 @@ class LEditsPPPipelineStableDiffusion(
             assert (len(timesteps) == zs.shape[0])
 
         if use_cross_attn_mask:
-            self.attention_store = AttentionStore(average=True, batch_size=batch_size,
+            self.attention_store = AttentionStore(average=store_averaged_over_steps, batch_size=batch_size,
                                                   max_size=(latents.shape[-2] / 4.0) * (latents.shape[-1] / 4.0),
                                                   max_resolution=None
                                                   )
@@ -993,7 +1004,8 @@ class LEditsPPPipelineStableDiffusion(
 
                 # step callback
                 if use_cross_attn_mask:
-                    self.attention_store.between_steps(store_step=False)
+                    store_step = i in attn_store_steps
+                    self.attention_store.between_steps(store_step)
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
