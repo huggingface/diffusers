@@ -461,6 +461,18 @@ class ImageProjection(nn.Module):
         return image_embeds
 
 
+class MLPProjection(nn.Module):
+    def __init__(self, image_embed_dim=1024, cross_attention_dim=1024):
+        super().__init__()
+        from .attention import FeedForward
+
+        self.ff = FeedForward(image_embed_dim, cross_attention_dim, mult=1, activation_fn="gelu")
+        self.norm = nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds: torch.FloatTensor):
+        return self.norm(self.ff(image_embeds))
+
+
 class CombinedTimestepLabelEmbeddings(nn.Module):
     def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
         super().__init__()
