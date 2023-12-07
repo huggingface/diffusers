@@ -5,15 +5,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...utils import (
-    USE_PEFT_BACKEND,
-    deprecate,
-    logging,
-    replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
-)
-
 from ...configuration_utils import FrozenDict
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
@@ -22,10 +13,19 @@ from ...models.attention_processor import AttnProcessor
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDIMScheduler, DPMSolverMultistepScheduler
+from ...utils import (
+    USE_PEFT_BACKEND,
+    deprecate,
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .ledits_utils import *
 from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -106,7 +106,7 @@ class LEditsPPPipelineStableDiffusion(
             Frozen text-encoder. Stable Diffusion uses the text portion of
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        tokenizer (`~transformers.CLIPTokenizer`):
+        tokenizer ([`~transformers.CLIPTokenizer`]):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
@@ -564,7 +564,7 @@ class LEditsPPPipelineStableDiffusion(
             **kwargs,
     ):
         r"""
-        The call function to the pipeline for editing. The [~pipelines.ledits_pp.LEditsPPPipelineStableDiffusion.invert]
+        The call function to the pipeline for editing. The [`~pipelines.ledits_pp.LEditsPPPipelineStableDiffusion.invert`]
         method has to be called beforehand. Edits will always be performed for the last inverted image(s).
 
         Args:

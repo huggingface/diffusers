@@ -37,9 +37,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_leditspp_if import LEditsPPPipelineIF
         from .pipeline_leditspp_stable_diffusion import (
-            LEditsPPPipelineStableDiffusion,
-            LEditsPPInversionPipelineOutput,
             LEditsPPDiffusionPipelineOutput,
+            LEditsPPInversionPipelineOutput,
+            LEditsPPPipelineStableDiffusion,
         )
         from .pipeline_leditspp_stable_diffusion_xl import LEditsPPPipelineStableDiffusionXL
 

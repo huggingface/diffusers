@@ -16,7 +16,6 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.nn.functional as F
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -48,7 +47,9 @@ from ...utils import (
     is_invisible_watermark_available,
     is_torch_xla_available,
     logging,
+    replace_example_docstring,
     scale_lora_layers,
+    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -121,7 +122,7 @@ class LEditsPPPipelineStableDiffusionXL(
     device, etc.).
 
     In addition the pipeline inherits the following loading methods:
-        - *LoRA*: [`StableDiffusionXLPipeline.load_lora_weights`]
+        - *LoRA*: [`LEditsPPPipelineStableDiffusionXL.load_lora_weights`]
         - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
 
     as well as the following saving methods:
@@ -130,26 +131,27 @@ class LEditsPPPipelineStableDiffusionXL(
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
-        text_encoder ([`CLIPTextModel`]):
+        text_encoder ([`~transformers.CLIPTextModel`]):
             Frozen text-encoder. Stable Diffusion XL uses the text portion of
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
-        text_encoder_2 ([` CLIPTextModelWithProjection`]):
+        text_encoder_2 ([`~transformers.CLIPTextModelWithProjection`]):
             Second frozen text-encoder. Stable Diffusion XL uses the text and pool portion of
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection),
             specifically the
             [laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)
             variant.
-        tokenizer (`CLIPTokenizer`):
+        tokenizer ([`~transformers.CLIPTokenizer`]):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        tokenizer_2 (`CLIPTokenizer`):
+        tokenizer_2 ([`~transformers.CLIPTokenizer`]):
             Second Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
-        scheduler ([`SchedulerMixin`]):
-            A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
-            [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
+        scheduler ([`DPMSolverMultistepScheduler`] or [`DDIMScheduler`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            [`DPMSolverMultistepScheduler`] or [`DDIMScheduler`]. If any other scheduler is passed it will automatically
+            be set to [`DPMSolverMultistepScheduler`].
         force_zeros_for_empty_prompt (`bool`, *optional*, defaults to `"True"`):
             Whether the negative prompt embeddings shall be forced to always be set to 0. Also see the config of
             `stabilityai/stable-diffusion-xl-base-1-0`.
@@ -268,6 +270,8 @@ class LEditsPPPipelineStableDiffusionXL(
             clip_skip: Optional[int] = None,
             enable_edit_guidance: bool = True,
             editing_prompt: Optional[str] = None,
+            editing_prompt_embeds: Optional[torch.FloatTensor] = None,
+            editing_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
     ) -> object:
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -277,12 +281,9 @@ class LEditsPPPipelineStableDiffusionXL(
                 torch device
             num_images_per_prompt (`int`):
                 number of images that should be generated per prompt
-            do_classifier_free_guidance (`bool`):
-                whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
+                `negative_prompt_embeds` instead.
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
@@ -290,9 +291,6 @@ class LEditsPPPipelineStableDiffusionXL(
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
-                If not provided, pooled text embeddings will be generated from `prompt` input argument.
             negative_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
@@ -302,6 +300,19 @@ class LEditsPPPipelineStableDiffusionXL(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            enable_edit_guidance (`bool`):
+                whether to use classifier free guidance or not
+            editing_prompt (`str` or `List[str]`, *optional*):
+                Editing prompt(s) to be encoded. If not defined, one has to pass
+                `editing_prompt_embeds` instead.
+            editing_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated edit text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, editing_prompt_embeds will be generated from `editing_prompt` input
+                argument.
+            editing_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated edit pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, pooled editing_pooled_prompt_embeds will be generated from `editing_prompt`
+                input argument.
         """
         device = device or self._execution_device
 
@@ -381,7 +392,7 @@ class LEditsPPPipelineStableDiffusionXL(
                 negative_prompt_embeds = torch.zeros_like(negative_prompt_embeds)
                 negative_pooled_prompt_embeds = torch.zeros_like(negative_pooled_prompt_embeds)
 
-        if enable_edit_guidance:
+        if enable_edit_guidance and editing_prompt_embeds is None:
             editing_prompt_2 = editing_prompt
 
             editing_prompts = [editing_prompt, editing_prompt_2]
@@ -409,7 +420,7 @@ class LEditsPPPipelineStableDiffusionXL(
                     output_hidden_states=True,
                 )
                 # We are only ALWAYS interested in the pooled output of the final text encoder
-                edit_pooled_prompt_embeds = edit_concepts_embeds[0]
+                editing_pooled_prompt_embeds = edit_concepts_embeds[0]
                 if clip_skip is None:
                     edit_concepts_embeds = edit_concepts_embeds.hidden_states[-2]
                 else:
@@ -419,9 +430,9 @@ class LEditsPPPipelineStableDiffusionXL(
                 edit_prompt_embeds_list.append(edit_concepts_embeds)
 
             edit_concepts_embeds = torch.concat(edit_prompt_embeds_list, dim=-1)
-        else:
+        elif not enable_edit_guidance:
             edit_concepts_embeds = None
-            edit_pooled_prompt_embeds = None
+            editing_pooled_prompt_embeds = None
 
         negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
         bs_embed, seq_len, _ = negative_prompt_embeds.shape
@@ -442,11 +453,21 @@ class LEditsPPPipelineStableDiffusionXL(
         )
 
         if enable_edit_guidance:
-            edit_pooled_prompt_embeds = edit_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
+            editing_pooled_prompt_embeds = editing_pooled_prompt_embeds.repeat(1, num_images_per_prompt).view(
                 bs_embed_edit * num_images_per_prompt, -1
             )
 
-        return (negative_prompt_embeds, edit_concepts_embeds, negative_pooled_prompt_embeds, edit_pooled_prompt_embeds
+        if self.text_encoder is not None:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder, lora_scale)
+
+        if self.text_encoder_2 is not None:
+            if isinstance(self, StableDiffusionXLLoraLoaderMixin) and USE_PEFT_BACKEND:
+                # Retrieve the original scale by scaling back the LoRA layers
+                unscale_lora_layers(self.text_encoder_2, lora_scale)
+
+        return (negative_prompt_embeds, edit_concepts_embeds, negative_pooled_prompt_embeds, editing_pooled_prompt_embeds
                 , num_edit_tokens)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
@@ -656,6 +677,7 @@ class LEditsPPPipelineStableDiffusionXL(
         self.unet.set_attn_processor(attn_procs)
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
             self,
             denoising_end: Optional[float] = None,
@@ -693,7 +715,8 @@ class LEditsPPPipelineStableDiffusionXL(
             **kwargs,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for editing. The [~pipelines.ledits_pp.LEditsPPPipelineStableDiffusionXL.invert]
+        method has to be called beforehand. Edits will always be performed for the last inverted image(s).
 
         Args:
             denoising_end (`float`, *optional*):
@@ -750,24 +773,25 @@ class LEditsPPPipelineStableDiffusionXL(
                 not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
                 section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             editing_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to use for semantic guidance. Semantic guidance is disabled by setting
-                `editing_prompt = None`. Guidance direction of prompt should be specified via
-                `reverse_editing_direction`.
+                The prompt or prompts to guide the image generation. The image is reconstructed by setting
+                `editing_prompt = None`. Guidance direction of prompt should be specified via `reverse_editing_direction`.
             editing_prompt_embeddings (`torch.Tensor`, *optional*):
-                Pre-computed embeddings to use for semantic guidance. Guidance direction of embedding should be
+                Pre-computed embeddings to use for guiding the image generation. Guidance direction of embedding should be
                 specified via `reverse_editing_direction`.
             reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
                 Whether the corresponding prompt in `editing_prompt` should be increased or decreased.
             edit_guidance_scale (`float` or `List[float]`, *optional*, defaults to 5):
-                Guidance scale for semantic guidance. If provided as a list, values should correspond to
-                `editing_prompt`.
+                Guidance scale for guiding the image generation. If provided as list values should correspond to `editing_prompt`.
+                `edit_guidance_scale` is defined as `s_e` of equation 12 of
+                [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
             edit_warmup_steps (`float` or `List[float]`, *optional*, defaults to 10):
                 Number of diffusion steps (for each prompt) for which semantic guidance is not applied. Momentum is
                 calculated for those steps and applied once all warmup periods are over.
             edit_cooldown_steps (`float` or `List[float]`, *optional*, defaults to `None`):
                 Number of diffusion steps (for each prompt) after which semantic guidance is longer applied.
             edit_threshold (`float` or `List[float]`, *optional*, defaults to 0.9):
-                Threshold of semantic guidance.
+                Masking threshold of guidance. Threshold should be proportional to the image region that is modified.
+                'edit_threshold' is defined as 'λ' of equation 12 of [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
             edit_momentum_scale (`float`, *optional*, defaults to 0.1):
                 Scale of the momentum to be added to the semantic guidance at each diffusion step. If set to 0.0,
                 momentum is disabled. Momentum is already built up during warmup (for diffusion steps smaller than
@@ -1294,24 +1318,56 @@ class LEditsPPPipelineStableDiffusionXL(
                negative_prompt_2: str = None,
                num_inversion_steps: int = 100,
                skip: float = .15,
-               eta: float = 1.0,
                generator: Optional[torch.Generator] = None,
                crops_coords_top_left: Tuple[int, int] = (0, 0),
-               num_zero_noise_steps=3,
+               num_zero_noise_steps:int=3,
                ):
-        """
-        Inverts a real image according to Algorihm 1 in https://arxiv.org/pdf/2304.06140.pdf,
-        based on the code in https://github.com/inbarhub/DDPM_inversion
+        r"""
+        The function to the pipeline for image inversion as described by the [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
+        If the scheduler is set to [`~schedulers.DDIMScheduler`] the inversion proposed by [edit-friendly DPDM](https://arxiv.org/abs/2304.06140)
+        will be performed instead.
 
-        returns:
-        zs - noise maps
-        xts - intermediate inverted latents
+         Args:
+            image (`PipelineImageInput`):
+                Input for the image(s) that are to be edited. Multiple input images have to default to the same aspect
+                ratio.
+            source_prompt (`str`, defaults to `""`):
+                Prompt describing the input image that will be used for guidance during inversion. Guidance is disabled
+                if the `source_prompt` is `""`.
+            source_guidance_scale (`float`, defaults to `3.5`):
+                Strength of guidance during inversion.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            negative_prompt_2 (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
+                `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
+            num_inversion_steps (`int`, defaults to `30`):
+                Number of total performed inversion steps after discarding the initial `skip` steps.
+            skip (`float`, defaults to `0.15`):
+                Portion of initial steps that will be ignored for inversion and subsequent generation. Lower values
+                will lead to stronger changes to the input image. `skip` has to be between `0` and `1`.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                inversion deterministic.
+            crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
+                `crops_coords_top_left` can be used to generate an image that appears to be "cropped" from the position
+                `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
+                `crops_coords_top_left` to (0, 0). Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            num_zero_noise_steps (`int`, defaults to `3`):
+                Number of final diffusion steps that will not renoise the current image. If no steps are set to zero
+                SD-XL in combination with [`DPMSolverMultistepScheduler`] will produce noise artifacts.
+        Returns:
+            [`~pipelines.ledits_pp.LEditsPPDiffusionInversionOutput`]:
+                Output will contain the resized input image(s) and respective VAE reconstruction(s).
         """
 
         # Reset attn processor, we do not want to store attn maps during inversion
         self.unet.set_attn_processor(AttnProcessor())
 
-        self.eta = eta
+        self.eta = 1.0
         assert (self.eta > 0)
 
         self.scheduler.config.timestep_spacing = "leading"
@@ -1444,7 +1500,7 @@ class LEditsPPPipelineStableDiffusionXL(
                 noise_pred = noise_pred_uncond + source_guidance_scale * (noise_pred_text - noise_pred_uncond)
 
             xtm1 = xts[idx]
-            z, xtm1_corrected = compute_noise(self.scheduler, xtm1, xt, t, noise_pred, eta)
+            z, xtm1_corrected = compute_noise(self.scheduler, xtm1, xt, t, noise_pred, self.eta)
             zs[idx] = z
 
             # correction to avoid error accumulation
@@ -1461,12 +1517,12 @@ class LEditsPPPipelineStableDiffusionXL(
 def reset_dpm(scheduler):
     if isinstance(scheduler, DPMSolverMultistepScheduler):
         scheduler.model_outputs = [
-                                           None,
-                                       ] * scheduler.config.solver_order
+                                      None,
+                                  ] * scheduler.config.solver_order
         scheduler.lower_order_nums = 0
         scheduler._step_index = None
 
-
+# Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     """
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
@@ -1519,8 +1575,7 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
 
 # Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.compute_noise_sde_dpm_pp_2nd
 def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noise_pred, eta):
-
-    def first_order_update(model_output, sample): # timestep, prev_timestep, sample):
+    def first_order_update(model_output, sample):  # timestep, prev_timestep, sample):
         sigma_t, sigma_s = scheduler.sigmas[scheduler.step_index + 1], scheduler.sigmas[scheduler.step_index]
         alpha_t, sigma_t = scheduler._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s, sigma_s = scheduler._sigma_to_alpha_sigma_t(sigma_s)
@@ -1537,7 +1592,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         mu_xt = scheduler.dpm_solver_first_order_update(
             model_output=model_output,
             sample=sample,
-            noise = torch.zeros_like(sample)
+            noise=torch.zeros_like(sample)
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
@@ -1546,7 +1601,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         prev_sample = mu_xt + sigma * noise
         return noise, prev_sample
 
-    def second_order_update(model_output_list, sample): # timestep_list, prev_timestep, sample):
+    def second_order_update(model_output_list, sample):  # timestep_list, prev_timestep, sample):
         sigma_t, sigma_s0, sigma_s1 = (
             scheduler.sigmas[scheduler.step_index + 1],
             scheduler.sigmas[scheduler.step_index],
@@ -1568,9 +1623,9 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
 
         mu_xt = (
-            (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                    + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
+                (sigma_t / sigma_s0 * torch.exp(-h)) * sample
+                + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
+                + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
@@ -1606,7 +1661,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
 def compute_noise(scheduler, *args):
     if isinstance(scheduler, DDIMScheduler):
         return compute_noise_ddim(scheduler, *args)
-    elif isinstance(scheduler, DPMSolverMultistepScheduler) and scheduler.config.algorithm_type == 'sde-dpmsolver++'\
+    elif isinstance(scheduler, DPMSolverMultistepScheduler) and scheduler.config.algorithm_type == 'sde-dpmsolver++' \
             and scheduler.config.solver_order == 2:
         return compute_noise_sde_dpm_pp_2nd(scheduler, *args)
     else:
