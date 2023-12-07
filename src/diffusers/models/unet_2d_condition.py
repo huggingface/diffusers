@@ -831,68 +831,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
-    @property
-    def _pointwise_conv_module_names(self) -> Dict[str, torch.nn.Module]:
-        pointwise_convs = {}
-
-        def fn_recursive(module, name, parent_name=""):
-            if (
-                isinstance(module, nn.Conv2d)
-                and module.kernel_size == (1, 1)
-                and module.stride == (1, 1)
-                and module.padding == (0, 0)
-            ):
-                module_name = f"{parent_name}.{name}" if parent_name else name
-                pointwise_convs[module_name] = module
-
-            fn_recursive(module, module_name, pointwise_convs)
-
-        for name, module in self.named_children():
-            fn_recursive(module, name)
-
-        return pointwise_convs
-
-    def pointwise_convs_to_linear(self):
-        if not USE_PEFT_BACKEND:
-            raise NotImplementedError("You need to install `peft` to use this function.")
-
-        # self.pointwise_convs = self._pointwise_conv_module_names
-
-        def new_forward(self, x):
-            original_shape = x.shape
-            x = x.permute(0, 2, 3, 1).reshape(original_shape[0], -1, original_shape[1])
-            out = self(x).permute(0, 2, 1)
-            return out.reshape(original_shape[0], -1, original_shape[2], original_shape[3])
-
-        def fn_recursive_pointwise_conv(name, module):
-            if (
-                isinstance(module, nn.Conv2d)
-                and module.kernel_size == (1, 1)
-                and module.stride == (1, 1)
-                and module.padding == (0, 0)
-            ):
-                in_features = module.in_channels
-                out_features = module.out_channels
-
-                has_bias = True if module.bias is not None else False
-                new_layer = nn.Linear(in_features, out_features, bias=has_bias)
-                new_layer.weight.data = nn.Parameter(module.weight.data.view(out_features, in_features))
-                if has_bias:
-                    new_layer.bias.data = nn.Parameter(module.bias.data)
-
-                new_layer.forward = new_forward.__get__(new_layer)
-
-                setattr(self, name, new_layer)
-
-            else:
-                fn_recursive_pointwise_conv(name, module)
-
-        for name, module in self.named_children():
-            fn_recursive_pointwise_conv(name, module)
-
-    def linear_to_pointwise(self):
-        raise NotImplementedError
-
     def forward(
         self,
         sample: torch.FloatTensor,
