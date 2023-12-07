@@ -856,7 +856,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if not USE_PEFT_BACKEND:
             raise NotImplementedError("You need to install `peft` to use this function.")
 
-        self.pointwise_convs = self._pointwise_conv_module_names
+        # self.pointwise_convs = self._pointwise_conv_module_names
 
         def new_forward(self, x):
             original_shape = x.shape
