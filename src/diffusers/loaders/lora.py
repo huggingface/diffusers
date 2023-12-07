@@ -18,14 +18,13 @@ from typing import Callable, Dict, List, Optional, Union
 import safetensors
 import torch
 from huggingface_hub import model_info
+from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 from torch import nn
 
 from .. import __version__
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
-    DIFFUSERS_CACHE,
-    HF_HUB_OFFLINE,
     USE_PEFT_BACKEND,
     _get_model_file,
     convert_state_dict_to_diffusers,
@@ -132,6 +131,7 @@ class LoraLoaderMixin:
         )
 
     @classmethod
+    @validate_hf_hub_args
     def lora_state_dict(
         cls,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -174,7 +174,7 @@ class LoraLoaderMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -195,12 +195,12 @@ class LoraLoaderMixin:
         """
         # Load the main state dict first which has the LoRA layers for either of
         # UNet and text encoder or both.
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
@@ -239,7 +239,7 @@ class LoraLoaderMixin:
                         resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
+                        token=token,
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
@@ -265,7 +265,7 @@ class LoraLoaderMixin:
                     resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,

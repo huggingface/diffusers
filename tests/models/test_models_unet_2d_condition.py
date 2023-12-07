@@ -30,10 +30,15 @@ from diffusers.models.embeddings import ImageProjection, Resampler
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_hf_numpy,
+    require_torch_accelerator,
+    require_torch_accelerator_with_fp16,
+    require_torch_accelerator_with_training,
     require_torch_gpu,
+    skip_mps,
     slow,
     torch_all_close,
     torch_device,
@@ -280,7 +285,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             == "XFormersAttnProcessor"
         ), "xformers is not enabled"
 
-    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
+    @require_torch_accelerator_with_training
     def test_gradient_checkpointing(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -864,7 +869,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_latents(self, seed=0, shape=(4, 4, 64, 64), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
@@ -882,6 +887,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
         return model
 
+    @require_torch_gpu
     def test_set_attention_slice_auto(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -901,6 +907,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
         assert mem_bytes < 5 * 10**9
 
+    @require_torch_gpu
     def test_set_attention_slice_max(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -920,6 +927,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
         assert mem_bytes < 5 * 10**9
 
+    @require_torch_gpu
     def test_set_attention_slice_int(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -939,6 +947,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
 
         assert mem_bytes < 5 * 10**9
 
+    @require_torch_gpu
     def test_set_attention_slice_list(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -975,7 +984,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator_with_fp16
     def test_compvis_sd_v1_4(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4")
         latents = self.get_latents(seed)
@@ -1003,7 +1012,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator_with_fp16
     def test_compvis_sd_v1_4_fp16(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="CompVis/stable-diffusion-v1-4", fp16=True)
         latents = self.get_latents(seed, fp16=True)
@@ -1031,7 +1040,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator
+    @skip_mps
     def test_compvis_sd_v1_5(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5")
         latents = self.get_latents(seed)
@@ -1059,7 +1069,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator_with_fp16
     def test_compvis_sd_v1_5_fp16(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-v1-5", fp16=True)
         latents = self.get_latents(seed, fp16=True)
@@ -1087,7 +1097,8 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator
+    @skip_mps
     def test_compvis_sd_inpaint(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting")
         latents = self.get_latents(seed, shape=(4, 9, 64, 64))
@@ -1115,7 +1126,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator_with_fp16
     def test_compvis_sd_inpaint_fp16(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="runwayml/stable-diffusion-inpainting", fp16=True)
         latents = self.get_latents(seed, shape=(4, 9, 64, 64), fp16=True)
@@ -1143,7 +1154,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator_with_fp16
     def test_stabilityai_sd_v2_fp16(self, seed, timestep, expected_slice):
         model = self.get_unet_model(model_id="stabilityai/stable-diffusion-2", fp16=True)
         latents = self.get_latents(seed, shape=(4, 4, 96, 96), fp16=True)
