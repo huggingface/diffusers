@@ -491,6 +491,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel._pointwise_conv_module_names
     @property
+    def _pointwise_conv_module_names(self) -> Dict[str, torch.nn.Module]:
         pointwise_convs = {}
 
         def fn_recursive(module, name, parent_name=""):
