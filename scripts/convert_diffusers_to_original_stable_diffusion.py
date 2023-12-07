@@ -157,6 +157,8 @@ vae_conversion_map_attn = [
     ("k.", "key."),
     ("v.", "value."),
     ("proj_out.", "proj_attn."),
+]
+
 # This is probably not the most ideal solution, but it does work.
 vae_extra_conversion_map = [
     ("to_q", "q"),
@@ -195,6 +197,7 @@ def convert_vae_state_dict(vae_state_dict):
                 keys_to_rename[k] = k.replace(weight_name, real_weight_name)
     for k, v in keys_to_rename.items():
         if k in new_state_dict:
+            print(f"Renaming {k} to {v}")
             new_state_dict[v] = reshape_weight_for_sd(new_state_dict[k])
             del new_state_dict[k]
     return new_state_dict
