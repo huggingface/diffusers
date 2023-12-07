@@ -55,13 +55,17 @@ def main():
                 command += " --run_compile"
                 run_command(command.split())
 
-        elif file in ["benchmark_sd_img.py", "benchmark_sd_inpainting.py"]:
-            sdxl_ckpt = (
-                "stabilityai/stable-diffusion-xl-refiner-1.0"
-                if "inpainting" not in file
-                else "stabilityai/stable-diffusion-xl-base-1.0"
-            )
-            command = f"python {file} --ckpt {sdxl_ckpt}"
+        elif file == "benchmark_sd_img.py":
+            for ckpt in ["stabilityai/stable-diffusion-xl-refiner-1.0", "stabilityai/sdxl-turbo"]:
+                command = f"python {file} --ckpt {ckpt}"
+                run_command(command.split())
+
+                command += " --run_compile"
+                run_command(command.split())
+
+        elif file == "benchmark_sd_inpainting.py":
+            sdxl_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
+            command = f"python {file} --ckpt {ckpt}"
             run_command(command.split())
 
             command += " --run_compile"

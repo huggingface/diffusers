@@ -3,7 +3,7 @@ import sys
 
 
 sys.path.append(".")
-from base_classes import ImageToImageBenchmark  # noqa: E402
+from base_classes import ImageToImageBenchmark, TurboImageToImageBenchmark  # noqa: E402
 
 
 if __name__ == "__main__":
@@ -16,6 +16,7 @@ if __name__ == "__main__":
             "runwayml/stable-diffusion-v1-5",
             "stabilityai/stable-diffusion-2-1",
             "stabilityai/stable-diffusion-xl-refiner-1.0",
+            "stabilityai/sdxl-turbo",
         ],
     )
     parser.add_argument("--batch_size", type=int, default=1)
@@ -24,5 +25,5 @@ if __name__ == "__main__":
     parser.add_argument("--run_compile", action="store_true")
     args = parser.parse_args()
 
-    benchmark_pipe = ImageToImageBenchmark(args)
+    benchmark_pipe = ImageToImageBenchmark(args) if "turbo" not in args.ckpt else TurboImageToImageBenchmark(args)
     benchmark_pipe.benchmark(args)

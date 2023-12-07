@@ -3,7 +3,7 @@ import sys
 
 
 sys.path.append(".")
-from base_classes import TextToImageBenchmark  # noqa: E402
+from base_classes import TextToImageBenchmark, TurboTextToImageBenchmark  # noqa: E402
 
 
 if __name__ == "__main__":
@@ -18,6 +18,7 @@ if __name__ == "__main__":
             "stabilityai/stable-diffusion-xl-base-1.0",
             "kandinsky-community/kandinsky-2-2-decoder",
             "warp-ai/wuerstchen",
+            "stabilityai/sdxl-turbo",
         ],
     )
     parser.add_argument("--batch_size", type=int, default=1)
@@ -26,5 +27,5 @@ if __name__ == "__main__":
     parser.add_argument("--run_compile", action="store_true")
     args = parser.parse_args()
 
-    benchmark_pipe = TextToImageBenchmark(args)
+    benchmark_pipe = TextToImageBenchmark(args) if "turbo" not in args.ckpt else TurboTextToImageBenchmark(args)
     benchmark_pipe.benchmark(args)

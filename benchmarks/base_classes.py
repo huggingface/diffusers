@@ -41,6 +41,7 @@ RESOLUTION_MAPPING = {
     "stabilityai/stable-diffusion-2-1": (768, 768),
     "stabilityai/stable-diffusion-xl-base-1.0": (1024, 1024),
     "stabilityai/stable-diffusion-xl-refiner-1.0": (1024, 1024),
+    "stabilityai/sdxl-turbo": (512, 512),
 }
 
 
@@ -119,6 +120,19 @@ class TextToImageBenchmark(BaseBenchmak):
         flush()
 
 
+class TurboTextToImageBenchmark(TextToImageBenchmark):
+    def __init__(self, args):
+        super().__init__(args)
+
+    def run_inference(self, pipe, args):
+        _ = pipe(
+            prompt=PROMPT,
+            num_inference_steps=args.num_inference_steps,
+            num_images_per_prompt=args.batch_size,
+            guidance_scale=0.0,
+        )
+
+
 class ImageToImageBenchmark(TextToImageBenchmark):
     pipeline_class = AutoPipelineForImage2Image
     url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/1665_Girl_with_a_Pearl_Earring.jpg"
@@ -134,6 +148,20 @@ class ImageToImageBenchmark(TextToImageBenchmark):
             image=self.image,
             num_inference_steps=args.num_inference_steps,
             num_images_per_prompt=args.batch_size,
+        )
+
+
+class TurboImageToImageBenchmark(ImageToImageBenchmark):
+    def __init__(self, args):
+        super().__init__(args)
+
+    def run_inference(self, pipe, args):
+        _ = pipe(
+            prompt=PROMPT,
+            image=self.image,
+            num_inference_steps=args.num_inference_steps,
+            num_images_per_prompt=args.batch_size,
+            guidance_scale=0.0,
         )
 
 
