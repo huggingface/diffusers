@@ -1107,7 +1107,7 @@ class StableDiffusionXLPipeline(
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         # Helpful when using `torch.compile()` to get a nice graph.
-        if self.scheduler.sigmas.device.type == "cuda":
+        if hasattr(self.scheduler, "sigmas") and self.scheduler.sigmas.device.type == "cuda":
             self.scheduler.sigmas = self.scheduler.sigmas.tolist()
 
         # 5. Prepare latent variables
