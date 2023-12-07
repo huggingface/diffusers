@@ -885,7 +885,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 setattr(self, name, new_layer)
 
             else:
-                fn_recursive_pointwise_conv(module)
+                fn_recursive_pointwise_conv(name, module)
 
         for name, module in self.named_children():
             fn_recursive_pointwise_conv(name, module)

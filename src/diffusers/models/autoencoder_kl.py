@@ -491,7 +491,6 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel._pointwise_conv_module_names
     @property
-    def _pointwise_conv_module_names(self) -> Dict[str, torch.nn.Module]:
         pointwise_convs = {}
 
         def fn_recursive(module, name, parent_name=""):
@@ -516,7 +515,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         if not USE_PEFT_BACKEND:
             raise NotImplementedError("You need to install `peft` to use this function.")
 
-        self.pointwise_convs = self._pointwise_conv_module_names
+        # self.pointwise_convs = self._pointwise_conv_module_names
 
         def new_forward(self, x):
             original_shape = x.shape
@@ -545,7 +544,7 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
                 setattr(self, name, new_layer)
 
             else:
-                fn_recursive_pointwise_conv(module)
+                fn_recursive_pointwise_conv(name, module)
 
         for name, module in self.named_children():
             fn_recursive_pointwise_conv(name, module)
