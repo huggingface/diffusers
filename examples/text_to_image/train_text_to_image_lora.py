@@ -39,7 +39,7 @@ from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
 import diffusers
-from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, UNet2DConditionModel
+from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models.attention_processor import LoRAAttnProcessor
 from diffusers.optimization import get_scheduler
@@ -88,7 +88,7 @@ def log_validation(args, accelerator, unet, weight_dtype, step):
         f" {args.validation_prompt}."
     )
     # create pipeline
-    pipeline = DiffusionPipeline.from_pretrained(
+    pipeline = StableDiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         unet=accelerator.unwrap_model(unet),
         revision=args.revision,
@@ -104,7 +104,16 @@ def log_validation(args, accelerator, unet, weight_dtype, step):
         generator = generator.manual_seed(args.seed)
     images = []
     for _ in range(args.num_validation_images):
-        images.append(pipeline(args.validation_prompt, num_inference_steps=20, generator=generator, nagative_prompt="ugly, nsfw, worst quality, low quality, blurry, watermark, signature").images[0])
+        images.append(
+            pipeline(
+                args.validation_prompt,
+                height=args.resolution_height,
+                width=args.resolution_width,
+                num_inference_steps=20,
+                generator=generator,
+                nagative_prompt="ugly, nsfw, worst quality, low quality, blurry, watermark, signature",
+            ).images[0]
+        )
 
     if args.save_original_validation_images:
         for i, image in enumerate(images):
@@ -239,6 +248,8 @@ def parse_args():
             " resolution"
         ),
     )
+    parser.add_argument("--resolution_height", type=int, default=None)
+    parser.add_argument("--resolution_width", type=int, default=None)
     parser.add_argument(
         "--center_crop",
         default=False,
@@ -378,7 +389,9 @@ def parse_args():
             ' (default), `"wandb"` and `"comet_ml"`. Use `"all"` to report to all integrations.'
         ),
     )
-    parser.add_argument("--tracker_project_name", type=str, default="text2image-fine-tune", help="The name of the project to log to.")
+    parser.add_argument(
+        "--tracker_project_name", type=str, default="text2image-fine-tune", help="The name of the project to log to."
+    )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
     parser.add_argument(
         "--checkpointing_steps",
@@ -433,6 +446,12 @@ DATASET_NAME_MAPPING = {
 
 
 def main(args):
+    if args.resolution_height is not None and args.resolution_width is not None:
+        args.resolution = (args.resolution_height, args.resolution_width)
+    else:
+        args.resolution_height = args.resolution
+        args.resolution_width = args.resolution
+        
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -925,7 +944,7 @@ def main(args):
 
     # Final inference
     # Load previous pipeline
-    pipeline = DiffusionPipeline.from_pretrained(
+    pipeline = StableDiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
     )
     pipeline = pipeline.to(accelerator.device)
