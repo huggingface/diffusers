@@ -1376,11 +1376,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             )
 
         if unet_lora_layers:
-            state_dict.update(pack_weights(unet_lora_layers, cls.unet_name))
+            state_dict.update(pack_weights(unet_lora_layers, "unet"))
 
         if text_encoder_lora_layers and text_encoder_2_lora_layers:
-            state_dict.update(pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
-            state_dict.update(pack_weights(text_encoder_2_lora_layers, f"{cls.text_encoder}_2"))
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+            state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
 
         cls.write_lora_layers(
             state_dict=state_dict,
