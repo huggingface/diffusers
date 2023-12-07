@@ -36,7 +36,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
         from .pipeline_leditspp_if import LEditsPPPipelineIF
-        from .pipeline_leditspp_stable_diffusion import LEditsPPPipelineStableDiffusion
+        from .pipeline_leditspp_stable_diffusion import (
+            LEditsPPPipelineStableDiffusion,
+            LEditsPPInversionPipelineOutput,
+            LEditsPPDiffusionPipelineOutput,
+        )
         from .pipeline_leditspp_stable_diffusion_xl import LEditsPPPipelineStableDiffusionXL
 
 else:
