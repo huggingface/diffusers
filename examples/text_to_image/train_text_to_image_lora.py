@@ -46,7 +46,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-
+from diffusers import UniPCMultistepScheduler
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.23.0")
@@ -94,6 +94,7 @@ def log_validation(args, accelerator, unet, weight_dtype, step):
         revision=args.revision,
         torch_dtype=weight_dtype,
     )
+    pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
@@ -103,7 +104,7 @@ def log_validation(args, accelerator, unet, weight_dtype, step):
         generator = generator.manual_seed(args.seed)
     images = []
     for _ in range(args.num_validation_images):
-        images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
+        images.append(pipeline(args.validation_prompt, num_inference_steps=20, generator=generator, nagative_prompt="ugly, nsfw, worst quality, low quality, blurry, watermark, signature").images[0])
 
     if args.save_original_validation_images:
         for i, image in enumerate(images):
