@@ -1,9 +1,9 @@
-from typing import Union, Tuple, List
+import math
+from typing import List, Tuple, Union
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-import math
 from PIL import Image
 
 from ...models.attention_processor import Attention

@@ -1,38 +1,32 @@
-from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
-from .ledits_utils import *
-
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
-
-import warnings
 from itertools import repeat
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...configuration_utils import FrozenDict
-from ...image_processor import VaeImageProcessor, PipelineImageInput
-from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import DDIMScheduler, DPMSolverMultistepScheduler
 from diffusers.utils import (
     USE_PEFT_BACKEND,
     logging,
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
+
+from ...configuration_utils import FrozenDict
+from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.attention_processor import AttnProcessor
+from ...models.lora import adjust_lora_scale_text_encoder
 from ...pipelines.pipeline_utils import DiffusionPipeline
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from ...models.attention_processor import AttnProcessor, Attention
+from ...schedulers import DDIMScheduler, DPMSolverMultistepScheduler
+from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline
+from .ledits_utils import *
+from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
 
-import numpy as np
-from PIL import Image
-from tqdm import tqdm
-from collections.abc import Iterable
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -245,11 +239,9 @@ class LEditsPPPipelineStableDiffusion(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
     def decode_latents(self, latents):
-        warnings.warn(
-            "The decode_latents method is deprecated and will be removed in a future version. Please"
-            " use VaeImageProcessor instead",
-            FutureWarning,
-        )
+        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
+        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
+
         latents = 1 / self.vae.config.scaling_factor * latents
         image = self.vae.decode(latents, return_dict=False)[0]
         image = (image / 2 + 0.5).clamp(0, 1)
@@ -1204,7 +1196,7 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
 
     return noise, mu_xt + (eta * variance ** 0.5) * noise
 
-# Copied from pipelines.StableDiffusion.CycleDiffusionPipeline.compute_noise
+
 def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noise_pred, eta):
 
     def first_order_update(model_output, sample): # timestep, prev_timestep, sample):

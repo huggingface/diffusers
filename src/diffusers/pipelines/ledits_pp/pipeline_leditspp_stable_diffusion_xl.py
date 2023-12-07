@@ -12,9 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+
+import torch
+import torch.nn.functional as F
 from transformers import (
     CLIPImageProcessor,
     CLIPTextModel,
@@ -31,34 +33,28 @@ from ...loaders import (
     TextualInversionLoaderMixin,
 )
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.attention_processor import (
+    AttnProcessor,
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
-    AttnProcessor
 )
-import torch.nn.functional as F
-
-from .ledits_utils import *
-from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
-from ..pipeline_utils import DiffusionPipeline
-
-from ...schedulers import DDIMScheduler, DPMSolverMultistepScheduler, KarrasDiffusionSchedulers
+from ...models.lora import adjust_lora_scale_text_encoder
+from ...schedulers import DDIMScheduler, DPMSolverMultistepScheduler
 from ...utils import (
     USE_PEFT_BACKEND,
     deprecate,
     is_invisible_watermark_available,
     is_torch_xla_available,
     logging,
-    replace_example_docstring,
     scale_lora_layers,
-    unscale_lora_layers,
 )
-from PIL import Image
-import numpy as np
 from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline
+from .ledits_utils import *
+from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
+
 
 if is_invisible_watermark_available():
     from ..stable_diffusion_xl.watermark import StableDiffusionXLWatermarker
@@ -1465,8 +1461,8 @@ class LEditsPPPipelineStableDiffusionXL(
 def reset_dpm(scheduler):
     if isinstance(scheduler, DPMSolverMultistepScheduler):
         scheduler.model_outputs = [
-                                      None,
-                                  ] * scheduler.config.solver_order
+                                           None,
+                                       ] * scheduler.config.solver_order
         scheduler.lower_order_nums = 0
         scheduler._step_index = None
 
@@ -1523,7 +1519,8 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
 
 # Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.compute_noise_sde_dpm_pp_2nd
 def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noise_pred, eta):
-    def first_order_update(model_output, sample):  # timestep, prev_timestep, sample):
+
+    def first_order_update(model_output, sample): # timestep, prev_timestep, sample):
         sigma_t, sigma_s = scheduler.sigmas[scheduler.step_index + 1], scheduler.sigmas[scheduler.step_index]
         alpha_t, sigma_t = scheduler._sigma_to_alpha_sigma_t(sigma_t)
         alpha_s, sigma_s = scheduler._sigma_to_alpha_sigma_t(sigma_s)
@@ -1540,7 +1537,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         mu_xt = scheduler.dpm_solver_first_order_update(
             model_output=model_output,
             sample=sample,
-            noise=torch.zeros_like(sample)
+            noise = torch.zeros_like(sample)
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
@@ -1549,7 +1546,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         prev_sample = mu_xt + sigma * noise
         return noise, prev_sample
 
-    def second_order_update(model_output_list, sample):  # timestep_list, prev_timestep, sample):
+    def second_order_update(model_output_list, sample): # timestep_list, prev_timestep, sample):
         sigma_t, sigma_s0, sigma_s1 = (
             scheduler.sigmas[scheduler.step_index + 1],
             scheduler.sigmas[scheduler.step_index],
@@ -1571,9 +1568,9 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
 
         mu_xt = (
-                (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
+            (sigma_t / sigma_s0 * torch.exp(-h)) * sample
+                    + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
+                    + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
@@ -1609,8 +1606,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
 def compute_noise(scheduler, *args):
     if isinstance(scheduler, DDIMScheduler):
         return compute_noise_ddim(scheduler, *args)
-    elif isinstance(scheduler,
-                    DPMSolverMultistepScheduler) and scheduler.config.algorithm_type == 'sde-dpmsolver++' \
+    elif isinstance(scheduler, DPMSolverMultistepScheduler) and scheduler.config.algorithm_type == 'sde-dpmsolver++'\
             and scheduler.config.solver_order == 2:
         return compute_noise_sde_dpm_pp_2nd(scheduler, *args)
     else:
