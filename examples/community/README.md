@@ -512,7 +512,6 @@ device = torch.device('cpu' if not has_cuda else 'cuda')
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
         safety_checker=None,
-    use_auth_token=True,
     custom_pipeline="imagic_stable_diffusion",
     scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 ).to(device)
@@ -552,7 +551,6 @@ device = th.device('cpu' if not has_cuda else 'cuda')
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="seed_resize_stable_diffusion"
 ).to(device)
 
@@ -588,7 +586,6 @@ generator = th.Generator("cuda").manual_seed(0)
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
 ).to(device)
 
@@ -607,7 +604,6 @@ image.save('./seed_resize/seed_resize_{w}_{h}_image.png'.format(w=width, h=heigh
 
 pipe_compare = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
 ).to(device)
 
