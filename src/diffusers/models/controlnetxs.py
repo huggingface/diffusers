@@ -817,9 +817,7 @@ def increase_block_input_in_encoder_resnet(unet: UNet2DConditionModel, block_no,
     norm_kwargs = {a: getattr(old_norm1, a) for a in norm_args}
     norm_kwargs["num_channels"] += by  # surgery done here
     # conv1
-    conv1_args = (
-        "in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer".split(" ")
-    )
+    conv1_args = "in_channels out_channels kernel_size stride padding dilation groups bias padding_mode".split(" ")
     for a in conv1_args:
         assert hasattr(old_conv1, a)
     conv1_kwargs = {a: getattr(old_conv1, a) for a in conv1_args}
@@ -848,9 +846,7 @@ def increase_block_input_in_encoder_downsampler(unet: UNet2DConditionModel, bloc
     """Increase channels sizes to allow for additional concatted information from base model"""
     old_down = unet.down_blocks[block_no].downsamplers[0].conv
     # conv1
-    args = "in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer".split(
-        " "
-    )
+    args = "in_channels out_channels kernel_size stride padding dilation groups bias padding_mode".split(" ")
     for a in args:
         assert hasattr(old_down, a)
     kwargs = {a: getattr(old_down, a) for a in args}
@@ -872,9 +868,7 @@ def increase_block_input_in_mid_resnet(unet: UNet2DConditionModel, by):
     norm_kwargs = {a: getattr(old_norm1, a) for a in norm_args}
     norm_kwargs["num_channels"] += by  # surgery done here
     # conv1
-    conv1_args = (
-        "in_channels out_channels kernel_size stride padding dilation groups bias padding_mode lora_layer".split(" ")
-    )
+    conv1_args = "in_channels out_channels kernel_size stride padding dilation groups bias padding_mode".split(" ")
     for a in conv1_args:
         assert hasattr(old_conv1, a)
     conv1_kwargs = {a: getattr(old_conv1, a) for a in conv1_args}
