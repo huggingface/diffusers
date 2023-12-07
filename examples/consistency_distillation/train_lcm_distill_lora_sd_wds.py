@@ -71,7 +71,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.25.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -423,7 +423,7 @@ def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path, subfolder=subfolder, revision=revision, use_auth_token=True
+        pretrained_model_name_or_path, subfolder=subfolder, revision=revision
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -1123,7 +1123,7 @@ def main(args):
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
-                image, text, _, _ = batch
+                image, text = batch
 
                 image = image.to(accelerator.device, non_blocking=True)
                 encoded_text = compute_embeddings_fn(text)
