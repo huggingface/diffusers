@@ -496,6 +496,7 @@ pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-a
 <Tip>
 
 It is recommended to use `DDIMScheduler` and `EulerDiscreteScheduler` for face model. 
+
 </Tip>
 
 ```python

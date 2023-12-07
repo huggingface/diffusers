@@ -677,7 +677,7 @@ class UNet2DConditionLoadersMixin:
             num_image_text_embeds = 4
         elif "proj.3.weight" in state_dict["image_proj"]:
             # IP-Adapter Full Face
-            num_image_text_embeds = 257
+            num_image_text_embeds = 257  # 256 CLIP tokens + 1 CLS token
         else:
             # IP-Adapter Plus
             num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
