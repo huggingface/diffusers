@@ -1,6 +1,11 @@
 import glob
 import subprocess
+import sys
 from typing import List
+
+
+sys.path.append(".")
+from benchmark_text_to_image import ALL_T2I_CKPTS  # noqa: E402
 
 
 PATTERN = "benchmark_*.py"
@@ -34,6 +39,7 @@ def main():
     for file in python_files:
         print(f"****** Running file: {file} ******")
 
+        # Run with canonical settings.
         if file != "benchmark_text_to_image.py":
             command = f"python {file}"
             run_command(command.split())
@@ -42,14 +48,12 @@ def main():
             run_command(command.split())
 
         if file == "benchmark_text_to_image.py":
-            for ckpt in [
-                "runwayml/stable-diffusion-v1-5",
-                "segmind/SSD-1B",
-                "stabilityai/stable-diffusion-xl-base-1.0",
-                "kandinsky-community/kandinsky-2-2-decoder",
-                "warp-ai/wuerstchen",
-            ]:
+            for ckpt in ALL_T2I_CKPTS:
                 command = f"python {file} --ckpt {ckpt}"
+
+                if "turbo" in ckpt:
+                    command += "--num_inference_steps 1"
+
                 run_command(command.split())
 
                 command += " --run_compile"
@@ -58,14 +62,17 @@ def main():
         elif file == "benchmark_sd_img.py":
             for ckpt in ["stabilityai/stable-diffusion-xl-refiner-1.0", "stabilityai/sdxl-turbo"]:
                 command = f"python {file} --ckpt {ckpt}"
-                run_command(command.split())
 
+                if ckpt == "stabilityai/sdxl-turbo":
+                    command += "--num_inference_steps 1"
+
+                run_command(command.split())
                 command += " --run_compile"
                 run_command(command.split())
 
         elif file == "benchmark_sd_inpainting.py":
             sdxl_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
-            command = f"python {file} --ckpt {ckpt}"
+            command = f"python {file} --ckpt {sdxl_ckpt}"
             run_command(command.split())
 
             command += " --run_compile"

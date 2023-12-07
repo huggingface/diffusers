@@ -8,6 +8,7 @@ from diffusers import (
     AutoPipelineForInpainting,
     AutoPipelineForText2Image,
     ControlNetModel,
+    LCMScheduler,
     StableDiffusionAdapterPipeline,
     StableDiffusionControlNetPipeline,
     StableDiffusionXLAdapterPipeline,
@@ -162,6 +163,24 @@ class TurboImageToImageBenchmark(ImageToImageBenchmark):
             num_inference_steps=args.num_inference_steps,
             num_images_per_prompt=args.batch_size,
             guidance_scale=0.0,
+        )
+
+
+class LCMLoRATextToImageBenchmark(TextToImageBenchmark):
+    lora_id = "latent-consistency/lcm-lora-sdxl"
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.pipe.load_lora_weights(self.lora_id)
+        self.pipe.scheduler = LCMScheduler.from_config(self.pipe.scheduler.config)
+
+    def run_inference(self, pipe, args):
+        _ = pipe(
+            prompt=PROMPT,
+            image=self.image,
+            num_inference_steps=args.num_inference_steps,
+            num_images_per_prompt=args.batch_size,
+            guidance_scale=1.0,
         )
 
 
