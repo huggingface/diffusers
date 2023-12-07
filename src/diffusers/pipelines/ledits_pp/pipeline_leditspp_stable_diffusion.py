@@ -2,6 +2,7 @@ import inspect
 from itertools import repeat
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import torch
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
@@ -23,7 +24,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .ledits_utils import *
+from .ledits_utils import AttentionStore, CrossAttnProcessor, F, GaussianSmoothing, load_images
 from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
 
 
@@ -83,8 +84,8 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 def reset_dpm(scheduler):
     if isinstance(scheduler, DPMSolverMultistepScheduler):
         scheduler.model_outputs = [
-                                      None,
-                                  ] * scheduler.config.solver_order
+            None,
+        ] * scheduler.config.solver_order
         scheduler.lower_order_nums = 0
         scheduler._step_index = None
 
@@ -127,23 +128,26 @@ class LEditsPPPipelineStableDiffusion(
     _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
 
     def __init__(
-            self,
-            vae: AutoencoderKL,
-            text_encoder: CLIPTextModel,
-            tokenizer: CLIPTokenizer,
-            unet: UNet2DConditionModel,
-            scheduler: Union[DDIMScheduler, DPMSolverMultistepScheduler],
-            safety_checker: StableDiffusionSafetyChecker,
-            feature_extractor: CLIPImageProcessor,
-            requires_safety_checker: bool = True,
+        self,
+        vae: AutoencoderKL,
+        text_encoder: CLIPTextModel,
+        tokenizer: CLIPTokenizer,
+        unet: UNet2DConditionModel,
+        scheduler: Union[DDIMScheduler, DPMSolverMultistepScheduler],
+        safety_checker: StableDiffusionSafetyChecker,
+        feature_extractor: CLIPImageProcessor,
+        requires_safety_checker: bool = True,
     ):
         super().__init__()
 
         if not isinstance(scheduler, DDIMScheduler) or not isinstance(scheduler, DPMSolverMultistepScheduler):
-            scheduler = DPMSolverMultistepScheduler.from_config(scheduler.config, algorithm_type="sde-dpmsolver++",
-                                                                solver_order=2)
-            logger.warning("This pipeline only supports DDIMScheduler and DPMSolverMultistepScheduler. "
-                           "The scheduler has been changed to DPMSolverMultistepScheduler.")
+            scheduler = DPMSolverMultistepScheduler.from_config(
+                scheduler.config, algorithm_type="sde-dpmsolver++", solver_order=2
+            )
+            logger.warning(
+                "This pipeline only supports DDIMScheduler and DPMSolverMultistepScheduler. "
+                "The scheduler has been changed to DPMSolverMultistepScheduler."
+            )
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
@@ -269,12 +273,12 @@ class LEditsPPPipelineStableDiffusion(
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
-            self,
-            callback_steps,
-            negative_prompt=None,
-            editing_prompt_embeddings=None,
-            negative_prompt_embeds=None,
-            callback_on_step_end_tensor_inputs=None,
+        self,
+        callback_steps,
+        negative_prompt=None,
+        editing_prompt_embeddings=None,
+        negative_prompt_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
     ):
         if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
@@ -282,7 +286,7 @@ class LEditsPPPipelineStableDiffusion(
                 f" {type(callback_steps)}."
             )
         if callback_on_step_end_tensor_inputs is not None and not all(
-                k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
@@ -326,28 +330,29 @@ class LEditsPPPipelineStableDiffusion(
             else:
                 continue
 
-            if "attn2" in name and place_in_unet != 'mid':
+            if "attn2" in name and place_in_unet != "mid":
                 attn_procs[name] = CrossAttnProcessor(
                     attention_store=attention_store,
                     place_in_unet=place_in_unet,
                     PnP=PnP,
-                    editing_prompts=self.enabled_editing_prompts)
+                    editing_prompts=self.enabled_editing_prompts,
+                )
             else:
                 attn_procs[name] = AttnProcessor()
 
         self.unet.set_attn_processor(attn_procs)
 
     def encode_prompt(
-            self,
-            device,
-            num_images_per_prompt,
-            enable_edit_guidance,
-            negative_prompt=None,
-            editing_prompt=None,
-            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-            editing_prompt_embeds: Optional[torch.FloatTensor] = None,
-            lora_scale: Optional[float] = None,
-            clip_skip: Optional[int] = None,
+        self,
+        device,
+        num_images_per_prompt,
+        enable_edit_guidance,
+        negative_prompt=None,
+        editing_prompt=None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        editing_prompt_embeds: Optional[torch.FloatTensor] = None,
+        lora_scale: Optional[float] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -412,7 +417,6 @@ class LEditsPPPipelineStableDiffusion(
             if isinstance(self, TextualInversionLoaderMixin):
                 uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
-
             uncond_input = self.tokenizer(
                 uncond_tokens,
                 padding="max_length",
@@ -451,10 +455,10 @@ class LEditsPPPipelineStableDiffusion(
                 text_inputs = self.tokenizer(
                     [x for item in editing_prompt for x in repeat(item, batch_size)],
                     padding="max_length",
-                    max_length=self.tokenizer.model_max_length,
+                    max_length=max_length,
                     truncation=True,
                     return_tensors="pt",
-                    return_length=True
+                    return_length=True,
                 )
 
                 num_edit_tokens = text_inputs.length - 2  # not counting startoftext and endoftext
@@ -462,22 +466,24 @@ class LEditsPPPipelineStableDiffusion(
                 untruncated_ids = self.tokenizer(
                     [x for item in editing_prompt for x in repeat(item, batch_size)],
                     padding="longest",
-                    return_tensors="pt"
+                    return_tensors="pt",
                 ).input_ids
 
                 if untruncated_ids.shape[-1] >= text_input_ids.shape[-1] and not torch.equal(
-                        text_input_ids, untruncated_ids
+                    text_input_ids, untruncated_ids
                 ):
                     removed_text = self.tokenizer.batch_decode(
-                        untruncated_ids[:, self.tokenizer.model_max_length - 1: -1]
+                        untruncated_ids[:, self.tokenizer.model_max_length - 1 : -1]
                     )
                     logger.warning(
                         "The following part of your input was truncated because CLIP can only handle sequences up to"
                         f" {self.tokenizer.model_max_length} tokens: {removed_text}"
                     )
 
-                if hasattr(self.text_encoder.config,
-                           "use_attention_mask") and self.text_encoder.config.use_attention_mask:
+                if (
+                    hasattr(self.text_encoder.config, "use_attention_mask")
+                    and self.text_encoder.config.use_attention_mask
+                ):
                     attention_mask = text_inputs.attention_mask.to(device)
                 else:
                     attention_mask = None
@@ -537,31 +543,31 @@ class LEditsPPPipelineStableDiffusion(
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
-            self,
-            negative_prompt: Optional[Union[str, List[str]]] = None,
-            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-            output_type: Optional[str] = "pil",
-            return_dict: bool = True,
-            editing_prompt: Optional[Union[str, List[str]]] = None,
-            editing_prompt_embeds: Optional[torch.Tensor] = None,
-            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-            reverse_editing_direction: Optional[Union[bool, List[bool]]] = False,
-            edit_guidance_scale: Optional[Union[float, List[float]]] = 5,
-            edit_warmup_steps: Optional[Union[int, List[int]]] = 0,
-            edit_cooldown_steps: Optional[Union[int, List[int]]] = None,
-            edit_threshold: Optional[Union[float, List[float]]] = 0.9,
-            user_mask: Optional[torch.FloatTensor] = None,
-            sem_guidance: Optional[List[torch.Tensor]] = None,
-            use_cross_attn_mask: bool = False,
-            use_intersect_mask: bool = True,
-            attn_store_steps: Optional[List[int]] = [],
-            store_averaged_over_steps: bool = True,
-            cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-            guidance_rescale: float = 0.0,
-            clip_skip: Optional[int] = None,
-            callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-            callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-            **kwargs,
+        self,
+        negative_prompt: Optional[Union[str, List[str]]] = None,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        output_type: Optional[str] = "pil",
+        return_dict: bool = True,
+        editing_prompt: Optional[Union[str, List[str]]] = None,
+        editing_prompt_embeds: Optional[torch.Tensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        reverse_editing_direction: Optional[Union[bool, List[bool]]] = False,
+        edit_guidance_scale: Optional[Union[float, List[float]]] = 5,
+        edit_warmup_steps: Optional[Union[int, List[int]]] = 0,
+        edit_cooldown_steps: Optional[Union[int, List[int]]] = None,
+        edit_threshold: Optional[Union[float, List[float]]] = 0.9,
+        user_mask: Optional[torch.FloatTensor] = None,
+        sem_guidance: Optional[List[torch.Tensor]] = None,
+        use_cross_attn_mask: bool = False,
+        use_intersect_mask: bool = True,
+        attn_store_steps: Optional[List[int]] = [],
+        store_averaged_over_steps: bool = True,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        guidance_rescale: float = 0.0,
+        clip_skip: Optional[int] = None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        **kwargs,
     ):
         r"""
         The call function to the pipeline for editing. The [`~pipelines.ledits_pp.LEditsPPPipelineStableDiffusion.invert`]
@@ -732,8 +738,7 @@ class LEditsPPPipelineStableDiffusion(
         # to avoid doing two forward passes
         if enable_edit_guidance:
             text_embeddings = torch.cat([uncond_embeddings, edit_concepts])
-            self.text_cross_attention_maps = \
-                ([editing_prompt] if isinstance(editing_prompt, str) else editing_prompt)
+            self.text_cross_attention_maps = [editing_prompt] if isinstance(editing_prompt, str) else editing_prompt
         else:
             text_embeddings = torch.cat([uncond_embeddings])
 
@@ -742,14 +747,16 @@ class LEditsPPPipelineStableDiffusion(
         timesteps = self.scheduler.inversion_steps
 
         if use_ddpm:
-            t_to_idx = {int(v): k for k, v in enumerate(timesteps[-zs.shape[0]:])}
-            assert (len(timesteps) == zs.shape[0])
+            t_to_idx = {int(v): k for k, v in enumerate(timesteps[-zs.shape[0] :])}
+            assert len(timesteps) == zs.shape[0]
 
         if use_cross_attn_mask:
-            self.attention_store = AttentionStore(average=store_averaged_over_steps, batch_size=batch_size,
-                                                  max_size=(latents.shape[-2] / 4.0) * (latents.shape[-1] / 4.0),
-                                                  max_resolution=None
-                                                  )
+            self.attention_store = AttentionStore(
+                average=store_averaged_over_steps,
+                batch_size=batch_size,
+                max_size=(latents.shape[-2] / 4.0) * (latents.shape[-1] / 4.0),
+                max_resolution=None,
+            )
             self.prepare_unet(self.attention_store, PnP=False)
             resolution = latents.shape[-2:]
             att_res = (int(resolution[0] / 4), int(resolution[1] / 4))
@@ -863,10 +870,10 @@ class LEditsPPPipelineStableDiffusion(
                                 is_cross=True,
                                 select=self.text_cross_attention_maps.index(editing_prompt[c]),
                             )
-                            attn_map = out[:, :, :, 1:1 + num_edit_tokens[c]]  # 0 -> startoftext
+                            attn_map = out[:, :, :, 1 : 1 + num_edit_tokens[c]]  # 0 -> startoftext
 
                             # average over all tokens
-                            assert (attn_map.shape[3] == num_edit_tokens[c])
+                            assert attn_map.shape[3] == num_edit_tokens[c]
                             attn_map = torch.sum(attn_map, dim=3)
 
                             # gaussian_smoothing
@@ -875,24 +882,19 @@ class LEditsPPPipelineStableDiffusion(
 
                             # torch.quantile function expects float32
                             if attn_map.dtype == torch.float32:
-                                tmp = torch.quantile(
-                                    attn_map.flatten(start_dim=1),
-                                    edit_threshold_c,
-                                    dim=1
-                                )
+                                tmp = torch.quantile(attn_map.flatten(start_dim=1), edit_threshold_c, dim=1)
                             else:
                                 tmp = torch.quantile(
-                                    attn_map.flatten(start_dim=1).to(torch.float32),
-                                    edit_threshold_c,
-                                    dim=1
+                                    attn_map.flatten(start_dim=1).to(torch.float32), edit_threshold_c, dim=1
                                 ).to(attn_map.dtype)
-                            attn_mask = torch.where(attn_map >= tmp.unsqueeze(1).unsqueeze(1).repeat(1, *att_res), 1.0,
-                                                    0.0)
+                            attn_mask = torch.where(
+                                attn_map >= tmp.unsqueeze(1).unsqueeze(1).repeat(1, *att_res), 1.0, 0.0
+                            )
 
                             # resolution must match latent space dimension
                             attn_mask = F.interpolate(
                                 attn_mask.unsqueeze(1),
-                                noise_guidance_edit_tmp.shape[-2:]  # 64,64
+                                noise_guidance_edit_tmp.shape[-2:],  # 64,64
                             ).repeat(1, 4, 1, 1)
                             self.activation_mask[i, c] = attn_mask.detach().cpu()
                             if not use_intersect_mask:
@@ -901,8 +903,9 @@ class LEditsPPPipelineStableDiffusion(
                         if use_intersect_mask:
                             if t <= 800:
                                 noise_guidance_edit_tmp_quantile = torch.abs(noise_guidance_edit_tmp)
-                                noise_guidance_edit_tmp_quantile = torch.sum(noise_guidance_edit_tmp_quantile, dim=1,
-                                                                             keepdim=True)
+                                noise_guidance_edit_tmp_quantile = torch.sum(
+                                    noise_guidance_edit_tmp_quantile, dim=1, keepdim=True
+                                )
                                 noise_guidance_edit_tmp_quantile = noise_guidance_edit_tmp_quantile.repeat(1, 4, 1, 1)
 
                                 # torch.quantile function expects float32
@@ -921,11 +924,14 @@ class LEditsPPPipelineStableDiffusion(
                                         keepdim=False,
                                     ).to(noise_guidance_edit_tmp_quantile.dtype)
 
-                                intersect_mask = torch.where(
-                                    noise_guidance_edit_tmp_quantile >= tmp[:, :, None, None],
-                                    torch.ones_like(noise_guidance_edit_tmp),
-                                    torch.zeros_like(noise_guidance_edit_tmp),
-                                ) * attn_mask
+                                intersect_mask = (
+                                    torch.where(
+                                        noise_guidance_edit_tmp_quantile >= tmp[:, :, None, None],
+                                        torch.ones_like(noise_guidance_edit_tmp),
+                                        torch.zeros_like(noise_guidance_edit_tmp),
+                                    )
+                                    * attn_mask
+                                )
 
                                 self.activation_mask[i, c] = intersect_mask.detach().cpu()
 
@@ -938,8 +944,9 @@ class LEditsPPPipelineStableDiffusion(
                         elif not use_cross_attn_mask:
                             # calculate quantile
                             noise_guidance_edit_tmp_quantile = torch.abs(noise_guidance_edit_tmp)
-                            noise_guidance_edit_tmp_quantile = torch.sum(noise_guidance_edit_tmp_quantile, dim=1,
-                                                                         keepdim=True)
+                            noise_guidance_edit_tmp_quantile = torch.sum(
+                                noise_guidance_edit_tmp_quantile, dim=1, keepdim=True
+                            )
                             noise_guidance_edit_tmp_quantile = noise_guidance_edit_tmp_quantile.repeat(1, 4, 1, 1)
 
                             # torch.quantile function expects float32
@@ -958,11 +965,15 @@ class LEditsPPPipelineStableDiffusion(
                                     keepdim=False,
                                 ).to(noise_guidance_edit_tmp_quantile.dtype)
 
-                            self.activation_mask[i, c] = torch.where(
-                                noise_guidance_edit_tmp_quantile >= tmp[:, :, None, None],
-                                torch.ones_like(noise_guidance_edit_tmp),
-                                torch.zeros_like(noise_guidance_edit_tmp),
-                            ).detach().cpu()
+                            self.activation_mask[i, c] = (
+                                torch.where(
+                                    noise_guidance_edit_tmp_quantile >= tmp[:, :, None, None],
+                                    torch.ones_like(noise_guidance_edit_tmp),
+                                    torch.zeros_like(noise_guidance_edit_tmp),
+                                )
+                                .detach()
+                                .cpu()
+                            )
 
                             noise_guidance_edit_tmp = torch.where(
                                 noise_guidance_edit_tmp_quantile >= tmp[:, :, None, None],
@@ -981,12 +992,13 @@ class LEditsPPPipelineStableDiffusion(
                     noise_pred = rescale_noise_cfg(
                         noise_pred,
                         noise_pred_edit_concepts.mean(dim=0, keepdim=False),
-                        guidance_rescale=self.guidance_rescale
+                        guidance_rescale=self.guidance_rescale,
                     )
 
                 idx = t_to_idx[int(t)]
-                latents = self.scheduler.step(noise_pred, t, latents, variance_noise=zs[idx],
-                                              **extra_step_kwargs).prev_sample
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, variance_noise=zs[idx], **extra_step_kwargs
+                ).prev_sample
 
                 # step callback
                 if use_cross_attn_mask:
@@ -1000,7 +1012,7 @@ class LEditsPPPipelineStableDiffusion(
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    # prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
@@ -1045,7 +1057,7 @@ class LEditsPPPipelineStableDiffusion(
         text_input_ids = text_inputs.input_ids
 
         if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length:])
+            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
             logger.warning(
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
@@ -1056,14 +1068,15 @@ class LEditsPPPipelineStableDiffusion(
         return text_embeddings
 
     @torch.no_grad()
-    def invert(self,
-               image: PipelineImageInput,
-               source_prompt: str = "",
-               source_guidance_scale=3.5,
-               num_inversion_steps: int = 30,
-               skip: float = 0.15,
-               generator: Optional[torch.Generator] = None,
-               ):
+    def invert(
+        self,
+        image: PipelineImageInput,
+        source_prompt: str = "",
+        source_guidance_scale=3.5,
+        num_inversion_steps: int = 30,
+        skip: float = 0.15,
+        generator: Optional[torch.Generator] = None,
+    ):
         r"""
         The function to the pipeline for image inversion as described by the [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
         If the scheduler is set to [`~schedulers.DDIMScheduler`] the inversion proposed by [edit-friendly DPDM](https://arxiv.org/abs/2304.06140)
@@ -1095,7 +1108,7 @@ class LEditsPPPipelineStableDiffusion(
         self.unet.set_attn_processor(AttnProcessor())
 
         self.eta = 1.0
-        assert (self.eta > 0)
+        assert self.eta > 0
 
         self.scheduler.config.timestep_spacing = "leading"
         self.scheduler.set_timesteps(int(num_inversion_steps * (1 + skip)))
@@ -1118,9 +1131,7 @@ class LEditsPPPipelineStableDiffusion(
         image_rec = self.image_processor.postprocess(image_rec, output_type="pil")
 
         # 3. find zs and xts
-        variance_noise_shape = (
-            num_inversion_steps,
-            *x0.shape)
+        variance_noise_shape = (num_inversion_steps, *x0.shape)
 
         # intermediate latents
         t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
@@ -1165,11 +1176,15 @@ class LEditsPPPipelineStableDiffusion(
 
     @torch.no_grad()
     def encode_image(self, image, dtype=None):
-        image, resized = load_images(image,
-                                     sizes=(self.unet.sample_size * self.vae_scale_factor,
-                                            int(self.unet.sample_size * self.vae_scale_factor * 1.5)),
-                                     device=self.device,
-                                     dtype=dtype)
+        image, resized = load_images(
+            image,
+            sizes=(
+                self.unet.sample_size * self.vae_scale_factor,
+                int(self.unet.sample_size * self.vae_scale_factor * 1.5),
+            ),
+            device=self.device,
+            dtype=dtype,
+        )
         x0 = self.vae.encode(image).latent_dist.mode()
         x0 = self.vae.config.scaling_factor * x0
         return x0, resized
@@ -1201,13 +1216,13 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
     std_dev_t = eta * variance ** (0.5)
 
     # 6. compute "direction pointing to x_t" of formula (12) from https://arxiv.org/pdf/2010.02502.pdf
-    pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t ** 2) ** (0.5) * noise_pred
+    pred_sample_direction = (1 - alpha_prod_t_prev - std_dev_t**2) ** (0.5) * noise_pred
 
     # modifed so that updated xtm1 is returned as well (to avoid error accumulation)
     mu_xt = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
     noise = (prev_latents - mu_xt) / (variance ** (0.5) * eta)
 
-    return noise, mu_xt + (eta * variance ** 0.5) * noise
+    return noise, mu_xt + (eta * variance**0.5) * noise
 
 
 def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noise_pred, eta):
@@ -1220,15 +1235,10 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
 
         h = lambda_t - lambda_s
 
-        mu_xt = (
-                (sigma_t / sigma_s * torch.exp(-h)) * sample
-                + (alpha_t * (1 - torch.exp(-2.0 * h))) * model_output
-        )
+        mu_xt = (sigma_t / sigma_s * torch.exp(-h)) * sample + (alpha_t * (1 - torch.exp(-2.0 * h))) * model_output
 
         mu_xt = scheduler.dpm_solver_first_order_update(
-            model_output=model_output,
-            sample=sample,
-            noise=torch.zeros_like(sample)
+            model_output=model_output, sample=sample, noise=torch.zeros_like(sample)
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
@@ -1259,9 +1269,9 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         D0, D1 = m0, (1.0 / r0) * (m0 - m1)
 
         mu_xt = (
-                (sigma_t / sigma_s0 * torch.exp(-h)) * sample
-                + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
-                + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
+            (sigma_t / sigma_s0 * torch.exp(-h)) * sample
+            + (alpha_t * (1 - torch.exp(-2.0 * h))) * D0
+            + 0.5 * (alpha_t * (1 - torch.exp(-2.0 * h))) * D1
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
@@ -1296,8 +1306,11 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
 def compute_noise(scheduler, *args):
     if isinstance(scheduler, DDIMScheduler):
         return compute_noise_ddim(scheduler, *args)
-    elif isinstance(scheduler, DPMSolverMultistepScheduler) and scheduler.config.algorithm_type == 'sde-dpmsolver++' \
-            and scheduler.config.solver_order == 2:
+    elif (
+        isinstance(scheduler, DPMSolverMultistepScheduler)
+        and scheduler.config.algorithm_type == "sde-dpmsolver++"
+        and scheduler.config.solver_order == 2
+    ):
         return compute_noise_sde_dpm_pp_2nd(scheduler, *args)
     else:
         raise NotImplementedError

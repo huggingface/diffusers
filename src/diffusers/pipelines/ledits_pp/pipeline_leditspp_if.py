@@ -23,17 +23,17 @@ if is_bs4_available():
 
 if is_ftfy_available():
     pass
-from .ledits_utils import *
 
 
 class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
     """
-        Pipeline for textual image editing using LEDits++ with DeepfloydIF.
+    Pipeline for textual image editing using LEDits++ with DeepfloydIF.
 
-        This model inherits from [`DiffusionPipeline`] and builds on the [`IFPipeline`]. Check the superclass
-        documentation for the generic methods implemented for all pipelines (downloading, saving, running on a particular
-        device, etc.).
-        """
+    This model inherits from [`DiffusionPipeline`] and builds on the [`IFPipeline`]. Check the superclass
+    documentation for the generic methods implemented for all pipelines (downloading, saving, running on a particular
+    device, etc.).
+    """
+
     tokenizer: T5Tokenizer
     text_encoder: T5EncoderModel
 
@@ -109,6 +109,7 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
         Function invoked when calling the pipeline for generation.
         """
         pass
+
     def invert(self):
         """
         Inverts a real image according to Algorihm 1 in https://arxiv.org/pdf/2304.06140.pdf,
