@@ -427,7 +427,6 @@ class LoRACompatibleLinear(nn.Linear):
 
     def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
         if self.lora_layer is None:
-            print("hidden_states.size(): ", hidden_states.size(), " self.weight.size(): ", self.weight.size())
             out = super().forward(hidden_states)
             return out
         else:
