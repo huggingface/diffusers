@@ -291,6 +291,7 @@
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/ledits_pp
+      title: LEDITS++
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
