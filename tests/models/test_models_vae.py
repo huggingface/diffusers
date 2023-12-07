@@ -485,7 +485,7 @@ class AutoencoderTinyIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        backend_empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_file_format(self, seed, shape):
         return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
@@ -565,7 +565,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        backend_empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
@@ -820,7 +820,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        backend_empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32

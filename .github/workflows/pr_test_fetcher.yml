@@ -1,12 +1,6 @@
 name: Fast tests for PRs - Test Fetcher
 
-on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - ci-*
+on: workflow_dispatch
 
 env:
   DIFFUSERS_IS_CI: yes

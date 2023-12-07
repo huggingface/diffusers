@@ -24,6 +24,7 @@ import numpy as np
 import PIL.Image
 from flax.core.frozen_dict import FrozenDict
 from huggingface_hub import create_repo, snapshot_download
+from huggingface_hub.utils import validate_hf_hub_args
 from PIL import Image
 from tqdm.auto import tqdm
 
@@ -32,7 +33,6 @@ from ..models.modeling_flax_utils import FLAX_WEIGHTS_NAME, FlaxModelMixin
 from ..schedulers.scheduling_utils_flax import SCHEDULER_CONFIG_NAME, FlaxSchedulerMixin
 from ..utils import (
     CONFIG_NAME,
-    DIFFUSERS_CACHE,
     BaseOutput,
     PushToHubMixin,
     http_user_agent,
@@ -227,6 +227,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                 )
 
     @classmethod
+    @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
         Instantiate a Flax-based diffusion pipeline from pretrained pipeline weights.
@@ -264,7 +265,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -314,11 +315,11 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> dpm_params["scheduler"] = dpmpp_state
         ```
         """
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         from_pt = kwargs.pop("from_pt", False)
         use_memory_efficient_attention = kwargs.pop("use_memory_efficient_attention", False)
@@ -334,7 +335,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
             )
             # make sure we only download sub-folders and `diffusers` filenames
@@ -365,7 +366,7 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 allow_patterns=allow_patterns,
                 ignore_patterns=ignore_patterns,

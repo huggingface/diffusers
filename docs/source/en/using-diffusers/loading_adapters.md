@@ -485,6 +485,69 @@ image.save("sdxl_t2i.png")
   </div>
 </div>
 
+You can use the IP-Adapter face model to apply specific faces to your images.  It is an effective way to maintain consistent characters in your image generations.
+Weights are loaded with the same method used for the other IP-Adapters.  
+
+```python
+# Load ip-adapter-full-face_sd15.bin
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
+```
+
+<Tip>
+
+It is recommended to use `DDIMScheduler` and `EulerDiscreteScheduler` for face model. 
+
+
+</Tip>
+
+```python
+import torch
+from diffusers import StableDiffusionPipeline, DDIMScheduler
+from diffusers.utils import load_image
+
+noise_scheduler = DDIMScheduler(
+    num_train_timesteps=1000,
+    beta_start=0.00085,
+    beta_end=0.012,
+    beta_schedule="scaled_linear",
+    clip_sample=False,
+    set_alpha_to_one=False,
+    steps_offset=1
+)
+
+pipeline = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+    scheduler=noise_scheduler,
+).to("cuda")
+
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
+
+pipeline.set_ip_adapter_scale(0.7)
+
+image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ai_face2.png")
+
+generator = torch.Generator(device="cpu").manual_seed(33)
+
+image = pipeline(
+    prompt="A photo of a girl wearing a black dress, holding red roses in hand, upper body, behind is the Eiffel Tower",
+    ip_adapter_image=image,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=50, num_images_per_prompt=1, width=512, height=704,
+    generator=generator,
+).images[0]
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ai_face2.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">input image</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ipadapter_full_face_output.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">output image</figcaption>
+  </div>
+</div>
 
 ### LCM-Lora
 

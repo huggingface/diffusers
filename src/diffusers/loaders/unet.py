@@ -19,13 +19,12 @@ from typing import Callable, Dict, List, Optional, Union
 import safetensors
 import torch
 import torch.nn.functional as F
+from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from ..models.embeddings import ImageProjection, Resampler
+from ..models.embeddings import ImageProjection, MLPProjection, Resampler
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
-    DIFFUSERS_CACHE,
-    HF_HUB_OFFLINE,
     USE_PEFT_BACKEND,
     _get_model_file,
     delete_adapter_layers,
@@ -62,6 +61,7 @@ class UNet2DConditionLoadersMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
 
+    @validate_hf_hub_args
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
@@ -95,7 +95,7 @@ class UNet2DConditionLoadersMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
@@ -130,12 +130,12 @@ class UNet2DConditionLoadersMixin:
         from ..models.attention_processor import CustomDiffusionAttnProcessor
         from ..models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
 
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
@@ -184,7 +184,7 @@ class UNet2DConditionLoadersMixin:
                         resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
+                        token=token,
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
@@ -204,7 +204,7 @@ class UNet2DConditionLoadersMixin:
                     resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,
@@ -675,6 +675,9 @@ class UNet2DConditionLoadersMixin:
         if "proj.weight" in state_dict["image_proj"]:
             # IP-Adapter
             num_image_text_embeds = 4
+        elif "proj.3.weight" in state_dict["image_proj"]:
+            # IP-Adapter Full Face
+            num_image_text_embeds = 257  # 256 CLIP tokens + 1 CLS token
         else:
             # IP-Adapter Plus
             num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
@@ -744,8 +747,32 @@ class UNet2DConditionLoadersMixin:
                     "norm.bias": state_dict["image_proj"]["norm.bias"],
                 }
             )
-
             image_projection.load_state_dict(image_proj_state_dict)
+            del image_proj_state_dict
+
+        elif "proj.3.weight" in state_dict["image_proj"]:
+            clip_embeddings_dim = state_dict["image_proj"]["proj.0.weight"].shape[0]
+            cross_attention_dim = state_dict["image_proj"]["proj.3.weight"].shape[0]
+
+            image_projection = MLPProjection(
+                cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+            )
+            image_projection.to(dtype=self.dtype, device=self.device)
+
+            # load image projection layer weights
+            image_proj_state_dict = {}
+            image_proj_state_dict.update(
+                {
+                    "ff.net.0.proj.weight": state_dict["image_proj"]["proj.0.weight"],
+                    "ff.net.0.proj.bias": state_dict["image_proj"]["proj.0.bias"],
+                    "ff.net.2.weight": state_dict["image_proj"]["proj.2.weight"],
+                    "ff.net.2.bias": state_dict["image_proj"]["proj.2.bias"],
+                    "norm.weight": state_dict["image_proj"]["proj.3.weight"],
+                    "norm.bias": state_dict["image_proj"]["proj.3.bias"],
+                }
+            )
+            image_projection.load_state_dict(image_proj_state_dict)
+            del image_proj_state_dict
 
         else:
             # IP-Adapter Plus

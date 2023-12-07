@@ -24,6 +24,7 @@ from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, Te
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
+    FusedAttnProcessor2_0,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
@@ -654,6 +655,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
                 XFormersAttnProcessor,
                 LoRAXFormersAttnProcessor,
                 LoRAAttnProcessor2_0,
+                FusedAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
