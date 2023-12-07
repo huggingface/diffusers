@@ -726,7 +726,7 @@ class LEditsPPPipelineStableDiffusionXL(
         **kwargs,
     ):
         r"""
-        The call function to the pipeline for editing. The [~pipelines.ledits_pp.LEditsPPPipelineStableDiffusionXL.invert]
+        The call function to the pipeline for editing. The [`~pipelines.ledits_pp.LEditsPPPipelineStableDiffusionXL.invert`]
         method has to be called beforehand. Edits will always be performed for the last inverted image(s).
 
         Args:

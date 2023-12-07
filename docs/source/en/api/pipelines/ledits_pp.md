@@ -29,8 +29,8 @@ We provide three distinct pipelines based on different pre-trained models.
 ## LEditsPPPipelineStableDiffusion
 [[autodoc]] LEditsPPPipelineStableDiffusion
 	- all
-    - __call__
-	- invert	
+	- __call__
+	- invert
 
 ## LEditsPPPipelineStableDiffusionXL
 [[autodoc]] LEditsPPPipelineStableDiffusionXL
