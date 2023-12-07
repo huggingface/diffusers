@@ -52,7 +52,7 @@ def main():
                 command = f"python {file} --ckpt {ckpt}"
 
                 if "turbo" in ckpt:
-                    command += "--num_inference_steps 1"
+                    command += " --num_inference_steps 1"
 
                 run_command(command.split())
 
@@ -64,7 +64,7 @@ def main():
                 command = f"python {file} --ckpt {ckpt}"
 
                 if ckpt == "stabilityai/sdxl-turbo":
-                    command += "--num_inference_steps 1"
+                    command += " --num_inference_steps 1"
 
                 run_command(command.split())
                 command += " --run_compile"

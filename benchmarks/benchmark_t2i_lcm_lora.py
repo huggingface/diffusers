@@ -14,7 +14,7 @@ if __name__ == "__main__":
         default="stabilityai/stable-diffusion-xl-base-1.0",
     )
     parser.add_argument("--batch_size", type=int, default=1)
-    parser.add_argument("--num_inference_steps", type=int, default=3)
+    parser.add_argument("--num_inference_steps", type=int, default=4)
     parser.add_argument("--model_cpu_offload", action="store_true")
     parser.add_argument("--run_compile", action="store_true")
     args = parser.parse_args()
