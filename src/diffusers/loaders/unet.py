@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from ..models.embeddings import ImageProjection, Resampler
+from ..models.embeddings import ImageProjection, MLPProjection, Resampler
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -675,6 +675,9 @@ class UNet2DConditionLoadersMixin:
         if "proj.weight" in state_dict["image_proj"]:
             # IP-Adapter
             num_image_text_embeds = 4
+        elif "proj.3.weight" in state_dict["image_proj"]:
+            # IP-Adapter Full Face
+            num_image_text_embeds = 257  # 256 CLIP tokens + 1 CLS token
         else:
             # IP-Adapter Plus
             num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
@@ -744,8 +747,32 @@ class UNet2DConditionLoadersMixin:
                     "norm.bias": state_dict["image_proj"]["norm.bias"],
                 }
             )
-
             image_projection.load_state_dict(image_proj_state_dict)
+            del image_proj_state_dict
+
+        elif "proj.3.weight" in state_dict["image_proj"]:
+            clip_embeddings_dim = state_dict["image_proj"]["proj.0.weight"].shape[0]
+            cross_attention_dim = state_dict["image_proj"]["proj.3.weight"].shape[0]
+
+            image_projection = MLPProjection(
+                cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+            )
+            image_projection.to(dtype=self.dtype, device=self.device)
+
+            # load image projection layer weights
+            image_proj_state_dict = {}
+            image_proj_state_dict.update(
+                {
+                    "ff.net.0.proj.weight": state_dict["image_proj"]["proj.0.weight"],
+                    "ff.net.0.proj.bias": state_dict["image_proj"]["proj.0.bias"],
+                    "ff.net.2.weight": state_dict["image_proj"]["proj.2.weight"],
+                    "ff.net.2.bias": state_dict["image_proj"]["proj.2.bias"],
+                    "norm.weight": state_dict["image_proj"]["proj.3.weight"],
+                    "norm.bias": state_dict["image_proj"]["proj.3.bias"],
+                }
+            )
+            image_projection.load_state_dict(image_proj_state_dict)
+            del image_proj_state_dict
 
         else:
             # IP-Adapter Plus
