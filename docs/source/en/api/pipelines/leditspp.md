@@ -29,19 +29,19 @@ We provide three distinct pipelines based on different pre-trained models.
 ## LEditsPPPipelineStableDiffusion
 [[autodoc]] LEditsPPPipelineStableDiffusion
 	- all
-	- __invert__
+	- invert
 	- __call__
 
 ## LEditsPPPipelineStableDiffusionXL
 [[autodoc]] LEditsPPPipelineStableDiffusionXL
 	- all
-	- __invert__
+	- invert
 	- __call__
 
 ## LEditsPPPipelineIF
 [[autodoc]] LEditsPPPipelineIF
 	- all
-	- __invert__
+	- invert
 	- __call__
 
 ## LEditsPPDiffusionPipelineOutput
