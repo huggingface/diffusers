@@ -487,7 +487,7 @@ class StableDiffusionControlNetPipeline(
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+    def encode_image(
         self, image: PipelineImageInput, device: torch.device, num_images_per_prompt: int, output_hidden_states=None
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         r"""
@@ -529,7 +529,7 @@ class StableDiffusionControlNetPipeline(
             return image_embeds, uncond_image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
+    def run_safety_checker(
         self, image: PipelineImageInput, device: torch.device, dtype: torch.dtype
     ) -> Tuple[PipelineImageInput, Optional[List[bool]]]:
         if self.safety_checker is None:
@@ -789,7 +789,7 @@ class StableDiffusionControlNetPipeline(
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
         self,
         batch_size: int,
         num_channels_latents: int,

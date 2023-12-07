@@ -455,7 +455,7 @@ class LatentConsistencyModelImg2ImgPipeline(
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
+    def run_safety_checker(
         self, image: PipelineImageInput, device: torch.device, dtype: torch.dtype
     ) -> Tuple[PipelineImageInput, Optional[List[bool]]]:
         if self.safety_checker is None:

@@ -13,14 +13,14 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, List, Optional, Union
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
 import torch
 from transformers import CLIPImageProcessor
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import deprecate, logging
@@ -214,7 +214,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
+    def run_safety_checker(
         self, image: PipelineImageInput, device: torch.device, dtype: torch.dtype
     ) -> Tuple[PipelineImageInput, Optional[List[bool]]]:
         if self.safety_checker is None:
@@ -284,7 +284,7 @@ class PaintByExamplePipeline(DiffusionPipeline):
             )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
         self,
         batch_size: int,
         num_channels_latents: int,

@@ -590,7 +590,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
         return prompt_embeds, negative_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
-    def run_safety_checker(self, image, device, dtype):
+    def run_safety_checker(
         self, image: PipelineImageInput, device: torch.device, dtype: torch.dtype
     ) -> Tuple[PipelineImageInput, Optional[List[bool]]]:
         if self.safety_checker is None:
@@ -667,7 +667,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
 
     #  Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
         self,
         batch_size: int,
         num_channels_latents: int,

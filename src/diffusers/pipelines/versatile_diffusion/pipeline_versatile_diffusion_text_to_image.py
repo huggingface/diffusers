@@ -300,7 +300,7 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
                 )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
         self,
         batch_size: int,
         num_channels_latents: int,

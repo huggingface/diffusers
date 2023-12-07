@@ -489,7 +489,7 @@ class StableDiffusionXLControlNetPipeline(
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+    def encode_image(
         self, image: PipelineImageInput, device: torch.device, num_images_per_prompt: int, output_hidden_states=None
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         r"""
@@ -790,7 +790,7 @@ class StableDiffusionXLControlNetPipeline(
         return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    def prepare_latents(
         self,
         batch_size: int,
         num_channels_latents: int,

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -513,7 +513,9 @@ class AltDiffusionImg2ImgPipeline(
 
         return prompt_embeds, negative_prompt_embeds
 
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+    def encode_image(
+        self, image: PipelineImageInput, device: torch.device, num_images_per_prompt: int, output_hidden_states=None
+    ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         r"""
         Encodes the image into image encoder hidden states when using image prompts, i.e. IP Adapter functionality.
 
@@ -552,7 +554,9 @@ class AltDiffusionImg2ImgPipeline(
 
             return image_embeds, uncond_image_embeds
 
-    def run_safety_checker(self, image, device, dtype):
+    def run_safety_checker(
+        self, image: PipelineImageInput, device: torch.device, dtype: torch.dtype
+    ) -> Tuple[PipelineImageInput, Optional[List[bool]]]:
         if self.safety_checker is None:
             has_nsfw_concept = None
         else:
