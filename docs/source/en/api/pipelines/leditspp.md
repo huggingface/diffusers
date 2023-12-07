@@ -45,9 +45,9 @@ We provide three distinct pipelines based on different pre-trained models.
 	- __call__
 
 ## LEditsPPDiffusionPipelineOutput
-[[autodoc]] pipelines.leditspp.pipeline_output.LEditsPPDiffusionPipelineOutput
+[[autodoc]] pipelines.ledits_pp.pipeline_output.LEditsPPDiffusionPipelineOutput
 	- all
 
 ## LEditsPPInversionPipelineOutput
-[[autodoc]] pipelines.leditspp.pipeline_output.LEditsPPInversionPipelineOutput
+[[autodoc]] pipelines.ledits_pp.pipeline_output.LEditsPPInversionPipelineOutput
 	- all
