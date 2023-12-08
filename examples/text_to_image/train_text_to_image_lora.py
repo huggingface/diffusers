@@ -446,9 +446,7 @@ DATASET_NAME_MAPPING = {
 
 
 def main(args):
-    if args.resolution_height is not None and args.resolution_width is not None:
-        args.resolution = (args.resolution_height, args.resolution_width)
-    else:
+    if args.resolution_height is  None or args.resolution_width is None:
         args.resolution_height = args.resolution
         args.resolution_width = args.resolution
         
@@ -679,8 +677,8 @@ def main(args):
     # Preprocessing the datasets.
     train_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+            transforms.Resize((args.resolution_height,args.resolution_width), interpolation=transforms.InterpolationMode.BILINEAR),
+            transforms.CenterCrop((args.resolution_height,args.resolution_width)) if args.center_crop else transforms.RandomCrop((args.resolution_height,args.resolution_width)),
             transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
