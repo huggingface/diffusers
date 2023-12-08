@@ -104,7 +104,7 @@ class TextToImageBenchmark(BaseBenchmak):
     def benchmark(self, args):
         flush()
 
-        print(f"Running benchmark with: {vars(args)}\n")
+        print(f"[INFO] {self.pipe.__class__.__name__}: Running benchmark with: {vars(args)}\n")
 
         time = benchmark_fn(self.run_inference, self.pipe, args)  # in seconds.
         memory = bytes_to_giga_bytes(torch.cuda.max_memory_allocated())  # in GBs.
@@ -153,21 +153,17 @@ class ImageToImageBenchmark(TextToImageBenchmark):
 
 
 class TurboImageToImageBenchmark(ImageToImageBenchmark):
-    image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
-
     def __init__(self, args):
         super().__init__(args)
-        self.pipe = AutoPipelineForImage2Image.from_pretrained(args.ckpt, torch_dtype=torch.float16).to("cuda")
 
     def run_inference(self, pipe, args):
-        print(f"Image size: {self.image.size}")
         _ = pipe(
             prompt=PROMPT,
             image=self.image,
             num_inference_steps=args.num_inference_steps,
             num_images_per_prompt=args.batch_size,
             guidance_scale=0.0,
-            strength=0.5
+            strength=0.5,
         )
 
 
