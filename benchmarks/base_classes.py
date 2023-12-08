@@ -153,10 +153,13 @@ class ImageToImageBenchmark(TextToImageBenchmark):
 
 
 class TurboImageToImageBenchmark(ImageToImageBenchmark):
+    image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/cat.png")
+
     def __init__(self, args):
         super().__init__(args)
 
     def run_inference(self, pipe, args):
+        print(f"Image size: {self.image.size}")
         _ = pipe(
             prompt=PROMPT,
             image=self.image,
