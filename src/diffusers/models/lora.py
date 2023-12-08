@@ -217,6 +217,7 @@ class LoRALinearLayer(nn.Module):
         orig_dtype = hidden_states.dtype
         dtype = self.down.weight.dtype
 
+        print(f"hidden_states: {hidden_states.device}, Weight: {self.down.weight.data.device}")
         down_hidden_states = self.down(hidden_states.to(dtype))
         up_hidden_states = self.up(down_hidden_states)
 
