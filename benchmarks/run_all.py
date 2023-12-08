@@ -47,6 +47,8 @@ def main():
             command += " --run_compile"
             run_command(command.split())
 
+    # Run variants.
+    for file in python_files:
         if file == "benchmark_text_to_image.py":
             for ckpt in ALL_T2I_CKPTS:
                 command = f"python {file} --ckpt {ckpt}"
