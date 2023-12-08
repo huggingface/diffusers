@@ -218,9 +218,10 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         for i in range(0, latents.shape[0], decode_chunk_size):
             num_frames_in = latents[i : i + decode_chunk_size].shape[0]
             decode_kwargs = {}
-            if accepts_num_frames:
+            # removing accepts_num_frames as it return false when torch.compile is used and doesn't satisfy the condition
+            # if accepts_num_frames:
                 # we only pass num_frames_in if it's expected
-                decode_kwargs["num_frames"] = num_frames_in
+            decode_kwargs["num_frames"] = num_frames_in
 
             frame = self.vae.decode(latents[i : i + decode_chunk_size], **decode_kwargs).sample
             frames.append(frame)
