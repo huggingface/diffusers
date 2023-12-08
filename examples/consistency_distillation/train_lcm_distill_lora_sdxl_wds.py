@@ -1381,7 +1381,7 @@ def main(args):
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
-            
+
     accelerator.end_training()
 
 

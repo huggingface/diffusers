@@ -977,7 +977,9 @@ def main(args):
         try:
             import bitsandbytes as bnb
         except ImportError:
-            raise ImportError("To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`.")
+            raise ImportError(
+                "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
+            )
 
         optimizer_class = bnb.optim.AdamW8bit
     else:
