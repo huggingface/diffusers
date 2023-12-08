@@ -210,17 +210,12 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         latents = latents.flatten(0, 1)
 
         latents = 1 / self.vae.config.scaling_factor * latents
-
-        accepts_num_frames = "num_frames" in set(inspect.signature(self.vae.forward).parameters.keys())
-
+        
         # decode decode_chunk_size frames at a time to avoid OOM
         frames = []
         for i in range(0, latents.shape[0], decode_chunk_size):
             num_frames_in = latents[i : i + decode_chunk_size].shape[0]
             decode_kwargs = {}
-            # removing accepts_num_frames as it return false when torch.compile is used and doesn't satisfy the condition
-            # if accepts_num_frames:
-                # we only pass num_frames_in if it's expected
             decode_kwargs["num_frames"] = num_frames_in
 
             frame = self.vae.decode(latents[i : i + decode_chunk_size], **decode_kwargs).sample
