@@ -134,6 +134,24 @@ class TurboTextToImageBenchmark(TextToImageBenchmark):
         )
 
 
+class LCMLoRATextToImageBenchmark(TextToImageBenchmark):
+    lora_id = "latent-consistency/lcm-lora-sdxl"
+
+    def __init__(self, args):
+        super().__init__(args)
+        self.pipe.load_lora_weights(self.lora_id)
+        self.pipe.fuse_lora()
+        self.pipe.scheduler = LCMScheduler.from_config(self.pipe.scheduler.config)
+
+    def run_inference(self, pipe, args):
+        _ = pipe(
+            prompt=PROMPT,
+            num_inference_steps=args.num_inference_steps,
+            num_images_per_prompt=args.batch_size,
+            guidance_scale=1.0,
+        )
+
+
 class ImageToImageBenchmark(TextToImageBenchmark):
     pipeline_class = AutoPipelineForImage2Image
     url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/benchmarking/1665_Girl_with_a_Pearl_Earring.jpg"
@@ -164,24 +182,6 @@ class TurboImageToImageBenchmark(ImageToImageBenchmark):
             num_images_per_prompt=args.batch_size,
             guidance_scale=0.0,
             strength=0.5,
-        )
-
-
-class LCMLoRATextToImageBenchmark(TextToImageBenchmark):
-    lora_id = "latent-consistency/lcm-lora-sdxl"
-
-    def __init__(self, args):
-        super().__init__(args)
-        self.pipe.load_lora_weights(self.lora_id)
-        self.pipe.fuse_lora()
-        self.pipe.scheduler = LCMScheduler.from_config(self.pipe.scheduler.config)
-
-    def run_inference(self, pipe, args):
-        _ = pipe(
-            prompt=PROMPT,
-            num_inference_steps=args.num_inference_steps,
-            num_images_per_prompt=args.batch_size,
-            guidance_scale=1.0,
         )
 
 
