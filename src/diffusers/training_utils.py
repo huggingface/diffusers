@@ -60,10 +60,13 @@ def replace_linear_cls(model):
         if isinstance(module, torch.nn.Linear):
             bias = True if hasattr(module, "bias") and getattr(module, "bias", None) is not None else False
             new_linear_cls = LoRACompatibleLinear(module.in_features, module.out_features, bias=bias)
+            new_linear_cls.to(device=module.weight.data.device, dtype=module.weight.data.dtype)
+            
             new_linear_cls.weight.copy_(module.weight.data)
             if bias:
                 new_linear_cls.bias.copy_(module.bias.data)
             setattr(model, name, new_linear_cls)
+        
         elif len(list(module.children())) > 0:
             # Recursively apply the same operation to child modules
             replace_linear_cls(module)
