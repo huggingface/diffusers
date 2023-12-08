@@ -126,10 +126,13 @@ def log_validation(args, accelerator, vae, text_encoder_one, text_encoder_two, u
 
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-    pipeline_args = {"prompt": args.validation_prompt}
 
     with torch.cuda.amp.autocast():
-        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
+        images = [pipeline(
+            prompt=args.validation_prompt,
+            height=args.resolution_height,
+            width=args.resolution_width,
+            generator=generator).images[0] for _ in range(args.num_validation_images)]
     if args.save_original_validation_images:
         for i, image in enumerate(images):
             image.save(os.path.join(args.output_dir, "validations", f"step-{step}-image-{i}.png"))
@@ -292,6 +295,8 @@ def parse_args(input_args=None):
             " resolution"
         ),
     )
+    parser.add_argument("--resolution_height", type=int, default=None)
+    parser.add_argument("--resolution_width", type=int, default=None)
     parser.add_argument(
         "--center_crop",
         default=False,
@@ -555,6 +560,10 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
 
 
 def main(args):
+    if args.resolution_height is None or args.resolution_width is None:
+        args.resolution_height = args.resolution
+        args.resolution_width = args.resolution
+        
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -894,8 +903,8 @@ def main(args):
         return tokens_one, tokens_two
 
     # Preprocessing the datasets.
-    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
-    train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
+    train_resize = transforms.Resize((args.resolution_height,args.resolution_width), interpolation=transforms.InterpolationMode.BILINEAR)
+    train_crop = transforms.CenterCrop((args.resolution_height,args.resolution_width)) if args.center_crop else transforms.RandomCrop((args.resolution_height,args.resolution_width))
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
     train_transforms = transforms.Compose(
         [
@@ -914,11 +923,11 @@ def main(args):
             original_sizes.append((image.height, image.width))
             image = train_resize(image)
             if args.center_crop:
-                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
-                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+                y1 = max(0, int(round((image.height - args.resolution_height) / 2.0)))
+                x1 = max(0, int(round((image.width - args.resolution_width) / 2.0)))
                 image = train_crop(image)
             else:
-                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                y1, x1, h, w = train_crop.get_params(image, (args.resolution_height, args.resolution_width))
                 image = crop(image, y1, x1, h, w)
             if args.random_flip and random.random() < 0.5:
                 # flip
@@ -1093,7 +1102,7 @@ def main(args):
                 # time ids
                 def compute_time_ids(original_size, crops_coords_top_left):
                     # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-                    target_size = (args.resolution, args.resolution)
+                    target_size = (args.resolution_height, args.resolution_width)
                     add_time_ids = list(original_size + crops_coords_top_left + target_size)
                     add_time_ids = torch.tensor([add_time_ids])
                     add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
