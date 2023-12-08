@@ -53,9 +53,7 @@ def compute_snr(noise_scheduler, timesteps):
     return snr
 
 
-torch.no_grad()
-
-
+@torch.no_grad()
 def replace_linear_cls(model):
     from .models.lora import LoRACompatibleLinear
 
