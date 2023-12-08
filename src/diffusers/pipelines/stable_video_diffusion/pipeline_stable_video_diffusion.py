@@ -209,7 +209,6 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         latents = latents.flatten(0, 1)
 
         latents = 1 / self.vae.config.scaling_factor * latents
-        
         # decode decode_chunk_size frames at a time to avoid OOM
         frames = []
         for i in range(0, latents.shape[0], decode_chunk_size):
