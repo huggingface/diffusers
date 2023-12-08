@@ -62,7 +62,7 @@ def replace_linear_cls(model):
             new_linear_cls = LoRACompatibleLinear(module.in_features, module.out_features, bias=bias)
             new_linear_cls.weight.copy_(module.weight.data)
             if bias:
-                new_linear_cls.bias.copy_(module.weight.bias)
+                new_linear_cls.bias.copy_(module.bias.data)
             setattr(model, name, new_linear_cls)
         elif len(list(module.children())) > 0:
             # Recursively apply the same operation to child modules
