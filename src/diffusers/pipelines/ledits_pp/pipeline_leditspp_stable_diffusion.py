@@ -1101,8 +1101,8 @@ class LEditsPPPipelineStableDiffusion(
                 inversion deterministic.
 
         Returns:
-            [`~pipelines.ledits_pp.LEditsPPDiffusionInversionOutput`]:
-                Output will contain the resized input image(s) and respective VAE reconstruction(s).
+            [`~pipelines.ledits_pp.LEditsPPInversionPipelineOutput`]:
+            Output will contain the resized input image(s) and respective VAE reconstruction(s).
         """
         # Reset attn processor, we do not want to store attn maps during inversion
         self.unet.set_attn_processor(AttnProcessor())

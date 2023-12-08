@@ -851,9 +851,9 @@ class LEditsPPPipelineStableDiffusionXL(
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
-            `tuple`. When returning a tuple, the first element is a list with the generated images.
+            [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] or `tuple`:
+            [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] if `return_dict` is True,
+            otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
 
         callback = kwargs.pop("callback", None)
@@ -1388,9 +1388,10 @@ class LEditsPPPipelineStableDiffusionXL(
             num_zero_noise_steps (`int`, defaults to `3`):
                 Number of final diffusion steps that will not renoise the current image. If no steps are set to zero
                 SD-XL in combination with [`DPMSolverMultistepScheduler`] will produce noise artifacts.
+
         Returns:
-            [`~pipelines.ledits_pp.LEditsPPDiffusionInversionOutput`]:
-                Output will contain the resized input image(s) and respective VAE reconstruction(s).
+            [`~pipelines.ledits_pp.LEditsPPInversionPipelineOutput`]:
+            Output will contain the resized input image(s) and respective VAE reconstruction(s).
         """
 
         # Reset attn processor, we do not want to store attn maps during inversion
