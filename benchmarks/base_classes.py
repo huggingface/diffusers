@@ -173,6 +173,7 @@ class LCMLoRATextToImageBenchmark(TextToImageBenchmark):
     def __init__(self, args):
         super().__init__(args)
         self.pipe.load_lora_weights(self.lora_id)
+        self.pipe.fuse_lora()
         self.pipe.scheduler = LCMScheduler.from_config(self.pipe.scheduler.config)
 
     def run_inference(self, pipe, args):
