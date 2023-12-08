@@ -167,6 +167,7 @@ class TurboImageToImageBenchmark(ImageToImageBenchmark):
             num_inference_steps=args.num_inference_steps,
             num_images_per_prompt=args.batch_size,
             guidance_scale=0.0,
+            strength=0.5
         )
 
 
