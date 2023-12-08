@@ -164,7 +164,7 @@ class PriorTransformerIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        backend_empty_cache()
+        backend_empty_cache(torch_device)
 
     @parameterized.expand(
         [

@@ -40,6 +40,8 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Consistency Models](consistency_models) | unconditional image generation |
 | [ControlNet](controlnet) | text2image, image2image, inpainting |
 | [ControlNet with Stable Diffusion XL](controlnet_sdxl) | text2image |
+| [ControlNet-XS](controlnetxs) | text2image |
+| [ControlNet-XS with Stable Diffusion XL](controlnetxs_sdxl) | text2image |
 | [Cycle Diffusion](cycle_diffusion) | image2image |
 | [Dance Diffusion](dance_diffusion) | unconditional audio generation |
 | [DDIM](ddim) | unconditional image generation |
@@ -71,6 +73,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Stable Diffusion](stable_diffusion/overview) | text2image, image2image, depth2image, inpainting, image variation, latent upscaler, super-resolution |
 | [Stable Diffusion Model Editing](model_editing) | model editing |
 | [Stable Diffusion XL](stable_diffusion/stable_diffusion_xl) | text2image, image2image, inpainting |
+| [Stable Diffusion XL Turbo](stable_diffusion/sdxl_turbo) | text2image, image2image, inpainting |
 | [Stable unCLIP](stable_unclip) | text2image, image variation |
 | [Stochastic Karras VE](stochastic_karras_ve) | unconditional image generation |
 | [T2I-Adapter](stable_diffusion/adapter) | text2image |

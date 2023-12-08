@@ -19,6 +19,7 @@ from ..utils import (
 _dummy_objects = {}
 _import_structure = {
     "controlnet": [],
+    "controlnet_xs": [],
     "latent_diffusion": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
@@ -91,6 +92,12 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+        ]
+    )
+    _import_structure["controlnet_xs"].extend(
+        [
+            "StableDiffusionControlNetXSPipeline",
+            "StableDiffusionXLControlNetXSPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [
@@ -346,6 +353,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+        )
+        from .controlnet_xs import (
+            StableDiffusionControlNetXSPipeline,
+            StableDiffusionXLControlNetXSPipeline,
         )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
