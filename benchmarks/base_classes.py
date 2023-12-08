@@ -157,6 +157,7 @@ class TurboImageToImageBenchmark(ImageToImageBenchmark):
 
     def __init__(self, args):
         super().__init__(args)
+        self.pipe = AutoPipelineForImage2Image.from_pretrained(args.ckpt, torch_dtype=torch.float16).to("cuda")
 
     def run_inference(self, pipe, args):
         print(f"Image size: {self.image.size}")
