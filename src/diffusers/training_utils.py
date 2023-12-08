@@ -58,7 +58,7 @@ def compute_snr(noise_scheduler, timesteps):
 def replace_linear_cls(model):
     for name, module in model.named_children():
         if isinstance(module, torch.nn.Linear):
-            bias = True if hasattr(module, "bias") else False
+            bias = True if hasattr(module, "bias") and getattr(module, "bias", None) is not None else False
             new_linear_cls = LoRACompatibleLinear(module.in_features, module.out_features, bias=bias)
             new_linear_cls.weight.copy_(module.weight.data)
             if bias:
