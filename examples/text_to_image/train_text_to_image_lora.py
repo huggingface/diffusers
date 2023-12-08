@@ -466,8 +466,6 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
-    if is_peft_available():
-        replace_linear_cls(unet)
 
     # freeze parameters of models to save more memory
     unet.requires_grad_(False)
@@ -486,6 +484,10 @@ def main():
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
+
+    # Replace the `nn.Linear` layers with `LoRACompatibleLinear` layers.
+    if is_peft_available():
+        replace_linear_cls(unet)
 
     # now we will add new LoRA weights to the attention layers
     # It's important to realize here how many attention weights will be added and of which sizes
