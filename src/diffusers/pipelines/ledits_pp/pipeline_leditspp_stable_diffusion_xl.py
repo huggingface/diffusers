@@ -33,6 +33,7 @@ from ...loaders import (
 )
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
+    Attention,
     AttnProcessor,
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
@@ -53,7 +54,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .ledits_utils import AttentionStore, CrossAttnProcessor, F, GaussianSmoothing, load_images
+from .ledits_utils import AttentionStore, F, GaussianSmoothing, load_images
 from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
 
 
@@ -105,6 +106,67 @@ EXAMPLE_DOC_STRING = """
         ).images[0]
         ```
 """
+
+
+class CrossAttnProcessor:
+    def __init__(self, attention_store, place_in_unet, PnP, editing_prompts):
+        self.attnstore = attention_store
+        self.place_in_unet = place_in_unet
+        self.editing_prompts = editing_prompts
+        self.PnP = PnP
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        assert not attn.residual_connection
+        assert attn.spatial_norm is None
+        assert attn.group_norm is None
+        assert hidden_states.ndim != 4
+        assert encoder_hidden_states is not None  # is cross
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        self.attnstore(
+            attention_probs,
+            is_cross=True,
+            place_in_unet=self.place_in_unet,
+            editing_prompts=self.editing_prompts,
+            PnP=self.PnP,
+        )
+
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+        return hidden_states
 
 
 class LEditsPPPipelineStableDiffusionXL(
@@ -305,13 +367,13 @@ class LEditsPPPipelineStableDiffusionXL(
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
             enable_edit_guidance (`bool`):
-                whether to use classifier free guidance or not
+                Whether to guide towards an editing prompt or not.
             editing_prompt (`str` or `List[str]`, *optional*):
-                Editing prompt(s) to be encoded. If not defined, one has to pass
+                Editing prompt(s) to be encoded. If not defined and 'enable_edit_guidance' is True, one has to pass
                 `editing_prompt_embeds` instead.
             editing_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated edit text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, editing_prompt_embeds will be generated from `editing_prompt` input
+                weighting. If not provided and 'enable_edit_guidance' is True, editing_prompt_embeds will be generated from `editing_prompt` input
                 argument.
             editing_pooled_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated edit pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
@@ -662,6 +724,7 @@ class LEditsPPPipelineStableDiffusionXL(
     def num_timesteps(self):
         return self._num_timesteps
 
+    # Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.prepare_unet
     def prepare_unet(self, attention_store, PnP: bool = False):
         attn_procs = {}
         for name in self.unet.attn_processors.keys():
@@ -709,11 +772,9 @@ class LEditsPPPipelineStableDiffusionXL(
         editing_pooled_prompt_embeds: Optional[torch.Tensor] = None,
         reverse_editing_direction: Optional[Union[bool, List[bool]]] = False,
         edit_guidance_scale: Optional[Union[float, List[float]]] = 5,
-        edit_warmup_steps: Optional[Union[int, List[int]]] = 10,
+        edit_warmup_steps: Optional[Union[int, List[int]]] = 0,
         edit_cooldown_steps: Optional[Union[int, List[int]]] = None,
         edit_threshold: Optional[Union[float, List[float]]] = 0.9,
-        edit_momentum_scale: Optional[float] = 0.1,
-        edit_mom_beta: Optional[float] = 0.4,
         sem_guidance: Optional[List[torch.Tensor]] = None,
         use_cross_attn_mask: bool = False,
         use_intersect_mask: bool = False,
@@ -801,21 +862,12 @@ class LEditsPPPipelineStableDiffusionXL(
                 `edit_guidance_scale` is defined as `s_e` of equation 12 of
                 [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
             edit_warmup_steps (`float` or `List[float]`, *optional*, defaults to 10):
-                Number of diffusion steps (for each prompt) for which semantic guidance is not applied. Momentum is
-                calculated for those steps and applied once all warmup periods are over.
+                Number of diffusion steps (for each prompt) for which guidance is not applied.
             edit_cooldown_steps (`float` or `List[float]`, *optional*, defaults to `None`):
-                Number of diffusion steps (for each prompt) after which semantic guidance is longer applied.
+                Number of diffusion steps (for each prompt) after which guidance is no longer applied.
             edit_threshold (`float` or `List[float]`, *optional*, defaults to 0.9):
                 Masking threshold of guidance. Threshold should be proportional to the image region that is modified.
                 'edit_threshold' is defined as 'λ' of equation 12 of [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
-            edit_momentum_scale (`float`, *optional*, defaults to 0.1):
-                Scale of the momentum to be added to the semantic guidance at each diffusion step. If set to 0.0,
-                momentum is disabled. Momentum is already built up during warmup (for diffusion steps smaller than
-                `sld_warmup_steps`). Momentum is only added to latent guidance once all warmup periods are finished.
-            edit_mom_beta (`float`, *optional*, defaults to 0.4):
-                Defines how semantic guidance momentum builds up. `edit_mom_beta` indicates how much of the previous
-                momentum is kept. Momentum is already built up during warmup (for diffusion steps smaller than
-                `edit_warmup_steps`).
             sem_guidance (`List[torch.Tensor]`, *optional*):
                 List of pre-generated guidance vectors to be applied at generation. Length of the list has to
                 correspond to `num_inference_steps`.
@@ -876,7 +928,6 @@ class LEditsPPPipelineStableDiffusionXL(
         num_images_per_prompt = 1
         latents = self.init_latents
 
-        use_ddpm = True
         zs = self.zs
         reset_dpm(self.scheduler)
 
@@ -948,8 +999,7 @@ class LEditsPPPipelineStableDiffusionXL(
         # self.scheduler.set_timesteps(num_inference_steps, device=device)
 
         timesteps = self.scheduler.inversion_steps
-        if use_ddpm:
-            t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
+        t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
 
         if use_cross_attn_mask:
             self.attention_store = AttentionStore(
@@ -958,12 +1008,11 @@ class LEditsPPPipelineStableDiffusionXL(
                 max_size=(latents.shape[-2] / 4.0) * (latents.shape[-1] / 4.0),
                 max_resolution=None,
             )
-            self.prepare_unet(self.attention_store, PnP=False)
+            self.prepare_unet(self.attention_store)
             resolution = latents.shape[-2:]
             att_res = (int(resolution[0] / 4), int(resolution[1] / 4))
 
         # 5. Prepare latent variables
-
         latents = self.prepare_latents(device=device, latents=latents)
 
         # 6. Prepare extra step kwargs.
@@ -1075,9 +1124,7 @@ class LEditsPPPipelineStableDiffusionXL(
                             edit_warmup_steps_c = edit_warmup_steps[c]
                         else:
                             edit_warmup_steps_c = edit_warmup_steps
-                        if i >= edit_warmup_steps_c:
-                            pass
-                        else:
+                        if i < edit_warmup_steps_c:
                             continue
 
                         if isinstance(edit_guidance_scale, list):
@@ -1159,7 +1206,9 @@ class LEditsPPPipelineStableDiffusionXL(
                                 noise_guidance_edit_tmp_quantile = torch.sum(
                                     noise_guidance_edit_tmp_quantile, dim=1, keepdim=True
                                 )
-                                noise_guidance_edit_tmp_quantile = noise_guidance_edit_tmp_quantile.repeat(1, 4, 1, 1)
+                                noise_guidance_edit_tmp_quantile = noise_guidance_edit_tmp_quantile.repeat(
+                                    1, self.unet.config.in_channels, 1, 1
+                                )
 
                                 # torch.quantile function expects float32
                                 if noise_guidance_edit_tmp_quantile.dtype == torch.float32:
@@ -1601,7 +1650,10 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
 
     # modifed so that updated xtm1 is returned as well (to avoid error accumulation)
     mu_xt = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
-    noise = (prev_latents - mu_xt) / (variance ** (0.5) * eta)
+    if variance > 0.0:
+        noise = (prev_latents - mu_xt) / (variance ** (0.5) * eta)
+    else:
+        noise = torch.Tensor([0.0]).to(latents.device)
 
     return noise, mu_xt + (eta * variance**0.5) * noise
 
@@ -1624,7 +1676,10 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
-        noise = (prev_latents - mu_xt) / sigma
+        if sigma > 0.0:
+            noise = (prev_latents - mu_xt) / sigma
+        else:
+            noise = torch.Tensor([0.0]).to(sample.device)
 
         prev_sample = mu_xt + sigma * noise
         return noise, prev_sample
@@ -1657,7 +1712,10 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
-        noise = (prev_latents - mu_xt) / sigma
+        if sigma > 0.0:
+            noise = (prev_latents - mu_xt) / sigma
+        else:
+            noise = torch.Tensor([0.0]).to(sample.device)
 
         prev_sample = mu_xt + sigma * noise
 

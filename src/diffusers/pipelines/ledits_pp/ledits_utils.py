@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from PIL import Image
 
 from ...image_processor import PipelineImageInput
-from ...models.attention_processor import Attention
 
 
 def load_images(
@@ -150,67 +149,6 @@ class AttentionStore:
             self.max_size = max_size
         else:
             raise ValueError("Only allowed to set one of max_resolution or max_size")
-
-
-class CrossAttnProcessor:
-    def __init__(self, attention_store, place_in_unet, PnP, editing_prompts):
-        self.attnstore = attention_store
-        self.place_in_unet = place_in_unet
-        self.editing_prompts = editing_prompts
-        self.PnP = PnP
-
-    def __call__(
-        self,
-        attn: Attention,
-        hidden_states,
-        encoder_hidden_states=None,
-        attention_mask=None,
-        temb=None,
-    ):
-        assert not attn.residual_connection
-        assert attn.spatial_norm is None
-        assert attn.group_norm is None
-        assert hidden_states.ndim != 4
-        assert encoder_hidden_states is not None  # is cross
-
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
-        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
-
-        query = attn.to_q(hidden_states)
-
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states)
-        value = attn.to_v(encoder_hidden_states)
-
-        query = attn.head_to_batch_dim(query)
-        key = attn.head_to_batch_dim(key)
-        value = attn.head_to_batch_dim(value)
-
-        attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        self.attnstore(
-            attention_probs,
-            is_cross=True,
-            place_in_unet=self.place_in_unet,
-            editing_prompts=self.editing_prompts,
-            PnP=self.PnP,
-        )
-
-        hidden_states = torch.bmm(attention_probs, value)
-        hidden_states = attn.batch_to_head_dim(hidden_states)
-
-        # linear proj
-        hidden_states = attn.to_out[0](hidden_states)
-        # dropout
-        hidden_states = attn.to_out[1](hidden_states)
-
-        hidden_states = hidden_states / attn.rescale_output_factor
-        return hidden_states
 
 
 # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionAttendAndExcitePipeline.GaussianSmoothing

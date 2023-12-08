@@ -10,7 +10,7 @@ from ...configuration_utils import FrozenDict
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
-from ...models.attention_processor import AttnProcessor
+from ...models.attention_processor import Attention, AttnProcessor
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ...schedulers import DDIMScheduler, DPMSolverMultistepScheduler
@@ -24,7 +24,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .ledits_utils import AttentionStore, CrossAttnProcessor, F, GaussianSmoothing, load_images
+from .ledits_utils import AttentionStore, F, GaussianSmoothing, load_images
 from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
 
 
@@ -65,6 +65,67 @@ EXAMPLE_DOC_STRING = """
         ).images[0]
         ```
 """
+
+
+class CrossAttnProcessor:
+    def __init__(self, attention_store, place_in_unet, PnP, editing_prompts):
+        self.attnstore = attention_store
+        self.place_in_unet = place_in_unet
+        self.editing_prompts = editing_prompts
+        self.PnP = PnP
+
+    def __call__(
+        self,
+        attn: Attention,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        assert not attn.residual_connection
+        assert attn.spatial_norm is None
+        assert attn.group_norm is None
+        assert hidden_states.ndim != 4
+        assert encoder_hidden_states is not None  # is cross
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        query = attn.to_q(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        self.attnstore(
+            attention_probs,
+            is_cross=True,
+            place_in_unet=self.place_in_unet,
+            editing_prompts=self.editing_prompts,
+            PnP=self.PnP,
+        )
+
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+        return hidden_states
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
@@ -450,6 +511,8 @@ class LEditsPPPipelineStableDiffusion(
                 # textual inversion: procecss multi-vector tokens if necessary
                 # if isinstance(self, TextualInversionLoaderMixin):
                 #    prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+                if isinstance(editing_prompt, str):
+                    editing_prompt = [editing_prompt]
 
                 max_length = negative_prompt_embeds.shape[1]
                 text_inputs = self.tokenizer(
@@ -906,7 +969,9 @@ class LEditsPPPipelineStableDiffusion(
                                 noise_guidance_edit_tmp_quantile = torch.sum(
                                     noise_guidance_edit_tmp_quantile, dim=1, keepdim=True
                                 )
-                                noise_guidance_edit_tmp_quantile = noise_guidance_edit_tmp_quantile.repeat(1, 4, 1, 1)
+                                noise_guidance_edit_tmp_quantile = noise_guidance_edit_tmp_quantile.repeat(
+                                    1, self.unet.config.in_channels, 1, 1
+                                )
 
                                 # torch.quantile function expects float32
                                 if noise_guidance_edit_tmp_quantile.dtype == torch.float32:
@@ -1047,26 +1112,6 @@ class LEditsPPPipelineStableDiffusion(
 
         return LEditsPPDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
-    def encode_text(self, prompts):
-        text_inputs = self.tokenizer(
-            prompts,
-            padding="max_length",
-            max_length=self.tokenizer.model_max_length,
-            return_tensors="pt",
-        )
-        text_input_ids = text_inputs.input_ids
-
-        if text_input_ids.shape[-1] > self.tokenizer.model_max_length:
-            removed_text = self.tokenizer.batch_decode(text_input_ids[:, self.tokenizer.model_max_length :])
-            logger.warning(
-                "The following part of your input was truncated because CLIP can only handle sequences up to"
-                f" {self.tokenizer.model_max_length} tokens: {removed_text}"
-            )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-        text_embeddings = self.text_encoder(text_input_ids.to(self.device))[0]
-
-        return text_embeddings
-
     @torch.no_grad()
     def invert(
         self,
@@ -1115,20 +1160,25 @@ class LEditsPPPipelineStableDiffusion(
         self.scheduler.inversion_steps = self.scheduler.timesteps[-num_inversion_steps:]
         timesteps = self.scheduler.inversion_steps
 
-        # 1. get embeddings
-        uncond_embedding = self.encode_text("")
-
-        # 2. encode image
-        x0, resized = self.encode_image(image, dtype=uncond_embedding.dtype)
+        # 1. encode image
+        x0, resized = self.encode_image(image, dtype=self.text_encoder.dtype)
         self.batch_size = x0.shape[0]
-
-        if not source_prompt == "":
-            text_embeddings = self.encode_text(source_prompt).repeat((self.batch_size, 1, 1))
-        uncond_embedding = uncond_embedding.repeat((self.batch_size, 1, 1))
 
         # autoencoder reconstruction
         image_rec = self.vae.decode(x0 / self.vae.config.scaling_factor, return_dict=False)[0]
         image_rec = self.image_processor.postprocess(image_rec, output_type="pil")
+
+        # 2. get embeddings
+        do_classifier_free_guidance = source_guidance_scale > 1.0
+
+        uncond_embedding, text_embeddings, _ = self.encode_prompt(
+            num_images_per_prompt=1,
+            device=self.device,
+            negative_prompt=None,
+            enable_edit_guidance=do_classifier_free_guidance,
+            editing_prompt=source_prompt,
+            # TODO: lora and clip_skip
+        )
 
         # 3. find zs and xts
         variance_noise_shape = (num_inversion_steps, *x0.shape)
@@ -1220,7 +1270,10 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
 
     # modifed so that updated xtm1 is returned as well (to avoid error accumulation)
     mu_xt = alpha_prod_t_prev ** (0.5) * pred_original_sample + pred_sample_direction
-    noise = (prev_latents - mu_xt) / (variance ** (0.5) * eta)
+    if variance > 0.0:
+        noise = (prev_latents - mu_xt) / (variance ** (0.5) * eta)
+    else:
+        noise = torch.Tensor([0.0]).to(latents.device)
 
     return noise, mu_xt + (eta * variance**0.5) * noise
 
@@ -1242,7 +1295,10 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
-        noise = (prev_latents - mu_xt) / sigma
+        if sigma > 0.0:
+            noise = (prev_latents - mu_xt) / sigma
+        else:
+            noise = torch.Tensor([0.0]).to(sample.device)
 
         prev_sample = mu_xt + sigma * noise
         return noise, prev_sample
@@ -1275,7 +1331,10 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         )
 
         sigma = sigma_t * torch.sqrt(1.0 - torch.exp(-2 * h))
-        noise = (prev_latents - mu_xt) / sigma
+        if sigma > 0.0:
+            noise = (prev_latents - mu_xt) / sigma
+        else:
+            noise = torch.Tensor([0.0]).to(sample.device)
 
         prev_sample = mu_xt + sigma * noise
 
