@@ -1,6 +1,6 @@
 # Latent Consistency Distillation Example:
 
-[Latent Consistency Models (LCMs)](https://arxiv.org/abs/2310.04378) is method to distill latent diffusion model to enable swift inference with minimal steps. This example demonstrates how to use the latent consistency distillation to distill SDXL for less timestep inference.
+[Latent Consistency Models (LCMs)](https://arxiv.org/abs/2310.04378) is a method to distill a latent diffusion model to enable swift inference with minimal steps. This example demonstrates how to use latent consistency distillation to distill SDXL for inference with few timesteps.
 
 ## Full model distillation
 
@@ -24,7 +24,7 @@ Then cd in the example folder and run
 pip install -r requirements.txt
 ```
 
-And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) environment with:
+And initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
 
 ```bash
 accelerate config
@@ -46,12 +46,16 @@ write_basic_config()
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 
 
-#### Example with LAION-A6+ dataset
+#### Example
+
+The following uses the [Conceptual Captions 12M (CC12M) dataset](https://github.com/google-research-datasets/conceptual-12m) as an example, and for illustrative purposes only. For best results you may consider large and high-quality text-image datasets such as [LAION](https://laion.ai/blog/laion-400-open-dataset/). You may also need to search the hyperparameter space according to the dataset you use.
 
 ```bash
-export MODEL_DIR="stabilityai/stable-diffusion-xl-base-1.0"
-PROGRAM="train_lcm_distill_sdxl_wds.py \
-    --pretrained_teacher_model=$MODEL_DIR \
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
+export OUTPUT_DIR="path/to/saved/model"
+
+accelerate launch train_lcm_distill_sdxl_wds.py \
+    --pretrained_teacher_model=$MODEL_NAME \
     --pretrained_vae_model_name_or_path=madebyollin/sdxl-vae-fp16-fix \
     --output_dir=$OUTPUT_DIR \
     --mixed_precision=fp16 \
@@ -60,7 +64,7 @@ PROGRAM="train_lcm_distill_sdxl_wds.py \
     --max_train_steps=1000 \
     --max_train_samples=4000000 \
     --dataloader_num_workers=8 \
-    --train_shards_path_or_url='pipe:aws s3 cp s3://muse-datasets/laion-aesthetic6plus-min512-data/{00000..01210}.tar -' \
+    --train_shards_path_or_url="pipe:curl -L -s https://huggingface.co/datasets/laion/conceptual-captions-12m-webdataset/resolve/main/data/{00000..01099}.tar?download=true" \
     --validation_steps=200 \
     --checkpointing_steps=200 --checkpoints_total_limit=10 \
     --train_batch_size=12 \
@@ -77,11 +81,15 @@ PROGRAM="train_lcm_distill_sdxl_wds.py \
 
 Instead of fine-tuning the full model, we can also just train a LoRA that can be injected into any SDXL model.
 
-### Example with LAION-A6+ dataset
-    
+### Example
+
+The following uses the [Conceptual Captions 12M (CC12M) dataset](https://github.com/google-research-datasets/conceptual-12m) as an example. For best results you may consider large and high-quality text-image datasets such as [LAION](https://laion.ai/blog/laion-400-open-dataset/).
+
 ```bash
-export MODEL_DIR="stabilityai/stable-diffusion-xl-base-1.0"
-PROGRAM="train_lcm_distill_lora_sdxl_wds.py \
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
+export OUTPUT_DIR="path/to/saved/model"
+
+accelerate launch train_lcm_distill_lora_sdxl_wds.py \
     --pretrained_teacher_model=$MODEL_DIR \
     --pretrained_vae_model_name_or_path=madebyollin/sdxl-vae-fp16-fix \
     --output_dir=$OUTPUT_DIR \
@@ -92,7 +100,7 @@ PROGRAM="train_lcm_distill_lora_sdxl_wds.py \
     --max_train_steps=1000 \
     --max_train_samples=4000000 \
     --dataloader_num_workers=8 \
-    --train_shards_path_or_url='pipe:aws s3 cp s3://muse-datasets/laion-aesthetic6plus-min512-data/{00000..01210}.tar -' \
+    --train_shards_path_or_url="pipe:curl -L -s https://huggingface.co/datasets/laion/conceptual-captions-12m-webdataset/resolve/main/data/{00000..01099}.tar?download=true" \
     --validation_steps=200 \
     --checkpointing_steps=200 --checkpoints_total_limit=10 \
     --train_batch_size=12 \

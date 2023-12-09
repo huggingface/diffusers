@@ -18,10 +18,9 @@ from pathlib import Path
 import requests
 import torch
 from huggingface_hub import hf_hub_download
+from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import (
-    DIFFUSERS_CACHE,
-    HF_HUB_OFFLINE,
     deprecate,
     is_accelerate_available,
     is_omegaconf_available,
@@ -52,6 +51,7 @@ class FromSingleFileMixin:
         return cls.from_single_file(*args, **kwargs)
 
     @classmethod
+    @validate_hf_hub_args
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
         Instantiate a [`DiffusionPipeline`] from pretrained pipeline weights saved in the `.ckpt` or `.safetensors`
@@ -81,7 +81,7 @@ class FromSingleFileMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -154,12 +154,12 @@ class FromSingleFileMixin:
 
         original_config_file = kwargs.pop("original_config_file", None)
         config_files = kwargs.pop("config_files", None)
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         extract_ema = kwargs.pop("extract_ema", False)
         image_size = kwargs.pop("image_size", None)
@@ -253,7 +253,7 @@ class FromSingleFileMixin:
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 force_download=force_download,
             )
@@ -293,6 +293,7 @@ class FromOriginalVAEMixin:
     """
 
     @classmethod
+    @validate_hf_hub_args
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
         Instantiate a [`AutoencoderKL`] from pretrained ControlNet weights saved in the original `.ckpt` or
@@ -322,7 +323,7 @@ class FromOriginalVAEMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to True, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -379,12 +380,12 @@ class FromOriginalVAEMixin:
         )
 
         config_file = kwargs.pop("config_file", None)
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         image_size = kwargs.pop("image_size", None)
         scaling_factor = kwargs.pop("scaling_factor", None)
@@ -425,7 +426,7 @@ class FromOriginalVAEMixin:
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 force_download=force_download,
             )
@@ -490,6 +491,7 @@ class FromOriginalControlnetMixin:
     """
 
     @classmethod
+    @validate_hf_hub_args
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
         Instantiate a [`ControlNetModel`] from pretrained ControlNet weights saved in the original `.ckpt` or
@@ -519,7 +521,7 @@ class FromOriginalControlnetMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to True, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -555,12 +557,12 @@ class FromOriginalControlnetMixin:
         from ..pipelines.stable_diffusion.convert_from_ckpt import download_controlnet_from_original_ckpt
 
         config_file = kwargs.pop("config_file", None)
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         num_in_channels = kwargs.pop("num_in_channels", None)
         use_linear_projection = kwargs.pop("use_linear_projection", None)
         revision = kwargs.pop("revision", None)
@@ -603,7 +605,7 @@ class FromOriginalControlnetMixin:
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 force_download=force_download,
             )

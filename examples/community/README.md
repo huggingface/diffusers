@@ -50,6 +50,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   Latent Consistency Interpolation Pipeline                                                                                                    | Interpolate the latent space of Latent Consistency Models with multiple prompts                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Interpolation Pipeline](#latent-consistency-interpolation-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pK3NrLWJSiJsBynLns1K1-IDTW9zbPvl?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 |   Regional Prompting Pipeline                                                                                               | Assign multiple prompts for different regions                                                                                                                                                                                                                                                                                                                                                    |  [Regional Prompting Pipeline](#regional-prompting-pipeline) | - | [hako-mikan](https://github.com/hako-mikan) |
 | LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
+| AnimateDiff ControlNet Pipeline                                                                                                    | Combines AnimateDiff with precise motion control using ControlNets                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff ControlNet Pipeline](#animatediff-controlnet-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SKboYeGjEQmQPWoFC0aLYpBlYdHXkvAu?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) and [Edoardo Botta](https://github.com/EdoardoBotta) |
 |   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -512,7 +513,6 @@ device = torch.device('cpu' if not has_cuda else 'cuda')
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
         safety_checker=None,
-    use_auth_token=True,
     custom_pipeline="imagic_stable_diffusion",
     scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 ).to(device)
@@ -552,7 +552,6 @@ device = th.device('cpu' if not has_cuda else 'cuda')
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="seed_resize_stable_diffusion"
 ).to(device)
 
@@ -588,7 +587,6 @@ generator = th.Generator("cuda").manual_seed(0)
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
 ).to(device)
 
@@ -607,7 +605,6 @@ image.save('./seed_resize/seed_resize_{w}_{h}_image.png'.format(w=width, h=heigh
 
 pipe_compare = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
 ).to(device)
 
@@ -2843,6 +2840,70 @@ The Pipeline supports `compel` syntax. Input prompts using the `compel` structur
     * Reconstructed image:
     * ![dps_generated_image](https://github.com/tongdaxu/Images/assets/22267548/b74f084d-93f4-4845-83d8-44c0fa758a5f)
 
+### AnimateDiff ControlNet Pipeline
+
+This pipeline combines AnimateDiff and ControlNet. Enjoy precise motion control for your videos! Refer to [this](https://github.com/huggingface/diffusers/issues/5866) issue for more details.
+
+```py
+import torch
+from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
+from diffusers.pipelines import DiffusionPipeline
+from diffusers.schedulers import DPMSolverMultistepScheduler
+from PIL import Image
+
+motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
+adapter = MotionAdapter.from_pretrained(motion_id)
+controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    motion_adapter=adapter,
+    controlnet=controlnet,
+    vae=vae,
+    custom_pipeline="pipeline_animatediff_controlnet",
+).to(device="cuda", dtype=torch.float16)
+pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
+    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+)
+pipe.enable_vae_slicing()
+
+conditioning_frames = []
+for i in range(1, 16 + 1):
+    conditioning_frames.append(Image.open(f"frame_{i}.png"))
+
+prompt = "astronaut in space, dancing"
+negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
+result = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=512,
+    height=768,
+    conditioning_frames=conditioning_frames,
+    num_inference_steps=12,
+).frames[0]
+
+from diffusers.utils import export_to_gif
+export_to_gif(result.frames[0], "result.gif")
+```
+
+<table>
+  <tr><td colspan="2" align=center><b>Conditioning Frames</b></td></tr>
+  <tr align=center>
+    <td align=center><img src="https://user-images.githubusercontent.com/7365912/265043418-23291941-864d-495a-8ba8-d02e05756396.gif" alt="input-frames"></td>
+  </tr>
+  <tr><td colspan="2" align=center><b>AnimateDiff model: SG161222/Realistic_Vision_V5.1_noVAE</b></td></tr>
+  <tr>
+    <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/baf301e2-d03c-4129-bd84-203a1de2b2be" alt="gif-1"></td>
+    <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/9f923475-ecaf-452b-92c8-4e42171182d8" alt="gif-2"></td>
+  </tr>
+  <tr><td colspan="2" align=center><b>AnimateDiff model: CardosAnime</b></td></tr>
+  <tr>
+    <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/b2c41028-38a0-45d6-86ed-fec7446b87f7" alt="gif-1"></td>
+    <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/eb7d2952-72e4-44fa-b664-077c79b4fc70" alt="gif-2"></td>
+  </tr>
+</table>
 ### DemoFusion
 This pipeline is the official implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973).
 The original repo can be found at [repo](https://github.com/PRIS-CV/DemoFusion).

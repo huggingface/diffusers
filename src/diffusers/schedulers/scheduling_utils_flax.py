@@ -20,6 +20,7 @@ from typing import Optional, Tuple, Union
 
 import flax
 import jax.numpy as jnp
+from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import BaseOutput, PushToHubMixin
 
@@ -70,6 +71,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
     has_compatibles = True
 
     @classmethod
+    @validate_hf_hub_args
     def from_pretrained(
         cls,
         pretrained_model_name_or_path: Optional[Union[str, os.PathLike]] = None,
@@ -110,7 +112,7 @@ class FlaxSchedulerMixin(PushToHubMixin):
                 Whether or not to also return a dictionary containing missing keys, unexpected keys and error messages.
             local_files_only(`bool`, *optional*, defaults to `False`):
                 Whether or not to only look at local files (i.e., do not try to download the model).
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
                 when running `transformers-cli login` (stored in `~/.huggingface`).
             revision (`str`, *optional*, defaults to `"main"`):
