@@ -1,12 +1,8 @@
 name: Benchmarking tests
 
 on:
-  pull_request:
-    branches:
-      - main
-  push:
-    branches:
-      - ci-*
+  schedule:
+    - cron: "30 1 1,15 * *" # every 2 weeks on the 1st and the 15th of every month at 1:30 AM
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -42,7 +38,7 @@ jobs:
           python utils/print_env.py
       - name: Diffusers Benchmarking
         env:
-            HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+            HUGGING_FACE_HUB_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
             BASE_PATH: benchmark_outputs
         run: |
           export TOTAL_GPU_MEMORY=$(python -c "import torch; print(torch.cuda.get_device_properties(0).total_memory / (1024**3))")
