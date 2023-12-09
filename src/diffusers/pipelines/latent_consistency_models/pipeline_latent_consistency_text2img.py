@@ -733,10 +733,6 @@ class LatentConsistencyModelPipeline(
             image_embeds, negative_image_embeds = self.encode_image(
                 ip_adapter_image, device, num_images_per_prompt, output_hidden_state
             )
-            # Negative embeds are not supported in LCM yet.
-            # if do_classifier_free_guidance:
-            if False:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 3. Encode input prompt
         lora_scale = (
