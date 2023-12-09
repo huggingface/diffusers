@@ -135,8 +135,8 @@ from safetensors.torch import load_file
         """
         diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id='{repo_id}', filename="embeddings.safetensors", repo_type="model")
 state_dict = load_file(embedding_path)
-pipeline.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
-pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
+pipeline.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
         """
         if token_abstraction_dict:
             for key, value in token_abstraction_dict.items():
@@ -157,6 +157,8 @@ tags:
 base_model: {base_model}
 instance_prompt: {instance_prompt}
 license: openrail++
+widget:
+    - text: '{validation_prompt if validation_prompt else instance_prompt}'
 ---
 """
 
