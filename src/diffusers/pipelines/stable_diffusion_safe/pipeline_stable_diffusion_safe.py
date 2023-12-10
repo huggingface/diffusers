@@ -560,10 +560,11 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         ```py
         import torch
         from diffusers import StableDiffusionPipelineSafe
+        from diffusers.pipelines.stable_diffusion_safe import SafetyConfig
 
         pipeline = StableDiffusionPipelineSafe.from_pretrained(
             "AIML-TUDA/stable-diffusion-safe", torch_dtype=torch.float16
-        )
+        ).to("cuda")
         prompt = "the four horsewomen of the apocalypse, painting by tom of finland, gaston bussiere, craig mullins, j. c. leyendecker"
         image = pipeline(prompt=prompt, **SafetyConfig.MEDIUM).images[0]
         ```
