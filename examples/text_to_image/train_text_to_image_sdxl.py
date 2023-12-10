@@ -575,7 +575,8 @@ def generate_timestep_weights(args, num_timesteps):
     return weights
 
 
-def main(args):
+def main():
+    args = parse_args()
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -1277,5 +1278,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    args = parse_args()
-    main(args)
+    main()
