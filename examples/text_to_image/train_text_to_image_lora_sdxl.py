@@ -528,7 +528,6 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
 
 def main():
     args = parse_args()
-    
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
