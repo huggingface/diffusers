@@ -724,7 +724,7 @@ class LEditsPPPipelineStableDiffusionXL(
     def num_timesteps(self):
         return self._num_timesteps
 
-    # Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.prepare_unet
+    # Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.LEditsPPPipelineStableDiffusion.prepare_unet
     def prepare_unet(self, attention_store, PnP: bool = False):
         attn_procs = {}
         for name in self.unet.attn_processors.keys():
