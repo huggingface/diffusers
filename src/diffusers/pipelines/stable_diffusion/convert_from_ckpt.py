@@ -1390,8 +1390,8 @@ def download_from_original_stable_diffusion_ckpt(
                 "skip_prk_steps": True,
                 "steps_offset": 1,
                 "timestep_spacing": "trailing",
-                "trained_betas": None
-                }
+                "trained_betas": None,
+            }
             scheduler = EulerAncestralDiscreteScheduler.from_config(scheduler_dict)
             scheduler_type = "euler-ancestral"
         else:
