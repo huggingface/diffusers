@@ -125,11 +125,35 @@ class CrossAttnProcessor:
 
 class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
     """
-    Pipeline for textual image editing using LEDits++ with DeepfloydIF.
+    Pipeline for textual image editing using LEDits++ with Deepfloyd-IF.
 
     This model inherits from [`DiffusionPipeline`] and builds on the [`IFPipeline`]. Check the superclass
     documentation for the generic methods implemented for all pipelines (downloading, saving, running on a particular
     device, etc.).
+
+    In addition the pipeline inherits the following loading methods:
+        - *LoRA*: [`LEditsPPPipelineIF.load_lora_weights`]
+        - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
+
+    Args:
+        tokenizer ([`~transformers.T5Tokenizer`]):
+            Tokenizer of class
+            [T5Tokenizer](https://huggingface.co/docs/transformers/v4.35.2/en/model_doc/t5#transformers.T5Tokenizer).
+        text_encoder ([`~transformers.T5EncoderModel`]):
+            Frozen text-encoder of class
+            [T5EncoderModel](https://huggingface.co/docs/transformers/v4.35.2/en/model_doc/t5#transformers.T5EncoderModel).
+        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        scheduler ([`DPMSolverMultistepScheduler`] or [`DDIMScheduler`]):
+            A scheduler to be used in combination with `unet` to denoise the encoded image latens. Can be one of
+            [`DPMSolverMultistepScheduler`] or [`DDIMScheduler`]. If any other scheduler is passed it will automatically
+            be set to [`DPMSolverMultistepScheduler`].
+        safety_checker ([`IFSafetyChecker`], *optional*):
+            Classification module that estimates whether generated images could be considered offensive or harmful.
+        feature_extractor ([`~transformers.CLIPImageProcessor`], *optional*):
+            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
+        watermarker ([`IFWatermarker`], *optional*):
+            Model that adds a watermark to generated images.
+
     """
 
     tokenizer: T5Tokenizer
@@ -261,10 +285,10 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
             editing_prompt (`str` or `List[str]`, *optional*):
                 Editing prompt(s) to be encoded. If not defined and 'enable_edit_guidance' is True, one has to pass
                 `editing_prompt_embeds` instead.
-            editing_prompt_embeds (`torch.FloatTensor`, *optional*):
+            edit_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated edit text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided and 'enable_edit_guidance' is True, editing_prompt_embeds will be generated from `editing_prompt` input
-                argument.
+                weighting. If not provided and 'enable_edit_guidance' is True, editing_prompt_embeds will be generated
+                from `editing_prompt` input argument.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
         """
@@ -603,19 +627,73 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
         attn_store_steps: Optional[List[int]] = [],
         store_averaged_over_steps: bool = True,
     ):
-        """
-        Function invoked when calling the pipeline for generation.
+        r"""
+        The call function to the pipeline for editing. The [`~pipelines.ledits_pp.LEditsPPPipelineStableDiffusion.invert`]
+        method has to be called beforehand. Edits will always be performed for the last inverted image(s).
 
         Args:
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
-                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
-                less than `1`).
-            TODO
+                The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
+                if `guidance_scale` is less than `1`).
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
+                not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+            output_type (`str`, *optional*, defaults to `"pil"`):
+                The output format of the generate image. Choose between
+                [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
+            return_dict (`bool`, *optional*, defaults to `True`):
+                Whether or not to return a [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] instead of a
+                plain tuple.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
+                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            editing_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts to guide the image generation. The image is reconstructed by setting
+                `editing_prompt = None`. Guidance direction of prompt should be specified via `reverse_editing_direction`.
+            edit_prompt_embeds (`torch.Tensor>`, *optional*):
+                Pre-computed embeddings to use for guiding the image generation. Guidance direction of embedding should be
+                specified via `reverse_editing_direction`.
+            reverse_editing_direction (`bool` or `List[bool]`, *optional*, defaults to `False`):
+                Whether the corresponding prompt in `editing_prompt` should be increased or decreased.
+            edit_guidance_scale (`float` or `List[float]`, *optional*, defaults to 5):
+                Guidance scale for guiding the image generation. If provided as list values should correspond to `editing_prompt`.
+                `edit_guidance_scale` is defined as `s_e` of equation 12 of
+                [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
+            edit_warmup_steps (`float` or `List[float]`, *optional*, defaults to 10):
+                Number of diffusion steps (for each prompt) for which guidance will not be applied.
+            edit_cooldown_steps (`float` or `List[float]`, *optional*, defaults to `None`):
+                Number of diffusion steps (for each prompt) after which guidance will no longer be applied.
+            edit_threshold (`float` or `List[float]`, *optional*, defaults to 0.9):
+                Masking threshold of guidance. Threshold should be proportional to the image region that is modified.
+                'edit_threshold' is defined as 'λ' of equation 12 of [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
+            user_mask (`torch.FloatTensor`, *optional*):
+                User-provided mask for even better control over the editing process. This is helpful when LEDITS++'s implicit
+                masks do not meet user preferences.
+            sem_guidance (`List[torch.Tensor]`, *optional*):
+                List of pre-generated guidance vectors to be applied at generation. Length of the list has to
+                correspond to `num_inference_steps`.
+            use_cross_attn_mask (`bool`, defaults to `False`):
+                Whether cross-attention masks are used. Cross-attention masks are always used when use_intersect_mask
+                is set to true. Cross-attention masks are defined as 'M^1' of equation 12 of
+                [LEDITS++ paper](https://arxiv.org/pdf/2311.16711.pdf).
+            use_intersect_mask (`bool`, defaults to `True`):
+                Whether the masking term is calculated as intersection of cross-attention masks and masks derived
+                from the noise estimate. Cross-attention mask are defined as 'M^1' and masks derived from the noise
+                estimate are defined as 'M^2' of equation 12 of [LEDITS++ paper](https://arxiv.org/pdf/2311.16711.pdf).
+            attn_store_steps (`List[int]`, *optional*):
+                Steps for which the attention maps are stored in the AttentionStore. Just for visualization purposes.
+            store_averaged_over_steps (`bool`, defaults to `True`):
+                Whether the attention maps for the 'attn_store_steps' are stored averaged over the diffusion steps.
+                If False, attention maps for each step are stores separately. Just for visualization purposes.
 
         Examples:
 
         Returns:
+            [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] or `tuple`:
+            [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] if `return_dict` is True,
+            otherwise a `tuple. When returning a tuple, the first element is a list with the generated images, and the
+            second element is a list of `bool`s denoting whether the corresponding generated image likely represents
+            "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
         eta = self.eta
         num_images_per_prompt = 1
@@ -979,21 +1057,46 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
         negative_prompt: str = None,
         num_inversion_steps: int = 100,
         skip: float = 0.15,
-        eta: float = 1.0,
         generator: Optional[torch.Generator] = None,
         clean_caption: bool = True,
     ):
-        """
-        Inverts a real image according to Algorihm 1 in https://arxiv.org/pdf/2304.06140.pdf,
-        based on the code in https://github.com/inbarhub/DDPM_inversion
+        r"""
+        The function to the pipeline for image inversion as described by the [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
+        If the scheduler is set to [`~schedulers.DDIMScheduler`] the inversion proposed by [edit-friendly DPDM](https://arxiv.org/abs/2304.06140)
+        will be performed instead.
 
-        returns:
-            TODO
+         Args:
+            image (`PipelineImageInput`):
+                Input for the image(s) that are to be edited. Multiple input images have to default to the same aspect
+                ratio.
+            source_prompt (`str`, defaults to `""`):
+                Prompt describing the input image that will be used for guidance during inversion. Guidance is disabled
+                if the `source_prompt` is `""`.
+            source_guidance_scale (`float`, defaults to `3.5`):
+                Strength of guidance during inversion.
+            negative_prompt (`str` or `List[str]`, *optional*):
+                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
+                less than `1`).
+            num_inversion_steps (`int`, defaults to `30`):
+                Number of total performed inversion steps after discarding the initial `skip` steps.
+            skip (`float`, defaults to `0.15`):
+                Portion of initial steps that will be ignored for inversion and subsequent generation. Lower values
+                will lead to stronger changes to the input image. `skip` has to be between `0` and `1`.
+            generator (`torch.Generator`, *optional*):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                inversion deterministic.
+            clean_caption (bool, defaults to `False`):
+                If `True`, the function will preprocess and clean the provided prompts before encoding.
+
+        Returns:
+            [`~pipelines.ledits_pp.LEditsPPInversionPipelineOutput`]:
+            Output will contain the resized input image(s) and respective VAE reconstruction(s).
         """
         # Reset attn processor, we do not want to store attn maps during inversion
         self.unet.set_attn_processor(AttnAddedKVProcessor())
 
-        self.eta = eta
+        self.eta = 1.0
         assert self.eta > 0
 
         self.scheduler.config.timestep_spacing = "leading"
