@@ -1419,7 +1419,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         metadata = {}
 
         def pack_weights(layers, prefix, config=None):
-            local_metadata = None
+            local_metadata = {}
             layers_weights = layers.state_dict() if isinstance(layers, torch.nn.Module) else layers
             layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
 
