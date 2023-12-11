@@ -25,7 +25,17 @@ from .activations import get_activation
 from .attention_processor import SpatialNorm
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .normalization import AdaGroupNorm
-from .samplers import Downsample2D, Upsample2D, upfirdn2d_native
+from .samplers import (  # noqa
+    Downsample1D,
+    Downsample2D,
+    FirDownsample2D,
+    FirUpsample2D,
+    KDownsample2D,
+    KUpsample2D,
+    Upsample1D,
+    Upsample2D,
+    upfirdn2d_native,
+)
 
 
 class ResnetBlock2D(nn.Module):
