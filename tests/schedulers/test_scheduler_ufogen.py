@@ -53,7 +53,7 @@ class UFOGenSchedulerTest(SchedulerCommonTest):
     def test_time_indices(self):
         for t in [0, 500, 999]:
             self.check_over_forward(time_step=t)
-    
+
     def full_loop(self, num_inference_steps=10, **config):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config(**config)
@@ -68,7 +68,7 @@ class UFOGenSchedulerTest(SchedulerCommonTest):
         for t in scheduler.timesteps:
             residual = model(sample, t)
             sample = scheduler.step(residual, t, sample, generator=generator).prev_sample
-        
+
         return sample
 
     def test_full_loop_no_noise(self):
@@ -79,7 +79,7 @@ class UFOGenSchedulerTest(SchedulerCommonTest):
 
         assert abs(result_sum.item() - 201.3429) < 1e-2
         assert abs(result_mean.item() - 0.2622) < 1e-3
-    
+
     def test_full_loop_no_noise_onestep(self):
         sample = self.full_loop(num_inference_steps=1)
 
