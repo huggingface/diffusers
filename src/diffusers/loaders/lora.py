@@ -1424,11 +1424,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
 
             if config is not None:
-                if isinstance(config, LoraConfig):
-                    config = config.to_dict()
+                config = config.to_dict()
                 for key, value in config.items():
                     if isinstance(value, set):
                         config[key] = list(value)
+                
                 print(isinstance(config, dict))
                 
                 config_as_string = json.dumps(config, indent=2, sort_keys=True)
