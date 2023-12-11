@@ -35,7 +35,7 @@ from accelerate.utils import write_basic_config
 write_basic_config()
 ```
 
-When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups.
 
 ### Toy example
 
