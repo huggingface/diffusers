@@ -441,7 +441,7 @@ class LoraLoaderMixin:
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            if config is not None and len(config) > 0:
+            if config is not None and isinstance(config, dict) and len(config) > 0:
                 config = json.loads(config["unet"])
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, config=config, is_unet=True)
             lora_config = LoraConfig(**lora_config_kwargs)
@@ -1407,8 +1407,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 raise ValueError(
                     "Without `peft`, passing `unet_lora_config` or `text_encoder_lora_config` or `text_encoder_2_lora_config` is not possible. Please install `peft`."
                 )
-
-        from peft import LoraConfig
+        else:
+            from peft import LoraConfig
 
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
