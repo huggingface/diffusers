@@ -1430,8 +1430,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                     if isinstance(value, set):
                         config[key] = list(value)
                 
-                print(isinstance(config, dict))
-                
                 config_as_string = json.dumps(config, indent=2, sort_keys=True)
                 local_metadata[prefix] = config_as_string
 
