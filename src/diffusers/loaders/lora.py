@@ -1327,7 +1327,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             unet_config=self.unet.config,
             **kwargs,
         )
-        print(f"Metadata: {metadata}")
         is_correct_format = all("lora" in key for key in state_dict.keys())
         if not is_correct_format:
             raise ValueError("Invalid LoRA checkpoint.")
