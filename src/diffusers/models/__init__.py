@@ -26,11 +26,11 @@ _import_structure = {}
 
 if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
-    _import_structure["autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
-    _import_structure["autoencoder_kl"] = ["AutoencoderKL"]
     _import_structure["autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
-    _import_structure["autoencoder_tiny"] = ["AutoencoderTiny"]
-    _import_structure["consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
+    _import_structure["autoencoders.autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
+    _import_structure["autoencoders.autoencoder_kl"] = ["AutoencoderKL"]
+    _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
+    _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["controlnet"] = ["ControlNetModel"]
     _import_structure["controlnetxs"] = ["ControlNetXSModel"]
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
@@ -58,11 +58,13 @@ if is_flax_available():
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
         from .adapter import MultiAdapter, T2IAdapter
-        from .autoencoder_asym_kl import AsymmetricAutoencoderKL
-        from .autoencoder_kl import AutoencoderKL
-        from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
-        from .autoencoder_tiny import AutoencoderTiny
-        from .consistency_decoder_vae import ConsistencyDecoderVAE
+        from .autoencoders import (
+            AsymmetricAutoencoderKL,
+            AutoencoderKL,
+            AutoencoderKLTemporalDecoder,
+            AutoencoderTiny,
+            ConsistencyDecoderVAE,
+        )
         from .controlnet import ControlNetModel
         from .controlnetxs import ControlNetXSModel
         from .dual_transformer_2d import DualTransformer2DModel
