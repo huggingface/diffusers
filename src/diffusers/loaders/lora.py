@@ -250,7 +250,7 @@ class LoraLoaderMixin:
                     )
                     state_dict = safetensors.torch.load_file(model_file, device="cpu")
                     with safetensors.safe_open(model_file, framework="pt", device="cpu") as f:
-                        metadata = f.metadata()
+                        metadata = json.loads(f.metadata())
                 except (IOError, safetensors.SafetensorError) as e:
                     if not allow_pickle:
                         raise e
