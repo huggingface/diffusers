@@ -1426,10 +1426,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             if config is not None:
                 if isinstance(config, LoraConfig):
                     config = config.to_dict()
-                local_metadata = {"library": "peft", "has_config": "true"}
                 for key, value in config.items():
                     if isinstance(value, set):
                         config[key] = list(value)
+                assert isinstance(config, dict)
                 config_as_string = json.dumps(config, indent=2, sort_keys=True)
                 local_metadata[prefix] = config_as_string
 
