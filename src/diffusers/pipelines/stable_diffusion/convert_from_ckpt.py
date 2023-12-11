@@ -1149,11 +1149,13 @@ def download_from_original_stable_diffusion_ckpt(
     adapter: Optional[bool] = None,
     load_safety_checker: bool = True,
     pipeline_class: DiffusionPipeline = None,
-    local_files_only=False,
+    local_files_only: bool = False,
     vae_path=None,
     vae=None,
     text_encoder=None,
+    text_encoder_2=None,
     tokenizer=None,
+    tokenizer_2=None,
     config_files=None,
 ) -> DiffusionPipeline:
     """
@@ -1232,6 +1234,7 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
         StableDiffusionUpscalePipeline,
+        StableDiffusionXLInpaintPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLPipeline,
         StableUnCLIPImg2ImgPipeline,
@@ -1339,7 +1342,7 @@ def download_from_original_stable_diffusion_ckpt(
         else:
             pipeline_class = StableDiffusionXLPipeline if model_type == "SDXL" else StableDiffusionXLImg2ImgPipeline
 
-    if num_in_channels is None and pipeline_class == StableDiffusionInpaintPipeline:
+    if num_in_channels is None and (pipeline_class == StableDiffusionInpaintPipeline or pipeline_class == StableDiffusionXLInpaintPipeline):
         num_in_channels = 9
     if num_in_channels is None and pipeline_class == StableDiffusionUpscalePipeline:
         num_in_channels = 7
@@ -1687,34 +1690,37 @@ def download_from_original_stable_diffusion_ckpt(
             )
     elif model_type in ["SDXL", "SDXL-Refiner"]:
         if model_type == "SDXL":
-            try:
-                tokenizer = CLIPTokenizer.from_pretrained(
-                    "openai/clip-vit-large-patch14", local_files_only=local_files_only
+            if tokenizer is None:
+                try:
+                    tokenizer = CLIPTokenizer.from_pretrained(
+                        "openai/clip-vit-large-patch14", local_files_only=local_files_only
+                    )
+                except Exception:
+                    raise ValueError(
+                        f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
+                    )
+            if text_encoder is None:
+                text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
+            if tokenizer_2 is None:
+                try:
+                    tokenizer_2 = CLIPTokenizer.from_pretrained(
+                        "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
+                    )
+                except Exception:
+                    raise ValueError(
+                        f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k' with `pad_token` set to '!'."
+                    )
+            if text_encoder_2 is None:
+                config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+                config_kwargs = {"projection_dim": 1280}
+                text_encoder_2 = convert_open_clip_checkpoint(
+                    checkpoint,
+                    config_name,
+                    prefix="conditioner.embedders.1.model.",
+                    has_projection=True,
+                    local_files_only=local_files_only,
+                    **config_kwargs,
                 )
-            except Exception:
-                raise ValueError(
-                    f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
-                )
-            text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
-            try:
-                tokenizer_2 = CLIPTokenizer.from_pretrained(
-                    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
-                )
-            except Exception:
-                raise ValueError(
-                    f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k' with `pad_token` set to '!'."
-                )
-
-            config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-            config_kwargs = {"projection_dim": 1280}
-            text_encoder_2 = convert_open_clip_checkpoint(
-                checkpoint,
-                config_name,
-                prefix="conditioner.embedders.1.model.",
-                has_projection=True,
-                local_files_only=local_files_only,
-                **config_kwargs,
-            )
 
             if is_accelerate_available():  # SBM Now move model to cpu.
                 if model_type in ["SDXL", "SDXL-Refiner"]:
@@ -1746,6 +1752,57 @@ def download_from_original_stable_diffusion_ckpt(
                     force_zeros_for_empty_prompt=True,
                 )
             else:
+                if pipeline_class == StableDiffusionXLImg2ImgPipeline:
+                    pipe = pipeline_class(
+                        vae=vae,
+                        text_encoder=text_encoder,
+                        tokenizer=tokenizer,
+                        text_encoder_2=text_encoder_2,
+                        tokenizer_2=tokenizer_2,
+                        unet=unet,
+                        scheduler=scheduler,
+                        force_zeros_for_empty_prompt=False,
+                        requires_aesthetics_score=True,
+                    )
+                else:
+                    pipe = pipeline_class(
+                        vae=vae,
+                        text_encoder=text_encoder,
+                        tokenizer=tokenizer,
+                        text_encoder_2=text_encoder_2,
+                        tokenizer_2=tokenizer_2,
+                        unet=unet,
+                        scheduler=scheduler,
+                        force_zeros_for_empty_prompt=True,
+                    )
+        else:
+            if tokenizer_2 is None:
+                try:
+                    tokenizer_2 = CLIPTokenizer.from_pretrained(
+                        "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
+                    )
+                except Exception:
+                    raise ValueError(
+                        f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k' with `pad_token` set to '!'."
+                    )
+            if text_encoder_2 is None:
+                config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+                config_kwargs = {"projection_dim": 1280}
+                text_encoder_2 = convert_open_clip_checkpoint(
+                    checkpoint,
+                    config_name,
+                    prefix="conditioner.embedders.0.model.",
+                    has_projection=True,
+                    local_files_only=local_files_only,
+                    **config_kwargs,
+                )
+
+            if is_accelerate_available():  # SBM Now move model to cpu.
+                if model_type in ["SDXL", "SDXL-Refiner"]:
+                    for param_name, param in converted_unet_checkpoint.items():
+                        set_module_tensor_to_device(unet, param_name, "cpu", value=param)
+
+            if controlnet:
                 pipe = pipeline_class(
                     vae=vae,
                     text_encoder=text_encoder,
@@ -1753,47 +1810,46 @@ def download_from_original_stable_diffusion_ckpt(
                     text_encoder_2=text_encoder_2,
                     tokenizer_2=tokenizer_2,
                     unet=unet,
+                    controlnet=controlnet,
                     scheduler=scheduler,
                     force_zeros_for_empty_prompt=True,
                 )
-        else:
-            tokenizer = None
-            text_encoder = None
-            try:
-                tokenizer_2 = CLIPTokenizer.from_pretrained(
-                    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", pad_token="!", local_files_only=local_files_only
+            elif adapter:
+                pipe = pipeline_class(
+                    vae=vae,
+                    text_encoder=text_encoder,
+                    tokenizer=tokenizer,
+                    text_encoder_2=text_encoder_2,
+                    tokenizer_2=tokenizer_2,
+                    unet=unet,
+                    adapter=adapter,
+                    scheduler=scheduler,
+                    force_zeros_for_empty_prompt=True,
                 )
-            except Exception:
-                raise ValueError(
-                    f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k' with `pad_token` set to '!'."
-                )
-            config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
-            config_kwargs = {"projection_dim": 1280}
-            text_encoder_2 = convert_open_clip_checkpoint(
-                checkpoint,
-                config_name,
-                prefix="conditioner.embedders.0.model.",
-                has_projection=True,
-                local_files_only=local_files_only,
-                **config_kwargs,
-            )
-
-            if is_accelerate_available():  # SBM Now move model to cpu.
-                if model_type in ["SDXL", "SDXL-Refiner"]:
-                    for param_name, param in converted_unet_checkpoint.items():
-                        set_module_tensor_to_device(unet, param_name, "cpu", value=param)
-
-            pipe = StableDiffusionXLImg2ImgPipeline(
-                vae=vae,
-                text_encoder=text_encoder,
-                tokenizer=tokenizer,
-                text_encoder_2=text_encoder_2,
-                tokenizer_2=tokenizer_2,
-                unet=unet,
-                scheduler=scheduler,
-                requires_aesthetics_score=True,
-                force_zeros_for_empty_prompt=False,
-            )
+            else:
+                if pipeline_class == StableDiffusionXLImg2ImgPipeline:
+                    pipe = pipeline_class(
+                        vae=vae,
+                        text_encoder=text_encoder,
+                        tokenizer=tokenizer,
+                        text_encoder_2=text_encoder_2,
+                        tokenizer_2=tokenizer_2,
+                        unet=unet,
+                        scheduler=scheduler,
+                        force_zeros_for_empty_prompt=False,
+                        requires_aesthetics_score=True,
+                    )
+                else:
+                    pipe = pipeline_class(
+                        vae=vae,
+                        text_encoder=text_encoder,
+                        tokenizer=tokenizer,
+                        text_encoder_2=text_encoder_2,
+                        tokenizer_2=tokenizer_2,
+                        unet=unet,
+                        scheduler=scheduler,
+                        force_zeros_for_empty_prompt=True,
+                    )
     else:
         text_config = create_ldm_bert_config(original_config)
         text_model = convert_ldm_bert_checkpoint(checkpoint, text_config)
