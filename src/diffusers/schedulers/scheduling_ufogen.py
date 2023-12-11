@@ -222,7 +222,7 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
-        
+
         # Rescale for zero SNR
         if rescale_betas_zero_snr:
             self.betas = rescale_zero_terminal_snr(self.betas)
@@ -454,9 +454,7 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         prev_t = self.previous_timestep(t)
 
         if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
-            model_output, predicted_variance = torch.split(model_output, sample.shape[1], dim=1)
-        else:
-            predicted_variance = None
+            model_output, _ = torch.split(model_output, sample.shape[1], dim=1)
 
         # 1. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[t]
@@ -487,7 +485,7 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
             pred_original_sample = pred_original_sample.clamp(
                 -self.config.clip_sample_range, self.config.clip_sample_range
             )
-        
+
         # 4. Single-step or multi-step sampling
         # Noise is not used on the final timestep of the timestep schedule.
         # This also means that noise is not used for one-step sampling.
@@ -495,10 +493,8 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
             # TODO: is this correct?
             # Sample prev sample x_{t - 1} ~ q(x_{t - 1} | x_0 =  G(x_t, t))
             device = model_output.device
-            noise = randn_tensor(
-                model_output.shape, generator=generator, device=device, dtype=model_output.dtype
-            )
-            sqrt_alpha_prod_t_prev = alpha_prod_t_prev ** 0.5
+            noise = randn_tensor(model_output.shape, generator=generator, device=device, dtype=model_output.dtype)
+            sqrt_alpha_prod_t_prev = alpha_prod_t_prev**0.5
             sqrt_one_minus_alpha_prod_t_prev = (1 - alpha_prod_t_prev) ** 0.5
             pred_prev_sample = sqrt_alpha_prod_t_prev * pred_original_sample + sqrt_one_minus_alpha_prod_t_prev * noise
         else:
