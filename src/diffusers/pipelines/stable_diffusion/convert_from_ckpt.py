@@ -1234,8 +1234,8 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
         StableDiffusionUpscalePipeline,
-        StableDiffusionXLInpaintPipeline,
         StableDiffusionXLImg2ImgPipeline,
+        StableDiffusionXLInpaintPipeline,
         StableDiffusionXLPipeline,
         StableUnCLIPImg2ImgPipeline,
         StableUnCLIPPipeline,
@@ -1342,7 +1342,10 @@ def download_from_original_stable_diffusion_ckpt(
         else:
             pipeline_class = StableDiffusionXLPipeline if model_type == "SDXL" else StableDiffusionXLImg2ImgPipeline
 
-    if num_in_channels is None and (pipeline_class == StableDiffusionInpaintPipeline or pipeline_class == StableDiffusionXLInpaintPipeline):
+    if num_in_channels is None and pipeline_class in [
+        StableDiffusionInpaintPipeline,
+        StableDiffusionXLInpaintPipeline,
+    ]:
         num_in_channels = 9
     if num_in_channels is None and pipeline_class == StableDiffusionUpscalePipeline:
         num_in_channels = 7
