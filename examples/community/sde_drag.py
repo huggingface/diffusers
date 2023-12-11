@@ -111,17 +111,28 @@ class SdeDragPipeline(DiffusionPipeline):
         ```py
         >>> import PIL
         >>> import torch
-        >>> from diffusers import DDIMScheduler
+        >>> from diffusers import DDIMScheduler, DiffusionPipeline
+
+        >>> # Load the pipeline
         >>> model_path = "runwayml/stable-diffusion-v1-5"
+        >>> scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler")
+        >>> pipe = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, custom_pipeline="sde_drag")
+        >>> pipe.to('cuda')
+
+        >>> # To save GPU memory, torch.float16 can be used, but it may compromise image quality.
+        >>> # If not training LoRA, please avoid using torch.float16
+        >>> # pipe.to(torch.float16)
+
+        >>> # Provide prompt, image, mask image, and the starting and target points for drag editing.
         >>> prompt = "prompt of the image"
         >>> image = PIL.Image.open('/path/to/image')
         >>> mask_image = PIL.Image.open('/path/to/mask_image')
         >>> source_points = [[123, 456]]
         >>> target_points = [[234, 567]]
-        >>> scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler")
-        >>> pipe = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, custom_pipeline="sde_drag")
-        >>> pipe.to('cuda')
-        >>> pipe.train_lora(prompt, image) # optional
+
+        >>> # train_lora is optional, and in most cases, using train_lora can better preserve consistency with the original image.
+        >>> pipe.train_lora(prompt, image)
+
         >>> output = pipe(prompt, image, mask_image, source_points, target_points)
         >>> output_image = PIL.Image.fromarray(output)
         >>> output_image.save("./output.png")
