@@ -251,8 +251,6 @@ class LoraLoaderMixin:
                     state_dict = safetensors.torch.load_file(model_file, device="cpu")
                     with safetensors.safe_open(model_file, framework="pt", device="cpu") as f:
                         metadata = f.metadata()
-                        if metadata is not None:
-                            metadata = json.loads(metadata)
                 except (IOError, safetensors.SafetensorError) as e:
                     if not allow_pickle:
                         raise e
@@ -444,7 +442,7 @@ class LoraLoaderMixin:
                     rank[key] = val.shape[1]
 
             if config is not None and len(config) > 0:
-                config = config["unet"]
+                config = json.loads(config["unet"])
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, config=config, is_unet=True)
             lora_config = LoraConfig(**lora_config_kwargs)
 
@@ -579,7 +577,7 @@ class LoraLoaderMixin:
                     from peft import LoraConfig
 
                     if config is not None and len(config) > 0:
-                        config = config[prefix]
+                        config = json.loads(config[prefix])
                     lora_config_kwargs = get_peft_kwargs(
                         rank, network_alphas, text_encoder_lora_state_dict, config=config, is_unet=False
                     )
@@ -1410,7 +1408,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 raise ValueError(
                     "Without `peft`, passing `unet_lora_config` or `text_encoder_lora_config` or `text_encoder_2_lora_config` is not possible. Please install `peft`."
                 )
-            
+
         from peft import LoraConfig
 
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
@@ -1432,7 +1430,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 for key, value in config.items():
                     if isinstance(value, set):
                         config[key] = list(value)
-                
+
                 config_as_string = json.dumps(config, indent=2, sort_keys=True)
                 local_metadata[prefix] = config_as_string
 
