@@ -145,9 +145,6 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`, defaults to `"linear"`):
             The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
-        variance_type (`str`, defaults to `"fixed_small"`):
-            Clip the variance when adding noise to the denoised sample. Choose from `fixed_small`, `fixed_small_log`,
-            `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
         clip_sample (`bool`, defaults to `True`):
             Clip the predicted sample for numerical stability.
         clip_sample_range (`float`, defaults to 1.0):
@@ -193,7 +190,6 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-        variance_type: str = "fixed_small",
         clip_sample: bool = True,
         set_alpha_to_one: bool = True,
         prediction_type: str = "epsilon",
@@ -242,8 +238,6 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
         self.custom_timesteps = False
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy())
-
-        self.variance_type = variance_type
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
@@ -344,47 +338,6 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device)
 
-    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._get_variance
-    def _get_variance(self, t, predicted_variance=None, variance_type=None):
-        prev_t = self.previous_timestep(t)
-
-        alpha_prod_t = self.alphas_cumprod[t]
-        alpha_prod_t_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.one
-        current_beta_t = 1 - alpha_prod_t / alpha_prod_t_prev
-
-        # For t > 0, compute predicted variance βt (see formula (6) and (7) from https://arxiv.org/pdf/2006.11239.pdf)
-        # and sample from it to get previous sample
-        # x_{t-1} ~ N(pred_prev_sample, variance) == add variance to pred_sample
-        variance = (1 - alpha_prod_t_prev) / (1 - alpha_prod_t) * current_beta_t
-
-        # we always take the log of variance, so clamp it to ensure it's not 0
-        variance = torch.clamp(variance, min=1e-20)
-
-        if variance_type is None:
-            variance_type = self.config.variance_type
-
-        # hacks - were probably added for training stability
-        if variance_type == "fixed_small":
-            variance = variance
-        # for rl-diffuser https://arxiv.org/abs/2205.09991
-        elif variance_type == "fixed_small_log":
-            variance = torch.log(variance)
-            variance = torch.exp(0.5 * variance)
-        elif variance_type == "fixed_large":
-            variance = current_beta_t
-        elif variance_type == "fixed_large_log":
-            # Glide max_log
-            variance = torch.log(current_beta_t)
-        elif variance_type == "learned":
-            return predicted_variance
-        elif variance_type == "learned_range":
-            min_log = torch.log(variance)
-            max_log = torch.log(current_beta_t)
-            frac = (predicted_variance + 1) / 2
-            variance = frac * max_log + (1 - frac) * min_log
-
-        return variance
-
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
         """
@@ -449,12 +402,9 @@ class UFOGenScheduler(SchedulerMixin, ConfigMixin):
                 tuple is returned where the first element is the sample tensor.
 
         """
+        # 0. Resolve timesteps
         t = timestep
-
         prev_t = self.previous_timestep(t)
-
-        if model_output.shape[1] == sample.shape[1] * 2 and self.variance_type in ["learned", "learned_range"]:
-            model_output, _ = torch.split(model_output, sample.shape[1], dim=1)
 
         # 1. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[t]
