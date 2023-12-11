@@ -1410,8 +1410,6 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             
         from peft import LoraConfig
 
-        print(isinstance(unet_lora_config, LoraConfig))
-
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
                 "You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers` or `text_encoder_2_lora_layers`."
@@ -1426,7 +1424,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
 
             if config is not None:
-                config = config.to_dict()
+                if isinstance(config, LoraConfig):
+                    config = config.to_dict()
                 for key, value in config.items():
                     if isinstance(value, set):
                         config[key] = list(value)
