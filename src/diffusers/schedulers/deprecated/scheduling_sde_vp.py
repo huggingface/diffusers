@@ -19,9 +19,9 @@ from typing import Union
 
 import torch
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils.torch_utils import randn_tensor
-from .scheduling_utils import SchedulerMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils.torch_utils import randn_tensor
+from ..scheduling_utils import SchedulerMixin
 
 
 class ScoreSdeVpScheduler(SchedulerMixin, ConfigMixin):

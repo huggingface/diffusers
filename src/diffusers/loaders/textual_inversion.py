@@ -15,16 +15,10 @@ from typing import Dict, List, Optional, Union
 
 import safetensors
 import torch
+from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from ..utils import (
-    DIFFUSERS_CACHE,
-    HF_HUB_OFFLINE,
-    _get_model_file,
-    is_accelerate_available,
-    is_transformers_available,
-    logging,
-)
+from ..utils import _get_model_file, is_accelerate_available, is_transformers_available, logging
 
 
 if is_transformers_available():
@@ -39,13 +33,14 @@ TEXT_INVERSION_NAME = "learned_embeds.bin"
 TEXT_INVERSION_NAME_SAFE = "learned_embeds.safetensors"
 
 
+@validate_hf_hub_args
 def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs):
-    cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+    cache_dir = kwargs.pop("cache_dir", None)
     force_download = kwargs.pop("force_download", False)
     resume_download = kwargs.pop("resume_download", False)
     proxies = kwargs.pop("proxies", None)
-    local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-    use_auth_token = kwargs.pop("use_auth_token", None)
+    local_files_only = kwargs.pop("local_files_only", None)
+    token = kwargs.pop("token", None)
     revision = kwargs.pop("revision", None)
     subfolder = kwargs.pop("subfolder", None)
     weight_name = kwargs.pop("weight_name", None)
@@ -79,7 +74,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                         resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
+                        token=token,
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
@@ -100,7 +95,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                     resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,
@@ -189,7 +184,7 @@ class TextualInversionLoaderMixin:
                 f" `{self.load_textual_inversion.__name__}`"
             )
 
-        if len(pretrained_model_name_or_paths) != len(tokens):
+        if len(pretrained_model_name_or_paths) > 1 and len(pretrained_model_name_or_paths) != len(tokens):
             raise ValueError(
                 f"You have passed a list of models of length {len(pretrained_model_name_or_paths)}, and list of tokens of length {len(tokens)} "
                 f"Make sure both lists have the same length."
@@ -267,6 +262,7 @@ class TextualInversionLoaderMixin:
 
         return all_tokens, all_embeddings
 
+    @validate_hf_hub_args
     def load_textual_inversion(
         self,
         pretrained_model_name_or_path: Union[str, List[str], Dict[str, torch.Tensor], List[Dict[str, torch.Tensor]]],
@@ -320,7 +316,7 @@ class TextualInversionLoaderMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -382,13 +378,25 @@ class TextualInversionLoaderMixin:
             if not isinstance(pretrained_model_name_or_path, list)
             else pretrained_model_name_or_path
         )
-        tokens = len(pretrained_model_name_or_paths) * [token] if (isinstance(token, str) or token is None) else token
+        tokens = [token] if not isinstance(token, list) else token
+        if tokens[0] is None:
+            tokens = tokens * len(pretrained_model_name_or_paths)
 
         # 3. Check inputs
         self._check_text_inv_inputs(tokenizer, text_encoder, pretrained_model_name_or_paths, tokens)
 
         # 4. Load state dicts of textual embeddings
         state_dicts = load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
+
+        # 4.1 Handle the special case when state_dict is a tensor that contains n embeddings for n tokens
+        if len(tokens) > 1 and len(state_dicts) == 1:
+            if isinstance(state_dicts[0], torch.Tensor):
+                state_dicts = list(state_dicts[0])
+                if len(tokens) != len(state_dicts):
+                    raise ValueError(
+                        f"You have passed a state_dict contains {len(state_dicts)} embeddings, and list of tokens of length {len(tokens)} "
+                        f"Make sure both have the same length."
+                    )
 
         # 4. Retrieve tokens and embeddings
         tokens, embeddings = self._retrieve_tokens_and_embeddings(tokens, state_dicts, tokenizer)

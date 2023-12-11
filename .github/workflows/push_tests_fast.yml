@@ -5,6 +5,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 env:
   DIFFUSERS_IS_CI: yes
   HF_HOME: /mnt/cache
@@ -96,7 +100,7 @@ jobs:
       run: |
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
-          examples/test_examples.py 
+          examples
 
     - name: Failure short reports
       if: ${{ failure() }}

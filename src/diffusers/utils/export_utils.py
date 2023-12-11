@@ -3,7 +3,7 @@ import random
 import struct
 import tempfile
 from contextlib import contextmanager
-from typing import List
+from typing import List, Union
 
 import numpy as np
 import PIL.Image
@@ -115,7 +115,9 @@ def export_to_obj(mesh, output_obj_path: str = None):
         f.writelines("\n".join(combined_data))
 
 
-def export_to_video(video_frames: List[np.ndarray], output_video_path: str = None) -> str:
+def export_to_video(
+    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None, fps: int = 8
+) -> str:
     if is_opencv_available():
         import cv2
     else:
@@ -123,9 +125,12 @@ def export_to_video(video_frames: List[np.ndarray], output_video_path: str = Non
     if output_video_path is None:
         output_video_path = tempfile.NamedTemporaryFile(suffix=".mp4").name
 
+    if isinstance(video_frames[0], PIL.Image.Image):
+        video_frames = [np.array(frame) for frame in video_frames]
+
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     h, w, c = video_frames[0].shape
-    video_writer = cv2.VideoWriter(output_video_path, fourcc, fps=8, frameSize=(w, h))
+    video_writer = cv2.VideoWriter(output_video_path, fourcc, fps=fps, frameSize=(w, h))
     for i in range(len(video_frames)):
         img = cv2.cvtColor(video_frames[i], cv2.COLOR_RGB2BGR)
         video_writer.write(img)

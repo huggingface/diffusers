@@ -18,7 +18,7 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils.accelerate_utils import apply_forward_hook
-from .autoencoder_kl import AutoencoderKLOutput
+from .modeling_outputs import AutoencoderKLOutput
 from .modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder, MaskConditionDecoder
 
@@ -107,6 +107,9 @@ class AsymmetricAutoencoderKL(ModelMixin, ConfigMixin):
 
         self.use_slicing = False
         self.use_tiling = False
+
+        self.register_to_config(block_out_channels=up_block_out_channels)
+        self.register_to_config(force_upcast=False)
 
     @apply_forward_hook
     def encode(

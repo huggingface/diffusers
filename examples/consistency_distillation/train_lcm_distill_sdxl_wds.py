@@ -67,11 +67,16 @@ from diffusers.utils.import_utils import is_xformers_available
 
 MAX_SEQ_LENGTH = 77
 
+# Adjust for your dataset
+WDS_JSON_WIDTH = "width"  # original_width for LAION
+WDS_JSON_HEIGHT = "height"  # original_height for LAION
+MIN_SIZE = 700  # ~960 for LAION, ideal: 1024 if the dataset contains large images
+
 if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.25.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -128,10 +133,10 @@ class WebdatasetFilter:
         try:
             if "json" in x:
                 x_json = json.loads(x["json"])
-                filter_size = (x_json.get("original_width", 0.0) or 0.0) >= self.min_size and x_json.get(
-                    "original_height", 0
+                filter_size = (x_json.get(WDS_JSON_WIDTH, 0.0) or 0.0) >= self.min_size and x_json.get(
+                    WDS_JSON_HEIGHT, 0
                 ) >= self.min_size
-                filter_watermark = (x_json.get("pwatermark", 1.0) or 1.0) <= self.max_pwatermark
+                filter_watermark = (x_json.get("pwatermark", 0.0) or 0.0) <= self.max_pwatermark
                 return filter_size and filter_watermark
             else:
                 return False
@@ -162,7 +167,7 @@ class Text2ImageDataset:
             if use_fix_crop_and_size:
                 return (resolution, resolution)
             else:
-                return (int(json.get("original_width", 0.0)), int(json.get("original_height", 0.0)))
+                return (int(json.get(WDS_JSON_WIDTH, 0.0)), int(json.get(WDS_JSON_HEIGHT, 0.0)))
 
         def transform(example):
             # resize image
@@ -194,7 +199,7 @@ class Text2ImageDataset:
         pipeline = [
             wds.ResampledShards(train_shards_path_or_url),
             tarfile_to_samples_nothrow,
-            wds.select(WebdatasetFilter(min_size=960)),
+            wds.select(WebdatasetFilter(min_size=MIN_SIZE)),
             wds.shuffle(shuffle_buffer_size),
             *processing_pipeline,
             wds.batched(per_gpu_batch_size, partial=False, collation_fn=default_collate),
@@ -414,7 +419,7 @@ def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path, subfolder=subfolder, revision=revision, use_auth_token=True
+        pretrained_model_name_or_path, subfolder=subfolder, revision=revision
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -676,6 +681,15 @@ def parse_args():
         type=float,
         default=0.001,
         help="The huber loss parameter. Only used if `--loss_type=huber`.",
+    )
+    parser.add_argument(
+        "--unet_time_cond_proj_dim",
+        type=int,
+        default=256,
+        help=(
+            "The dimension of the guidance scale embedding in the U-Net, which will be used if the teacher U-Net"
+            " does not have `time_cond_proj_dim` set."
+        ),
     )
     # ----Exponential Moving Average (EMA)----
     parser.add_argument(
@@ -1233,6 +1247,7 @@ def main(args):
 
                 # 20.4.6. Sample a random guidance scale w from U[w_min, w_max] and embed it
                 w = (args.w_max - args.w_min) * torch.rand((bsz,)) + args.w_min
+                w_embedding = guidance_scale_embedding(w, embedding_dim=unet.config.time_cond_proj_dim)
                 w = w.reshape(bsz, 1, 1, 1)
                 w = w.to(device=latents.device, dtype=latents.dtype)
 
@@ -1243,7 +1258,7 @@ def main(args):
                 noise_pred = unet(
                     noisy_model_input,
                     start_timesteps,
-                    timestep_cond=None,
+                    timestep_cond=w_embedding,
                     encoder_hidden_states=prompt_embeds.float(),
                     added_cond_kwargs=encoded_text,
                 ).sample
@@ -1308,7 +1323,7 @@ def main(args):
                         target_noise_pred = target_unet(
                             x_prev.float(),
                             timesteps,
-                            timestep_cond=None,
+                            timestep_cond=w_embedding,
                             encoder_hidden_states=prompt_embeds.float(),
                             added_cond_kwargs=encoded_text,
                         ).sample

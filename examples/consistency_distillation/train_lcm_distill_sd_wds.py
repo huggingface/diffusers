@@ -70,7 +70,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.18.0.dev0")
+check_min_version("0.25.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -400,7 +400,7 @@ def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
     text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path, subfolder=subfolder, revision=revision, use_auth_token=True
+        pretrained_model_name_or_path, subfolder=subfolder, revision=revision
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -656,6 +656,15 @@ def parse_args():
         type=float,
         default=0.001,
         help="The huber loss parameter. Only used if `--loss_type=huber`.",
+    )
+    parser.add_argument(
+        "--unet_time_cond_proj_dim",
+        type=int,
+        default=256,
+        help=(
+            "The dimension of the guidance scale embedding in the U-Net, which will be used if the teacher U-Net"
+            " does not have `time_cond_proj_dim` set."
+        ),
     )
     # ----Exponential Moving Average (EMA)----
     parser.add_argument(
@@ -1097,7 +1106,7 @@ def main(args):
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
-                image, text, _, _ = batch
+                image, text = batch
 
                 image = image.to(accelerator.device, non_blocking=True)
                 encoded_text = compute_embeddings_fn(text)
@@ -1138,7 +1147,7 @@ def main(args):
 
                 # 20.4.6. Sample a random guidance scale w from U[w_min, w_max] and embed it
                 w = (args.w_max - args.w_min) * torch.rand((bsz,)) + args.w_min
-                w_embedding = guidance_scale_embedding(w, embedding_dim=args.unet_time_cond_proj_dim)
+                w_embedding = guidance_scale_embedding(w, embedding_dim=unet.config.time_cond_proj_dim)
                 w = w.reshape(bsz, 1, 1, 1)
                 # Move to U-Net device and dtype
                 w = w.to(device=latents.device, dtype=latents.dtype)

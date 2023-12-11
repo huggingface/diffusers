@@ -67,7 +67,7 @@ def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
                 current_lora_layer_sd = lora_layer.state_dict()
                 for lora_layer_matrix_name, lora_param in current_lora_layer_sd.items():
                     # The matrix name can either be "down" or "up".
-                    lora_state_dict[f"unet.{name}.lora.{lora_layer_matrix_name}"] = lora_param
+                    lora_state_dict[f"{name}.lora.{lora_layer_matrix_name}"] = lora_param
 
     return lora_state_dict
 

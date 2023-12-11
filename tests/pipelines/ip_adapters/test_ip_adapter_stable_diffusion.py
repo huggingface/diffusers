@@ -116,7 +116,17 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.8047, 0.8774, 0.9248, 0.9155, 0.9814, 1.0, 0.9678, 1.0, 1.0])
+        expected_slice = np.array([0.8110, 0.8843, 0.9326, 0.9224, 0.9878, 1.0, 0.9736, 1.0, 1.0])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
+
+        inputs = self.get_dummy_inputs()
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.3013, 0.2615, 0.2202, 0.2722, 0.2510, 0.2023, 0.2498, 0.2415, 0.2139])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -132,7 +142,17 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.2307, 0.2341, 0.2305, 0.24, 0.2268, 0.25, 0.2322, 0.2588, 0.2935])
+        expected_slice = np.array([0.2253, 0.2251, 0.2219, 0.2312, 0.2236, 0.2434, 0.2275, 0.2575, 0.2805])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
+
+        inputs = self.get_dummy_inputs(for_image_to_image=True)
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.3550, 0.2600, 0.2520, 0.2412, 0.1870, 0.3831, 0.1453, 0.1880, 0.5371])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -148,7 +168,36 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.2705, 0.2395, 0.2209, 0.2312, 0.2102, 0.2104, 0.2178, 0.2065, 0.1997])
+        expected_slice = np.array([0.2700, 0.2388, 0.2202, 0.2304, 0.2095, 0.2097, 0.2173, 0.2058, 0.1987])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
+
+        inputs = self.get_dummy_inputs(for_inpainting=True)
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.2744, 0.2410, 0.2202, 0.2334, 0.2090, 0.2053, 0.2175, 0.2033, 0.1934])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+    def test_text_to_image_full_face(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
+        pipeline.set_ip_adapter_scale(0.7)
+
+        inputs = self.get_dummy_inputs()
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array(
+            [0.1706543, 0.1303711, 0.12573242, 0.21777344, 0.14550781, 0.14038086, 0.40820312, 0.41455078, 0.42529297]
+        )
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -173,7 +222,30 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.0968, 0.0959, 0.0852, 0.0912, 0.0948, 0.093, 0.0893, 0.0932, 0.0923])
+        expected_slice = np.array([0.0965, 0.0956, 0.0849, 0.0908, 0.0944, 0.0927, 0.0888, 0.0929, 0.0920])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
+            torch_dtype=self.dtype,
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter(
+            "h94/IP-Adapter",
+            subfolder="sdxl_models",
+            weight_name="ip-adapter-plus_sdxl_vit-h.bin",
+        )
+
+        inputs = self.get_dummy_inputs()
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.0592, 0.0573, 0.0459, 0.0542, 0.0559, 0.0523, 0.0500, 0.0540, 0.0501])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -194,7 +266,31 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.0653, 0.0704, 0.0725, 0.0741, 0.0702, 0.0647, 0.0782, 0.0799, 0.0752])
+        expected_slice = np.array([0.0652, 0.0698, 0.0723, 0.0744, 0.0699, 0.0636, 0.0784, 0.0803, 0.0742])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+
+        pipeline = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
+            torch_dtype=self.dtype,
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter(
+            "h94/IP-Adapter",
+            subfolder="sdxl_models",
+            weight_name="ip-adapter-plus_sdxl_vit-h.bin",
+        )
+
+        inputs = self.get_dummy_inputs(for_image_to_image=True)
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.0708, 0.0701, 0.0735, 0.0760, 0.0739, 0.0679, 0.0756, 0.0824, 0.0837])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
@@ -216,6 +312,31 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         image_slice = images[0, :3, :3, -1].flatten()
         image_slice.tolist()
 
-        expected_slice = np.array([0.1418, 0.1493, 0.1428, 0.146, 0.1491, 0.1501, 0.1473, 0.1501, 0.1516])
+        expected_slice = np.array([0.1420, 0.1495, 0.1430, 0.1462, 0.1493, 0.1502, 0.1474, 0.1502, 0.1517])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+
+        pipeline = StableDiffusionXLInpaintPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
+            torch_dtype=self.dtype,
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter(
+            "h94/IP-Adapter",
+            subfolder="sdxl_models",
+            weight_name="ip-adapter-plus_sdxl_vit-h.bin",
+        )
+
+        inputs = self.get_dummy_inputs(for_inpainting=True)
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+        image_slice.tolist()
+
+        expected_slice = np.array([0.1398, 0.1476, 0.1407, 0.1442, 0.1470, 0.1480, 0.1449, 0.1481, 0.1494])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
