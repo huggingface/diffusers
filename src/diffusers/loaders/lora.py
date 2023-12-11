@@ -1407,6 +1407,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 raise ValueError(
                     "Without `peft`, passing `unet_lora_config` or `text_encoder_lora_config` or `text_encoder_2_lora_config` is not possible. Please install `peft`."
                 )
+            
+        from peft import LoraConfig
 
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
@@ -1422,7 +1424,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
 
             if config is not None:
-                if not isinstance(config, dict):
+                if isinstance(config, LoraConfig):
                     config = config.to_dict()
                 local_metadata = {"library": "peft", "has_config": "true"}
                 for key, value in config.items():
