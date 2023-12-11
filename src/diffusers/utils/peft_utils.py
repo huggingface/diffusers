@@ -143,6 +143,14 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
     alpha_pattern = {}
     r = lora_alpha = list(rank_dict.values())[0]
 
+    # Try to retrive config.
+    alpha_retrieved_from_state_dict = False
+    config_key = list(filter(lambda x: "config" in x, list(peft_state_dict.keys())))
+    if len(config_key) > 0:
+        config_key = config_key[0]
+        lora_alpha = peft_state_dict[config_key].lora_alpha
+        alpha_retrieved_from_state_dict = True
+
     if len(set(rank_dict.values())) > 1:
         # get the rank occuring the most number of times
         r = collections.Counter(rank_dict.values()).most_common()[0][0]
@@ -154,7 +162,8 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
     if network_alpha_dict is not None and len(network_alpha_dict) > 0:
         if len(set(network_alpha_dict.values())) > 1:
             # get the alpha occuring the most number of times
-            lora_alpha = collections.Counter(network_alpha_dict.values()).most_common()[0][0]
+            if not alpha_retrieved_from_state_dict:
+                lora_alpha = collections.Counter(network_alpha_dict.values()).most_common()[0][0]
 
             # for modules with alpha different from the most occuring alpha, add it to the `alpha_pattern`
             alpha_pattern = dict(filter(lambda x: x[1] != lora_alpha, network_alpha_dict.items()))
@@ -166,7 +175,8 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
             else:
                 alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
         else:
-            lora_alpha = set(network_alpha_dict.values()).pop()
+            if not alpha_retrieved_from_state_dict:
+                lora_alpha = set(network_alpha_dict.values()).pop()
 
     # layer names without the Diffusers specific
     target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})

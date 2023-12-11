@@ -1033,13 +1033,20 @@ def main(args):
             text_encoder_one_lora_layers_to_save = None
             text_encoder_two_lora_layers_to_save = None
 
+            unet_lora_config = None
+            text_encoder_one_lora_config = None
+            text_encoder_two_lora_config = None
+
             for model in models:
                 if isinstance(model, type(accelerator.unwrap_model(unet))):
                     unet_lora_layers_to_save = get_peft_model_state_dict(model)
+                    unet_lora_config = model.peft_config
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
                     text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                    text_encoder_one_lora_config = model.peft_config
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder_two))):
                     text_encoder_two_lora_layers_to_save = get_peft_model_state_dict(model)
+                    text_encoder_two_lora_config = model.peft_config
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1051,6 +1058,9 @@ def main(args):
                 unet_lora_layers=unet_lora_layers_to_save,
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
                 text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
+                unet_lora_config=unet_lora_config,
+                text_encoder_lora_config=text_encoder_one_lora_config,
+                text_encoder_2_lora_config=text_encoder_two_lora_config,
             )
 
     def load_model_hook(models, input_dir):
@@ -1616,21 +1626,29 @@ def main(args):
         unet = accelerator.unwrap_model(unet)
         unet = unet.to(torch.float32)
         unet_lora_layers = get_peft_model_state_dict(unet)
+        unet_lora_config = unet.peft_config
 
         if args.train_text_encoder:
             text_encoder_one = accelerator.unwrap_model(text_encoder_one)
             text_encoder_lora_layers = get_peft_model_state_dict(text_encoder_one.to(torch.float32))
             text_encoder_two = accelerator.unwrap_model(text_encoder_two)
             text_encoder_2_lora_layers = get_peft_model_state_dict(text_encoder_two.to(torch.float32))
+            text_encoder_one_lora_config = text_encoder_one.peft_config
+            text_encoder_two_lora_config = text_encoder_two.peft_config
         else:
             text_encoder_lora_layers = None
             text_encoder_2_lora_layers = None
+            text_encoder_one_lora_config = None
+            text_encoder_two_lora_config = None
 
         StableDiffusionXLPipeline.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_layers,
             text_encoder_lora_layers=text_encoder_lora_layers,
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
+            unet_lora_config=unet_lora_config,
+            text_encoder_lora_config=text_encoder_one_lora_config,
+            text_encoder_2_lora_config=text_encoder_two_lora_config,
         )
 
         # Final inference

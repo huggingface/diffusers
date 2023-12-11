@@ -778,6 +778,8 @@ class LoraLoaderMixin:
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
+        unet_lora_config=None,
+        text_encoder_lora_config=None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -805,21 +807,29 @@ class LoraLoaderMixin:
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
+        if not USE_PEFT_BACKEND:
+            if unet_lora_config or text_encoder_lora_config:
+                raise ValueError(
+                    "Without `peft`, passing `unet_lora_config` or `text_encoder_lora_config` is not possible. Please install `peft`."
+                )
+
         state_dict = {}
 
-        def pack_weights(layers, prefix):
+        def pack_weights(layers, prefix, config=None):
             layers_weights = layers.state_dict() if isinstance(layers, torch.nn.Module) else layers
             layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
+            if config is not None:
+                layers_state_dict[f"{prefix}_lora_config"] = config
             return layers_state_dict
 
         if not (unet_lora_layers or text_encoder_lora_layers):
             raise ValueError("You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers`.")
 
         if unet_lora_layers:
-            state_dict.update(pack_weights(unet_lora_layers, "unet"))
+            state_dict.update(pack_weights(unet_lora_layers, "unet", config=unet_lora_config))
 
         if text_encoder_lora_layers:
-            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder", config=text_encoder_lora_config))
 
         # Save the model
         cls.write_lora_layers(
@@ -1336,6 +1346,9 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_2_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
+        unet_lora_config=None,
+        text_encoder_lora_config=None,
+        text_encoder_2_lora_config=None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -1363,11 +1376,18 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             safe_serialization (`bool`, *optional*, defaults to `True`):
                 Whether to save the model using `safetensors` or the traditional PyTorch way with `pickle`.
         """
+        if not USE_PEFT_BACKEND:
+            if unet_lora_config or text_encoder_lora_config or text_encoder_2_lora_config:
+                raise ValueError(
+                    "Without `peft`, passing `unet_lora_config` or `text_encoder_lora_config` or `text_encoder_2_lora_config` is not possible. Please install `peft`."
+                )
         state_dict = {}
 
-        def pack_weights(layers, prefix):
+        def pack_weights(layers, prefix, config=None):
             layers_weights = layers.state_dict() if isinstance(layers, torch.nn.Module) else layers
             layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
+            if config is not None:
+                layers_state_dict[f"{prefix}_lora_config"] = config
             return layers_state_dict
 
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
@@ -1376,11 +1396,11 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             )
 
         if unet_lora_layers:
-            state_dict.update(pack_weights(unet_lora_layers, "unet"))
+            state_dict.update(pack_weights(unet_lora_layers, "unet", unet_lora_config))
 
         if text_encoder_lora_layers and text_encoder_2_lora_layers:
-            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
-            state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2"))
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder", text_encoder_lora_config))
+            state_dict.update(pack_weights(text_encoder_2_lora_layers, "text_encoder_2", text_encoder_2_lora_config))
 
         cls.write_lora_layers(
             state_dict=state_dict,
