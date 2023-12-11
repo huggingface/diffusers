@@ -2487,15 +2487,14 @@ images[0].save("controlnet_and_adapter_inpaint.png")
 
 This pipeline provides drag-and-drop image editing using stochastic differential equations. It enables image editing by inputting prompt, image, mask_image, source_points, and target_points.
 
-![Input Image](https://github.com/ML-GSAI/SDE-Drag/blob/master/assets/demo/2_1.jpg)
-![Output Image](https://github.com/ML-GSAI/SDE-Drag/blob/master/assets/demo/2_0.jpg)
+![SDE Drag Image](https://github.com/huggingface/diffusers/assets/75928535/bd54f52f-f002-4951-9934-b2a4592771a5)
 
 See [paper](https://arxiv.org/abs/2311.01410), [paper page](https://ml-gsai.github.io/SDE-Drag-demo/), [original repo](https://github.com/ML-GSAI/SDE-Drag) for more infomation.
 
 ```py
 import PIL
 import torch
-from diffusers import DDIMScheduler
+from diffusers import DDIMScheduler, DiffusionPipeline
 
 # Load the pipeline
 model_path = "runwayml/stable-diffusion-v1-5"
