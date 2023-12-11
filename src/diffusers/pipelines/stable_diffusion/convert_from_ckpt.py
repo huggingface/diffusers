@@ -1234,6 +1234,7 @@ def download_from_original_stable_diffusion_ckpt(
         StableDiffusionInpaintPipeline,
         StableDiffusionPipeline,
         StableDiffusionUpscalePipeline,
+        StableDiffusionXLControlNetInpaintPipeline,
         StableDiffusionXLImg2ImgPipeline,
         StableDiffusionXLInpaintPipeline,
         StableDiffusionXLPipeline,
@@ -1345,6 +1346,7 @@ def download_from_original_stable_diffusion_ckpt(
     if num_in_channels is None and pipeline_class in [
         StableDiffusionInpaintPipeline,
         StableDiffusionXLInpaintPipeline,
+        StableDiffusionXLControlNetInpaintPipeline,
     ]:
         num_in_channels = 9
     if num_in_channels is None and pipeline_class == StableDiffusionUpscalePipeline:
