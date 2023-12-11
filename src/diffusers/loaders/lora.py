@@ -861,7 +861,7 @@ class LoraLoaderMixin:
         safe_serialization: bool,
         metadata=None,
     ):
-        if not safe_serialization and len(metadata) > 0:
+        if not safe_serialization and isinstance(metadata, dict) and len(metadata) > 0:
             raise ValueError("Passing `metadata` is not possible when `safe_serialization` is False.")
 
         if os.path.isfile(save_directory):
