@@ -189,6 +189,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
         self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
+        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -895,7 +896,16 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        step_indices = []
+        for timestep in timesteps:
+            index_candidates = (schedule_timesteps == timestep).nonzero()
+            if len(index_candidates) == 0:
+                step_index = len(schedule_timesteps) - 1
+            elif len(index_candidates) > 1:
+                step_index = index_candidates[1].item()
+            else:
+                step_index = index_candidates[0].item()
+            step_indices.append(step_index)
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

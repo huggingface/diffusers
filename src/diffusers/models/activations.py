@@ -55,11 +55,12 @@ class GELU(nn.Module):
         dim_in (`int`): The number of channels in the input.
         dim_out (`int`): The number of channels in the output.
         approximate (`str`, *optional*, defaults to `"none"`): If `"tanh"`, use tanh approximation.
+        bias (`bool`, defaults to True): Whether to use a bias in the linear layer.
     """
 
-    def __init__(self, dim_in: int, dim_out: int, approximate: str = "none"):
+    def __init__(self, dim_in: int, dim_out: int, approximate: str = "none", bias: bool = True):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
+        self.proj = nn.Linear(dim_in, dim_out, bias=bias)
         self.approximate = approximate
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
@@ -81,13 +82,14 @@ class GEGLU(nn.Module):
     Parameters:
         dim_in (`int`): The number of channels in the input.
         dim_out (`int`): The number of channels in the output.
+        bias (`bool`, defaults to True): Whether to use a bias in the linear layer.
     """
 
-    def __init__(self, dim_in: int, dim_out: int):
+    def __init__(self, dim_in: int, dim_out: int, bias: bool = True):
         super().__init__()
         linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
 
-        self.proj = linear_cls(dim_in, dim_out * 2)
+        self.proj = linear_cls(dim_in, dim_out * 2, bias=bias)
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
         if gate.device.type != "mps":
@@ -109,11 +111,12 @@ class ApproximateGELU(nn.Module):
     Parameters:
         dim_in (`int`): The number of channels in the input.
         dim_out (`int`): The number of channels in the output.
+        bias (`bool`, defaults to True): Whether to use a bias in the linear layer.
     """
 
-    def __init__(self, dim_in: int, dim_out: int):
+    def __init__(self, dim_in: int, dim_out: int, bias: bool = True):
         super().__init__()
-        self.proj = nn.Linear(dim_in, dim_out)
+        self.proj = nn.Linear(dim_in, dim_out, bias=bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.proj(x)

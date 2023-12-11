@@ -501,6 +501,7 @@ class FeedForward(nn.Module):
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         activation_fn (`str`, *optional*, defaults to `"geglu"`): Activation function to be used in feed-forward.
         final_dropout (`bool` *optional*, defaults to False): Apply a final dropout.
+        bias (`bool`, defaults to True): Whether to use a bias in the linear layer.
     """
 
     def __init__(
@@ -511,6 +512,7 @@ class FeedForward(nn.Module):
         dropout: float = 0.0,
         activation_fn: str = "geglu",
         final_dropout: bool = False,
+        bias: bool = True,
     ):
         super().__init__()
         inner_dim = int(dim * mult)
@@ -518,13 +520,13 @@ class FeedForward(nn.Module):
         linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
 
         if activation_fn == "gelu":
-            act_fn = GELU(dim, inner_dim)
+            act_fn = GELU(dim, inner_dim, bias=bias)
         if activation_fn == "gelu-approximate":
-            act_fn = GELU(dim, inner_dim, approximate="tanh")
+            act_fn = GELU(dim, inner_dim, approximate="tanh", bias=bias)
         elif activation_fn == "geglu":
-            act_fn = GEGLU(dim, inner_dim)
+            act_fn = GEGLU(dim, inner_dim, bias=bias)
         elif activation_fn == "geglu-approximate":
-            act_fn = ApproximateGELU(dim, inner_dim)
+            act_fn = ApproximateGELU(dim, inner_dim, bias=bias)
 
         self.net = nn.ModuleList([])
         # project in
@@ -532,7 +534,7 @@ class FeedForward(nn.Module):
         # project dropout
         self.net.append(nn.Dropout(dropout))
         # project out
-        self.net.append(linear_cls(inner_dim, dim_out))
+        self.net.append(linear_cls(inner_dim, dim_out, bias=bias))
         # FF as used in Vision Transformer, MLP-Mixer, etc. have a final dropout
         if final_dropout:
             self.net.append(nn.Dropout(dropout))

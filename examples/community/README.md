@@ -48,8 +48,10 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   Latent Consistency Pipeline                                                                                                    | Implementation of [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Latent Consistency Pipeline](#latent-consistency-pipeline)      | - |              [Simian Luo](https://github.com/luosiallen) |
 |   Latent Consistency Img2img Pipeline                                                                                                    | Img2img pipeline for Latent Consistency Models                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Img2Img Pipeline](#latent-consistency-img2img-pipeline)      | - |              [Logan Zoellner](https://github.com/nagolinc) |
 |   Latent Consistency Interpolation Pipeline                                                                                                    | Interpolate the latent space of Latent Consistency Models with multiple prompts                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Interpolation Pipeline](#latent-consistency-interpolation-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pK3NrLWJSiJsBynLns1K1-IDTW9zbPvl?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
+|   Regional Prompting Pipeline                                                                                               | Assign multiple prompts for different regions                                                                                                                                                                                                                                                                                                                                                    |  [Regional Prompting Pipeline](#regional-prompting-pipeline) | - | [hako-mikan](https://github.com/hako-mikan) |
 | LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
-|
+| AnimateDiff ControlNet Pipeline                                                                                                    | Combines AnimateDiff with precise motion control using ControlNets                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff ControlNet Pipeline](#animatediff-controlnet-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SKboYeGjEQmQPWoFC0aLYpBlYdHXkvAu?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) and [Edoardo Botta](https://github.com/EdoardoBotta) |
+|   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -77,6 +79,7 @@ from diffusers import DiffusionPipeline
 pipe = DiffusionPipeline.from_pretrained(
     "longlian/lmd_plus", 
     custom_pipeline="llm_grounded_diffusion",
+    custom_revision="main",
     variant="fp16", torch_dtype=torch.float16
 )
 pipe.enable_model_cpu_offload()
@@ -510,7 +513,6 @@ device = torch.device('cpu' if not has_cuda else 'cuda')
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
         safety_checker=None,
-    use_auth_token=True,
     custom_pipeline="imagic_stable_diffusion",
     scheduler = DDIMScheduler(beta_start=0.00085, beta_end=0.012, beta_schedule="scaled_linear", clip_sample=False, set_alpha_to_one=False)
 ).to(device)
@@ -550,7 +552,6 @@ device = th.device('cpu' if not has_cuda else 'cuda')
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="seed_resize_stable_diffusion"
 ).to(device)
 
@@ -586,7 +587,6 @@ generator = th.Generator("cuda").manual_seed(0)
 
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
 ).to(device)
 
@@ -605,7 +605,6 @@ image.save('./seed_resize/seed_resize_{w}_{h}_image.png'.format(w=width, h=heigh
 
 pipe_compare = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
-    use_auth_token=True,
     custom_pipeline="/home/mark/open_source/diffusers/examples/community/"
 ).to(device)
 
@@ -2524,6 +2523,181 @@ images[0].save("controlnet_and_adapter_inpaint.png")
 
 ```
 
+### Regional Prompting Pipeline
+This pipeline is a port of the [Regional Prompter extension](https://github.com/hako-mikan/sd-webui-regional-prompter) for [Stable Diffusion web UI](https://github.com/AUTOMATIC1111/stable-diffusion-webui) to diffusers.
+This code implements a pipeline for the Stable Diffusion model, enabling the division of the canvas into multiple regions, with different prompts applicable to each region. Users can specify regions in two ways: using `Cols` and `Rows` modes for grid-like divisions, or the `Prompt` mode for regions calculated based on prompts.
+
+![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline1.png)
+
+### Usage
+### Sample Code
+```
+from from examples.community.regional_prompting_stable_diffusion import RegionalPromptingStableDiffusionPipeline
+pipe = RegionalPromptingStableDiffusionPipeline.from_single_file(model_path, vae=vae)
+
+rp_args = {
+    "mode":"rows",
+    "div": "1;1;1"
+}  
+
+prompt ="""
+green hair twintail BREAK
+red blouse BREAK
+blue skirt
+"""
+
+images = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    guidance_scale=7.5,
+    height = 768,
+    width = 512,
+    num_inference_steps =20,
+    num_images_per_prompt = 1,
+    rp_args = rp_args
+        ).images
+
+time = time.strftime(r"%Y%m%d%H%M%S")
+i = 1
+for image in images:
+    i += 1
+    fileName = f'img-{time}-{i+1}.png'
+    image.save(fileName)
+```
+### Cols, Rows mode
+In the Cols, Rows mode, you can split the screen vertically and horizontally and assign prompts to each region. The split ratio can be specified by 'div', and you can set the division ratio like '3;3;2' or '0.1;0.5'. Furthermore, as will be described later, you can also subdivide the split Cols, Rows to specify more complex regions.
+
+In this image, the image is divided into three parts, and a separate prompt is applied to each. The prompts are divided by 'BREAK', and each is applied to the respective region.  
+![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline2.png)
+```
+green hair twintail BREAK
+red blouse BREAK
+blue skirt
+```
+
+### 2-Dimentional division
+The prompt consists of instructions separated by the term `BREAK` and is assigned to different regions of a two-dimensional space. The image is initially split in the main splitting direction, which in this case is rows, due to the presence of a single semicolon`;`, dividing the space into an upper and a lower section. Additional sub-splitting is then applied, indicated by commas. The upper row is split into ratios of `2:1:1`, while the lower row is split into a ratio of `4:6`. Rows themselves are split in a `1:2` ratio. According to the reference image, the blue sky is designated as the first region, green hair as the second, the bookshelf as the third, and so on, in a sequence based on their position from the top left. The terrarium is placed on the desk in the fourth region, and the orange dress and sofa are in the fifth region, conforming to their respective splits.
+```
+rp_args = {
+    "mode":"rows",
+    "div": "1,2,1,1;2,4,6"
+}
+
+prompt ="""
+blue sky BREAK
+green hair BREAK
+book shelf BREAK
+terrarium on desk BREAK
+orange dress and sofa
+"""
+```
+![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline4.png)
+
+### Prompt Mode
+There are limitations to methods of specifying regions in advance. This is because specifying regions can be a hindrance when designating complex shapes or dynamic compositions. In the region specified by the prompt, the regions is determined after the image generation has begun. This allows us to accommodate compositions and complex regions.
+For further infomagen, see [here](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/main/prompt_en.md).
+### syntax
+```
+baseprompt target1 target2 BREAK
+effect1, target1 BREAK
+effect2 ,target2
+```
+
+First, write the base prompt. In the base prompt, write the words (target1, target2) for which you want to create a mask. Next, separate them with BREAK. Next, write the prompt corresponding to target1. Then enter a comma and write target1. The order of the targets in the base prompt and the order of the BREAK-separated targets can be back to back.
+
+```
+target2 baseprompt target1  BREAK
+effect1, target1 BREAK
+effect2 ,target2
+```
+is also effective.
+
+### Sample
+In this example, masks are calculated for shirt, tie, skirt, and color prompts are specified only for those regions.
+```
+rp_args = {
+    "mode":"prompt-ex",
+    "save_mask":True,
+    "th": "0.4,0.6,0.6",
+}
+
+prompt ="""
+a girl in street with shirt, tie, skirt BREAK
+red, shirt BREAK
+green, tie BREAK
+blue , skirt 
+"""
+```
+![sample](https://github.com/hako-mikan/sd-webui-regional-prompter/blob/imgs/rp_pipeline3.png)
+### threshold
+The threshold used to determine the mask created by the prompt. This can be set as many times as there are masks, as the range varies widely depending on the target prompt. If multiple regions are used, enter them separated by commas. For example, hair tends to be ambiguous and requires a small value, while face tends to be large and requires a small value. These should be ordered by BREAK.
+
+```
+a lady ,hair, face  BREAK
+red, hair BREAK
+tanned ,face
+```
+`threshold : 0.4,0.6`
+If only one input is given for multiple regions, they are all assumed to be the same value.
+
+### Prompt and Prompt-EX
+The difference is that in Prompt, duplicate regions are added, whereas in Prompt-EX, duplicate regions are overwritten sequentially. Since they are processed in order, setting a TARGET with a large regions first makes it easier for the effect of small regions to remain unmuffled.
+
+### Accuracy
+In the case of a 512 x 512 image, Attention mode reduces the size of the region to about 8 x 8 pixels deep in the U-Net, so that small regions get mixed up; Latent mode calculates 64*64, so that the region is exact.  
+```
+girl hair twintail frills,ribbons, dress, face BREAK
+girl, ,face
+```
+
+### Mask
+When an image is generated, the generated mask is displayed. It is generated at the same size as the image, but is actually used at a much smaller size.
+
+
+### Use common prompt
+You can attach the prompt up to ADDCOMM to all prompts by separating it first with ADDCOMM. This is useful when you want to include elements common to all regions. For example, when generating pictures of three people with different appearances, it's necessary to include the instruction of 'three people' in all regions. It's also useful when inserting quality tags and other things."For example, if you write as follows:
+```
+best quality, 3persons in garden, ADDCOMM
+a girl white dress BREAK
+a boy blue shirt BREAK
+an old man red suit
+```
+If common is enabled, this prompt is converted to the following:
+```
+best quality, 3persons in garden, a girl white dress BREAK
+best quality, 3persons in garden, a boy blue shirt BREAK
+best quality, 3persons in garden, an old man red suit
+```
+### Negative prompt
+Negative prompts are equally effective across all regions, but it is possible to set region-specific prompts for negative prompts as well. The number of BREAKs must be the same as the number of prompts. If the number of prompts does not match, the negative prompts will be used without being divided into regions.
+
+### Parameters
+To activate Regional Prompter, it is necessary to enter settings in rp_args. The items that can be set are as follows. rp_args is a dictionary type.
+
+### Input Parameters
+Parameters are specified through the `rp_arg`(dictionary type).  
+
+```
+rp_args = {
+    "mode":"rows",
+    "div": "1;1;1"
+}  
+
+pipe(prompt =prompt, rp_args = rp_args)
+```
+
+
+
+### Required Parameters
+- `mode`: Specifies the method for defining regions. Choose from `Cols`, `Rows`, `Prompt` or `Prompt-Ex`. This parameter is case-insensitive.
+- `divide`: Used in `Cols` and `Rows` modes. Details on how to specify this are provided under the respective `Cols` and `Rows` sections.
+- `th`: Used in `Prompt` mode. The method of specification is detailed under the `Prompt` section.
+
+### Optional Parameters
+- `save_mask`: In `Prompt` mode, choose whether to output the generated mask along with the image. The default is `False`.
+
+The Pipeline supports `compel` syntax. Input prompts using the `compel` structure will be automatically applied and processed.
+
 ## Diffusion Posterior Sampling Pipeline
 * Reference paper
     ```
@@ -2665,3 +2839,150 @@ images[0].save("controlnet_and_adapter_inpaint.png")
     * ![dps_mea](https://github.com/tongdaxu/Images/assets/22267548/ff6a33d6-26f0-42aa-88ce-f8a76ba45a13)
     * Reconstructed image:
     * ![dps_generated_image](https://github.com/tongdaxu/Images/assets/22267548/b74f084d-93f4-4845-83d8-44c0fa758a5f)
+
+### AnimateDiff ControlNet Pipeline
+
+This pipeline combines AnimateDiff and ControlNet. Enjoy precise motion control for your videos! Refer to [this](https://github.com/huggingface/diffusers/issues/5866) issue for more details.
+
+```py
+import torch
+from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
+from diffusers.pipelines import DiffusionPipeline
+from diffusers.schedulers import DPMSolverMultistepScheduler
+from PIL import Image
+
+motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
+adapter = MotionAdapter.from_pretrained(motion_id)
+controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    motion_adapter=adapter,
+    controlnet=controlnet,
+    vae=vae,
+    custom_pipeline="pipeline_animatediff_controlnet",
+).to(device="cuda", dtype=torch.float16)
+pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
+    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+)
+pipe.enable_vae_slicing()
+
+conditioning_frames = []
+for i in range(1, 16 + 1):
+    conditioning_frames.append(Image.open(f"frame_{i}.png"))
+
+prompt = "astronaut in space, dancing"
+negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
+result = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=512,
+    height=768,
+    conditioning_frames=conditioning_frames,
+    num_inference_steps=12,
+).frames[0]
+
+from diffusers.utils import export_to_gif
+export_to_gif(result.frames[0], "result.gif")
+```
+
+<table>
+  <tr><td colspan="2" align=center><b>Conditioning Frames</b></td></tr>
+  <tr align=center>
+    <td align=center><img src="https://user-images.githubusercontent.com/7365912/265043418-23291941-864d-495a-8ba8-d02e05756396.gif" alt="input-frames"></td>
+  </tr>
+  <tr><td colspan="2" align=center><b>AnimateDiff model: SG161222/Realistic_Vision_V5.1_noVAE</b></td></tr>
+  <tr>
+    <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/baf301e2-d03c-4129-bd84-203a1de2b2be" alt="gif-1"></td>
+    <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/9f923475-ecaf-452b-92c8-4e42171182d8" alt="gif-2"></td>
+  </tr>
+  <tr><td colspan="2" align=center><b>AnimateDiff model: CardosAnime</b></td></tr>
+  <tr>
+    <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/b2c41028-38a0-45d6-86ed-fec7446b87f7" alt="gif-1"></td>
+    <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/eb7d2952-72e4-44fa-b664-077c79b4fc70" alt="gif-2"></td>
+  </tr>
+</table>
+### DemoFusion
+This pipeline is the official implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973).
+The original repo can be found at [repo](https://github.com/PRIS-CV/DemoFusion).
+- `view_batch_size` (`int`, defaults to 16):
+  The batch size for multiple denoising paths. Typically, a larger batch size can result in higher efficiency but comes with increased GPU memory requirements.
+
+- `stride` (`int`, defaults to 64):
+  The stride of moving local patches. A smaller stride is better for alleviating seam issues, but it also introduces additional computational overhead and inference time.
+
+- `cosine_scale_1` (`float`, defaults to 3):
+  Control the strength of skip-residual. For specific impacts, please refer to Appendix C in the DemoFusion paper.
+
+- `cosine_scale_2` (`float`, defaults to 1):
+  Control the strength of dilated sampling. For specific impacts, please refer to Appendix C in the DemoFusion paper.
+
+- `cosine_scale_3` (`float`, defaults to 1):
+  Control the strength of the Gaussian filter. For specific impacts, please refer to Appendix C in the DemoFusion paper.
+
+- `sigma` (`float`, defaults to 1):
+  The standard value of the Gaussian filter. Larger sigma promotes the global guidance of dilated sampling, but has the potential of over-smoothing.
+
+- `multi_decoder` (`bool`, defaults to True):
+  Determine whether to use a tiled decoder. Generally, when the resolution exceeds 3072x3072, a tiled decoder becomes necessary.
+
+- `show_image` (`bool`, defaults to False):
+  Determine whether to show intermediate results during generation.
+```
+from diffusers import DiffusionPipeline
+
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    custom_pipeline="pipeline_demofusion_sdxl",
+    custom_revision="main",
+    torch_dtype=torch.float16,
+)
+pipe = pipe.to("cuda")
+
+prompt = "Envision a portrait of an elderly woman, her face a canvas of time, framed by a headscarf with muted tones of rust and cream. Her eyes, blue like faded denim. Her attire, simple yet dignified."
+negative_prompt = "blurry, ugly, duplicate, poorly drawn, deformed, mosaic"
+
+images = pipe(
+    prompt, 
+    negative_prompt=negative_prompt,
+    height=3072, 
+    width=3072, 
+    view_batch_size=16, 
+    stride=64,
+    num_inference_steps=50, 
+    guidance_scale=7.5,
+    cosine_scale_1=3, 
+    cosine_scale_2=1, 
+    cosine_scale_3=1, 
+    sigma=0.8,
+    multi_decoder=True, 
+    show_image=True
+)
+```
+You can display and save the generated images as:
+```
+def image_grid(imgs, save_path=None):
+
+    w = 0
+    for i, img in enumerate(imgs):
+        h_, w_ = imgs[i].size
+        w += w_
+    h = h_
+    grid = Image.new('RGB', size=(w, h))
+    grid_w, grid_h = grid.size
+
+    w = 0
+    for i, img in enumerate(imgs):
+        h_, w_ = imgs[i].size
+        grid.paste(img, box=(w, h - h_))
+        if save_path != None:
+            img.save(save_path + "/img_{}.jpg".format((i + 1) * 1024))
+        w += w_
+        
+    return grid
+
+image_grid(images, save_path="./outputs/")
+```
+ ![output_example](https://github.com/PRIS-CV/DemoFusion/blob/main/output_example.png)
