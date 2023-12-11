@@ -1410,6 +1410,8 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
             
         from peft import LoraConfig
 
+        print(isinstance(unet_lora_config, LoraConfig))
+
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
             raise ValueError(
                 "You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers` or `text_encoder_2_lora_layers`."
