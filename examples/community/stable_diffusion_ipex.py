@@ -21,7 +21,7 @@ from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
-from diffusers.loaders import TextualInversionLoaderMixin
+from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
+class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion on IPEX.
 

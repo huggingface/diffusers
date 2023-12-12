@@ -148,6 +148,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self.tile_sample_min_size = 512
         self.tile_latent_min_size = self.tile_sample_min_size // self.spatial_scale_factor
 
+        self.register_to_config(block_out_channels=decoder_block_out_channels)
+        self.register_to_config(force_upcast=False)
+
     def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
         if isinstance(module, (EncoderTiny, DecoderTiny)):
             module.gradient_checkpointing = value

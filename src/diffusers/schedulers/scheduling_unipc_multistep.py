@@ -175,6 +175,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
         self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
+        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -337,8 +338,20 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
-        sigma_min: float = in_sigmas[-1].item()
-        sigma_max: float = in_sigmas[0].item()
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)
@@ -815,7 +828,16 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        step_indices = []
+        for timestep in timesteps:
+            index_candidates = (schedule_timesteps == timestep).nonzero()
+            if len(index_candidates) == 0:
+                step_index = len(schedule_timesteps) - 1
+            elif len(index_candidates) > 1:
+                step_index = index_candidates[1].item()
+            else:
+                step_index = index_candidates[0].item()
+            step_indices.append(step_index)
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

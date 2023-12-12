@@ -121,9 +121,15 @@ The table below summarizes the available Stable Diffusion pipelines, their suppo
             <td class="px-4 py-2 text-gray-700">
             <a href="./ldm3d_diffusion">StableDiffusionLDM3D</a>
             </td>
-            <td class="px-4 py-2 text-gray-700">text-to-rgb, text-to-depth</td>
+            <td class="px-4 py-2 text-gray-700">text-to-rgb, text-to-depth, text-to-pano</td>
             <td class="px-4 py-2"><a href="https://huggingface.co/spaces/r23/ldm3d-space"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Spaces-blue"/></a>
             </td>
+        </tr>
+        <tr>
+            <td class="px-4 py-2 text-gray-700">
+            <a href="./ldm3d_diffusion">StableDiffusionUpscaleLDM3D</a>
+            </td>
+            <td class="px-4 py-2 text-gray-700">ldm3d super-resolution</td>
         </tr>
         </tbody>
     </table>

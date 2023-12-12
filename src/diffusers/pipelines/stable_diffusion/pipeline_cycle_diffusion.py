@@ -61,6 +61,20 @@ def preprocess(image):
     return image
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 def posterior_sample(scheduler, latents, timestep, clean_latents, generator, eta):
     # 1. get previous step value (=t-1)
     prev_timestep = timestep - scheduler.config.num_train_timesteps // scheduler.num_inference_steps
@@ -567,11 +581,12 @@ class CycleDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
 
             if isinstance(generator, list):
                 init_latents = [
-                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
+                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
+                    for i in range(image.shape[0])
                 ]
                 init_latents = torch.cat(init_latents, dim=0)
             else:
-                init_latents = self.vae.encode(image).latent_dist.sample(generator)
+                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
             init_latents = self.vae.config.scaling_factor * init_latents
 

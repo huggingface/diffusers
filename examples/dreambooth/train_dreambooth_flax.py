@@ -35,7 +35,7 @@ from diffusers.utils import check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.24.0.dev0")
+check_min_version("0.25.0.dev0")
 
 # Cache compiled models across invocations of this script.
 cc.initialize_cache(os.path.expanduser("~/.cache/jax/compilation_cache"))
@@ -460,7 +460,10 @@ def main():
 
     # Load models and create wrapper for stable diffusion
     text_encoder = FlaxCLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype, revision=args.revision
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        dtype=weight_dtype,
+        revision=args.revision,
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
         vae_arg,
@@ -468,7 +471,10 @@ def main():
         **vae_kwargs,
     )
     unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype, revision=args.revision
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        dtype=weight_dtype,
+        revision=args.revision,
     )
 
     # Optimization
