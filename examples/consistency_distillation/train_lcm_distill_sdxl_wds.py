@@ -325,16 +325,40 @@ def scalings_for_boundary_conditions(timestep, sigma_data=0.5, timestep_scaling=
 
 # Compare LCMScheduler.step, Step 4
 def predicted_origin(model_output, timesteps, sample, prediction_type, alphas, sigmas):
+    alphas = extract_into_tensor(alphas, timesteps, sample.shape)
+    sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
     if prediction_type == "epsilon":
-        sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
-        alphas = extract_into_tensor(alphas, timesteps, sample.shape)
         pred_x_0 = (sample - sigmas * model_output) / alphas
+    elif prediction_type == "sample":
+        pred_x_0 = model_output
     elif prediction_type == "v_prediction":
-        pred_x_0 = alphas[timesteps] * sample - sigmas[timesteps] * model_output
+        pred_x_0 = alphas * sample - sigmas * model_output
     else:
-        raise ValueError(f"Prediction type {prediction_type} currently not supported.")
+        raise ValueError(
+            f"Prediction type {prediction_type} is not supported; currently, `epsilon`, `sample`, and `v_prediction`"
+            f" are supported."
+        )
 
     return pred_x_0
+
+
+# Based on step 4 in DDIMScheduler.step
+def predicted_source_noise(model_output, timesteps, sample, prediction_type, alphas, sigmas):
+    alphas = extract_into_tensor(alphas, timesteps, sample.shape)
+    sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
+    if prediction_type == "epsilon":
+        pred_epsilon = model_output
+    elif prediction_type == "sample":
+        pred_epsilon = (sample - alphas * model_output) / sigmas
+    elif prediction_type == "v_prediction":
+        pred_epsilon = alphas * model_output + sigmas * sample
+    else:
+        raise ValueError(
+            f"Prediction type {prediction_type} is not supported; currently, `epsilon`, `sample`, and `v_prediction`"
+            f" are supported."
+        )
+    
+    return pred_epsilon
 
 
 def extract_into_tensor(a, t, x_shape):
@@ -1301,6 +1325,14 @@ def main(args):
                             alpha_schedule,
                             sigma_schedule,
                         )
+                        cond_pred_noise = predicted_source_noise(
+                            cond_teacher_output,
+                            start_timesteps,
+                            noisy_model_input,
+                            noise_scheduler.config.prediction_type,
+                            alpha_schedule,
+                            sigma_schedule,
+                        )
 
                         # 2. Get teacher model prediction on noisy_model_input z_{t_{n + k}} and unconditional embedding 0
                         uncond_added_conditions = copy.deepcopy(encoded_text)
@@ -1319,13 +1351,19 @@ def main(args):
                             alpha_schedule,
                             sigma_schedule,
                         )
+                        uncond_pred_noise = predicted_source_noise(
+                            uncond_teacher_output,
+                            start_timesteps,
+                            noisy_model_input,
+                            noise_scheduler.config.prediction_type,
+                            alpha_schedule,
+                            sigma_schedule,
+                        )
 
                         # 3. Calculate the CFG estimate of x_0 (pred_x0) and eps_0 (pred_noise)
                         # Note that this uses the LCM paper's CFG formulation rather than the Imagen CFG formulation
-                        # NOTE: this currently assumes that the teacher prediction_type is "epsilon", since we directly
-                        # use the output of teacher_unet. May want to fix at some point (e.g. following DDIMScheduler)
                         pred_x0 = cond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
-                        pred_noise = cond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
+                        pred_noise = cond_pred_noise + w * (cond_pred_noise - uncond_pred_noise)
                         # 4. Run one step of the ODE solver to estimate the next point x_prev on the
                         # augmented PF-ODE trajectory (solving backward in time)
                         # Note that the DDIM step depends on both the predicted x_0 and source noise eps_0.
