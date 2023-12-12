@@ -477,6 +477,17 @@ def parse_args():
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
+    parser.add_argument(
+        "--save_unet_only",
+        action="store_true",
+        help="Whether or not to save only the UNet model.",
+    )
+
+    parser.add_argument(
+        "--generate_images_when_checkpointing",
+        action="store_true",
+        help="Whether or not to generate images when checkpointing.",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -553,11 +564,17 @@ def main():
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
 
+    def get_deepspeed_plugin():
+        if accelerate.state.is_initialized():
+            return AcceleratorState().deepspeed_plugin
+        else:
+            return None
+
     def deepspeed_zero_init_disabled_context_manager():
         """
         returns either a context list that includes one that will disable zero.Init or an empty context list
         """
-        deepspeed_plugin = AcceleratorState().deepspeed_plugin if accelerate.state.is_initialized() else None
+        deepspeed_plugin = get_deepspeed_plugin()
         if deepspeed_plugin is None:
             return []
 
@@ -969,7 +986,8 @@ def main():
                 train_loss = 0.0
 
                 if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
+                    deepspeed_plugin = get_deepspeed_plugin()
+                    if accelerator.is_main_process or deepspeed_plugin is not None:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
@@ -991,8 +1009,30 @@ def main():
                                     shutil.rmtree(removing_checkpoint)
 
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-                        accelerator.save_state(save_path)
-                        logger.info(f"Saved state to {save_path}")
+
+                        if args.save_unet_only:
+                            try:
+                                unet.module.save_pretrained(save_path)
+                            except AttributeError:
+                                unet.save_pretrained(save_path)
+                            logger.info(f"Saved unet to {save_path}")
+                        else:
+                            accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
+
+
+                        if args.generate_images_when_checkpointing:
+                            log_validation(
+                                vae,
+                                text_encoder,
+                                tokenizer,
+                                unet,
+                                args,
+                                accelerator,
+                                weight_dtype,
+                                global_step,
+                            )
+                        
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
