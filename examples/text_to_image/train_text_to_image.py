@@ -975,7 +975,8 @@ def main():
                 train_loss = 0.0
 
                 if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
+                    deepspeed_plugin = get_deepspeed_plugin()
+                    if accelerator.is_main_process or deepspeed_plugin is not None:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
