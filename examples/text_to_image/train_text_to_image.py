@@ -1005,7 +1005,10 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
 
                         if args.save_unet_only:
-                            unet.module.save_pretrained(save_path)
+                            try:
+                                unet.module.save_pretrained(save_path)
+                            except AttributeError:
+                                unet.save_pretrained(save_path)
                         else:
                             accelerator.save_state(save_path)
                         
