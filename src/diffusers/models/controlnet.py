@@ -43,7 +43,7 @@ class ControlNetOutput(BaseOutput):
     The output of [`ControlNetModel`].
 
     Args:
-        down_block_res_samples (`tuple[torch.Tensor]`):
+        down_block_res_samples (`tuple[torch.Tensor]`, *optional*):
             A tuple of downsample activations at different resolutions for each downsampling block. Each tensor should
             be of shape `(batch_size, channel * resolution, height //resolution, width // resolution)`. Output can be
             used to condition the original UNet's downsampling activations.
@@ -53,7 +53,7 @@ class ControlNetOutput(BaseOutput):
             Output can be used to condition the original UNet's middle block activation.
     """
 
-    down_block_res_samples: Tuple[torch.Tensor]
+    down_block_res_samples: Optional[Tuple[torch.Tensor]]
     mid_block_res_sample: torch.Tensor
 
 
@@ -670,6 +670,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guess_mode: bool = False,
         return_dict: bool = True,
+        compute_down_block_res_samples: bool = True,
     ) -> Union[ControlNetOutput, Tuple[Tuple[torch.FloatTensor, ...], torch.FloatTensor]]:
         """
         The [`ControlNetModel`] forward method.
@@ -704,6 +705,8 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 you remove all prompts. A `guidance_scale` between 3.0 and 5.0 is recommended.
             return_dict (`bool`, defaults to `True`):
                 Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
+            compute_down_block_res_samples (`bool`, defaults to `True`):
+                Whether or not to compute and return `down_block_res_samples`.
 
         Returns:
             [`~models.controlnet.ControlNetOutput`] **or** `tuple`:
@@ -823,14 +826,16 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 sample = self.mid_block(sample, emb)
 
         # 5. Control net blocks
+        if compute_down_block_res_samples:
+            controlnet_down_block_res_samples = ()
 
-        controlnet_down_block_res_samples = ()
+            for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):
+                down_block_res_sample = controlnet_block(down_block_res_sample)
+                controlnet_down_block_res_samples = controlnet_down_block_res_samples + (down_block_res_sample,)
 
-        for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):
-            down_block_res_sample = controlnet_block(down_block_res_sample)
-            controlnet_down_block_res_samples = controlnet_down_block_res_samples + (down_block_res_sample,)
-
-        down_block_res_samples = controlnet_down_block_res_samples
+            down_block_res_samples = controlnet_down_block_res_samples
+        else:
+            down_block_res_samples = []
 
         mid_block_res_sample = self.controlnet_mid_block(sample)
 
@@ -849,6 +854,9 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 torch.mean(sample, dim=(2, 3), keepdim=True) for sample in down_block_res_samples
             ]
             mid_block_res_sample = torch.mean(mid_block_res_sample, dim=(2, 3), keepdim=True)
+
+        if down_block_res_samples == []:
+            down_block_res_samples = None
 
         if not return_dict:
             return (down_block_res_samples, mid_block_res_sample)

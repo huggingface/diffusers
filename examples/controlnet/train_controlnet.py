@@ -1056,17 +1056,19 @@ def main(args):
                     encoder_hidden_states=encoder_hidden_states,
                     controlnet_cond=controlnet_image,
                     return_dict=False,
+                    compute_down_block_res_samples=not args.only_mid_control,
                 )
+                mid_block_res_sample = mid_block_res_sample.to(dtype=weight_dtype)
+                if not args.only_mid_control:
+                    down_block_res_samples = [sample.to(dtype=weight_dtype) for sample in down_block_res_samples]
 
                 # Predict the noise residual
                 model_pred = unet(
                     noisy_latents,
                     timesteps,
                     encoder_hidden_states=encoder_hidden_states,
-                    down_block_additional_residuals=[
-                        sample.to(dtype=weight_dtype) for sample in down_block_res_samples
-                    ],
-                    mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
+                    down_block_additional_residuals=down_block_res_samples,
+                    mid_block_additional_residual=mid_block_res_sample,
                 ).sample
 
                 # Get the target for loss depending on the prediction type
