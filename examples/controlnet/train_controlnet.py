@@ -20,6 +20,7 @@ import os
 import random
 import shutil
 from pathlib import Path
+from itertools import chain
 
 import accelerate
 import numpy as np
@@ -542,6 +543,20 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
+    parser.add_argument(
+        "--only_mid_control",
+        action="store_true",
+        help=(
+            "Whether to only infuse information into the mid block of the base model, and not the up blocks."
+        ),
+    )
+    parser.add_argument(
+        "--train_base",
+        action="store_true",
+        help=(
+            "Whether to unfreeze and also train the base model. By default, the base model is frozen and only the control model is trained."
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -819,7 +834,10 @@ def main(args):
         accelerator.register_load_state_pre_hook(load_model_hook)
 
     vae.requires_grad_(False)
-    unet.requires_grad_(False)
+    if args.train_base:
+        unet.train()
+    else:
+        unet.requires_grad_(False)
     text_encoder.requires_grad_(False)
     controlnet.train()
 
@@ -839,6 +857,8 @@ def main(args):
 
     if args.gradient_checkpointing:
         controlnet.enable_gradient_checkpointing()
+        if args.train_base:
+            unet.enable_gradient_checkpointing()
 
     # Check that all trainable models are in full precision
     low_precision_error_string = (
@@ -849,6 +869,11 @@ def main(args):
     if accelerator.unwrap_model(controlnet).dtype != torch.float32:
         raise ValueError(
             f"Controlnet loaded as datatype {accelerator.unwrap_model(controlnet).dtype}. {low_precision_error_string}"
+        )
+
+    if args.train_base and accelerator.unwrap_model(unet).dtype != torch.float32:
+        raise ValueError(
+            f"Base model loaded as datatype {accelerator.unwrap_model(unet).dtype}. {low_precision_error_string}"
         )
 
     # Enable TF32 for faster training on Ampere GPUs,
@@ -875,7 +900,10 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = controlnet.parameters()
+    if args.train_base:
+        params_to_optimize = chain(controlnet.parameters(), unet.parameters())
+    else:
+        params_to_optimize = controlnet.parameters()
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -914,6 +942,8 @@ def main(args):
     controlnet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         controlnet, optimizer, train_dataloader, lr_scheduler
     )
+    if args.train_base:
+        unet = accelerate.prepare(unet)
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
@@ -925,7 +955,8 @@ def main(args):
 
     # Move vae, unet and text_encoder to device and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
-    unet.to(accelerator.device, dtype=weight_dtype)
+    if not args.train_base:
+        unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
@@ -1110,7 +1141,12 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         controlnet = accelerator.unwrap_model(controlnet)
-        controlnet.save_pretrained(args.output_dir)
+        if args.train_base:
+            unet = accelerate.unwrap_model(unet)
+            unet.save_pretrained(args.output_dir + '/unet')  # todo umer: soft code
+            controlnet.save_pretrained(args.output_dir + '/controlnet')
+        else:
+            controlnet.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
             save_model_card(
