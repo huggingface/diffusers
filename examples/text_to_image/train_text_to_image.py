@@ -553,11 +553,17 @@ def main():
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
 
+    def get_deepspeed_plugin():
+        if accelerate.state.is_initialized():
+            return AcceleratorState().deepspeed_plugin
+        else:
+            return None
+
     def deepspeed_zero_init_disabled_context_manager():
         """
         returns either a context list that includes one that will disable zero.Init or an empty context list
         """
-        deepspeed_plugin = AcceleratorState().deepspeed_plugin if accelerate.state.is_initialized() else None
+        deepspeed_plugin = get_deepspeed_plugin()
         if deepspeed_plugin is None:
             return []
 
