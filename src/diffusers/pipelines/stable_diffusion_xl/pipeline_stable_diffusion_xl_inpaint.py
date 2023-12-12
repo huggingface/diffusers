@@ -363,7 +363,7 @@ class StableDiffusionXLInpaintPipeline(
             watermarker will be used.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->unet->vae"
 
     _optional_components = [
         "tokenizer",
