@@ -483,6 +483,12 @@ def parse_args():
         help="Whether or not to save only the UNet model.",
     )
 
+    parser.add_argument(
+        "--generate_images_when_checkpointing",
+        action="store_true",
+        help="Whether or not to generate images when checkpointing.",
+    )
+
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -1013,6 +1019,19 @@ def main():
                         else:
                             accelerator.save_state(save_path)
                             logger.info(f"Saved state to {save_path}")
+
+
+                        if args.generate_images_when_checkpointing:
+                            log_validation(
+                                vae,
+                                text_encoder,
+                                tokenizer,
+                                unet,
+                                args,
+                                accelerator,
+                                weight_dtype,
+                                global_step,
+                            )
                         
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
