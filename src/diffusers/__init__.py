@@ -1,4 +1,4 @@
-__version__ = "0.24.0.dev0"
+__version__ = "0.25.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -76,9 +76,11 @@ else:
         [
             "AsymmetricAutoencoderKL",
             "AutoencoderKL",
+            "AutoencoderKLTemporalDecoder",
             "AutoencoderTiny",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
+            "ControlNetXSModel",
             "Kandinsky3UNet",
             "ModelMixin",
             "MotionAdapter",
@@ -92,6 +94,7 @@ else:
             "UNet2DModel",
             "UNet3DConditionModel",
             "UNetMotionModel",
+            "UNetSpatioTemporalConditionModel",
             "VQModel",
         ]
     )
@@ -248,6 +251,7 @@ else:
             "StableDiffusionControlNetImg2ImgPipeline",
             "StableDiffusionControlNetInpaintPipeline",
             "StableDiffusionControlNetPipeline",
+            "StableDiffusionControlNetXSPipeline",
             "StableDiffusionDepth2ImgPipeline",
             "StableDiffusionDiffEditPipeline",
             "StableDiffusionGLIGENPipeline",
@@ -271,14 +275,17 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
+            "StableDiffusionXLControlNetXSPipeline",
             "StableDiffusionXLImg2ImgPipeline",
             "StableDiffusionXLInpaintPipeline",
             "StableDiffusionXLInstructPix2PixPipeline",
             "StableDiffusionXLPipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
+            "StableVideoDiffusionPipeline",
             "TextToVideoSDPipeline",
             "TextToVideoZeroPipeline",
+            "TextToVideoZeroSDXLPipeline",
             "UnCLIPImageVariationPipeline",
             "UnCLIPPipeline",
             "UniDiffuserModel",
@@ -446,9 +453,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
+            AutoencoderKLTemporalDecoder,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             ControlNetModel,
+            ControlNetXSModel,
             Kandinsky3UNet,
             ModelMixin,
             MotionAdapter,
@@ -462,6 +471,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet2DModel,
             UNet3DConditionModel,
             UNetMotionModel,
+            UNetSpatioTemporalConditionModel,
             VQModel,
         )
         from .optimization import (
@@ -597,6 +607,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionControlNetImg2ImgPipeline,
             StableDiffusionControlNetInpaintPipeline,
             StableDiffusionControlNetPipeline,
+            StableDiffusionControlNetXSPipeline,
             StableDiffusionDepth2ImgPipeline,
             StableDiffusionDiffEditPipeline,
             StableDiffusionGLIGENPipeline,
@@ -620,14 +631,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
+            StableDiffusionXLControlNetXSPipeline,
             StableDiffusionXLImg2ImgPipeline,
             StableDiffusionXLInpaintPipeline,
             StableDiffusionXLInstructPix2PixPipeline,
             StableDiffusionXLPipeline,
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
+            StableVideoDiffusionPipeline,
             TextToVideoSDPipeline,
             TextToVideoZeroPipeline,
+            TextToVideoZeroSDXLPipeline,
             UnCLIPImageVariationPipeline,
             UnCLIPPipeline,
             UniDiffuserModel,

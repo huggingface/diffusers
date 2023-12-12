@@ -96,3 +96,4 @@ specific language governing permissions and limitations under the License.
 | [versatile_diffusion](./api/pipelines/versatile_diffusion) | [Versatile Diffusion: Text, Images and Variations All in One Diffusion Model](https://arxiv.org/abs/2211.08332) | Dual Image and Text Guided Generation |
 | [vq_diffusion](./api/pipelines/vq_diffusion) | [Vector Quantized Diffusion Model for Text-to-Image Synthesis](https://arxiv.org/abs/2111.14822) | Text-to-Image Generation |
 | [stable_diffusion_ldm3d](./api/pipelines/stable_diffusion/ldm3d_diffusion) | [LDM3D: Latent Diffusion Model for 3D](https://arxiv.org/abs/2305.10853) | Text to Image and Depth Generation |
+| [stable_diffusion_upscaler_ldm3d](./api/pipelines/stable_diffusion/ldm3d_diffusion) | [LDM3D-VR: Latent Diffusion Model for 3D VR](https://arxiv.org/pdf/2311.03226) | Image and Depth Upscaling |

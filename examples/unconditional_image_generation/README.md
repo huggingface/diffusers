@@ -27,7 +27,7 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 accelerate config
 ```
 
-### Unconditional Flowers  
+### Unconditional Flowers
 
 The command to train a DDPM UNet model on the Oxford Flowers dataset:
 
@@ -52,7 +52,7 @@ A full training run takes 2 hours on 4xV100 GPUs.
 <img src="https://user-images.githubusercontent.com/26864830/180248660-a0b143d0-b89a-42c5-8656-2ebf6ece7e52.png" width="700" />
 
 
-### Unconditional Pokemon 
+### Unconditional Pokemon
 
 The command to train a DDPM UNet model on the Pokemon dataset:
 
@@ -96,7 +96,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
   --logger="wandb"
 ```
 
-To be able to use Weights and Biases (`wandb`) as a logger you need to install the library: `pip install wandb`. 
+To be able to use Weights and Biases (`wandb`) as a logger you need to install the library: `pip install wandb`.
 
 ### Using your own data
 

@@ -1,0 +1,52 @@
+name: Benchmarking tests
+
+on:
+  schedule:
+    - cron: "30 1 1,15 * *" # every 2 weeks on the 1st and the 15th of every month at 1:30 AM
+
+env:
+  DIFFUSERS_IS_CI: yes
+  HF_HOME: /mnt/cache
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+
+jobs:
+  torch_pipelines_cuda_benchmark_tests:
+    name: Torch Core Pipelines CUDA Benchmarking Tests
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+    runs-on: [single-gpu, nvidia-gpu, a10, ci]
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: NVIDIA-SMI
+        run: |
+          nvidia-smi
+      - name: Install dependencies
+        run: |
+          apt-get update && apt-get install libsndfile1-dev libgl1 -y
+          python -m pip install -e .[quality,test]
+          python -m pip install pandas
+      - name: Environment
+        run: |
+          python utils/print_env.py
+      - name: Diffusers Benchmarking
+        env:
+            HUGGING_FACE_HUB_TOKEN: ${{ secrets.DIFFUSERS_BOT_TOKEN }}
+            BASE_PATH: benchmark_outputs
+        run: |
+          export TOTAL_GPU_MEMORY=$(python -c "import torch; print(torch.cuda.get_device_properties(0).total_memory / (1024**3))")
+          cd benchmarks && mkdir ${BASE_PATH} && python run_all.py && python push_results.py
+
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: benchmark_test_reports
+          path: benchmarks/benchmark_outputs

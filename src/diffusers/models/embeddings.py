@@ -20,6 +20,7 @@ from torch import nn
 
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
+from .attention_processor import Attention
 from .lora import LoRACompatibleLinear
 
 
@@ -460,6 +461,18 @@ class ImageProjection(nn.Module):
         return image_embeds
 
 
+class MLPProjection(nn.Module):
+    def __init__(self, image_embed_dim=1024, cross_attention_dim=1024):
+        super().__init__()
+        from .attention import FeedForward
+
+        self.ff = FeedForward(image_embed_dim, cross_attention_dim, mult=1, activation_fn="gelu")
+        self.norm = nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds: torch.FloatTensor):
+        return self.norm(self.ff(image_embeds))
+
+
 class CombinedTimestepLabelEmbeddings(nn.Module):
     def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
         super().__init__()
@@ -790,3 +803,91 @@ class CaptionProjection(nn.Module):
         hidden_states = self.act_1(hidden_states)
         hidden_states = self.linear_2(hidden_states)
         return hidden_states
+
+
+class Resampler(nn.Module):
+    """Resampler of IP-Adapter Plus.
+
+    Args:
+    ----
+        embed_dims (int): The feature dimension. Defaults to 768.
+        output_dims (int): The number of output channels, that is the same
+            number of the channels in the
+            `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int): The number of hidden channels. Defaults to 1280.
+        depth (int): The number of blocks. Defaults to 8.
+        dim_head (int): The number of head channels. Defaults to 64.
+        heads (int): Parallel attention heads. Defaults to 16.
+        num_queries (int): The number of queries. Defaults to 8.
+        ffn_ratio (float): The expansion ratio of feedforward network hidden
+            layer channels. Defaults to 4.
+    """
+
+    def __init__(
+        self,
+        embed_dims: int = 768,
+        output_dims: int = 1024,
+        hidden_dims: int = 1280,
+        depth: int = 4,
+        dim_head: int = 64,
+        heads: int = 16,
+        num_queries: int = 8,
+        ffn_ratio: float = 4,
+    ) -> None:
+        super().__init__()
+        from .attention import FeedForward  # Lazy import to avoid circular import
+
+        self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dims) / hidden_dims**0.5)
+
+        self.proj_in = nn.Linear(embed_dims, hidden_dims)
+
+        self.proj_out = nn.Linear(hidden_dims, output_dims)
+        self.norm_out = nn.LayerNorm(output_dims)
+
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        nn.LayerNorm(hidden_dims),
+                        nn.LayerNorm(hidden_dims),
+                        Attention(
+                            query_dim=hidden_dims,
+                            dim_head=dim_head,
+                            heads=heads,
+                            out_bias=False,
+                        ),
+                        nn.Sequential(
+                            nn.LayerNorm(hidden_dims),
+                            FeedForward(hidden_dims, hidden_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
+                        ),
+                    ]
+                )
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+        ----
+            x (torch.Tensor): Input Tensor.
+
+        Returns:
+        -------
+            torch.Tensor: Output Tensor.
+        """
+        latents = self.latents.repeat(x.size(0), 1, 1)
+
+        x = self.proj_in(x)
+
+        for ln0, ln1, attn, ff in self.layers:
+            residual = latents
+
+            encoder_hidden_states = ln0(x)
+            latents = ln1(latents)
+            encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
+            latents = attn(latents, encoder_hidden_states) + residual
+            latents = ff(latents) + latents
+
+        latents = self.proj_out(latents)
+        return self.norm_out(latents)

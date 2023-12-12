@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
@@ -7,14 +7,33 @@ from ...loaders import LoraLoaderMixin
 from ...models import Kandinsky3UNet, VQModel
 from ...schedulers import DDPMScheduler
 from ...utils import (
+    deprecate,
     is_accelerate_available,
     logging,
+    replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> from diffusers import AutoPipelineForText2Image
+        >>> import torch
+
+        >>> pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."
+
+        >>> generator = torch.Generator(device="cpu").manual_seed(0)
+        >>> image = pipe(prompt, num_inference_steps=25, generator=generator).images[0]
+        ```
+
+"""
 
 
 def downscale_height_and_width(height, width, scale_factor=8):
@@ -29,6 +48,13 @@ def downscale_height_and_width(height, width, scale_factor=8):
 
 class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
     model_cpu_offload_seq = "text_encoder->unet->movq"
+    _callback_tensor_inputs = [
+        "latents",
+        "prompt_embeds",
+        "negative_prompt_embeds",
+        "negative_attention_mask",
+        "attention_mask",
+    ]
 
     def __init__(
         self,
@@ -50,7 +76,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             raise ImportError("Please install accelerate via `pip install accelerate`")
 
-        for model in [self.text_encoder, self.unet]:
+        for model in [self.text_encoder, self.unet, self.movq]:
             if model is not None:
                 remove_hook_from_module(model, recurse=True)
 
@@ -77,12 +103,14 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         _cut_context=False,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        negative_attention_mask: Optional[torch.FloatTensor] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
 
         Args:
-             prompt (`str` or `List[str]`, *optional*):
+            prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
             device: (`torch.device`, *optional*):
                 torch device to place the resulting embeddings on
@@ -101,6 +129,10 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            attention_mask (`torch.FloatTensor`, *optional*):
+                Pre-generated attention mask. Must provide if passing `prompt_embeds` directly.
+            negative_attention_mask (`torch.FloatTensor`, *optional*):
+                Pre-generated negative attention mask. Must provide if passing `negative_prompt_embeds` directly.
         """
         if prompt is not None and negative_prompt is not None:
             if type(prompt) is not type(negative_prompt):
@@ -228,13 +260,20 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
+        attention_mask=None,
+        negative_attention_mask=None,
     ):
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
+            )
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -262,8 +301,42 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+        if negative_prompt_embeds is not None and negative_attention_mask is None:
+            raise ValueError("Please provide `negative_attention_mask` along with `negative_prompt_embeds`")
+
+        if negative_prompt_embeds is not None and negative_attention_mask is not None:
+            if negative_prompt_embeds.shape[:2] != negative_attention_mask.shape:
+                raise ValueError(
+                    "`negative_prompt_embeds` and `negative_attention_mask` must have the same batch_size and token length when passed directly, but"
+                    f" got: `negative_prompt_embeds` {negative_prompt_embeds.shape[:2]} != `negative_attention_mask`"
+                    f" {negative_attention_mask.shape}."
+                )
+
+        if prompt_embeds is not None and attention_mask is None:
+            raise ValueError("Please provide `attention_mask` along with `prompt_embeds`")
+
+        if prompt_embeds is not None and attention_mask is not None:
+            if prompt_embeds.shape[:2] != attention_mask.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `attention_mask` must have the same batch_size and token length when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape[:2]} != `attention_mask`"
+                    f" {attention_mask.shape}."
+                )
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -276,11 +349,14 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        negative_attention_mask: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
         latents=None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        **kwargs,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -289,7 +365,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            num_inference_steps (`int`, *optional*, defaults to 50):
+            num_inference_steps (`int`, *optional*, defaults to 25):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             timesteps (`List[int]`, *optional*):
@@ -324,6 +400,10 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            attention_mask (`torch.FloatTensor`, *optional*):
+                Pre-generated attention mask. Must provide if passing `prompt_embeds` directly.
+            negative_attention_mask (`torch.FloatTensor`, *optional*):
+                Pre-generated negative attention mask. Must provide if passing `negative_prompt_embeds` directly.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -343,12 +423,53 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+
+        Examples:
+
+        Returns:
+            [`~pipelines.ImagePipelineOutput`] or `tuple`
+
         """
+
+        callback = kwargs.pop("callback", None)
+        callback_steps = kwargs.pop("callback_steps", None)
+
+        if callback is not None:
+            deprecate(
+                "callback",
+                "1.0.0",
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+        if callback_steps is not None:
+            deprecate(
+                "callback_steps",
+                "1.0.0",
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
         cut_context = True
         device = self._execution_device
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
+        self.check_inputs(
+            prompt,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+            callback_on_step_end_tensor_inputs,
+            attention_mask,
+            negative_attention_mask,
+        )
+
+        self._guidance_scale = guidance_scale
 
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -357,24 +478,21 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
         else:
             batch_size = prompt_embeds.shape[0]
 
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
-
         # 3. Encode input prompt
         prompt_embeds, negative_prompt_embeds, attention_mask, negative_attention_mask = self.encode_prompt(
             prompt,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
             num_images_per_prompt=num_images_per_prompt,
             device=device,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             _cut_context=cut_context,
+            attention_mask=attention_mask,
+            negative_attention_mask=negative_attention_mask,
         )
 
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             attention_mask = torch.cat([negative_attention_mask, attention_mask]).bool()
         # 4. Prepare timesteps
@@ -397,11 +515,11 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
             self.text_encoder_offload_hook.offload()
 
         # 7. Denoising loop
-        # TODO(Yiyi): Correct the following line and use correctly
-        # num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
                 # predict the noise residual
                 noise_pred = self.unet(
@@ -412,7 +530,7 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                     return_dict=False,
                 )[0]
 
-                if do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
 
                     noise_pred = (guidance_scale + 1.0) * noise_pred_text - guidance_scale * noise_pred_uncond
@@ -425,26 +543,45 @@ class Kandinsky3Pipeline(DiffusionPipeline, LoraLoaderMixin):
                     latents,
                     generator=generator,
                 ).prev_sample
-                progress_bar.update()
-                if callback is not None and i % callback_steps == 0:
-                    step_idx = i // getattr(self.scheduler, "order", 1)
-                    callback(step_idx, t, latents)
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                    attention_mask = callback_outputs.pop("attention_mask", attention_mask)
+                    negative_attention_mask = callback_outputs.pop("negative_attention_mask", negative_attention_mask)
+
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
             # post-processing
-            image = self.movq.decode(latents, force_not_quantize=True)["sample"]
-
-            if output_type not in ["pt", "np", "pil"]:
+            if output_type not in ["pt", "np", "pil", "latent"]:
                 raise ValueError(
-                    f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}"
+                    f"Only the output types `pt`, `pil`, `np` and `latent` are supported not output_type={output_type}"
                 )
 
-            if output_type in ["np", "pil"]:
-                image = image * 0.5 + 0.5
-                image = image.clamp(0, 1)
-                image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+            if not output_type == "latent":
+                image = self.movq.decode(latents, force_not_quantize=True)["sample"]
 
-            if output_type == "pil":
-                image = self.numpy_to_pil(image)
+                if output_type in ["np", "pil"]:
+                    image = image * 0.5 + 0.5
+                    image = image.clamp(0, 1)
+                    image = image.cpu().permute(0, 2, 3, 1).float().numpy()
+
+                if output_type == "pil":
+                    image = self.numpy_to_pil(image)
+            else:
+                image = latents
+
+            self.maybe_free_model_hooks()
 
             if not return_dict:
                 return (image,)

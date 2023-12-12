@@ -27,6 +27,7 @@ import onnx_graphsurgeon as gs
 import tensorrt as trt
 import torch
 from huggingface_hub import snapshot_download
+from huggingface_hub.utils import validate_hf_hub_args
 from onnx import shape_inference
 from polygraphy import cuda
 from polygraphy.backend.common import bytes_from_path
@@ -40,7 +41,7 @@ from polygraphy.backend.trt import (
     save_engine,
 )
 from polygraphy.backend.trt import util as trt_util
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import (
@@ -49,7 +50,7 @@ from diffusers.pipelines.stable_diffusion import (
     StableDiffusionSafetyChecker,
 )
 from diffusers.schedulers import DDIMScheduler
-from diffusers.utils import DIFFUSERS_CACHE, logging
+from diffusers.utils import logging
 
 
 """
@@ -624,6 +625,7 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         scheduler: DDIMScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
+        image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
         stages=["clip", "unet", "vae"],
         image_height: int = 768,
@@ -639,7 +641,15 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         timing_cache: str = "timing_cache",
     ):
         super().__init__(
-            vae, text_encoder, tokenizer, unet, scheduler, safety_checker, feature_extractor, requires_safety_checker
+            vae,
+            text_encoder,
+            tokenizer,
+            unet,
+            scheduler,
+            safety_checker=safety_checker,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
+            requires_safety_checker=requires_safety_checker,
         )
 
         self.vae.forward = self.vae.decode
@@ -682,12 +692,13 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             self.models["vae"] = make_VAE(self.vae, **models_args)
 
     @classmethod
+    @validate_hf_hub_args
     def set_cached_folder(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
 
         cls.cached_folder = (
@@ -699,7 +710,7 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
             )
         )
