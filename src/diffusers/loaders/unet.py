@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from contextlib import nullcontext
 from typing import Callable, Dict, List, Optional, Union
 
@@ -33,6 +33,7 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from .ip_adapter_conversion_utils import _convert_ip_adapter_to_diffusers
 from .utils import AttnProcsLayers
 
 
@@ -725,6 +726,8 @@ class UNet2DConditionLoadersMixin:
         self.set_attn_processor(attn_procs)
 
         # create image projection layers.
+        image_proj_state_dict = state_dict["image_proj"]
+
         if "proj.weight" in state_dict["image_proj"]:
             # IP-Adapter
             clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
@@ -737,18 +740,8 @@ class UNet2DConditionLoadersMixin:
             )
             image_projection.to(dtype=self.dtype, device=self.device)
 
-            # load image projection layer weights
-            image_proj_state_dict = {}
-            image_proj_state_dict.update(
-                {
-                    "image_embeds.weight": state_dict["image_proj"]["proj.weight"],
-                    "image_embeds.bias": state_dict["image_proj"]["proj.bias"],
-                    "norm.weight": state_dict["image_proj"]["norm.weight"],
-                    "norm.bias": state_dict["image_proj"]["norm.bias"],
-                }
-            )
-            image_projection.load_state_dict(image_proj_state_dict)
-            del image_proj_state_dict
+            new_sd = _convert_ip_adapter_to_diffusers(image_proj_state_dict)
+            image_projection.load_state_dict(new_sd)
 
         elif "proj.3.weight" in state_dict["image_proj"]:
             clip_embeddings_dim = state_dict["image_proj"]["proj.0.weight"].shape[0]
@@ -759,20 +752,8 @@ class UNet2DConditionLoadersMixin:
             )
             image_projection.to(dtype=self.dtype, device=self.device)
 
-            # load image projection layer weights
-            image_proj_state_dict = {}
-            image_proj_state_dict.update(
-                {
-                    "ff.net.0.proj.weight": state_dict["image_proj"]["proj.0.weight"],
-                    "ff.net.0.proj.bias": state_dict["image_proj"]["proj.0.bias"],
-                    "ff.net.2.weight": state_dict["image_proj"]["proj.2.weight"],
-                    "ff.net.2.bias": state_dict["image_proj"]["proj.2.bias"],
-                    "norm.weight": state_dict["image_proj"]["proj.3.weight"],
-                    "norm.bias": state_dict["image_proj"]["proj.3.bias"],
-                }
-            )
-            image_projection.load_state_dict(image_proj_state_dict)
-            del image_proj_state_dict
+            new_sd = _convert_ip_adapter_to_diffusers(image_proj_state_dict)
+            image_projection.load_state_dict(new_sd)
 
         else:
             # IP-Adapter Plus
@@ -789,36 +770,9 @@ class UNet2DConditionLoadersMixin:
                 num_queries=num_image_text_embeds,
             )
 
-            image_proj_state_dict = state_dict["image_proj"]
-
-            new_sd = OrderedDict()
-            for k, v in image_proj_state_dict.items():
-                if "0.to" in k:
-                    k = k.replace("0.to", "2.to")
-                elif "1.0.weight" in k:
-                    k = k.replace("1.0.weight", "3.0.weight")
-                elif "1.0.bias" in k:
-                    k = k.replace("1.0.bias", "3.0.bias")
-                elif "1.1.weight" in k:
-                    k = k.replace("1.1.weight", "3.1.net.0.proj.weight")
-                elif "1.3.weight" in k:
-                    k = k.replace("1.3.weight", "3.1.net.2.weight")
-
-                if "norm1" in k:
-                    new_sd[k.replace("0.norm1", "0")] = v
-                elif "norm2" in k:
-                    new_sd[k.replace("0.norm2", "1")] = v
-                elif "to_kv" in k:
-                    v_chunk = v.chunk(2, dim=0)
-                    new_sd[k.replace("to_kv", "to_k")] = v_chunk[0]
-                    new_sd[k.replace("to_kv", "to_v")] = v_chunk[1]
-                elif "to_out" in k:
-                    new_sd[k.replace("to_out", "to_out.0")] = v
-                else:
-                    new_sd[k] = v
-
+            new_sd = _convert_ip_adapter_to_diffusers(image_proj_state_dict)
             image_projection.load_state_dict(new_sd)
-            del image_proj_state_dict
+        del image_proj_state_dict
 
         self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
         self.config.encoder_hid_dim_type = "ip_image_proj"
