@@ -357,7 +357,7 @@ def predicted_source_noise(model_output, timesteps, sample, prediction_type, alp
             f"Prediction type {prediction_type} is not supported; currently, `epsilon`, `sample`, and `v_prediction`"
             f" are supported."
         )
-    
+
     return pred_epsilon
 
 
