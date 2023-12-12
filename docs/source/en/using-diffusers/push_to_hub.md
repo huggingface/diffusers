@@ -174,10 +174,4 @@ Set `private=True` in the [`~diffusers.utils.PushToHubMixin.push_to_hub`] functi
 controlnet.push_to_hub("my-controlnet-model-private", private=True)
 ```
 
-Private repositories are only visible to you, and other users won't be able to clone the repository and your repository won't appear in search results. Even if a user has the URL to your private repository, they'll receive a `404 - Sorry, we can't find the page you are looking for.`
-
-To load a model, scheduler, or pipeline from private or gated repositories, set `use_auth_token=True`:
-
-```py
-model = ControlNetModel.from_pretrained("your-namespace/my-controlnet-model-private", use_auth_token=True)
-```
+Private repositories are only visible to you, and other users won't be able to clone the repository and your repository won't appear in search results. Even if a user has the URL to your private repository, they'll receive a `404 - Sorry, we can't find the page you are looking for`. You must be [logged in](https://huggingface.co/docs/huggingface_hub/quick-start#login) to load a model from a private repository.
