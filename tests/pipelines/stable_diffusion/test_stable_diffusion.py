@@ -35,6 +35,7 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
     StableDiffusionPipeline,
+    UFOGenScheduler,
     UNet2DConditionModel,
     logging,
 )
@@ -239,6 +240,26 @@ class StableDiffusionPipelineFastTests(
 
         assert image.shape == (1, 64, 64, 3)
         expected_slice = np.array([0.3454, 0.5349, 0.5185, 0.2808, 0.4509, 0.4612, 0.4655, 0.3601, 0.4315])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_ufogen(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe.scheduler = UFOGenScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+        expected_slice = np.array([0.3260, 0.4523, 0.4684, 0.3544, 0.3981, 0.4635, 0.5140, 0.3425, 0.4062])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
