@@ -130,7 +130,10 @@ def rescale_zero_terminal_snr(betas):
 
 class UFOGenScheduler(SchedulerMixin, ConfigMixin):
     """
-    `UFOGenScheduler` explores the connections between denoising score matching and Langevin dynamics sampling.
+    `UFOGenScheduler` implements multistep and onestep sampling for a UFOGen model, introduced in
+    [UFOGen: You Forward Once Large Scale Text-to-Image Generation via Diffusion GANs](https://arxiv.org/abs/2311.09257)
+    by Yanwu Xu, Yang Zhao, Zhisheng Xiao, and Tingbo Hou. UFOGen is a varianet of the denoising diffusion GAN (DDGAN)
+    model designed for one-step sampling.
 
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
