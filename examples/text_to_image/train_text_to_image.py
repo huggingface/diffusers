@@ -1009,10 +1009,11 @@ def main():
                                 unet.module.save_pretrained(save_path)
                             except AttributeError:
                                 unet.save_pretrained(save_path)
+                            logger.info(f"Saved unet to {save_path}")
                         else:
                             accelerator.save_state(save_path)
+                            logger.info(f"Saved state to {save_path}")
                         
-                        logger.info(f"Saved state to {save_path}")
 
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
