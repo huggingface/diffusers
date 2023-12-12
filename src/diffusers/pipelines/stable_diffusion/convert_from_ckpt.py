@@ -1778,6 +1778,9 @@ def download_from_original_stable_diffusion_ckpt(
             ):
                 pipeline_kwargs.update({"requires_aesthetics_score": is_refiner})
 
+            if is_refiner:
+                pipeline_kwargs.update({"force_zeros_for_empty_prompt": False})
+
             pipe = pipeline_class(**pipeline_kwargs)
     else:
         text_config = create_ldm_bert_config(original_config)
