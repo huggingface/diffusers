@@ -1149,7 +1149,7 @@ def download_from_original_stable_diffusion_ckpt(
     adapter: Optional[bool] = None,
     load_safety_checker: bool = True,
     pipeline_class: DiffusionPipeline = None,
-    local_files_only: bool = False,
+    local_files_only=False,
     vae_path=None,
     vae=None,
     text_encoder=None,
@@ -1696,7 +1696,7 @@ def download_from_original_stable_diffusion_ckpt(
     elif model_type in ["SDXL", "SDXL-Refiner"]:
         is_refiner = model_type == "SDXL-Refiner"
 
-        if tokenizer is None:
+        if (is_refiner is False) and (tokenizer is None):
             try:
                 tokenizer = CLIPTokenizer.from_pretrained(
                     "openai/clip-vit-large-patch14", local_files_only=local_files_only
@@ -1705,7 +1705,8 @@ def download_from_original_stable_diffusion_ckpt(
                 raise ValueError(
                     f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: 'openai/clip-vit-large-patch14'."
                 )
-        if text_encoder is None:
+
+        if (is_refiner is False) and (text_encoder is None):
             text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
 
         if tokenizer_2 is None:
@@ -1762,29 +1763,22 @@ def download_from_original_stable_diffusion_ckpt(
             )
 
         else:
-            if pipeline_class == StableDiffusionXLImg2ImgPipeline:
-                pipe = pipeline_class(
-                    vae=vae,
-                    text_encoder=text_encoder,
-                    tokenizer=tokenizer,
-                    text_encoder_2=text_encoder_2,
-                    tokenizer_2=tokenizer_2,
-                    unet=unet,
-                    scheduler=scheduler,
-                    force_zeros_for_empty_prompt=False,
-                    requires_aesthetics_score=is_refiner,
-                )
-            else:
-                pipe = pipeline_class(
-                    vae=vae,
-                    text_encoder=text_encoder,
-                    tokenizer=tokenizer,
-                    text_encoder_2=text_encoder_2,
-                    tokenizer_2=tokenizer_2,
-                    unet=unet,
-                    scheduler=scheduler,
-                    force_zeros_for_empty_prompt=True,
-                )
+            pipeline_kwargs = {
+                "vae": vae,
+                "text_encoder": text_encoder,
+                "tokenizer": tokenizer,
+                "text_encoder_2": text_encoder_2,
+                "tokenizer_2": tokenizer_2,
+                "unet": unet,
+                "scheduler": scheduler,
+            }
+
+            if (pipeline_class == StableDiffusionXLImg2ImgPipeline) or (
+                pipeline_class == StableDiffusionXLInpaintPipeline
+            ):
+                pipeline_kwargs.update({"requires_aesthetics_score": is_refiner})
+
+            pipe = pipeline_class(**pipeline_kwargs)
     else:
         text_config = create_ldm_bert_config(original_config)
         text_model = convert_ldm_bert_checkpoint(checkpoint, text_config)
