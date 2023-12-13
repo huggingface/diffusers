@@ -24,16 +24,15 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
     logging,
-    replace_example_docstring,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -86,6 +85,7 @@ class InstaFlowPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoad
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
@@ -635,7 +635,7 @@ class InstaFlowPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoad
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare timesteps
-        timesteps = [(1. - i/num_inference_steps) * 1000. for i in range(num_inference_steps)]
+        timesteps = [(1.0 - i / num_inference_steps) * 1000.0 for i in range(num_inference_steps)]
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -651,7 +651,6 @@ class InstaFlowPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoad
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
         dt = 1.0 / num_inference_steps
 
         # 7. Denoising loop of Euler discretization from t = 0 to t = 1
@@ -660,16 +659,16 @@ class InstaFlowPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoad
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
 
-                vec_t = torch.ones((latent_model_input.shape[0],), device=latents.device) * t 
+                vec_t = torch.ones((latent_model_input.shape[0],), device=latents.device) * t
 
                 v_pred = self.unet(latent_model_input, vec_t, encoder_hidden_states=prompt_embeds).sample
 
-                # perform guidance 
+                # perform guidance
                 if do_classifier_free_guidance:
                     v_pred_neg, v_pred_text = v_pred.chunk(2)
                     v_pred = v_pred_neg + guidance_scale * (v_pred_text - v_pred_neg)
 
-                latents = latents + dt * v_pred 
+                latents = latents + dt * v_pred
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) % self.scheduler.order == 0):
@@ -677,8 +676,6 @@ class InstaFlowPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoad
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
-
-
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
