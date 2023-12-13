@@ -1864,14 +1864,14 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.enable_model_cpu_offload()
 
         images = pipe(
-            "masterpiece, best quality, mountain", output_type="pil", generator=generator, num_inference_steps=3
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=3
         ).images
         images_with_fusion = images.flatten()
 
         pipe.unfuse_lora()
         generator = torch.Generator("cpu").manual_seed(0)
         images = pipe(
-            "masterpiece, best quality, mountain", output_type="pil", generator=generator, num_inference_steps=3
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=3
         ).images
         images_without_fusion = images.flatten()
 
