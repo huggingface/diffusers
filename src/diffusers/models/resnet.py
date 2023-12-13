@@ -938,6 +938,7 @@ class ResnetBlock2D(nn.Module):
             )
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
+        print(f" output_tensor : {output_tensor.shape}, {output_tensor.abs().sum()}")
 
         return output_tensor
 
