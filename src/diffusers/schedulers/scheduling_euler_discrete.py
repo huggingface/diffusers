@@ -220,14 +220,14 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
 
         sigmas = sigmas[::-1].copy()
-        timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
 
         if self.use_karras_sigmas:
             log_sigmas = np.log(sigmas)
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_train_timesteps)
-            timesteps = [self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]
+            timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
         sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32)
+
         # setable values
         self.num_inference_steps = None
 
@@ -235,7 +235,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if timestep_type == "continuous" and prediction_type == "v_prediction":
             self.timesteps = torch.Tensor([0.25 * sigma.log() for sigma in sigmas])
         else:
-            self.timesteps = timesteps
+            self.timesteps = torch.from_numpy(timesteps.astype(np.float32))
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
 
