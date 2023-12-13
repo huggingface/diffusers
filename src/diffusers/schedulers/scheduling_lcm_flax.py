@@ -16,7 +16,6 @@ from .scheduling_utils_flax import (
     FlaxSchedulerOutput,
     add_noise_common,
     get_velocity_common,
-    betas_for_alpha_bar
 )
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -187,11 +186,24 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         dtype: jnp.dtype = jnp.float32,
 
     ):
+        self.num_train_timesteps = num_train_timesteps
+        self.beta_start = beta_start
+        self.beta_end = beta_end
+        self.beta_schedule = beta_schedule
+        self.trained_betas = trained_betas
+        self.original_inference_steps = original_inference_steps
         self.dtype = dtype
 
     def create_state(self, common: Optional[CommonSchedulerState] = None) -> LCMSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
+        
+        # if self.trained_betas is not None:
+        #     common.betas = jnp.array(self.trained_betas, dtype = jnp.float32)
+        # elif self.beta_schedule == "linear":
+        #     common.betas = jnp.linspace(self.beta_start, self.beta_end, num=self.num_train_timesteps, endpoint=False, dtype=jnp.float32)
+        # elif self.beta_schedule == "scaled_linar":
+        #     common.betas = jnp.linspace(self.beta_start**0.5, self.beta_end**0.5, num=self.num_train_timesteps, endpoint=False, dtype=jnp.float32) ** 2
 
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
@@ -203,7 +215,7 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         
         # Rescale for zero SNR
         if self.config.rescale_betas_zero_snr:
-            common.betas = rescale_zero_terminal_snr
+            common.betas = rescale_zero_terminal_snr(common.betas)
 
         # standard deviation of the initial noise distribution
         init_noise_sigma = jnp.array(1.0, dtype=self.dtype)
@@ -320,6 +332,8 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     def get_scalings_for_boundary_condition_discrete(self, timestep):
         self.sigma_data = 0.5  # Default: 0.5
+        jax.debug.print("get_scalings_for... , timestep: {x}",x=timestep)
+        jax.debug.print("get_scalings_for... , timestep_scaling: {x}",x=self.config.timestep_scaling)
         scaled_timestep = timestep * self.config.timestep_scaling
 
         c_skip = self.sigma_data**2 / (scaled_timestep**2 + self.sigma_data**2)
@@ -405,14 +419,10 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # 7. Sample and inject noise z ~ N(0, I) for MultiStep Inference
         # Noise is not used on the final timestep of the timestep schedule.
         # This also means that noise is not used for one-step sampling.
-        # TODO
-        # if self.step_index != self.num_inference_steps - 1:
-        #     noise = randn_tensor(
-        #         model_output.shape, generator=generator, device=model_output.device, dtype=denoised.dtype
-        #     )
-        #     prev_sample = alpha_prod_t_prev.sqrt() * denoised + beta_prod_t_prev.sqrt() * noise
-        # else:
-        prev_sample = denoised
+
+        prev_sample = jax.lax.select(step_index != state.num_inference_steps - 1, 
+                                     jnp.sqrt(alpha_prod_t_prev) * denoised + jnp.sqrt(beta_prod_t_prev) * jax.random.normal(jax.random.key(0), shape=model_output.shape, dtype=denoised.dtype) , 
+                                     denoised)
 
         # # upon completion increase step index by one
         jax.debug.print("step_index: {x}",x=step_index)
