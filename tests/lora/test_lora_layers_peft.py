@@ -1714,7 +1714,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdxl_1_0_lora(self):
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.enable_model_cpu_offload()
@@ -1737,7 +1737,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdxl"
 
@@ -1766,7 +1766,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.to("cuda")
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
         pipe.load_lora_weights(lora_model_id)
@@ -1798,7 +1798,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.png"
         )
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
         pipe.load_lora_weights(lora_model_id)
@@ -1866,7 +1866,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         images = pipe(
             "masterpiece, best quality, mountain", output_type="pil", generator=generator, num_inference_steps=3
         ).images
-        images[0].save("fused.png")
         images_with_fusion = images.flatten()
 
         pipe.unfuse_lora()
@@ -1874,7 +1873,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         images = pipe(
             "masterpiece, best quality, mountain", output_type="pil", generator=generator, num_inference_steps=3
         ).images
-        images[0].save("unfused.png")
         images_without_fusion = images.flatten()
 
         self.assertTrue(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
