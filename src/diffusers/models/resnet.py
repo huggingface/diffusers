@@ -929,9 +929,13 @@ class ResnetBlock2D(nn.Module):
                 hidden_states = hidden_states + temb
             hidden_states = self.norm2(hidden_states)
         elif self.time_embedding_norm == "scale_shift":
+            if temb is None:
+                raise ValueError(f" `temb` should not be None when `time_embedding_norm` is {self.time_embedding_norm}")
             scale, shift = torch.chunk(temb, 2, dim=1)
             hidden_states = self.norm2(hidden_states)
             hidden_states = hidden_states * (1 + scale) + shift
+        else:
+            hidden_states = self.norm2(hidden_states)
 
         hidden_states = self.nonlinearity(hidden_states)
         print(f" time_embedding_norm -> hidden_states: {hidden_states.shape}, {hidden_states.abs().sum()}")
