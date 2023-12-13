@@ -226,8 +226,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             log_sigmas = np.log(sigmas)
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_train_timesteps)
             timesteps = [self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]
-            
-        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32)    
+
+        sigmas = torch.from_numpy(sigmas).to(dtype=torch.float32)
         # setable values
         self.num_inference_steps = None
 
