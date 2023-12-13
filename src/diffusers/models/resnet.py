@@ -876,12 +876,9 @@ class ResnetBlock2D(nn.Module):
         scale: float = 1.0,
     ) -> torch.FloatTensor:
         hidden_states = input_tensor
-        print(f" ")
-        print(f" hidden_states: {hidden_states.shape}, {hidden_states.abs().sum()}")
 
         hidden_states = self.norm1(hidden_states)
         hidden_states = self.nonlinearity(hidden_states)
-        print(f" norm1 -> hidden_states: {hidden_states.shape}, {hidden_states.abs().sum()}")
 
         if self.upsample is not None:
             # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
@@ -909,7 +906,6 @@ class ResnetBlock2D(nn.Module):
                 if isinstance(self.downsample, Downsample2D)
                 else self.downsample(hidden_states)
             )
-        print(f" up/down -> hidden_states: {hidden_states.shape}, {hidden_states.abs().sum()}")
 
         hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
 
@@ -921,16 +917,16 @@ class ResnetBlock2D(nn.Module):
                 if not USE_PEFT_BACKEND
                 else self.time_emb_proj(temb)[:, :, None, None]
             )
-            print(f" temb: {temb.shape}, {temb.abs().sum()}")
-        
-        print(f" self.time_embedding_norm: {self.time_embedding_norm}")
+
         if self.time_embedding_norm == "default":
             if temb is not None:
                 hidden_states = hidden_states + temb
             hidden_states = self.norm2(hidden_states)
         elif self.time_embedding_norm == "scale_shift":
             if temb is None:
-                raise ValueError(f" `temb` should not be None when `time_embedding_norm` is {self.time_embedding_norm}")
+                raise ValueError(
+                    f" `temb` should not be None when `time_embedding_norm` is {self.time_embedding_norm}"
+                )
             scale, shift = torch.chunk(temb, 2, dim=1)
             hidden_states = self.norm2(hidden_states)
             hidden_states = hidden_states * (1 + scale) + shift
@@ -938,7 +934,6 @@ class ResnetBlock2D(nn.Module):
             hidden_states = self.norm2(hidden_states)
 
         hidden_states = self.nonlinearity(hidden_states)
-        print(f" time_embedding_norm -> hidden_states: {hidden_states.shape}, {hidden_states.abs().sum()}")
 
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
@@ -949,7 +944,6 @@ class ResnetBlock2D(nn.Module):
             )
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
-        print(f" output_tensor : {output_tensor.shape}, {output_tensor.abs().sum()}")
 
         return output_tensor
 
