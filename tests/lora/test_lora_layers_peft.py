@@ -1934,14 +1934,14 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
         pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.float16)
         pipe.fuse_lora()
+
         # We need to unload the lora weights since in the previous API `fuse_lora` led to lora weights being
         # silently deleted - otherwise this will CPU OOM
         pipe.unload_lora_weights()
-
         pipe.enable_model_cpu_offload()
 
-        start_time = time.time()
         generator = torch.Generator().manual_seed(0)
+        start_time = time.time()
         for _ in range(3):
             pipe(
                 "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2

@@ -2285,8 +2285,8 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
         start_time = time.time()
@@ -2299,13 +2299,13 @@ class LoraIntegrationTests(unittest.TestCase):
 
         del pipe
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.float16)
         pipe.fuse_lora()
         pipe.enable_model_cpu_offload()
 
-        start_time = time.time()
         generator = torch.Generator().manual_seed(0)
+        start_time = time.time()
         for _ in range(3):
             pipe(
                 "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
