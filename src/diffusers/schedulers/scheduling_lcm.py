@@ -250,7 +250,6 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self.custom_timesteps = False
 
         self._step_index = None
-        self.sigmas.to('cpu') # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
@@ -463,7 +462,6 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.long)
 
         self._step_index = None
-        self.sigmas.to('cpu') # to avoid too much CPU/GPU communication
 
     def get_scalings_for_boundary_condition_discrete(self, timestep):
         self.sigma_data = 0.5  # Default: 0.5

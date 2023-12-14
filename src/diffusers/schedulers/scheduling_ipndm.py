@@ -56,7 +56,6 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
         # running values
         self.ets = []
         self._step_index = None
-        self.sigmas.to('cpu') # to avoid too much CPU/GPU communication
 
     @property
     def step_index(self):
@@ -91,7 +90,6 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
 
         self.ets = []
         self._step_index = None
-        self.sigmas.to('cpu') # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
