@@ -23,11 +23,11 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_pt_objects))
 else:
-    _import_structure["repaint"] = ["RePaintPipeline"]
     _import_structure["latent_diffusion_uncond"] = ["LDMPipeline"]
+    _import_structure["pndm"] = ["PNDMPipeline"]
+    _import_structure["repaint"] = ["RePaintPipeline"]
     _import_structure["score_sde_ve"] = ["ScoreSdeVePipeline"]
     _import_structure["stochastic_karras_ve"] = ["KarrasVePipeline"]
-    _import_structure["pndm"] = ["PNDMPipeline"]
 
 try:
     if not (is_transformers_available() and is_torch_available()):
@@ -62,6 +62,7 @@ try:
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils import dummy_torch_and_librosa_objects  # noqa F403
+
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_librosa_objects))
 
 else:
@@ -72,14 +73,14 @@ try:
         raise OptionalDependencyNotAvailable()
 except OptionalDependencyNotAvailable:
     from ...utils import dummy_transformers_and_torch_and_note_seq_objects  # noqa F403
+
     _dummy_objects.update(get_objects_from_module(dummy_transformers_and_torch_and_note_seq_objects))
 
 else:
-    _import_structure["spectrogram_diffusion"] = ["SpectrogramDiffusionPipeline", "MidiProcessor"]
+    _import_structure["spectrogram_diffusion"] = ["MidiProcessor", "SpectrogramDiffusionPipeline"]
 
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
-
     try:
         if not is_torch_available():
             raise OptionalDependencyNotAvailable()

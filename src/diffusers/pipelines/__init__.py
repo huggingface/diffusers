@@ -20,10 +20,10 @@ _dummy_objects = {}
 _import_structure = {
     "controlnet": [],
     "controlnet_xs": [],
+    "deprecated": [],
     "latent_diffusion": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
-    "deprecated": [],
 }
 
 try:
@@ -50,13 +50,15 @@ else:
         "DiffusionPipeline",
         "ImagePipelineOutput",
     ]
-    _import_structure["deprecated"].extend([
-        "PNDMPipeline",
-        "LDMPipeline",
-        "RePaintPipeline",
-        "ScoreSdeVePipeline",
-        "KarrasVePipeline",
-    ])
+    _import_structure["deprecated"].extend(
+        [
+            "PNDMPipeline",
+            "LDMPipeline",
+            "RePaintPipeline",
+            "ScoreSdeVePipeline",
+            "KarrasVePipeline",
+        ]
+    )
 try:
     if not (is_torch_available() and is_librosa_available()):
         raise OptionalDependencyNotAvailable()
@@ -74,21 +76,23 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["deprecated"].extend([
-        "VQDiffusionPipeline",
-        "AltDiffusionPipeline",
-        "AltDiffusionImg2ImgPipeline",
-        "CycleDiffusionPipeline",
-        "StableDiffusionInpaintPipelineLegacy",
-        "StableDiffusionPix2PixZeroPipeline",
-        "StableDiffusionParadigmsPipeline",
-        "StableDiffusionModelEditingPipeline",
-        "SpectrogramDiffusionPipeline",
-        "VersatileDiffusionDualGuidedPipeline",
-        "VersatileDiffusionImageVariationPipeline",
-        "VersatileDiffusionPipeline",
-        "VersatileDiffusionTextToImagePipeline",
-    ])
+    _import_structure["deprecated"].extend(
+        [
+            "VQDiffusionPipeline",
+            "AltDiffusionPipeline",
+            "AltDiffusionImg2ImgPipeline",
+            "CycleDiffusionPipeline",
+            "StableDiffusionInpaintPipelineLegacy",
+            "StableDiffusionPix2PixZeroPipeline",
+            "StableDiffusionParadigmsPipeline",
+            "StableDiffusionModelEditingPipeline",
+            "SpectrogramDiffusionPipeline",
+            "VersatileDiffusionDualGuidedPipeline",
+            "VersatileDiffusionImageVariationPipeline",
+            "VersatileDiffusionPipeline",
+            "VersatileDiffusionTextToImagePipeline",
+        ]
+    )
     _import_structure["animatediff"] = ["AnimateDiffPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
