@@ -1083,7 +1083,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
 
-        is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
         # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
         is_adapter = down_intrablock_additional_residuals is not None
         # maintain backward compatibility for legacy usage, where
@@ -1125,7 +1124,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
             down_block_res_samples += res_samples
 
-        if is_controlnet:
+        if down_block_additional_residuals is not None:
             new_down_block_res_samples = ()
 
             for down_block_res_sample, down_block_additional_residual in zip(
@@ -1158,7 +1157,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             ):
                 sample += down_intrablock_additional_residuals.pop(0)
 
-        if is_controlnet:
+        if mid_block_additional_residual is not None:
             sample = sample + mid_block_additional_residual
 
         # 5. up
