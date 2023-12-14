@@ -1144,7 +1144,7 @@ def main(args):
     if accelerator.is_main_process:
         controlnet = accelerator.unwrap_model(controlnet)
         if args.train_base:
-            unet = accelerate.unwrap_model(unet)
+            unet = accelerator.unwrap_model(unet)
             unet.save_pretrained(args.output_dir + '/unet')  # todo umer: soft code
             controlnet.save_pretrained(args.output_dir + '/controlnet')
         else:
