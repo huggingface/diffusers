@@ -583,7 +583,7 @@ class KUpsample2D(nn.Module):
 
 class ResnetBlockCondNorm2D(nn.Module):
     r"""
-    A Resnet block.
+    A Resnet block that use normalization layer that incorporate conditioning information.
 
     Parameters:
         in_channels (`int`): The number of channels in the input.
@@ -596,9 +596,8 @@ class ResnetBlockCondNorm2D(nn.Module):
             The number of groups to use for the second normalization layer. if set to None, same as `groups`.
         eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
         non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
-        time_embedding_norm (`str`, *optional*, default to `"default"` ): Time scale shift config.
-            By default, apply timestep embedding conditioning with a simple shift mechanism. Choose "scale_shift" or
-            "ada_group" for a stronger conditioning with scale and shift.
+        time_embedding_norm (`str`, *optional*, default to `"ada_group"` ):
+            The normalization layer for time embedding `temb`. Currently only support "ada_group" or "spatial".
         kernel (`torch.FloatTensor`, optional, default to None): FIR filter, see
             [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
         output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
@@ -658,7 +657,7 @@ class ResnetBlockCondNorm2D(nn.Module):
 
         if self.time_embedding_norm == "ada_group":  # ada_group
             self.norm2 = AdaGroupNorm(temb_channels, out_channels, groups_out, eps=eps)
-        elif self.time_embedding_norm == "spatial":
+        elif self.time_embedding_norm == "spatial":  # spatial
             self.norm2 = SpatialNorm(out_channels, temb_channels)
         else:
             raise ValueError(f" unsupported time_embedding_norm: {self.time_embedding_norm}")
@@ -748,8 +747,8 @@ class ResnetBlock2D(nn.Module):
         eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
         non_linearity (`str`, *optional*, default to `"swish"`): the activation function to use.
         time_embedding_norm (`str`, *optional*, default to `"default"` ): Time scale shift config.
-            By default, apply timestep embedding conditioning with a simple shift mechanism. Choose "scale_shift" or
-            "ada_group" for a stronger conditioning with scale and shift.
+            By default, apply timestep embedding conditioning with a simple shift mechanism. Choose "scale_shift"
+            for a stronger conditioning with scale and shift.
         kernel (`torch.FloatTensor`, optional, default to None): FIR filter, see
             [`~models.resnet.FirUpsample2D`] and [`~models.resnet.FirDownsample2D`].
         output_scale_factor (`float`, *optional*, default to be `1.0`): the scale factor to use for the output.
