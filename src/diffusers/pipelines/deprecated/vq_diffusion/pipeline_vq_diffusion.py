@@ -69,6 +69,7 @@ class VQDiffusionPipeline(DiffusionPipeline):
         scheduler ([`VQDiffusionScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
+
     deprecate("VQDiffusionPipeline", "1.0.0", "")
 
     vqvae: VQModel

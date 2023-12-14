@@ -310,6 +310,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             Whether the pipeline requires a safety checker. We recommend setting it to True if you're using the
             pipeline publicly.
     """
+
     deprecate("StableDiffusionPix2PixZeroPipeline", "1.0.0", "")
 
     model_cpu_offload_seq = "text_encoder->unet->vae"

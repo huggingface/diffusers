@@ -43,6 +43,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+
     deprecate("VersatileDiffusionPipeline", "1.0.0", "")
 
     tokenizer: CLIPTokenizer

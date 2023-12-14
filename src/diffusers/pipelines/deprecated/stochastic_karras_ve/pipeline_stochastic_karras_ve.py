@@ -33,6 +33,7 @@ class KarrasVePipeline(DiffusionPipeline):
         scheduler ([`KarrasVeScheduler`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image.
     """
+
     deprecate("KarrasVePipeline", "1.0.0", "")
 
     # add type hints for linting

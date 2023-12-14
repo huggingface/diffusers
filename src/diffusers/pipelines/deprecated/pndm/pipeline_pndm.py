@@ -37,6 +37,7 @@ class PNDMPipeline(DiffusionPipeline):
         scheduler ([`PNDMScheduler`]):
             A `PNDMScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
+
     deprecate("PNDMPipeline", "1.0.0", "")
 
     unet: UNet2DModel

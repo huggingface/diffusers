@@ -115,6 +115,7 @@ class StableDiffusionInpaintPipelineLegacy(
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+
     deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", "")
 
     model_cpu_offload_seq = "text_encoder->unet->vae"

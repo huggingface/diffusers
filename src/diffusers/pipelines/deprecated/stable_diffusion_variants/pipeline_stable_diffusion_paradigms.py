@@ -96,6 +96,7 @@ class StableDiffusionParadigmsPipeline(
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+
     deprecate("StableDiffusionParadigmsPipeline", "1.0.0", "")
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
