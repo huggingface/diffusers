@@ -27,10 +27,10 @@ from diffusers import (
     ControlNetModel,
     DDIMScheduler,
     EulerDiscreteScheduler,
-    StableDiffusionControlNetPipeline,
+    StableDiffusionUniControlPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
+
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -67,9 +67,9 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     try:
         _ = in_queue.get(timeout=timeout)
 
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
+        controlnet = ControlNetModel.from_pretrained("NagaSaiAbhinay/unicontrol-v1.1-test")
 
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        pipe = StableDiffusionUniControlPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe.to("cuda")
@@ -83,11 +83,12 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "bird"
+        task = "canny"
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         ).resize((512, 512))
 
-        output = pipe(prompt, image, num_inference_steps=10, generator=generator, output_type="np")
+        output = pipe(task, prompt, image, num_inference_steps=10, generator=generator, output_type="np")
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
@@ -110,7 +111,7 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
 class ControlNetPipelineFastTests(
     PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
-    pipeline_class = StableDiffusionControlNetPipeline
+    pipeline_class = StableDiffusionUniControlPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
@@ -138,6 +139,7 @@ class ControlNetPipelineFastTests(
             cross_attention_dim=32,
             conditioning_embedding_out_channels=(16, 32),
             norm_num_groups=1,
+            controlnet_conditioning_embedding = "UniControlTaskMOEEmbedding"
         )
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
@@ -198,6 +200,7 @@ class ControlNetPipelineFastTests(
         )
 
         inputs = {
+            "task" : "canny",
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
             "num_inference_steps": 2,
@@ -225,56 +228,33 @@ class ControlNetPipelineFastTests(
 @slow
 @require_torch_gpu
 class ControlNetPipelineSlowTests(unittest.TestCase):
+
+    controlnet = None
+    pipe = None
+    
+    def setUp(self) -> None:
+        super().setUp()
+        self.controlnet = ControlNetModel.from_pretrained("NagaSaiAbhinay/unicontrol-v1.1-test", subfolder='controlnet')
+        self.pipe = StableDiffusionUniControlPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=self.controlnet
+        )
+        self.pipe.enable_model_cpu_offload()
+        self.pipe.set_progress_bar_config(disable=None)
+    
     def tearDown(self):
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
-#canny
-    def test_canny(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "bird"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-        )
-
-        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
-
-        image = output.images[0]
-
-        assert image.shape == (768, 512, 3)
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out.npy"
-        )
-
-        assert np.abs(expected_image - image).max() < 9e-2
-
-#depth
-    def test_depth(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth")
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
+    def test_hed(self):
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "Stormtrooper's lecture"
+        task = "hed"
         image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
@@ -286,173 +266,245 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
         assert np.abs(expected_image - image).max() < 8e-1
 
-#hed
-    def test_hed(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-hed")
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
+    def test_canny(self):
         generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "oil painting of handsome old man, masterpiece"
+        prompt = "bird"
+        task = "canny"
         image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/man_hed.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
-
-        image = output.images[0]
-
-        assert image.shape == (704, 512, 3)
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/man_hed_out.npy"
-        )
-
-        assert np.abs(expected_image - image).max() < 8e-2
-
-#segbase
-    def test_mlsd(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-mlsd")
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "room"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/room_mlsd.png"
-        )
-
-        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
-
-        image = output.images[0]
-
-        assert image.shape == (704, 512, 3)
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/room_mlsd_out.npy"
-        )
-
-        assert np.abs(expected_image - image).max() < 5e-2
-
-#normal
-    def test_normal(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-normal")
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "cute toy"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/cute_toy_normal.png"
-        )
-
-        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
-
-        image = output.images[0]
-
-        assert image.shape == (512, 512, 3)
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/cute_toy_normal_out.npy"
-        )
-
-        assert np.abs(expected_image - image).max() < 5e-2
-
-#openpose
-    def test_openpose(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose")
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "Chef in the kitchen"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png"
-        )
-
-        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
         assert image.shape == (768, 512, 3)
 
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/chef_pose_out.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 8e-2
+        assert np.abs(expected_image - image).max() < 9e-2
 
-#sketch
-    def test_scribble(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-scribble")
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(5)
-        prompt = "bag"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bag_scribble.png"
-        )
-
-        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
-
-        image = output.images[0]
-
-        assert image.shape == (640, 512, 3)
-
-        expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bag_scribble_out.npy"
-        )
-
-        assert np.abs(expected_image - image).max() < 8e-2
-
-#seg
     def test_seg(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-seg")
-
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(5)
-        prompt = "house"
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "seg"
         image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/house_seg.png"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
         )
 
-        output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
         assert image.shape == (512, 512, 3)
 
         expected_image = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/house_seg_out.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
         )
 
-        assert np.abs(expected_image - image).max() < 8e-2
+        assert np.abs(expected_image - image).max() < 8e-1
+
+    def test_segbase(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "segbase"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
+
+    def test_depth(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "normal"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
+
+    def test_normal(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "normal"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
+
+    def test_openpose(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "openpose"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
+
+    def test_bbox(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "bbox"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
+
+    def test_grayscale(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "grayscale"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
+    
+    def test_outpainting(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "outpainting"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
+
+    def test_sketch(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "hedsketch"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
+    
+    def test_inpainting(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "inpainting"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
+
+    def test_blur(self):
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        task = "blur"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+
+        output = self.pipe(task, prompt, image, generator=generator, output_type="np", num_inference_steps=3)
+
+        image = output.images[0]
+
+        assert image.shape == (512, 512, 3)
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth_out.npy"
+        )
+
+        assert np.abs(expected_image - image).max() < 8e-1
 
     def test_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
@@ -485,7 +537,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         assert mem_bytes < 4 * 10**9
 
     def test_canny_guess_mode(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
+        controlnet = ControlNetModel.from_pretrained("NagaSaiAbhinay/unicontrol-v1.1-test")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -517,7 +569,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
     def test_canny_guess_mode_euler(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
+        controlnet = ControlNetModel.from_pretrained("NagaSaiAbhinay/unicontrol-v1.1-test")
 
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
@@ -585,63 +637,27 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.1338, 0.1597, 0.1202, 0.1687, 0.1377, 0.1017, 0.2070, 0.1574, 0.1348])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_load_local(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
-        pipe_1 = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
-        )
-
-        controlnet = ControlNetModel.from_single_file(
-            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
-        )
-        pipe_2 = StableDiffusionControlNetPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
-            safety_checker=None,
-            controlnet=controlnet,
-        )
-        pipes = [pipe_1, pipe_2]
-        images = []
-
-        for pipe in pipes:
-            pipe.enable_model_cpu_offload()
-            pipe.set_progress_bar_config(disable=None)
-
-            generator = torch.Generator(device="cpu").manual_seed(0)
-            prompt = "bird"
-            image = load_image(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-            )
-
-            output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
-            images.append(output.images[0])
-
-            del pipe
-            gc.collect()
-            torch.cuda.empty_cache()
-
-        assert np.abs(images[0] - images[1]).max() < 1e-3
-
 
 @slow
 @require_torch_gpu
-class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
+class StableDiffusionMultiTaskUniControlPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
 
     def test_pose_and_canny(self):
-        controlnet_canny = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
-        controlnet_pose = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-openpose")
+        controlnet = ControlNetModel.from_pretrained("NagaSaiAbhinay/unicontrol-v1.1-test")
 
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=[controlnet_pose, controlnet_canny]
+        pipe = StableDiffusionUniControlPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "bird and Chef"
+        task = ["pose", "canny"]
         image_canny = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         )
@@ -649,7 +665,7 @@ class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/pose.png"
         )
 
-        output = pipe(prompt, [image_pose, image_canny], generator=generator, output_type="np", num_inference_steps=3)
+        output = pipe(task, prompt, [image_pose, image_canny], generator=generator, output_type="np", num_inference_steps=3)
 
         image = output.images[0]
 
