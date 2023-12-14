@@ -254,7 +254,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
             # compute the previous noisy sample x_t -> x_t-1
-            latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents).to_tuple()
+            latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents, prng_seed).to_tuple()
             return latents, scheduler_state
 
         if DEBUG:

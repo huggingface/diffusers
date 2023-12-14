@@ -234,6 +234,7 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
     
     def _init_step_index(self, state, timestep):
+        print("init step index")
         (step_index,) = jnp.where(state.timesteps == timestep, size=2)
         step_index = jax.lax.select(len(step_index) > 1, step_index[1], step_index[0])
         return step_index
@@ -346,7 +347,7 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
-        #generator: Optional[torch.Generator] = None,
+        key: Optional[jax.Array] = None,
         return_dict: bool = True,
     ) -> Union[FlaxLCMSchedulerOutput, Tuple]:
         """
@@ -380,7 +381,7 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # 1. get previous step value        
         prev_step_index = step_index + 1
         prev_timestep = jax.lax.select(prev_step_index < len(state.timesteps), state.timesteps[prev_step_index], timestep)
-
+        jax.debug.print("prev_timestep: {x}", x=prev_timestep)
         # 2. compute alphas, betas
         jax.debug.print("timestep: {x}",x=timestep)
         alpha_prod_t = state.common.alphas_cumprod[timestep]
@@ -420,17 +421,24 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # Noise is not used on the final timestep of the timestep schedule.
         # This also means that noise is not used for one-step sampling.
 
+        jax.debug.print("**step_index: {x}",x=step_index)
+        jax.debug.print("**state.step_index: {x}",x=state.step_index)
+
+        def get_noise(key, shape, dtype):
+            jax.debug.print("---------------get_noise")
+            return jax.random.normal(key, shape=shape, dtype=dtype)
+        jax.debug.print("state.num_inference_steps - 1: {x}", x=state.num_inference_steps-1)
+        print(step_index != state.num_inference_steps - 1)
         prev_sample = jax.lax.select(step_index != state.num_inference_steps - 1, 
-                                     jnp.sqrt(alpha_prod_t_prev) * denoised + jnp.sqrt(beta_prod_t_prev) * jax.random.normal(jax.random.key(0), shape=model_output.shape, dtype=denoised.dtype) , 
+                                     jnp.sqrt(alpha_prod_t_prev) * denoised + jnp.sqrt(beta_prod_t_prev) * get_noise(key, model_output.shape, denoised.dtype) , 
                                      denoised)
+        jax.debug.print("prev_sample == denoised {x} : ", x=(prev_sample == denoised))
 
         # # upon completion increase step index by one
-        jax.debug.print("step_index: {x}",x=step_index)
-        jax.debug.print("state.step_index: {x}",x=state.step_index)
         state = state.replace(
             step_index=step_index + 1
         )
-        jax.debug.print("state.step_index next: {x}",x=state.step_index)
+        # jax.debug.print("state.step_index next: {x}",x=state.step_index)
 
         if not return_dict:
             return (prev_sample, state)
@@ -445,8 +453,6 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         noise: jnp.ndarray,
         timesteps: jnp.ndarray,
     ) -> jnp.ndarray:
-        jax.debug.print("add noise!!!!!!!!!!!!!!!!!!!!!!!")
-        print("add noise!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
         return add_noise_common(state.common, original_samples, noise, timesteps)
 
 
