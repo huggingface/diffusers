@@ -2010,88 +2010,87 @@ def main(args):
             text_encoder_lora_layers=text_encoder_lora_layers,
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
-        images = []
-        if args.validation_prompt and args.num_validation_images > 0:
-            # Final inference
-            # Load previous pipeline
-            vae = AutoencoderKL.from_pretrained(
-                vae_path,
-                subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
-                revision=args.revision,
-                variant=args.variant,
-                torch_dtype=weight_dtype,
-            )
-            pipeline = StableDiffusionXLPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                vae=vae,
-                revision=args.revision,
-                variant=args.variant,
-                torch_dtype=weight_dtype,
-            )
-
-            # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
-            scheduler_args = {}
-
-            if "variance_type" in pipeline.scheduler.config:
-                variance_type = pipeline.scheduler.config.variance_type
-
-                if variance_type in ["learned", "learned_range"]:
-                    variance_type = "fixed_small"
-
-                scheduler_args["variance_type"] = variance_type
-
-            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-
-            # load attention processors
-            pipeline.load_lora_weights(args.output_dir)
-
-            # run inference
-            pipeline = pipeline.to(accelerator.device)
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            images = [
-                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
-                for _ in range(args.num_validation_images)
-            ]
-
-            for tracker in accelerator.trackers:
-                if tracker.name == "tensorboard":
-                    np_images = np.stack([np.asarray(img) for img in images])
-                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
-                if tracker.name == "wandb":
-                    tracker.log(
-                        {
-                            "test": [
-                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                for i, image in enumerate(images)
-                            ]
-                        }
-                    )
-
-        if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(
-                f"{args.output_dir}/embeddings.safetensors",
-            )
-        save_model_card(
-            model_id if not args.push_to_hub else repo_id,
-            images=images,
-            base_model=args.pretrained_model_name_or_path,
-            train_text_encoder=args.train_text_encoder,
-            train_text_encoder_ti=args.train_text_encoder_ti,
-            token_abstraction_dict=train_dataset.token_abstraction_dict,
-            instance_prompt=args.instance_prompt,
-            validation_prompt=args.validation_prompt,
-            repo_folder=args.output_dir,
-            vae_path=args.pretrained_vae_model_name_or_path,
-        )
-        if args.push_to_hub:
-            upload_folder(
-                repo_id=repo_id,
-                folder_path=args.output_dir,
-                commit_message="End of training",
-                ignore_patterns=["step_*", "epoch_*"],
-            )
-
     accelerator.end_training()
+    images = []
+    if args.validation_prompt and args.num_validation_images > 0:
+        # Final inference
+        # Load previous pipeline
+        vae = AutoencoderKL.from_pretrained(
+            vae_path,
+            subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
+        )
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            vae=vae,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
+        )
+    
+        # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
+        scheduler_args = {}
+    
+        if "variance_type" in pipeline.scheduler.config:
+            variance_type = pipeline.scheduler.config.variance_type
+    
+            if variance_type in ["learned", "learned_range"]:
+                variance_type = "fixed_small"
+    
+            scheduler_args["variance_type"] = variance_type
+    
+        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+    
+        # load attention processors
+        pipeline.load_lora_weights(args.output_dir)
+    
+        # run inference
+        pipeline = pipeline.to(accelerator.device)
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+        images = [
+            pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
+            for _ in range(args.num_validation_images)
+        ]
+    
+        for tracker in accelerator.trackers:
+            if tracker.name == "tensorboard":
+                np_images = np.stack([np.asarray(img) for img in images])
+                tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
+            if tracker.name == "wandb":
+                tracker.log(
+                    {
+                        "test": [
+                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                            for i, image in enumerate(images)
+                        ]
+                    }
+                )
+    
+    if args.train_text_encoder_ti:
+        embedding_handler.save_embeddings(
+            f"{args.output_dir}/embeddings.safetensors",
+        )
+    save_model_card(
+        model_id if not args.push_to_hub else repo_id,
+        images=images,
+        base_model=args.pretrained_model_name_or_path,
+        train_text_encoder=args.train_text_encoder,
+        train_text_encoder_ti=args.train_text_encoder_ti,
+        token_abstraction_dict=train_dataset.token_abstraction_dict,
+        instance_prompt=args.instance_prompt,
+        validation_prompt=args.validation_prompt,
+        repo_folder=args.output_dir,
+        vae_path=args.pretrained_vae_model_name_or_path,
+    )
+    if args.push_to_hub:
+        upload_folder(
+            repo_id=repo_id,
+            folder_path=args.output_dir,
+            commit_message="End of training",
+            ignore_patterns=["step_*", "epoch_*"],
+        )
 
 
 if __name__ == "__main__":
