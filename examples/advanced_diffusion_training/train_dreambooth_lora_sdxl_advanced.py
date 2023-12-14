@@ -112,7 +112,7 @@ def save_model_card(
     repo_folder=None,
     vae_path=None,
 ):
-    img_str = "widget:\n" if images else ""
+    img_str = "widget:\n"
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"""
@@ -120,6 +120,10 @@ def save_model_card(
           output:
             url:
                 "image_{i}.png"
+        """
+    if not images:
+        img_str += f"""
+        - text: '{instance_prompt}'
         """
 
     trigger_str = f"You should use {instance_prompt} to trigger the image generation."
@@ -157,8 +161,6 @@ tags:
 base_model: {base_model}
 instance_prompt: {instance_prompt}
 license: openrail++
-widget:
-    - text: '{validation_prompt if validation_prompt else instance_prompt}'
 ---
 """
 
