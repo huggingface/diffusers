@@ -22,6 +22,7 @@ from PIL import Image
 
 from ....models import AutoencoderKL, UNet2DConditionModel
 from ....schedulers import DDIMScheduler, DDPMScheduler
+from ....utils import deprecate
 from ....utils.torch_utils import randn_tensor
 from ...pipeline_utils import AudioPipelineOutput, BaseOutput, DiffusionPipeline, ImagePipelineOutput
 from .mel import Mel
@@ -45,7 +46,7 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`] or [`DDPMScheduler`].
     """
-
+    deprecate("AudioDiffusionPipeline", "1.0.0", "")
     _optional_components = ["vqvae"]
 
     def __init__(

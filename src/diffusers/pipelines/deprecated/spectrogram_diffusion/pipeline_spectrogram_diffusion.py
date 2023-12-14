@@ -21,7 +21,7 @@ import torch
 
 from ....models import T5FilmDecoder
 from ....schedulers import DDPMScheduler
-from ....utils import is_onnx_available, logging
+from ....utils import deprecate, is_onnx_available, logging
 from ....utils.torch_utils import randn_tensor
 
 
@@ -54,6 +54,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `decoder` to denoise the encoded audio latents.
         melgan ([`OnnxRuntimeModel`]):
     """
+    deprecate("SpectrogramDiffusionPipeline", "1.0.0", "")
 
     _optional_components = ["melgan"]
 

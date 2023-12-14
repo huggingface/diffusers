@@ -7,7 +7,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 
 from ....models import AutoencoderKL, UNet2DConditionModel
 from ....schedulers import KarrasDiffusionSchedulers
-from ....utils import logging
+from ....utils import deprecate, logging
 from ...pipeline_utils import DiffusionPipeline
 from .pipeline_versatile_diffusion_dual_guided import VersatileDiffusionDualGuidedPipeline
 from .pipeline_versatile_diffusion_image_variation import VersatileDiffusionImageVariationPipeline
@@ -43,6 +43,7 @@ class VersatileDiffusionPipeline(DiffusionPipeline):
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
+    deprecate("VersatileDiffusionPipeline", "1.0.0", "")
 
     tokenizer: CLIPTokenizer
     image_feature_extractor: CLIPImageProcessor

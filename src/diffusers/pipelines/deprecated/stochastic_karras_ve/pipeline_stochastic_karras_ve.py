@@ -18,6 +18,7 @@ import torch
 
 from ....models import UNet2DModel
 from ....schedulers import KarrasVeScheduler
+from ....utils import deprecate
 from ....utils.torch_utils import randn_tensor
 from ...pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
@@ -32,6 +33,7 @@ class KarrasVePipeline(DiffusionPipeline):
         scheduler ([`KarrasVeScheduler`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image.
     """
+    deprecate("KarrasVePipeline", "1.0.0", "")
 
     # add type hints for linting
     unet: UNet2DModel

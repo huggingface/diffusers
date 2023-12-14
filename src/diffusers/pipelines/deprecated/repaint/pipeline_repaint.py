@@ -86,6 +86,7 @@ class RePaintPipeline(DiffusionPipeline):
         scheduler ([`RePaintScheduler`]):
             A `RePaintScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
+    deprecate("RePaintPipeline", "1.0.0", "")
 
     unet: UNet2DModel
     scheduler: RePaintScheduler
