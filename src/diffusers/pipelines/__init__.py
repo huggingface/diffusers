@@ -68,6 +68,22 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_librosa_objects))
 else:
     _import_structure["deprecated"].extend(["AudioDiffusionPipeline", "Mel"])
+
+try:
+    if not (is_transformers_available() and is_torch_available() and is_note_seq_available()):
+        raise OptionalDependencyNotAvailable()
+except OptionalDependencyNotAvailable:
+    from ..utils import dummy_transformers_and_torch_and_note_seq_objects  # noqa F403
+
+    _dummy_objects.update(get_objects_from_module(dummy_transformers_and_torch_and_note_seq_objects))
+else:
+    _import_structure["deprecated"].extend(
+        [
+            "MidiProcessor",
+            "SpectrogramDiffusionPipeline",
+        ]
+    )
+
 try:
     if not (is_torch_available() and is_transformers_available()):
         raise OptionalDependencyNotAvailable()
@@ -86,7 +102,6 @@ else:
             "StableDiffusionPix2PixZeroPipeline",
             "StableDiffusionParadigmsPipeline",
             "StableDiffusionModelEditingPipeline",
-            "SpectrogramDiffusionPipeline",
             "VersatileDiffusionDualGuidedPipeline",
             "VersatileDiffusionImageVariationPipeline",
             "VersatileDiffusionPipeline",
