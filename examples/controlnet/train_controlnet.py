@@ -19,8 +19,8 @@ import math
 import os
 import random
 import shutil
-from pathlib import Path
 from itertools import chain
+from pathlib import Path
 
 import accelerate
 import numpy as np
@@ -546,15 +546,29 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--only_mid_control",
         action="store_true",
-        help=(
-            "Whether to only infuse information into the mid block of the base model, and not the up blocks."
-        ),
+        help=("Whether to only infuse information into the mid block of the base model, and not the up blocks."),
     )
     parser.add_argument(
         "--train_base",
         action="store_true",
         help=(
             "Whether to unfreeze and also train the base model. By default, the base model is frozen and only the control model is trained."
+        ),
+    )
+    parser.add_argument(
+        "--output_subdir_unet",
+        type=str,
+        default="unet",
+        help=(
+            "Subdirectory of --output_dir to which the unet model will be saved. Only relevant when --train_base is set."
+        ),
+    )
+    parser.add_argument(
+        "--output_subdir_controlnet",
+        type=str,
+        default="controlnet",
+        help=(
+            "Subdirectory of --output_dir to which the controlnet  will be saved. Only relevant when --train_base is set, as otherwise the model be save into --output_dir."
         ),
     )
 
@@ -1082,7 +1096,10 @@ def main(args):
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    params_to_clip = controlnet.parameters()
+                    if args.train_base:
+                        params_to_clip = chain(controlnet.parameters(), unet.parameters())
+                    else:
+                        params_to_clip = controlnet.parameters()
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
@@ -1144,9 +1161,11 @@ def main(args):
     if accelerator.is_main_process:
         controlnet = accelerator.unwrap_model(controlnet)
         if args.train_base:
+            unet_path = os.path.join(args.output_dir, args.output_subdir_unet)
+            controlnet_path = os.path.join(args.output_dir, args.output_subdir_controlnet)
             unet = accelerator.unwrap_model(unet)
-            unet.save_pretrained(args.output_dir + '/unet')  # todo umer: soft code
-            controlnet.save_pretrained(args.output_dir + '/controlnet')
+            unet.save_pretrained(unet_path)
+            controlnet.save_pretrained(controlnet_path)
         else:
             controlnet.save_pretrained(args.output_dir)
 

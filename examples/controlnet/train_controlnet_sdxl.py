@@ -21,6 +21,7 @@ import math
 import os
 import random
 import shutil
+from itertools import chain
 from pathlib import Path
 
 import accelerate
@@ -553,6 +554,34 @@ def parse_args(input_args=None):
             " more information see https://huggingface.co/docs/accelerate/v0.17.0/en/package_reference/accelerator#accelerate.Accelerator"
         ),
     )
+    parser.add_argument(
+        "--only_mid_control",
+        action="store_true",
+        help=("Whether to only infuse information into the mid block of the base model, and not the up blocks."),
+    )
+    parser.add_argument(
+        "--train_base",
+        action="store_true",
+        help=(
+            "Whether to unfreeze and also train the base model. By default, the base model is frozen and only the control model is trained."
+        ),
+    )
+    parser.add_argument(
+        "--output_subdir_unet",
+        type=str,
+        default="unet",
+        help=(
+            "Subdirectory of --output_dir to which the unet model will be saved. Only relevant when --train_base is set."
+        ),
+    )
+    parser.add_argument(
+        "--output_subdir_controlnet",
+        type=str,
+        default="controlnet",
+        help=(
+            "Subdirectory of --output_dir to which the controlnet  will be saved. Only relevant when --train_base is set, as otherwise the model be save into --output_dir."
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -879,7 +908,10 @@ def main(args):
         accelerator.register_load_state_pre_hook(load_model_hook)
 
     vae.requires_grad_(False)
-    unet.requires_grad_(False)
+    if args.train_base:
+        unet.train()
+    else:
+        unet.requires_grad_(False)
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
     controlnet.train()
@@ -900,7 +932,8 @@ def main(args):
 
     if args.gradient_checkpointing:
         controlnet.enable_gradient_checkpointing()
-        unet.enable_gradient_checkpointing()
+        if args.train_base:
+            unet.enable_gradient_checkpointing()
 
     # Check that all trainable models are in full precision
     low_precision_error_string = (
@@ -911,6 +944,10 @@ def main(args):
     if accelerator.unwrap_model(controlnet).dtype != torch.float32:
         raise ValueError(
             f"Controlnet loaded as datatype {accelerator.unwrap_model(controlnet).dtype}. {low_precision_error_string}"
+        )
+    if args.train_base and accelerator.unwrap_model(unet).dtype != torch.float32:
+        raise ValueError(
+            f"Base model loaded as datatype {accelerator.unwrap_model(unet).dtype}. {low_precision_error_string}"
         )
 
     # Enable TF32 for faster training on Ampere GPUs,
@@ -937,7 +974,10 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # Optimizer creation
-    params_to_optimize = controlnet.parameters()
+    if args.train_base:
+        params_to_optimize = chain(controlnet.parameters(), unet.parameters())
+    else:
+        params_to_optimize = controlnet.parameters()
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -960,7 +1000,8 @@ def main(args):
         vae.to(accelerator.device, dtype=weight_dtype)
     else:
         vae.to(accelerator.device, dtype=torch.float32)
-    unet.to(accelerator.device, dtype=weight_dtype)
+    if not args.train_base:
+        unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
@@ -1043,6 +1084,8 @@ def main(args):
     controlnet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         controlnet, optimizer, train_dataloader, lr_scheduler
     )
+    if args.train_base:
+        unet = accelerator.prepare(unet)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -1146,7 +1189,11 @@ def main(args):
                     added_cond_kwargs=batch["unet_added_conditions"],
                     controlnet_cond=controlnet_image,
                     return_dict=False,
+                    compute_down_block_res_samples=not args.only_mid_control,
                 )
+                mid_block_res_sample = mid_block_res_sample.to(dtype=weight_dtype)
+                if not args.only_mid_control:
+                    down_block_res_samples = [sample.to(dtype=weight_dtype) for sample in down_block_res_samples]
 
                 # Predict the noise residual
                 model_pred = unet(
@@ -1154,10 +1201,8 @@ def main(args):
                     timesteps,
                     encoder_hidden_states=batch["prompt_ids"],
                     added_cond_kwargs=batch["unet_added_conditions"],
-                    down_block_additional_residuals=[
-                        sample.to(dtype=weight_dtype) for sample in down_block_res_samples
-                    ],
-                    mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
+                    down_block_additional_residuals=down_block_res_samples,
+                    mid_block_additional_residual=mid_block_res_sample,
                 ).sample
 
                 # Get the target for loss depending on the prediction type
@@ -1224,7 +1269,14 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         controlnet = accelerator.unwrap_model(controlnet)
-        controlnet.save_pretrained(args.output_dir)
+        if args.train_base:
+            unet_path = os.path.join(args.output_dir, args.output_subdir_unet)
+            controlnet_path = os.path.join(args.output_dir, args.output_subdir_controlnet)
+            unet = accelerator.unwrap_model(unet)
+            unet.save_pretrained(unet_path)
+            controlnet.save_pretrained(controlnet_path)
+        else:
+            controlnet.save_pretrained(args.output_dir)
 
         if args.push_to_hub:
             save_model_card(
