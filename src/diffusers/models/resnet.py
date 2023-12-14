@@ -622,6 +622,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         temb_channels: int = 512,
         groups: int = 32,
         groups_out: Optional[int] = None,
+        eps: float = 1e-6,
         non_linearity: str = "swish",
         time_embedding_norm: str = "ada_group",  # ada_group, spatial
         output_scale_factor: float = 1.0,
@@ -647,7 +648,7 @@ class ResnetBlockCondNorm2D(nn.Module):
             groups_out = groups
 
         if self.time_embedding_norm == "ada_group":  # ada_group
-            self.norm1 = AdaGroupNorm(in_channels, groups, temb_channels)
+            self.norm1 = AdaGroupNorm(temb_channels, in_channels, groups, eps=eps)
         elif self.time_embedding_norm == "spatial":
             self.norm1 = SpatialNorm(in_channels, temb_channels)
         else:
@@ -656,7 +657,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         self.conv1 = conv_cls(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if self.time_embedding_norm == "ada_group":  # ada_group
-            self.norm2 = AdaGroupNorm(out_channels, groups_out, temb_channels)
+            self.norm2 = AdaGroupNorm(temb_channels, out_channels, groups_out, eps=eps)
         elif self.time_embedding_norm == "spatial":
             self.norm2 = SpatialNorm(out_channels, temb_channels)
         else:
