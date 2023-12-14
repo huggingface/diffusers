@@ -943,7 +943,7 @@ def main(args):
         controlnet, optimizer, train_dataloader, lr_scheduler
     )
     if args.train_base:
-        unet = accelerate.prepare(unet)
+        unet = accelerator.prepare(unet)
 
     # For mixed precision training we cast the text_encoder and vae weights to half-precision
     # as these models are only used for inference, keeping weights in full precision is not required.
