@@ -729,12 +729,10 @@ class StableDiffusionXLControlNetXSPipeline(
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.guidance_scale
     @property
     def guidance_scale(self):
         return self._guidance_scale
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.clip_skip
     @property
     def clip_skip(self):
         return self._clip_skip
@@ -742,22 +740,18 @@ class StableDiffusionXLControlNetXSPipeline(
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
     # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
     # corresponds to doing no classifier free guidance.
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.do_classifier_free_guidance
     @property
     def do_classifier_free_guidance(self):
         return self._guidance_scale > 1 and self.unet.config.time_cond_proj_dim is None
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.cross_attention_kwargs
     @property
     def cross_attention_kwargs(self):
         return self._cross_attention_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.denoising_end
     @property
     def denoising_end(self):
         return self._denoising_end
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.num_timesteps
     @property
     def num_timesteps(self):
         return self._num_timesteps
