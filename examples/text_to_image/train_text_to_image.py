@@ -164,9 +164,19 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
     images = []
     for i in range(len(args.validation_prompts)):
         with torch.autocast("cuda"):
-            image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+            image = pipeline(
+                args.validation_prompts[i],
+                height=args.resolution_height,
+                width=args.resolution_width,
+                num_inference_steps=20,
+                generator=generator,
+            ).images[0]
 
         images.append(image)
+
+    if args.save_original_validation_images:
+        for i, image in enumerate(images):
+            image.save(os.path.join(args.output_dir, "validations", f"step-{step}-image-{i}.png"))
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
@@ -282,6 +292,8 @@ def parse_args():
             " resolution"
         ),
     )
+    parser.add_argument("--resolution_height", type=int, default=None)
+    parser.add_argument("--resolution_width", type=int, default=None)
     parser.add_argument(
         "--center_crop",
         default=False,
@@ -407,6 +419,12 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--save_original_validation_images",
+        default=False,
+        action="store_true",
+        help=("Save original type image files to output_dir/validations"),
+    )
+    parser.add_argument(
         "--mixed_precision",
         type=str,
         default=None,
@@ -490,6 +508,10 @@ def parse_args():
 def main():
     args = parse_args()
 
+    if args.resolution_height is None or args.resolution_width is None:
+        args.resolution_height = args.resolution
+        args.resolution_width = args.resolution
+
     if args.non_ema_revision is not None:
         deprecate(
             "non_ema_revision!=None",
@@ -534,6 +556,8 @@ def main():
     if accelerator.is_main_process:
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
+            if args.save_original_validation_images:
+                os.makedirs(os.path.join(args.output_dir, "validations"), exist_ok=True)
 
         if args.push_to_hub:
             repo_id = create_repo(
@@ -741,8 +765,12 @@ def main():
     # Preprocessing the datasets.
     train_transforms = transforms.Compose(
         [
-            transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution),
+            transforms.Resize(
+                (args.resolution_height, args.resolution_width), interpolation=transforms.InterpolationMode.BILINEAR
+            ),
+            transforms.CenterCrop((args.resolution_height, args.resolution_width))
+            if args.center_crop
+            else transforms.RandomCrop((args.resolution_height, args.resolution_width)),
             transforms.RandomHorizontalFlip() if args.random_flip else transforms.Lambda(lambda x: x),
             transforms.ToTensor(),
             transforms.Normalize([0.5], [0.5]),
@@ -961,8 +989,8 @@ def main():
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
-                if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
@@ -987,6 +1015,29 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
+                    if (
+                        args.validation_prompt is not None
+                        and args.validation_steps is not None
+                        and global_step % args.validation_steps == 0
+                    ):
+                        if args.use_ema:
+                            # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
+                            ema_unet.store(unet.parameters())
+                            ema_unet.copy_to(unet.parameters())
+                        log_validation(
+                            vae,
+                            text_encoder,
+                            tokenizer,
+                            unet,
+                            args,
+                            accelerator,
+                            weight_dtype,
+                            global_step,
+                        )
+                        if args.use_ema:
+                            # Switch back to the original UNet parameters.
+                            ema_unet.restore(unet.parameters())
+
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
@@ -994,7 +1045,11 @@ def main():
                 break
 
         if accelerator.is_main_process:
-            if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
+            if (
+                args.validation_prompts is not None
+                and args.validation_epochs is not None
+                and epoch % args.validation_epochs == 0
+            ):
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
@@ -1047,7 +1102,13 @@ def main():
 
             for i in range(len(args.validation_prompts)):
                 with torch.autocast("cuda"):
-                    image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+                    image = pipeline(
+                        args.validation_prompts[i],
+                        height=args.resolution_height,
+                        width=args.resolution_width,
+                        num_inference_steps=20,
+                        generator=generator,
+                    ).images[0]
                 images.append(image)
 
         if args.push_to_hub:
