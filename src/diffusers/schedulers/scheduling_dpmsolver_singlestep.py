@@ -197,6 +197,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.sample = None
         self.order_list = self.get_order_list(num_train_timesteps)
         self._step_index = None
+        self.sigmas.to('cpu') # to avoid too much CPU/GPU communication
 
     def get_order_list(self, num_inference_steps: int) -> List[int]:
         """
@@ -288,6 +289,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
+        self.sigmas.to('cpu') # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:

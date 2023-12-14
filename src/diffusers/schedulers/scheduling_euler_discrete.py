@@ -237,6 +237,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.use_karras_sigmas = use_karras_sigmas
 
         self._step_index = None
+        self.sigmas.to('cpu') # to avoid too much CPU/GPU communication
 
     @property
     def init_noise_sigma(self):
@@ -341,6 +342,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.sigmas = torch.cat([sigmas, torch.zeros(1, device=sigmas.device)])
         self._step_index = None
+        self.sigmas.to('cpu') # to avoid too much CPU/GPU communication
 
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
