@@ -191,6 +191,11 @@ on the generated ("edited") image (see [here](https://twitter.com/RisingSayak/st
 
 If you're looking for some interesting ways to use the InstructPix2Pix training methodology, we welcome you to check out this blog post: [Instruction-tuning Stable Diffusion with InstructPix2Pix](https://huggingface.co/blog/instruction-tuning-sd). 
 
+## Save the Best Model
+
+The `train_instruct_pix2pix.py` script saves the model after the whole training process. 
+We provide `train_instruct_pix2pix_save_best.py` script that saves the model with minimum training loss during the training process.
+
 ## Stable Diffusion XL
 
 There's an equivalent `train_instruct_pix2pix_sdxl.py` script for [Stable Diffusion XL](https://huggingface.co/papers/2307.01952). Please refer to the docs [here](./README_sdxl.md) to learn more.
