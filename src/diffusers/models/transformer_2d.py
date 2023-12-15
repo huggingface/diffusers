@@ -189,9 +189,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             )
 
         # 3. Define transformers blocks
-        use_same_dim_for_cross_attention = False
-        if hasattr(self.config, "sample_size") and getattr(self.config, "sample_size", None) is not None and self.config.sample_size == 128:
-            use_same_dim_for_cross_attention = True
         self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
@@ -210,7 +207,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     norm_elementwise_affine=norm_elementwise_affine,
                     norm_eps=norm_eps,
                     attention_type=attention_type,
-                    use_same_dim_for_cross_attention=use_same_dim_for_cross_attention
                 )
                 for d in range(num_layers)
             ]
