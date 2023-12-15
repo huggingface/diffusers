@@ -546,6 +546,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         """
         count = len(self.attn_processors.keys())
+        print(f"Obtained count: {count}.")
+        print(f"Attention processor class: {processor.__class__.__name__}")
 
         if isinstance(processor, dict) and len(processor) != count:
             raise ValueError(
