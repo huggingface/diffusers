@@ -783,7 +783,7 @@ def main():
     # Only show the progress bar once on each machine.
     progress_bar = tqdm(range(global_step, args.max_train_steps), disable=not accelerator.is_local_main_process)
     progress_bar.set_description("Steps")
-    
+
     for epoch in range(first_epoch, args.num_train_epochs):
         unet.train()
         train_loss = 0.0
@@ -875,13 +875,13 @@ def main():
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
 
-                # Save model if current train_loss is less than min_train_loss 
+                # Save model if current train_loss is less than min_train_loss
                 if train_loss < min_train_loss and accelerator.is_main_process:
                     min_train_loss = train_loss
                     min_global_step = global_step
                     accelerator.log({"min_train_loss": min_train_loss}, step=min_global_step)
                     logger.info(f"Update min_train_loss = {min_train_loss}, global_step = {min_global_step}")
-                    
+
                     unet = accelerator.unwrap_model(unet)
                     if args.use_ema:
                         ema_unet.copy_to(unet.parameters())
