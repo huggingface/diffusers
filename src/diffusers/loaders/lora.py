@@ -311,7 +311,7 @@ class LoraLoaderMixin:
             targeted_files = [
                 f for f in os.listdir(pretrained_model_name_or_path_or_dict) if f.endswith(file_extension)
             ]
-        elif not local_files_only:
+        else:
             files_in_repo = model_info(pretrained_model_name_or_path_or_dict).siblings
             targeted_files = [f.rfilename for f in files_in_repo if f.rfilename.endswith(file_extension)]
         if len(targeted_files) == 0:
