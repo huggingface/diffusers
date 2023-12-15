@@ -88,7 +88,7 @@ class VaeImageProcessor(ConfigMixin):
             self.config.do_convert_rgb = False
 
     @staticmethod
-    def numpy_to_pil(images: np.ndarray) -> PIL.Image.Image:
+    def numpy_to_pil(images: np.ndarray) -> List[PIL.Image.Image]:
         """
         Convert a numpy image or a batch of images to a PIL image.
         """
