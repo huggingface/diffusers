@@ -117,7 +117,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         all_prompts_cn, all_prompts_p = promptsmaker(prompts, num_images_per_prompt)
         all_n_prompts_cn, _ = promptsmaker(n_prompts, num_images_per_prompt)
 
-        cn = len(all_prompts_cn) == len(all_n_prompts_cn)
+        equal = len(all_prompts_cn) == len(all_n_prompts_cn)
 
         if Compel:
             compel = Compel(tokenizer=self.tokenizer, text_encoder=self.text_encoder)
@@ -129,7 +129,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                 return torch.cat(embl)
 
             conds = getcompelembs(all_prompts_cn)
-            unconds = getcompelembs(all_n_prompts_cn) if cn else getcompelembs(n_prompts)
+            unconds = getcompelembs(all_n_prompts_cn)
             embs = getcompelembs(prompts)
             n_embs = getcompelembs(n_prompts)
             prompt = negative_prompt = None
@@ -137,7 +137,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
             conds = self.encode_prompt(prompts, device, 1, True)[0]
             unconds = (
                 self.encode_prompt(n_prompts, device, 1, True)[0]
-                if cn
+                if equal
                 else self.encode_prompt(all_n_prompts_cn, device, 1, True)[0]
             )
             embs = n_embs = None
@@ -206,7 +206,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                     else:
                         px, nx = hidden_states.chunk(2)
 
-                    if cn:
+                    if equal:
                         hidden_states = torch.cat([px for i in range(regions)] + [nx for i in range(regions)], 0)
                         encoder_hidden_states = torch.cat([conds] + [unconds])
                     else:
@@ -289,9 +289,9 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                     if any(x in mode for x in ["COL", "ROW"]):
                         reshaped = hidden_states.reshape(hidden_states.size()[0], h, w, hidden_states.size()[2])
                         center = reshaped.shape[0] // 2
-                        px = reshaped[0:center] if cn else reshaped[0:-batch]
-                        nx = reshaped[center:] if cn else reshaped[-batch:]
-                        outs = [px, nx] if cn else [px]
+                        px = reshaped[0:center] if equal else reshaped[0:-batch]
+                        nx = reshaped[center:] if equal else reshaped[-batch:]
+                        outs = [px, nx] if equal else [px]
                         for out in outs:
                             c = 0
                             for i, ocell in enumerate(ocells):
@@ -321,15 +321,13 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                                             :,
                                         ]
                                     c += 1
-                        px, nx = (px[0:batch], nx[0:batch]) if cn else (px[0:batch], nx)
+                        px, nx = (px[0:batch], nx[0:batch]) if equal else (px[0:batch], nx)
                         hidden_states = torch.cat([nx, px], 0) if revers else torch.cat([px, nx], 0)
                         hidden_states = hidden_states.reshape(xshape)
 
                     #### Regional Prompting Prompt mode
                     elif "PRO" in mode:
-                        center = reshaped.shape[0] // 2
-                        px = reshaped[0:center] if cn else reshaped[0:-batch]
-                        nx = reshaped[center:] if cn else reshaped[-batch:]
+                        px, nx = torch.chunk(hidden_states) if equal else hidden_states[0:-batch], hidden_states[-batch:]
 
                         if (h, w) in self.attnmasks and self.maskready:
 
@@ -340,8 +338,8 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                                         out[b] = out[b] + out[r * batch + b]
                                 return out
 
-                            px, nx = (mask(px), mask(nx)) if cn else (mask(px), nx)
-                        px, nx = (px[0:batch], nx[0:batch]) if cn else (px[0:batch], nx)
+                            px, nx = (mask(px), mask(nx)) if equal else (mask(px), nx)
+                        px, nx = (px[0:batch], nx[0:batch]) if equal else (px[0:batch], nx)
                         hidden_states = torch.cat([nx, px], 0) if revers else torch.cat([px, nx], 0)
                     return hidden_states
 
