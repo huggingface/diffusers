@@ -33,7 +33,6 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
-from .ip_adapter_conversion_utils import _convert_ip_adapter_to_diffusers
 from .utils import AttnProcsLayers
 
 
@@ -665,6 +664,44 @@ class UNet2DConditionLoadersMixin:
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
 
+    def _convert_ip_adapter_to_diffusers(self, state_dict):
+        updated_state_dict = {}
+
+        if "proj.weight" in state_dict:
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("proj", "image_embeds")
+                updated_state_dict[diffusers_name] = value
+
+        elif "proj.3.weight" in state_dict:
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("proj.0", "ff.net.0.proj")
+                diffusers_name = diffusers_name.replace("proj.2", "ff.net.2")
+                diffusers_name = diffusers_name.replace("proj.3", "norm")
+                updated_state_dict[diffusers_name] = value
+
+        else:
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("0.to", "2.to")
+                diffusers_name = diffusers_name.replace("1.0.weight", "3.0.weight")
+                diffusers_name = diffusers_name.replace("1.0.bias", "3.0.bias")
+                diffusers_name = diffusers_name.replace("1.1.weight", "3.1.net.0.proj.weight")
+                diffusers_name = diffusers_name.replace("1.3.weight", "3.1.net.2.weight")
+
+                if "norm1" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm1", "0")] = value
+                elif "norm2" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm2", "1")] = value
+                elif "to_kv" in diffusers_name:
+                    v_chunk = value.chunk(2, dim=0)
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_k")] = v_chunk[0]
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_v")] = v_chunk[1]
+                elif "to_out" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("to_out", "to_out.0")] = value
+                else:
+                    updated_state_dict[diffusers_name] = value
+
+        return updated_state_dict
+
     def _load_ip_adapter_weights(self, state_dict):
         from ..models.attention_processor import (
             AttnProcessor,
@@ -740,7 +777,7 @@ class UNet2DConditionLoadersMixin:
             )
             image_projection.to(dtype=self.dtype, device=self.device)
 
-            new_sd = _convert_ip_adapter_to_diffusers(image_proj_state_dict)
+            new_sd = self._convert_ip_adapter_to_diffusers(image_proj_state_dict)
             image_projection.load_state_dict(new_sd)
 
         elif "proj.3.weight" in state_dict["image_proj"]:
@@ -752,7 +789,7 @@ class UNet2DConditionLoadersMixin:
             )
             image_projection.to(dtype=self.dtype, device=self.device)
 
-            new_sd = _convert_ip_adapter_to_diffusers(image_proj_state_dict)
+            new_sd = self._convert_ip_adapter_to_diffusers(image_proj_state_dict)
             image_projection.load_state_dict(new_sd)
 
         else:
@@ -770,7 +807,7 @@ class UNet2DConditionLoadersMixin:
                 num_queries=num_image_text_embeds,
             )
 
-            new_sd = _convert_ip_adapter_to_diffusers(image_proj_state_dict)
+            new_sd = self._convert_ip_adapter_to_diffusers(image_proj_state_dict)
             image_projection.load_state_dict(new_sd)
         del image_proj_state_dict
 
