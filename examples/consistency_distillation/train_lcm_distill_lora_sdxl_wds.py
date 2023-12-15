@@ -346,7 +346,7 @@ def scalings_for_boundary_conditions(timestep, sigma_data=0.5, timestep_scaling=
 
 
 # Compare LCMScheduler.step, Step 4
-def predicted_origin(model_output, timesteps, sample, prediction_type, alphas, sigmas):
+def get_predicted_original_sample(model_output, timesteps, sample, prediction_type, alphas, sigmas):
     alphas = extract_into_tensor(alphas, timesteps, sample.shape)
     sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
     if prediction_type == "epsilon":
@@ -365,7 +365,7 @@ def predicted_origin(model_output, timesteps, sample, prediction_type, alphas, s
 
 
 # Based on step 4 in DDIMScheduler.step
-def predicted_source_noise(model_output, timesteps, sample, prediction_type, alphas, sigmas):
+def get_predicted_noise(model_output, timesteps, sample, prediction_type, alphas, sigmas):
     alphas = extract_into_tensor(alphas, timesteps, sample.shape)
     sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
     if prediction_type == "epsilon":
@@ -911,7 +911,7 @@ def main(args):
     text_encoder_two.requires_grad_(False)
     teacher_unet.requires_grad_(False)
 
-    # 7. Create online (`unet`) student U-Net.
+    # 7. Create online student U-Net.
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
     )
@@ -1223,12 +1223,9 @@ def main(args):
                 latents = latents * vae.config.scaling_factor
                 if args.pretrained_vae_model_name_or_path is None:
                     latents = latents.to(weight_dtype)
-
-                # 2. Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
 
-                # 3. Sample a random timestep for each image t_n from the ODE solver timesteps without bias.
+                # 2. Sample a random timestep for each image t_n from the ODE solver timesteps without bias.
                 # For the DDIM solver, the timestep schedule is [T - 1, T - k - 1, T - 2 * k - 1, ...]
                 topk = noise_scheduler.config.num_train_timesteps // args.num_ddim_timesteps
                 index = torch.randint(0, args.num_ddim_timesteps, (bsz,), device=latents.device).long()
@@ -1236,26 +1233,27 @@ def main(args):
                 timesteps = start_timesteps - topk
                 timesteps = torch.where(timesteps < 0, torch.zeros_like(timesteps), timesteps)
 
-                # 4. Get boundary scalings for start_timesteps and (end) timesteps.
+                # 3. Get boundary scalings for start_timesteps and (end) timesteps.
                 c_skip_start, c_out_start = scalings_for_boundary_conditions(start_timesteps)
                 c_skip_start, c_out_start = [append_dims(x, latents.ndim) for x in [c_skip_start, c_out_start]]
                 c_skip, c_out = scalings_for_boundary_conditions(timesteps)
                 c_skip, c_out = [append_dims(x, latents.ndim) for x in [c_skip, c_out]]
 
-                # 5. Add noise to the latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process) [z_{t_{n + k}} in Algorithm 1]
+                # 4. Sample noise from the prior and add it to the latents according to the noise magnitude at each
+                # timestep (this is the forward diffusion process) [z_{t_{n + k}} in Algorithm 1]
+                noise = torch.randn_like(latents)
                 noisy_model_input = noise_scheduler.add_noise(latents, noise, start_timesteps)
 
-                # 6. Sample a random guidance scale w from U[w_min, w_max]
+                # 5. Sample a random guidance scale w from U[w_min, w_max]
                 # Note that for LCM-LoRA distillation it is not necessary to use a guidance scale embedding
                 w = (args.w_max - args.w_min) * torch.rand((bsz,)) + args.w_min
                 w = w.reshape(bsz, 1, 1, 1)
                 w = w.to(device=latents.device, dtype=latents.dtype)
 
-                # 7. Prepare prompt embeds and unet_added_conditions
+                # 6. Prepare prompt embeds and unet_added_conditions
                 prompt_embeds = encoded_text.pop("prompt_embeds")
 
-                # 8. Get online LCM prediction on z_{t_{n + k}} (noisy_model_input), w, c, t_{n + k} (start_timesteps)
+                # 7. Get online LCM prediction on z_{t_{n + k}} (noisy_model_input), w, c, t_{n + k} (start_timesteps)
                 noise_pred = unet(
                     noisy_model_input,
                     start_timesteps,
@@ -1264,7 +1262,7 @@ def main(args):
                     added_cond_kwargs=encoded_text,
                 ).sample
 
-                pred_x_0 = predicted_origin(
+                pred_x_0 = get_predicted_original_sample(
                     noise_pred,
                     start_timesteps,
                     noisy_model_input,
@@ -1275,7 +1273,7 @@ def main(args):
 
                 model_pred = c_skip_start * noisy_model_input + c_out_start * pred_x_0
 
-                # 9. Compute the conditional and unconditional teacher model predictions to get CFG estimates of the
+                # 8. Compute the conditional and unconditional teacher model predictions to get CFG estimates of the
                 # predicted noise eps_0 and predicted original sample x_0, then run the ODE solver using these
                 # estimates to predict the data point in the augmented PF-ODE trajectory corresponding to the next ODE
                 # solver timestep.
@@ -1288,7 +1286,7 @@ def main(args):
                             encoder_hidden_states=prompt_embeds.to(weight_dtype),
                             added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
                         ).sample
-                        cond_pred_x0 = predicted_origin(
+                        cond_pred_x0 = get_predicted_original_sample(
                             cond_teacher_output,
                             start_timesteps,
                             noisy_model_input,
@@ -1296,7 +1294,7 @@ def main(args):
                             alpha_schedule,
                             sigma_schedule,
                         )
-                        cond_pred_noise = predicted_source_noise(
+                        cond_pred_noise = get_predicted_noise(
                             cond_teacher_output,
                             start_timesteps,
                             noisy_model_input,
@@ -1314,7 +1312,7 @@ def main(args):
                             encoder_hidden_states=uncond_prompt_embeds.to(weight_dtype),
                             added_cond_kwargs={k: v.to(weight_dtype) for k, v in uncond_added_conditions.items()},
                         ).sample
-                        uncond_pred_x0 = predicted_origin(
+                        uncond_pred_x0 = get_predicted_original_sample(
                             uncond_teacher_output,
                             start_timesteps,
                             noisy_model_input,
@@ -1322,7 +1320,7 @@ def main(args):
                             alpha_schedule,
                             sigma_schedule,
                         )
-                        uncond_pred_noise = predicted_source_noise(
+                        uncond_pred_noise = get_predicted_noise(
                             uncond_teacher_output,
                             start_timesteps,
                             noisy_model_input,
@@ -1340,7 +1338,7 @@ def main(args):
                         # Note that the DDIM step depends on both the predicted x_0 and source noise eps_0.
                         x_prev = solver.ddim_step(pred_x0, pred_noise, index)
 
-                # 10. Get target LCM prediction on x_prev, w, c, t_n (timesteps)
+                # 9. Get target LCM prediction on x_prev, w, c, t_n (timesteps)
                 # Note that we do not use a separate target network for LCM-LoRA distillation.
                 with torch.no_grad():
                     with torch.autocast("cuda", enabled=True, dtype=weight_dtype):
@@ -1351,7 +1349,7 @@ def main(args):
                             encoder_hidden_states=prompt_embeds.float(),
                             added_cond_kwargs=encoded_text,
                         ).sample
-                    pred_x_0 = predicted_origin(
+                    pred_x_0 = get_predicted_original_sample(
                         target_noise_pred,
                         timesteps,
                         x_prev,
@@ -1361,7 +1359,7 @@ def main(args):
                     )
                     target = c_skip * x_prev + c_out * pred_x_0
 
-                # 11. Calculate loss
+                # 10. Calculate loss
                 if args.loss_type == "l2":
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 elif args.loss_type == "huber":
@@ -1369,7 +1367,7 @@ def main(args):
                         torch.sqrt((model_pred.float() - target.float()) ** 2 + args.huber_c**2) - args.huber_c
                     )
 
-                # 12. Backpropagate on the online student model (`unet`)
+                # 11. Backpropagate on the online student model (`unet`)
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
