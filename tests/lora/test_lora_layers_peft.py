@@ -770,14 +770,14 @@ class PeftLoraLoaderMixinTests:
         _ = loaded_pipe(**inputs, generator=torch.manual_seed(0)).images
 
         assert (
-            loaded_pipe.unet.peft_config["default"]["lora_alpha"] == lora_alpha
+            loaded_pipe.unet.peft_config["default"].lora_alpha == lora_alpha
         ), "LoRA alpha not correctly loaded for UNet."
         assert (
-            loaded_pipe.text_encoder.peft_config["default"]["lora_alpha"] == lora_alpha
+            loaded_pipe.text_encoder.peft_config["default"].lora_alpha == lora_alpha
         ), "LoRA alpha not correctly loaded for text encoder."
         if self.has_two_text_encoders:
             assert (
-                loaded_pipe.text_encoder_2.peft_config["default"]["lora_alpha"] == lora_alpha
+                loaded_pipe.text_encoder_2.peft_config["default"].lora_alpha == lora_alpha
             ), "LoRA alpha not correctly loaded for text encoder 2."
 
     def test_simple_inference_with_text_unet_lora_unfused(self):
