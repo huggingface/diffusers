@@ -1331,6 +1331,7 @@ class FusedAttnProcessor2_0:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
         args = () if USE_PEFT_BACKEND else (scale,)
+        print(f"Encoder hidden states: {encoder_hidden_states is None}")
         if encoder_hidden_states is None:
             qkv = attn.to_qkv(hidden_states, *args)
             split_size = qkv.shape[-1] // 3
