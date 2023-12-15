@@ -172,9 +172,8 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, config=None,
                 }
             else:
                 alpha_pattern = {".".join(k.split(".down.")[0].split(".")[:-1]): v for k, v in alpha_pattern.items()}
-        else:
-            if not alpha_retrieved:
-                lora_alpha = set(network_alpha_dict.values()).pop()
+        elif not alpha_retrieved:
+            lora_alpha = set(network_alpha_dict.values()).pop()
 
     # layer names without the Diffusers specific
     target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})
