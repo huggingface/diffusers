@@ -198,6 +198,8 @@
       title: Outputs
     title: Main Classes
   - sections:
+    - local: api/loaders/ip_adapter
+      title: IP-Adapter
     - local: api/loaders/lora
       title: LoRA
     - local: api/loaders/single_file
