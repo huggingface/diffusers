@@ -148,7 +148,7 @@ class BasicTransformerBlock(nn.Module):
         attention_type: str = "default",
         positional_embeddings: Optional[str] = None,
         num_positional_embeddings: Optional[int] = None,
-        _explicitly_mark_as_cross_attention: Optional[bool] = False
+        _explicitly_mark_as_cross_attention: Optional[bool] = False,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -211,7 +211,7 @@ class BasicTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
-                _explicitly_mark_as_cross_attention=cross_attention_dim is not None
+                _explicitly_mark_as_cross_attention=cross_attention_dim is not None,
             )  # is self-attn if encoder_hidden_states is none
         else:
             self.norm2 = None
@@ -287,7 +287,9 @@ class BasicTransformerBlock(nn.Module):
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
         gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
 
-        print(f"Encode hidden states from transformer block (self-attention): {encoder_hidden_states if self.only_cross_attention else None}")
+        print(
+            f"Encode hidden states from transformer block (self-attention): {encoder_hidden_states if self.only_cross_attention else None}"
+        )
         attn_output = self.attn1(
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
