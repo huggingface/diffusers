@@ -126,6 +126,8 @@ class BasicTransformerBlock(nn.Module):
             The type of positional embeddings to apply to.
         num_positional_embeddings (`int`, *optional*, defaults to `None`):
             The maximum number of positional embeddings to apply.
+        use_same_dim_for_cross_attention (`bool`, *optional*, defaults to `False`):
+            If using the same dimension for projections in cross attention (like done in PixArt-Alpha).
     """
 
     def __init__(
@@ -148,6 +150,7 @@ class BasicTransformerBlock(nn.Module):
         attention_type: str = "default",
         positional_embeddings: Optional[str] = None,
         num_positional_embeddings: Optional[int] = None,
+        use_same_dim_for_cross_attention: Optional[bool] = False
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -190,6 +193,7 @@ class BasicTransformerBlock(nn.Module):
             bias=attention_bias,
             cross_attention_dim=cross_attention_dim if only_cross_attention else None,
             upcast_attention=upcast_attention,
+            use_same_dim_for_cross_attention=use_same_dim_for_cross_attention
         )
 
         # 2. Cross-Attn

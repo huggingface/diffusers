@@ -84,6 +84,8 @@ class Attention(nn.Module):
         processor (`AttnProcessor`, *optional*, defaults to `None`):
             The attention processor to use. If `None`, defaults to `AttnProcessor2_0` if `torch 2.x` is used and
             `AttnProcessor` otherwise.
+        use_same_dim_for_cross_attention (`bool`, *optional*, defaults to `False`):
+            If using the same dimension for projections in cross attention (like done in PixArt-Alpha).
     """
 
     def __init__(
@@ -110,6 +112,7 @@ class Attention(nn.Module):
         _from_deprecated_attn_block: bool = False,
         processor: Optional["AttnProcessor"] = None,
         out_dim: int = None,
+        use_same_dim_for_cross_attention: Optional[bool] = False
     ):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
@@ -122,6 +125,7 @@ class Attention(nn.Module):
         self.dropout = dropout
         self.fused_projections = False
         self.out_dim = out_dim if out_dim is not None else query_dim
+        self.use_same_dim_for_cross_attention = use_same_dim_for_cross_attention
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
@@ -697,7 +701,7 @@ class Attention(nn.Module):
 
     @torch.no_grad()
     def fuse_projections(self, fuse=True):
-        is_cross_attention = self.cross_attention_dim != self.query_dim
+        is_cross_attention = self.cross_attention_dim != self.query_dim or self.use_same_dim_for_cross_attention
         print(f"Is cross attention: {is_cross_attention}")
         device = self.to_q.weight.data.device
         dtype = self.to_q.weight.data.dtype
