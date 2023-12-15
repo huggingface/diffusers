@@ -137,7 +137,7 @@ More information on all the CLI arguments and the environment are available on y
         f.write(yaml + model_card)
 
 
-def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, epoch):
+def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, step):
     logger.info("Running validation... ")
 
     pipeline = StableDiffusionPipeline.from_pretrained(
@@ -181,7 +181,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+            tracker.writer.add_images("validation", np_images, step, dataformats="NHWC")
         elif tracker.name == "wandb":
             tracker.log(
                 {
@@ -269,6 +269,15 @@ def parse_args():
         default=None,
         nargs="+",
         help=("A set of prompts evaluated every `--validation_epochs` and logged to `--report_to`."),
+    )
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=None,
+        help=(
+            "Run fine-tuning validation every X steps. The validation process consists of running the prompt"
+            " `args.validation_prompt` multiple times: `args.num_validation_images`."
+        ),
     )
     parser.add_argument(
         "--output_dir",
@@ -476,7 +485,7 @@ def parse_args():
     parser.add_argument(
         "--validation_epochs",
         type=int,
-        default=5,
+        default=None,
         help="Run validation every X epochs.",
     )
     parser.add_argument(
@@ -1016,7 +1025,7 @@ def main():
                         logger.info(f"Saved state to {save_path}")
 
                     if (
-                        args.validation_prompt is not None
+                        args.validation_prompts is not None
                         and args.validation_steps is not None
                         and global_step % args.validation_steps == 0
                     ):
