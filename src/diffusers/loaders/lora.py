@@ -382,6 +382,8 @@ class LoraLoaderMixin:
                 See `LoRALinearLayer` for more details.
             unet (`UNet2DConditionModel`):
                 The UNet model to load the LoRA layers into.
+            config: (`Dict`):
+                LoRA configuration parsed from the state dict.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading only loading the pretrained weights and not initializing the weights. This also
                 tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
@@ -503,6 +505,8 @@ class LoraLoaderMixin:
                 The text encoder model to load the LoRA layers into.
             prefix (`str`):
                 Expected prefix of the `text_encoder` in the `state_dict`.
+            config (`Dict`):
+                LoRA configuration parsed from state dict.
             lora_scale (`float`):
                 How much to scale the output of the lora linear layer before it is added with the output of the regular
                 lora layer.
