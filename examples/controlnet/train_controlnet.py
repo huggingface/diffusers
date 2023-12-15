@@ -847,9 +847,17 @@ def main(args):
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
 
+    def is_in_decoder(name):
+        decoder_parts = ["conv_out", "conv_norm_out", "up_blocks"]
+        return any(name.startswith(p) for p in decoder_parts)
+
     vae.requires_grad_(False)
     if args.train_base:
         unet.train()
+        # we unfreeze only the decoder
+        for n, p in unet.named_parameters():
+            if not is_in_decoder(n):
+                p.requires_grad_(False)
     else:
         unet.requires_grad_(False)
     text_encoder.requires_grad_(False)
@@ -915,9 +923,11 @@ def main(args):
 
     # Optimizer creation
     if args.train_base:
-        params_to_optimize = chain(controlnet.parameters(), unet.parameters())
+        params_unet_decoder = (p for n, p in unet.named_parameters() if is_in_decoder(n))
+        params_to_optimize = chain(controlnet.parameters(), params_unet_decoder)
     else:
         params_to_optimize = controlnet.parameters()
+
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
@@ -1097,6 +1107,7 @@ def main(args):
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     if args.train_base:
+                        params_unet_decoder = (p for n, p in unet.named_parameters() if is_in_decoder(n))
                         params_to_clip = chain(controlnet.parameters(), unet.parameters())
                     else:
                         params_to_clip = controlnet.parameters()
