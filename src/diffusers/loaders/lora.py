@@ -822,7 +822,7 @@ class LoraLoaderMixin:
                 raise ValueError(
                     "Without `peft`, passing `unet_lora_config` or `text_encoder_lora_config` is not possible. Please install `peft`."
                 )
-        else:
+        elif USE_PEFT_BACKEND and safe_serialization:
             from peft import LoraConfig
 
         if not (unet_lora_layers or text_encoder_lora_layers):
@@ -1433,7 +1433,7 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
                 raise ValueError(
                     "Without `peft`, passing `unet_lora_config` or `text_encoder_lora_config` or `text_encoder_2_lora_config` is not possible. Please install `peft`."
                 )
-        else:
+        elif USE_PEFT_BACKEND and safe_serialization:
             from peft import LoraConfig
 
         if not (unet_lora_layers or text_encoder_lora_layers or text_encoder_2_lora_layers):
