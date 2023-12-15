@@ -24,6 +24,7 @@ from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKL, Transformer2DModel
+from ...models.attention_processor import FusedAttnProcessor2_0
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
@@ -662,6 +663,67 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             samples = samples[:, :, start_y:end_y, start_x:end_x]
 
         return samples
+
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.fuse_qkv_projections with unet->transformer, UNet->Transformer
+    def fuse_qkv_projections(self, transformer: bool = True, vae: bool = True):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        Args:
+            transformer (`bool`, defaults to `True`): To apply fusion on the Transformer.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
+        """
+        self.fusing_transformer = False
+        self.fusing_vae = False
+
+        if transformer:
+            self.fusing_transformer = True
+            self.transformer.fuse_qkv_projections()
+            self.transformer.set_attn_processor(FusedAttnProcessor2_0())
+
+        if vae:
+            if not isinstance(self.vae, AutoencoderKL):
+                raise ValueError("`fuse_qkv_projections()` is only supported for the VAE of type `AutoencoderKL`.")
+
+            self.fusing_vae = True
+            self.vae.fuse_qkv_projections()
+            self.vae.set_attn_processor(FusedAttnProcessor2_0())
+
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.unfuse_qkv_projections with unet->transformer, UNet->Transformer
+    def unfuse_qkv_projections(self, transformer: bool = True, vae: bool = True):
+        """Disable QKV projection fusion if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        Args:
+            transformer (`bool`, defaults to `True`): To apply fusion on the Transformer.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
+
+        """
+        if transformer:
+            if not self.fusing_transformer:
+                logger.warning("The Transformer was not initially fused for QKV projections. Doing nothing.")
+            else:
+                self.transformer.unfuse_qkv_projections()
+                self.fusing_transformer = False
+
+        if vae:
+            if not self.fusing_vae:
+                logger.warning("The VAE was not initially fused for QKV projections. Doing nothing.")
+            else:
+                self.vae.unfuse_qkv_projections()
+                self.fusing_vae = False
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
