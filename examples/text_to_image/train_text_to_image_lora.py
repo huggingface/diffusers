@@ -833,10 +833,12 @@ def main():
                         accelerator.save_state(save_path)
 
                         unet_lora_state_dict = get_peft_model_state_dict(unet)
+                        unet_lora_config = unet.peft_config["default"]
 
                         StableDiffusionPipeline.save_lora_weights(
                             save_directory=save_path,
                             unet_lora_layers=unet_lora_state_dict,
+                            unet_lora_config=unet_lora_config,
                             safe_serialization=True,
                         )
 
@@ -898,10 +900,12 @@ def main():
         unet = unet.to(torch.float32)
 
         unet_lora_state_dict = get_peft_model_state_dict(unet)
+        unet_lora_config = unet.peft_config["default"]
         StableDiffusionPipeline.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_state_dict,
             safe_serialization=True,
+            unet_lora_config=unet_lora_config,
         )
 
         if args.push_to_hub:
