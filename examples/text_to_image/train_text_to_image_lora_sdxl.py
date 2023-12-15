@@ -682,13 +682,20 @@ def main(args):
             text_encoder_one_lora_layers_to_save = None
             text_encoder_two_lora_layers_to_save = None
 
+            unet_lora_config = None
+            text_encoder_one_lora_config = None
+            text_encoder_two_lora_config = None
+
             for model in models:
                 if isinstance(model, type(accelerator.unwrap_model(unet))):
                     unet_lora_layers_to_save = get_peft_model_state_dict(model)
+                    unet_lora_config = model.peft_config["default"]
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
                     text_encoder_one_lora_layers_to_save = get_peft_model_state_dict(model)
+                    text_encoder_one_lora_config = model.peft_config["default"]
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder_two))):
                     text_encoder_two_lora_layers_to_save = get_peft_model_state_dict(model)
+                    text_encoder_two_lora_config = model.peft_config["default"]
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -700,6 +707,9 @@ def main(args):
                 unet_lora_layers=unet_lora_layers_to_save,
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
                 text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
+                unet_lora_config=unet_lora_config,
+                text_encoder_lora_config=text_encoder_one_lora_config,
+                text_encoder_2_lora_config=text_encoder_two_lora_config,
             )
 
     def load_model_hook(models, input_dir):
@@ -719,17 +729,19 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+        lora_state_dict, network_alphas, metadata = LoraLoaderMixin.lora_state_dict(input_dir)
+        LoraLoaderMixin.load_lora_into_unet(
+            lora_state_dict, network_alphas=network_alphas, unet=unet_, config=metadata
+        )
 
         text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
         LoraLoaderMixin.load_lora_into_text_encoder(
-            text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
+            text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_, config=metadata
         )
 
         text_encoder_2_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder_2." in k}
         LoraLoaderMixin.load_lora_into_text_encoder(
-            text_encoder_2_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_
+            text_encoder_2_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_, config=metadata
         )
 
     accelerator.register_save_state_pre_hook(save_model_hook)
@@ -1194,6 +1206,7 @@ def main(args):
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
         unet_lora_state_dict = get_peft_model_state_dict(unet)
+        unet_lora_config = unet.peft_config["default"]
 
         if args.train_text_encoder:
             text_encoder_one = accelerator.unwrap_model(text_encoder_one)
@@ -1201,15 +1214,23 @@ def main(args):
 
             text_encoder_lora_layers = get_peft_model_state_dict(text_encoder_one)
             text_encoder_2_lora_layers = get_peft_model_state_dict(text_encoder_two)
+
+            text_encoder_one_lora_config = text_encoder_one.peft_config["default"]
+            text_encoder_two_lora_config = text_encoder_two.peft_config["default"]
         else:
             text_encoder_lora_layers = None
             text_encoder_2_lora_layers = None
+            text_encoder_one_lora_config = None
+            text_encoder_two_lora_config = None
 
         StableDiffusionXLPipeline.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_state_dict,
             text_encoder_lora_layers=text_encoder_lora_layers,
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
+            unet_lora_config=unet_lora_config,
+            text_encoder_lora_config=text_encoder_one_lora_config,
+            text_encoder_2_lora_config=text_encoder_two_lora_config,
         )
 
         del unet
