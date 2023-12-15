@@ -255,6 +255,7 @@ class BasicTransformerBlock(nn.Module):
     ) -> torch.FloatTensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
+        print(f"Encode hidden states from transformer block: {encoder_hidden_states is None}")
         batch_size = hidden_states.shape[0]
 
         if self.use_ada_layer_norm:
