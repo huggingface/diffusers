@@ -443,6 +443,7 @@ class LoraLoaderMixin:
 
             if config is not None and isinstance(config, dict) and len(config) > 0:
                 config = json.loads(config["unet"])
+                print(f"From LoRA loading: {config} ")
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, config=config, is_unet=True)
             lora_config = LoraConfig(**lora_config_kwargs)
 
