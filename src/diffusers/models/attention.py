@@ -255,7 +255,6 @@ class BasicTransformerBlock(nn.Module):
     ) -> torch.FloatTensor:
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
-        print(f"Encode hidden states from transformer block: {encoder_hidden_states is None}")
         batch_size = hidden_states.shape[0]
 
         if self.use_ada_layer_norm:
@@ -286,6 +285,7 @@ class BasicTransformerBlock(nn.Module):
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
         gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
 
+        print(f"Encode hidden states from transformer block: {encoder_hidden_states if self.only_cross_attention else None}")
         attn_output = self.attn1(
             norm_hidden_states,
             encoder_hidden_states=encoder_hidden_states if self.only_cross_attention else None,
