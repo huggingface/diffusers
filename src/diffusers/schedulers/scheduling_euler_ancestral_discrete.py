@@ -377,6 +377,9 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         sigma = self.sigmas[self.step_index]
 
+        # Upcast to avoid precision issues when computing prev_sample
+        sample = sample.to(torch.float32)
+
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         if self.config.prediction_type == "epsilon":
             pred_original_sample = sample - sigma * model_output
@@ -406,6 +409,9 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         noise = randn_tensor(model_output.shape, dtype=model_output.dtype, device=device, generator=generator)
 
         prev_sample = prev_sample + noise * sigma_up
+
+        # Cast sample back to model compatible dtype
+        prev_sample = prev_sample.to(model_output.dtype)
 
         # upon completion increase step index by one
         self._step_index += 1
