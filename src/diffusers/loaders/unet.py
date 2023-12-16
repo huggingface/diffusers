@@ -664,15 +664,35 @@ class UNet2DConditionLoadersMixin:
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
 
-    def _convert_ip_adapter_to_diffusers(self, state_dict):
+    def _convert_ip_adapter_image_proj_to_diffusers(self, state_dict):
         updated_state_dict = {}
+        image_projection = None
 
         if "proj.weight" in state_dict:
+            # IP-Adapter
+            num_image_text_embeds = 4
+            clip_embeddings_dim = state_dict["proj.weight"].shape[-1]
+            cross_attention_dim = state_dict["proj.weight"].shape[0] // 4
+
+            image_projection = ImageProjection(
+                cross_attention_dim=cross_attention_dim,
+                image_embed_dim=clip_embeddings_dim,
+                num_image_text_embeds=num_image_text_embeds,
+            )
+
             for key, value in state_dict.items():
                 diffusers_name = key.replace("proj", "image_embeds")
                 updated_state_dict[diffusers_name] = value
 
         elif "proj.3.weight" in state_dict:
+            # IP-Adapter Full
+            clip_embeddings_dim = state_dict["proj.0.weight"].shape[0]
+            cross_attention_dim = state_dict["proj.3.weight"].shape[0]
+
+            image_projection = MLPProjection(
+                cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+            )
+
             for key, value in state_dict.items():
                 diffusers_name = key.replace("proj.0", "ff.net.0.proj")
                 diffusers_name = diffusers_name.replace("proj.2", "ff.net.2")
@@ -680,6 +700,21 @@ class UNet2DConditionLoadersMixin:
                 updated_state_dict[diffusers_name] = value
 
         else:
+            # IP-Adapter Plus
+            num_image_text_embeds = state_dict["latents"].shape[1]
+            embed_dims = state_dict["proj_in.weight"].shape[1]
+            output_dims = state_dict["proj_out.weight"].shape[0]
+            hidden_dims = state_dict["latents"].shape[2]
+            heads = state_dict["layers.0.0.to_q.weight"].shape[0] // 64
+
+            image_projection = Resampler(
+                embed_dims=embed_dims,
+                output_dims=output_dims,
+                hidden_dims=hidden_dims,
+                heads=heads,
+                num_queries=num_image_text_embeds,
+            )
+
             for key, value in state_dict.items():
                 diffusers_name = key.replace("0.to", "2.to")
                 diffusers_name = diffusers_name.replace("1.0.weight", "3.0.weight")
@@ -700,7 +735,8 @@ class UNet2DConditionLoadersMixin:
                 else:
                     updated_state_dict[diffusers_name] = value
 
-        return updated_state_dict
+        image_projection.load_state_dict(updated_state_dict)
+        return image_projection
 
     def _load_ip_adapter_weights(self, state_dict):
         from ..models.attention_processor import (
@@ -762,56 +798,8 @@ class UNet2DConditionLoadersMixin:
 
         self.set_attn_processor(attn_procs)
 
-        # create image projection layers.
-        image_proj_state_dict = state_dict["image_proj"]
-
-        if "proj.weight" in state_dict["image_proj"]:
-            # IP-Adapter
-            clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
-            cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
-
-            image_projection = ImageProjection(
-                cross_attention_dim=cross_attention_dim,
-                image_embed_dim=clip_embeddings_dim,
-                num_image_text_embeds=num_image_text_embeds,
-            )
-            image_projection.to(dtype=self.dtype, device=self.device)
-
-            new_sd = self._convert_ip_adapter_to_diffusers(image_proj_state_dict)
-            image_projection.load_state_dict(new_sd)
-
-        elif "proj.3.weight" in state_dict["image_proj"]:
-            clip_embeddings_dim = state_dict["image_proj"]["proj.0.weight"].shape[0]
-            cross_attention_dim = state_dict["image_proj"]["proj.3.weight"].shape[0]
-
-            image_projection = MLPProjection(
-                cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
-            )
-            image_projection.to(dtype=self.dtype, device=self.device)
-
-            new_sd = self._convert_ip_adapter_to_diffusers(image_proj_state_dict)
-            image_projection.load_state_dict(new_sd)
-
-        else:
-            # IP-Adapter Plus
-            embed_dims = state_dict["image_proj"]["proj_in.weight"].shape[1]
-            output_dims = state_dict["image_proj"]["proj_out.weight"].shape[0]
-            hidden_dims = state_dict["image_proj"]["latents"].shape[2]
-            heads = state_dict["image_proj"]["layers.0.0.to_q.weight"].shape[0] // 64
-
-            image_projection = Resampler(
-                embed_dims=embed_dims,
-                output_dims=output_dims,
-                hidden_dims=hidden_dims,
-                heads=heads,
-                num_queries=num_image_text_embeds,
-            )
-
-            new_sd = self._convert_ip_adapter_to_diffusers(image_proj_state_dict)
-            image_projection.load_state_dict(new_sd)
-        del image_proj_state_dict
+        # convert IP-Adapter Image Projection layers to diffusers
+        image_projection = self._convert_ip_adapter_image_proj_to_diffusers(state_dict["image_proj"])
 
         self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
         self.config.encoder_hid_dim_type = "ip_image_proj"
-
-    delete_adapter_layers
