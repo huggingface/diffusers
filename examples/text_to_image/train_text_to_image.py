@@ -166,7 +166,14 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
     images = []
     for i in range(len(args.validation_prompts)):
         with torch.autocast("cuda"):
-            image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+            image = pipeline(
+                args.validation_prompts[i],
+                num_inference_steps=args.num_inference_steps,
+                generator=generator,
+                width=args.resolution,
+                height=args.resolution,
+                guidance_scale=args.guidance_scale,
+            ).images[0]
 
         images.append(image)
 
@@ -488,6 +495,16 @@ def parse_args():
         "--generate_images_when_checkpointing",
         action="store_true",
         help="Whether or not to generate images when checkpointing.",
+    )
+    parser.add_argument(
+        "--num_inference_steps",
+        type=int,
+        default=40,
+    )
+    parser.add_argument(
+        "--guidance_scale",
+        type=float,
+        default=10,
     )
 
     args = parser.parse_args()
@@ -1096,7 +1113,12 @@ def main():
 
             for i in range(len(args.validation_prompts)):
                 with torch.autocast("cuda"):
-                    image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+                    image = pipeline(
+                        args.validation_prompts[i],
+                        num_inference_steps=args.num_inference_steps,
+                        guidance_scale=args.guidance_scale,
+                        generator=generator
+                    ).images[0]
                 images.append(image)
 
         if args.push_to_hub:
