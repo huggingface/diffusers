@@ -377,6 +377,10 @@ class PipelineTesterMixin:
             with CaptureLogger(logger) as cap_logger:
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
 
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+
             for name in pipe_loaded.components.keys():
                 if name not in pipe_loaded._optional_components:
                     assert name in str(cap_logger)

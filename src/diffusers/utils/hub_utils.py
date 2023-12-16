@@ -25,20 +25,21 @@ from typing import Dict, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
-    HfFolder,
     ModelCard,
     ModelCardData,
     create_repo,
+    get_full_repo_name,
     hf_hub_download,
     upload_folder,
-    whoami,
 )
+from huggingface_hub.constants import HF_HUB_CACHE, HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     is_jinja_available,
+    validate_hf_hub_args,
 )
 from packaging import version
 from requests import HTTPError
@@ -46,7 +47,6 @@ from requests import HTTPError
 from .. import __version__
 from .constants import (
     DEPRECATED_REVISION_ARGS,
-    DIFFUSERS_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
@@ -69,9 +69,6 @@ logger = get_logger(__name__)
 
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
-HF_HUB_OFFLINE = os.getenv("HF_HUB_OFFLINE", "").upper() in ENV_VARS_TRUE_VALUES
-DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_VALUES
-HUGGINGFACE_CO_TELEMETRY = HUGGINGFACE_CO_RESOLVE_ENDPOINT + "/api/telemetry/"
 
 
 def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
@@ -79,7 +76,7 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     Formats a user-agent string with basic info about a request.
     """
     ua = f"diffusers/{__version__}; python/{sys.version.split()[0]}; session_id/{SESSION_ID}"
-    if DISABLE_TELEMETRY or HF_HUB_OFFLINE:
+    if HF_HUB_DISABLE_TELEMETRY or HF_HUB_OFFLINE:
         return ua + "; telemetry/off"
     if is_torch_available():
         ua += f"; torch/{_torch_version}"
@@ -96,16 +93,6 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     elif isinstance(user_agent, str):
         ua += "; " + user_agent
     return ua
-
-
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
 
 
 def create_model_card(args, model_name):
@@ -183,7 +170,7 @@ old_diffusers_cache = os.path.join(hf_cache_home, "diffusers")
 
 def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str] = None) -> None:
     if new_cache_dir is None:
-        new_cache_dir = DIFFUSERS_CACHE
+        new_cache_dir = HF_HUB_CACHE
     if old_cache_dir is None:
         old_cache_dir = old_diffusers_cache
 
@@ -203,7 +190,7 @@ def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str]
     # At this point, old_cache_dir contains symlinks to the new cache (it can still be used).
 
 
-cache_version_file = os.path.join(DIFFUSERS_CACHE, "version_diffusers_cache.txt")
+cache_version_file = os.path.join(HF_HUB_CACHE, "version_diffusers_cache.txt")
 if not os.path.isfile(cache_version_file):
     cache_version = 0
 else:
@@ -233,12 +220,12 @@ if cache_version < 1:
 
 if cache_version < 1:
     try:
-        os.makedirs(DIFFUSERS_CACHE, exist_ok=True)
+        os.makedirs(HF_HUB_CACHE, exist_ok=True)
         with open(cache_version_file, "w") as f:
             f.write("1")
     except Exception:
         logger.warning(
-            f"There was a problem when trying to write in your cache folder ({DIFFUSERS_CACHE}). Please, ensure "
+            f"There was a problem when trying to write in your cache folder ({HF_HUB_CACHE}). Please, ensure "
             "the directory exists and can be written to."
         )
 
@@ -252,20 +239,21 @@ def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     return weights_name
 
 
+@validate_hf_hub_args
 def _get_model_file(
-    pretrained_model_name_or_path,
+    pretrained_model_name_or_path: Union[str, Path],
     *,
-    weights_name,
-    subfolder,
-    cache_dir,
-    force_download,
-    proxies,
-    resume_download,
-    local_files_only,
-    use_auth_token,
-    user_agent,
-    revision,
-    commit_hash=None,
+    weights_name: str,
+    subfolder: Optional[str],
+    cache_dir: Optional[str],
+    force_download: bool,
+    proxies: Optional[Dict],
+    resume_download: bool,
+    local_files_only: bool,
+    token: Optional[str],
+    user_agent: Union[Dict, str, None],
+    revision: Optional[str],
+    commit_hash: Optional[str] = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
     if os.path.isfile(pretrained_model_name_or_path):
@@ -300,7 +288,7 @@ def _get_model_file(
                     proxies=proxies,
                     resume_download=resume_download,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     user_agent=user_agent,
                     subfolder=subfolder,
                     revision=revision or commit_hash,
@@ -325,7 +313,7 @@ def _get_model_file(
                 proxies=proxies,
                 resume_download=resume_download,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 user_agent=user_agent,
                 subfolder=subfolder,
                 revision=revision or commit_hash,
@@ -336,7 +324,7 @@ def _get_model_file(
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                 "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
+                "token having permission to this repo with `token` or log in with `huggingface-cli "
                 "login`."
             )
         except RevisionNotFoundError:
