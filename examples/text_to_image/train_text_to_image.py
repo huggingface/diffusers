@@ -571,6 +571,12 @@ def main():
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+        if args.save_unet_only:
+            os.makedirs(os.path.join(args.output_dir, "unets"), exist_ok=True)
+
+        elif args.checkpointing_steps is not None:
+            os.makedirs(os.path.join(args.output_dir, "checkpoints"), exist_ok=True)
+
         if args.push_to_hub:
             repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
@@ -1026,15 +1032,15 @@ def main():
                                     removing_checkpoint = os.path.join(args.output_dir, removing_checkpoint)
                                     shutil.rmtree(removing_checkpoint)
 
-                        save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
-
                         if args.save_unet_only:
+                            save_path = os.path.join(args.output_dir, "unets", str(global_step))
                             try:
                                 unet.module.save_pretrained(save_path)
                             except AttributeError:
                                 unet.save_pretrained(save_path)
                             logger.info(f"Saved unet to {save_path}")
                         else:
+                            save_path = os.path.join(args.output_dir, "checkpoints", str(global_step))
                             accelerator.save_state(save_path)
                             logger.info(f"Saved state to {save_path}")
 
