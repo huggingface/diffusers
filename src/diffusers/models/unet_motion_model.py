@@ -94,7 +94,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
 
         Args:
             block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
-            The tuple of output channels for each UNet block.
+                The tuple of output channels for each UNet block.
             motion_layers_per_block (`int`, *optional*, defaults to 2):
                 The number of motion layers per UNet block.
             motion_mid_block_layers_per_block (`int`, *optional*, defaults to 1):
