@@ -171,12 +171,12 @@ class IPAdapterMixin:
         ```
         """
         # remove CLIP image encoder
-        if hasattr(self, "image_encoder"):
+        if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is not None:
             self.image_encoder = None
             self.register_to_config(image_encoder=[None, None])
 
         # remove feature extractor
-        if hasattr(self, "feature_extractor"):
+        if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
             self.feature_extractor = None
             self.register_to_config(feature_extractor=[None, None])
 
@@ -184,7 +184,5 @@ class IPAdapterMixin:
         self.unet.encoder_hid_proj = None
         self.config.encoder_hid_dim_type = None
 
-        # restore original Unet layers
-        device = self.unet.device
-        self.unet = self.unet.from_pretrained(self.config._name_or_path, subfolder="unet", torch_dtype=self.dtype)
-        self.unet.to(device)
+        # restore original Unet attention processors layers
+        self.unet._restore_attn_processors()

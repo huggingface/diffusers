@@ -686,6 +686,13 @@ class UNet2DConditionLoadersMixin:
         # because `Resampler` also has `attn_processors`.
         self.encoder_hid_proj = None
 
+        # store original attn_processors if not already stored
+        if (
+            getattr(self, "original_attn_processors", None) is None
+            or getattr(self, "original_attn_processors", None) == {}
+        ):
+            self.original_attn_processors = self.attn_processors
+
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
         key_id = 1
@@ -824,3 +831,9 @@ class UNet2DConditionLoadersMixin:
         self.config.encoder_hid_dim_type = "ip_image_proj"
 
     delete_adapter_layers
+
+    def _restore_attn_processors(self):
+        if hasattr(self, "original_attn_processors") and getattr(self, "original_attn_processors", None) is not None:
+            self.set_attn_processor(self.original_attn_processors)
+        else:
+            raise AttributeError("No original attn_processors to restore")
