@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -612,6 +612,22 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def _get_add_time_ids(self, original_size, crops_coords_top_left, target_size, dtype):
+        add_time_ids = list(original_size + crops_coords_top_left + target_size)
+
+        passed_add_embed_dim = (
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + self.text_encoder_2.config.projection_dim
+        )
+        expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
+
+        if expected_add_embed_dim != passed_add_embed_dim:
+            raise ValueError(
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
+            )
+
+        add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
+        return add_time_ids
+
     @torch.no_grad()
     def __call__(
         self,
@@ -640,6 +656,9 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
+        original_size: Optional[Tuple[int, int]] = None,
+        crops_coords_top_left: Tuple[int, int] = (0, 0),
+        target_size: Optional[Tuple[int, int]] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -720,6 +739,21 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
+                `original_size` defaults to `(width, height)` if not specified. Part of SDXL's micro-conditioning as
+                explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            crops_coords_top_left (`Tuple[int]`, *optional*, defaults to (0, 0)):
+                `crops_coords_top_left` can be used to generate an image that appears to be "cropped" from the position
+                `crops_coords_top_left` downwards. Favorable, well-centered images are usually achieved by setting
+                `crops_coords_top_left` to (0, 0). Part of SDXL's micro-conditioning as explained in section 2.2 of
+                [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+            target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
+                For most cases, `target_size` should be set to the desired height and width of the generated image. If
+                not specified it will default to `(width, height)`. Part of SDXL's micro-conditioning as explained in
+                section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
+
         Examples:
 
         Returns:
@@ -757,6 +791,7 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
@@ -766,6 +801,7 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
+
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -816,11 +852,39 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-        # 7 Add image embeds for IP-Adapter
+
+        # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
-        # Denoising loop
+        # 8. Prepare added time ids & embeddings
+        add_text_embeds = pooled_prompt_embeds
+        add_time_ids = self._get_add_time_ids(
+            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+        )
+
+        if do_classifier_free_guidance:
+            prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
+
+        prompt_embeds = prompt_embeds.to(device)
+        add_text_embeds = add_text_embeds.to(device)
+        add_time_ids = add_time_ids.to(device)
+
+        # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+
+        # 9.1 Apply denoising_end
+        if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
+            discrete_timestep_cutoff = int(
+                round(
+                    self.scheduler.config.num_train_timesteps
+                    - (denoising_end * self.scheduler.config.num_train_timesteps)
+                )
+            )
+            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
+            timesteps = timesteps[:num_inference_steps]
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -828,9 +892,15 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
+                added_cond_kwargs.update({"text_embeds": add_text_embeds, "time_ids": add_time_ids})
+                ts = torch.tensor([t], dtype=latent_model_input.dtype, device=latent_model_input.device)
+                if do_classifier_free_guidance:
+                    ts = ts.repeat(2)
+
+                # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
-                    t,
+                    ts,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=cross_attention_kwargs,
                     added_cond_kwargs=added_cond_kwargs,
@@ -850,10 +920,15 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
+        # make sure the VAE is in float32 mode, as it overflows in float16
+        if self.vae.dtype == torch.float32 and latents.dtype == torch.float16:
+            self.upcast_vae()
+            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+
         if output_type == "latent":
             return AnimateDiffXLPipelineOutput(frames=latents)
 
-        # Post-processing
+        # 10. Post-processing
         video_tensor = self.decode_latents(latents)
 
         if output_type == "pt":
@@ -861,7 +936,7 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
         else:
             video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
-        # Offload all models
+        # 11. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
