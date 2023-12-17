@@ -260,6 +260,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.FloatTensor] = None,
         negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
+        model_token_max_length: int = 120,
         **kwargs,
     ):
         r"""
@@ -303,7 +304,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         # See Section 3.1. of the paper.
-        max_length = 120
+        max_length = model_token_max_length
 
         if prompt_embeds is None:
             prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
@@ -688,6 +689,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         clean_caption: bool = True,
         use_resolution_binning: bool = True,
+        model_token_max_length: int = 120,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -822,6 +824,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             clean_caption=clean_caption,
+            model_token_max_length=model_token_max_length,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
