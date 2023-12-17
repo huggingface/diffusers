@@ -41,7 +41,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 |   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon)
 |   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) |
-Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | - | [Andrew Zhu](https://xhinker.medium.com/) |
+| Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1LsqilswLR40XLLcp6XFOl5nKb_wOe26W?usp=sharing) | [Andrew Zhu](https://xhinker.medium.com/) |
 FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipeline](#stable-diffusion-fabric-pipeline) | - | [Shauray Singh](https://shauray8.github.io/about_shauray/) |
 sketch inpaint - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion Pipeline](#stable-diffusion-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) |
 prompt-to-prompt | change parts of a prompt and retain image structure (see [paper page](https://prompt-to-prompt.github.io/)) | [Prompt2Prompt Pipeline](#prompt2prompt-pipeline) | - | [Umer H. Adil](https://twitter.com/UmerHAdil) |
@@ -1619,10 +1619,11 @@ This approach is using (optional) CoCa model to avoid writing image description.
 
 This SDXL pipeline support unlimited length prompt and negative prompt, compatible with A1111 prompt weighted style.
 
-You can provide both `prompt` and `prompt_2`. if only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline.
+You can provide both `prompt` and `prompt_2`. If only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline. 
 
 ```python
 from diffusers import DiffusionPipeline
+from diffusers.utils import load_image
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
@@ -1633,24 +1634,51 @@ pipe = DiffusionPipeline.from_pretrained(
     , custom_pipeline   = "lpw_stable_diffusion_xl",
 )
 
-prompt = "photo of a cute (white) cat running on the grass"*20
-prompt2 = "chasing (birds:1.5)"*20
+prompt = "photo of a cute (white) cat running on the grass" * 20
+prompt2 = "chasing (birds:1.5)" * 20
 prompt = f"{prompt},{prompt2}"
 neg_prompt = "blur, low quality, carton, animate"
 
 pipe.to("cuda")
-images = pipe(
-    prompt                  = prompt
-    , negative_prompt       = neg_prompt
-).images[0]
+
+# text2img
+t2i_images = pipe(
+    prompt=prompt,
+    negative_prompt=neg_prompt,
+).images # alternatively, you can call the .text2img() function
+
+# img2img
+input_image = load_image("/path/to/local/image.png") # or URL to your input image
+i2i_images = pipe.img2img(
+  prompt=prompt,
+  negative_prompt=neg_prompt,
+  image=input_image,
+  strength=0.8, # higher strength will result in more variation compared to original image
+).images
+
+# inpaint
+input_mask = load_image("/path/to/local/mask.png") # or URL to your input inpainting mask
+inpaint_images = pipe.inpaint(
+  prompt="photo of a cute (black) cat running on the grass" * 20,
+  negative_prompt=neg_prompt,
+  image=input_image,
+  mask=input_mask,
+  strength=0.6, # higher strength will result in more variation compared to original image
+).images
 
 pipe.to("cpu")
 torch.cuda.empty_cache()
-images
+
+from IPython.display import display # assuming you are using this code in a notebook
+display(t2i_images[0])
+display(i2i_images[0])
+display(inpaint_images[0])
 ```
 
 In the above code, the `prompt2` is appended to the `prompt`, which is more than 77 tokens. "birds" are showing up in the result.
 ![Stable Diffusion XL Long Weighted Prompt Pipeline sample](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_long_weighted_prompt.png)
+
+For more results, checkout [PR #6114](https://github.com/huggingface/diffusers/pull/6114).
 
 ## Example Images Mixing (with CoCa)
 ```python
