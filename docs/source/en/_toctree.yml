@@ -322,6 +322,8 @@
       title: Shap-E
     - local: api/pipelines/spectrogram_diffusion
       title: Spectrogram Diffusion
+    - local: api/pipelines/unicontrol
+      title: UniControl
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
