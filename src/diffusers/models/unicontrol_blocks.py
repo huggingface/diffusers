@@ -2,7 +2,6 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 from .activations import get_activation
-from .embeddings import Timesteps, TimestepEmbedding
 
 def modulated_conv2d(
     x,                  # Input tensor: [batch_size, in_channels, in_height, in_width]

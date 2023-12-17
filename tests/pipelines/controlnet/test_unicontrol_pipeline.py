@@ -513,7 +513,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
         controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-seg")
 
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        pipe = StableDiffusionUniControlPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe.set_progress_bar_config(disable=None)
@@ -539,7 +539,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
     def test_canny_guess_mode(self):
         controlnet = ControlNetModel.from_pretrained("NagaSaiAbhinay/unicontrol-v1.1-test")
 
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        pipe = StableDiffusionUniControlPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe.enable_model_cpu_offload()
@@ -571,7 +571,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
     def test_canny_guess_mode_euler(self):
         controlnet = ControlNetModel.from_pretrained("NagaSaiAbhinay/unicontrol-v1.1-test")
 
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        pipe = StableDiffusionUniControlPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
@@ -609,7 +609,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
     def test_v11_shuffle_global_pool_conditions(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11e_sd15_shuffle")
 
-        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+        pipe = StableDiffusionUniControlPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
         pipe.enable_model_cpu_offload()
