@@ -506,6 +506,10 @@ def parse_args():
         type=float,
         default=10,
     )
+    parser.add_argument(
+        "--running_as_docker",
+        action="store_true",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -1056,10 +1060,12 @@ def main():
                                 weight_dtype,
                                 global_step,
                             )
-                        
 
-            logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
-            progress_bar.set_postfix(**logs)
+            if args.running_as_docker:
+                logger.info(f"Step {global_step} - loss: {loss.detach().item()}")
+            else:
+                logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+                progress_bar.set_postfix(**logs)
 
             if global_step >= args.max_train_steps:
                 break
