@@ -924,18 +924,18 @@ class StableDiffusionPipeline(
         lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
-
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-            prompt,
-            device,
-            num_images_per_prompt,
-            self.do_classifier_free_guidance,
-            negative_prompt,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=lora_scale,
-            clip_skip=self.clip_skip,
-        )
+        if prompt_embeds is None and negative_prompt_embeds is None:
+            prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+                prompt,
+                device,
+                num_images_per_prompt,
+                self.do_classifier_free_guidance,
+                negative_prompt,
+                prompt_embeds=prompt_embeds,
+                negative_prompt_embeds=negative_prompt_embeds,
+                lora_scale=lora_scale,
+                clip_skip=self.clip_skip,
+            )
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
