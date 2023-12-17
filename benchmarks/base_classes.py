@@ -174,7 +174,7 @@ class LCMLoRATextToImageBenchmark(TextToImageBenchmark):
         pipeline_class_name = str(self.pipe.__class__.__name__)
         flush()
         csv_dict = generate_csv_dict(
-            pipeline_cls=pipeline_class_name, ckpt=args.ckpt, args=args, benchmark_info=benchmark_info
+            pipeline_cls=pipeline_class_name, ckpt=self.lora_id, args=args, benchmark_info=benchmark_info
         )
         filepath = self.get_result_filepath(args)
         write_to_csv(filepath, csv_dict)
