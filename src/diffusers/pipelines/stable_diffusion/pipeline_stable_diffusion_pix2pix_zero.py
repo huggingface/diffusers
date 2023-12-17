@@ -282,7 +282,7 @@ class Pix2PixZeroAttnProcessor:
 
 class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     r"""
-    Pipeline for pixel-levl image editing using Pix2Pix Zero. Based on Stable Diffusion.
+    Pipeline for pixel-level image editing using Pix2Pix Zero. Based on Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -310,6 +310,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             Whether the pipeline requires a safety checker. We recommend setting it to True if you're using the
             pipeline publicly.
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = [
         "safety_checker",
@@ -579,7 +580,7 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder)
+            unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 

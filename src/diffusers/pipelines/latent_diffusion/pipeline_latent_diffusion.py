@@ -49,6 +49,7 @@ class LDMTextToImagePipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+
     model_cpu_offload_seq = "bert->unet->vqvae"
 
     def __init__(

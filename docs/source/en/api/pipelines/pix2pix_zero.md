@@ -20,7 +20,7 @@ The abstract from the paper is:
 
 You can find additional information about Pix2Pix Zero on the [project page](https://pix2pixzero.github.io/),  [original codebase](https://github.com/pix2pixzero/pix2pix-zero), and try it out in a [demo](https://huggingface.co/spaces/pix2pix-zero-library/pix2pix-zero-demo).
 
-## Tips 
+## Tips
 
 * The pipeline can be conditioned on real input images. Check out the code examples below to know more.
 * The pipeline exposes two arguments namely `source_embeds` and `target_embeds`
@@ -29,12 +29,11 @@ you wanted to translate from "cat" to "dog". In this case, the edit direction wi
 this in the pipeline, you simply have to set the embeddings related to the phrases including "cat" to
 `source_embeds` and "dog" to `target_embeds`. Refer to the code example below for more details.
 * When you're using this pipeline from a prompt, specify the _source_ concept in the prompt. Taking
-the above example, a valid input prompt would be: "a high resolution painting of a **cat** in the style of van gough".
+the above example, a valid input prompt would be: "a high resolution painting of a **cat** in the style of van gogh".
 * If you wanted to reverse the direction in the example above, i.e., "dog -> cat", then it's recommended to:
     * Swap the `source_embeds` and `target_embeds`.
-    * Change the input prompt to include "dog".  
-* To learn more about how the source and target embeddings are generated, refer to the [original 
-paper](https://arxiv.org/abs/2302.03027). Below, we also provide some directions on how to generate the embeddings.
+    * Change the input prompt to include "dog".
+* To learn more about how the source and target embeddings are generated, refer to the [original paper](https://arxiv.org/abs/2302.03027). Below, we also provide some directions on how to generate the embeddings.
 * Note that the quality of the outputs generated with this pipeline is dependent on how good the `source_embeds` and `target_embeds` are. Please, refer to [this discussion](#generating-source-and-target-embeddings) for some suggestions on the topic.
 
 ## Available Pipelines:
@@ -79,23 +78,22 @@ for url in [src_embs_url, target_embs_url]:
 src_embeds = torch.load(src_embs_url.split("/")[-1])
 target_embeds = torch.load(target_embs_url.split("/")[-1])
 
-images = pipeline(
+image = pipeline(
     prompt,
     source_embeds=src_embeds,
     target_embeds=target_embeds,
     num_inference_steps=50,
     cross_attention_guidance_amount=0.15,
-).images
-images[0].save("edited_image_dog.png")
+).images[0]
+image
 ```
 
 ### Based on an input image
 
 When the pipeline is conditioned on an input image, we first obtain an inverted
-noise from it using a `DDIMInverseScheduler` with the help of a generated caption. Then 
-the inverted noise is used to start the generation process. 
+noise from it using a `DDIMInverseScheduler` with the help of a generated caption. Then the inverted noise is used to start the generation process.
 
-First, let's load our pipeline: 
+First, let's load our pipeline:
 
 ```py
 import torch
@@ -119,25 +117,25 @@ pipeline.inverse_scheduler = DDIMInverseScheduler.from_config(pipeline.scheduler
 pipeline.enable_model_cpu_offload()
 ```
 
-Then, we load an input image for conditioning and obtain a suitable caption for it: 
+Then, we load an input image for conditioning and obtain a suitable caption for it:
 
 ```py
-import requests
-from PIL import Image
+from diffusers.utils import load_image
 
 img_url = "https://github.com/pix2pixzero/pix2pix-zero/raw/main/assets/test_images/cats/cat_6.png"
-raw_image = Image.open(requests.get(img_url, stream=True).raw).convert("RGB").resize((512, 512))
+raw_image = load_image(url).resize((512, 512))
 caption = pipeline.generate_caption(raw_image)
+caption
 ```
 
-Then we employ the generated caption and the input image to get the inverted noise: 
+Then we employ the generated caption and the input image to get the inverted noise:
 
-```py 
+```py
 generator = torch.manual_seed(0)
 inv_latents = pipeline.invert(caption, image=raw_image, generator=generator).latents
 ```
 
-Now, generate the image with edit directions: 
+Now, generate the image with edit directions:
 
 ```py
 # See the "Generating source and target embeddings" section below to
@@ -159,16 +157,16 @@ image = pipeline(
     latents=inv_latents,
     negative_prompt=caption,
 ).images[0]
-image.save("edited_image.png")
+image
 ```
 
-## Generating source and target embeddings 
+## Generating source and target embeddings
 
 The authors originally used the [GPT-3 API](https://openai.com/api/) to generate the source and target captions for discovering
 edit directions. However, we can also leverage open source and public models for the same purpose.
 Below, we provide an end-to-end example with the [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) model
 for generating captions and [CLIP](https://huggingface.co/docs/transformers/model_doc/clip) for
-computing embeddings on the generated captions.  
+computing embeddings on the generated captions.
 
 **1. Load the generation model**:
 
@@ -180,7 +178,7 @@ tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-xl")
 model = T5ForConditionalGeneration.from_pretrained("google/flan-t5-xl", device_map="auto", torch_dtype=torch.float16)
 ```
 
-**2. Construct a starting prompt**: 
+**2. Construct a starting prompt**:
 
 ```py
 source_concept = "cat"
@@ -193,11 +191,11 @@ target_text = f"Provide a caption for images containing a {target_concept}. "
 "The captions should be in English and should be no longer than 150 characters."
 ```
 
-Here, we're interested in the "cat -> dog" direction. 
+Here, we're interested in the "cat -> dog" direction.
 
 **3. Generate captions**:
 
-We can use a utility like so for this purpose. 
+We can use a utility like so for this purpose.
 
 ```py
 def generate_captions(input_prompt):
@@ -214,17 +212,18 @@ And then we just call it to generate our captions:
 ```py
 source_captions = generate_captions(source_text)
 target_captions = generate_captions(target_concept)
+print(source_captions, target_captions, sep='\n')
 ```
 
 We encourage you to play around with the different parameters supported by the
 `generate()` method ([documentation](https://huggingface.co/docs/transformers/main/en/main_classes/text_generation#transformers.generation_tf_utils.TFGenerationMixin.generate)) for the generation quality you are looking for.
 
-**4. Load the embedding model**: 
+**4. Load the embedding model**:
 
 Here, we need to use the same text encoder model used by the subsequent Stable Diffusion model.
 
-```py 
-from diffusers import StableDiffusionPix2PixZeroPipeline 
+```py
+from diffusers import StableDiffusionPix2PixZeroPipeline
 
 pipeline = StableDiffusionPix2PixZeroPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
@@ -236,8 +235,8 @@ text_encoder = pipeline.text_encoder
 
 **5. Compute embeddings**:
 
-```py 
-import torch 
+```py
+import torch
 
 def embed_captions(sentences, tokenizer, text_encoder, device="cuda"):
     with torch.no_grad():
@@ -261,22 +260,28 @@ target_embeddings = embed_captions(target_captions, tokenizer, text_encoder)
 
 And you're done! [Here](https://colab.research.google.com/drive/1tz2C1EdfZYAPlzXXbTnf-5PRBiR8_R1F?usp=sharing) is a Colab Notebook that you can use to interact with the entire process.
 
-Now, you can use these embeddings directly while calling the pipeline: 
+Now, you can use these embeddings directly while calling the pipeline:
 
 ```py
 from diffusers import DDIMScheduler
 
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 
-images = pipeline(
+image = pipeline(
     prompt,
     source_embeds=source_embeddings,
     target_embeds=target_embeddings,
     num_inference_steps=50,
     cross_attention_guidance_amount=0.15,
-).images
-images[0].save("edited_image_dog.png")
+).images[0]
+image
 ```
+
+<Tip>
+
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
 
 ## StableDiffusionPix2PixZeroPipeline
 [[autodoc]] StableDiffusionPix2PixZeroPipeline

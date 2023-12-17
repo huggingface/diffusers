@@ -20,7 +20,7 @@ Using the pretrained models we can provide control images (for example, a depth 
 
 The abstract of the paper is the following:
 
-*The incredible generative ability of large-scale text-to-image (T2I) models has demonstrated strong power of learning complex structures and meaningful semantics. However, relying solely on text prompts cannot fully take advantage of the knowledge learned by the model, especially when flexible and accurate structure control is needed. In this paper, we aim to ``dig out" the capabilities that T2I models have implicitly learned, and then explicitly use them to control the generation more granularly. Specifically, we propose to learn simple and small T2I-Adapters to align internal knowledge in T2I models with external control signals, while freezing the original large T2I models. In this way, we can train various adapters according to different conditions, and achieve rich control and editing effects. Further, the proposed T2I-Adapters have attractive properties of practical value, such as composability and generalization ability. Extensive experiments demonstrate that our T2I-Adapter has promising generation quality and a wide range of applications.*
+*The incredible generative ability of large-scale text-to-image (T2I) models has demonstrated strong power of learning complex structures and meaningful semantics. However, relying solely on text prompts cannot fully take advantage of the knowledge learned by the model, especially when flexible and accurate controlling (e.g., color and structure) is needed. In this paper, we aim to ``dig out" the capabilities that T2I models have implicitly learned, and then explicitly use them to control the generation more granularly. Specifically, we propose to learn simple and lightweight T2I-Adapters to align internal knowledge in T2I models with external control signals, while freezing the original large T2I models. In this way, we can train various adapters according to different conditions, achieving rich control and editing effects in the color and structure of the generation results. Further, the proposed T2I-Adapters have attractive properties of practical value, such as composability and generalization ability. Extensive experiments demonstrate that our T2I-Adapter has promising generation quality and a wide range of applications.*
 
 This model was contributed by the community contributor [HimariO](https://github.com/HimariO) ❤️ .
 
@@ -33,7 +33,7 @@ This model was contributed by the community contributor [HimariO](https://github
 
 ## Usage example with the base model of StableDiffusion-1.4/1.5
 
-In the following we give a simple example of how to use a *T2IAdapter* checkpoint with Diffusers for inference based on StableDiffusion-1.4/1.5.
+In the following we give a simple example of how to use a *T2I-Adapter* checkpoint with Diffusers for inference based on StableDiffusion-1.4/1.5.
 All adapters use the same pipeline.
 
  1. Images are first converted into the appropriate *control image* format.
@@ -42,7 +42,7 @@ All adapters use the same pipeline.
 Let's have a look at a simple example using the [Color Adapter](https://huggingface.co/TencentARC/t2iadapter_color_sd14v1).
 
 ```python
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 image = load_image("https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_ref.png")
 ```
@@ -83,20 +83,21 @@ Finally, pass the prompt and control image to the pipeline
 
 ```py
 # fix the random seed, so you will get the same result as the example
-generator = torch.manual_seed(7)
+generator = torch.Generator("cuda").manual_seed(7)
 
 out_image = pipe(
     "At night, glowing cubes in front of the beach",
     image=color_palette,
     generator=generator,
 ).images[0]
+make_image_grid([image, color_palette, out_image], rows=1, cols=3)
 ```
 
 ![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_output.png)
 
 ## Usage example with the base model of StableDiffusion-XL
 
-In the following we give a simple example of how to use a *T2IAdapter* checkpoint with Diffusers for inference based on StableDiffusion-XL.
+In the following we give a simple example of how to use a *T2I-Adapter* checkpoint with Diffusers for inference based on StableDiffusion-XL.
 All adapters use the same pipeline.
 
  1. Images are first downloaded into the appropriate *control image* format.
@@ -105,7 +106,7 @@ All adapters use the same pipeline.
 Let's have a look at a simple example using the [Sketch Adapter](https://huggingface.co/Adapter/t2iadapter/tree/main/sketch_sdxl_1.0).
 
 ```python
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 sketch_image = load_image("https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png").convert("L")
 ```
@@ -121,10 +122,9 @@ from diffusers import (
     StableDiffusionXLAdapterPipeline,
     DDPMScheduler
 )
-from diffusers.models.unet_2d_condition import UNet2DConditionModel
 
 model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-adapter = T2IAdapter.from_pretrained("Adapter/t2iadapter", subfolder="sketch_sdxl_1.0",torch_dtype=torch.float16, adapter_type="full_adapter_xl")
+adapter = T2IAdapter.from_pretrained("Adapter/t2iadapter", subfolder="sketch_sdxl_1.0", torch_dtype=torch.float16, adapter_type="full_adapter_xl")
 scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
 
 pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
@@ -141,12 +141,13 @@ Finally, pass the prompt and control image to the pipeline
 generator = torch.Generator().manual_seed(42)
 
 sketch_image_out = pipe(
-    prompt="a photo of a dog in real world, high quality", 
-    negative_prompt="extra digit, fewer digits, cropped, worst quality, low quality", 
-    image=sketch_image, 
-    generator=generator, 
+    prompt="a photo of a dog in real world, high quality",
+    negative_prompt="extra digit, fewer digits, cropped, worst quality, low quality",
+    image=sketch_image,
+    generator=generator,
     guidance_scale=7.5
 ).images[0]
+make_image_grid([sketch_image, sketch_image_out], rows=1, cols=2)
 ```
 
 ![img](https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch_output.png)
@@ -159,7 +160,7 @@ Non-diffusers checkpoints can be found under [TencentARC/T2I-Adapter](https://hu
 
 | Model Name | Control Image Overview| Control Image Example | Generated Image Example |
 |---|---|---|---|
-|[TencentARC/t2iadapter_color_sd14v1](https://huggingface.co/TencentARC/t2iadapter_color_sd14v1)<br/> *Trained with spatial color palette* | A image with 8x8 color palette.|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_sample_input.png"><img width="64" style="margin:0;padding:0;" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_sample_input.png"/></a>|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_sample_output.png"><img width="64" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_sample_output.png"/></a>|
+|[TencentARC/t2iadapter_color_sd14v1](https://huggingface.co/TencentARC/t2iadapter_color_sd14v1)<br/> *Trained with spatial color palette* | An image with 8x8 color palette.|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_sample_input.png"><img width="64" style="margin:0;padding:0;" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_sample_input.png"/></a>|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_sample_output.png"><img width="64" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/color_sample_output.png"/></a>|
 |[TencentARC/t2iadapter_canny_sd14v1](https://huggingface.co/TencentARC/t2iadapter_canny_sd14v1)<br/> *Trained with canny edge detection* | A monochrome image with white edges on a black background.|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/canny_sample_input.png"><img width="64" style="margin:0;padding:0;" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/canny_sample_input.png"/></a>|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/canny_sample_output.png"><img width="64" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/canny_sample_output.png"/></a>|
 |[TencentARC/t2iadapter_sketch_sd14v1](https://huggingface.co/TencentARC/t2iadapter_sketch_sd14v1)<br/> *Trained with [PidiNet](https://github.com/zhuoinoulu/pidinet) edge detection* | A hand-drawn monochrome image with white outlines on a black background.|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/sketch_sample_input.png"><img width="64" style="margin:0;padding:0;" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/sketch_sample_input.png"/></a>|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/sketch_sample_output.png"><img width="64" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/sketch_sample_output.png"/></a>|
 |[TencentARC/t2iadapter_depth_sd14v1](https://huggingface.co/TencentARC/t2iadapter_depth_sd14v1)<br/> *Trained with Midas depth estimation*  | A grayscale image with black representing deep areas and white representing shallow areas.|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/depth_sample_input.png"><img width="64" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/depth_sample_input.png"/></a>|<a href="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/depth_sample_output.png"><img width="64" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/depth_sample_output.png"/></a>|
@@ -181,9 +182,7 @@ Non-diffusers checkpoints can be found under [TencentARC/T2I-Adapter](https://hu
 Here we use the keypose adapter for the character posture and the depth adapter for creating the scene.
 
 ```py
-import torch
-from PIL import Image
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 cond_keypose = load_image(
     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/keypose_sample_input.png"
@@ -191,7 +190,7 @@ cond_keypose = load_image(
 cond_depth = load_image(
     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/depth_sample_input.png"
 )
-cond = [[cond_keypose, cond_depth]]
+cond = [cond_keypose, cond_depth]
 
 prompt = ["A man walking in an office room with a nice view"]
 ```
@@ -202,12 +201,13 @@ The two control images look as such:
 ![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/depth_sample_input.png)
 
 
-`MultiAdapter` combines keypose and depth adapters. 
+`MultiAdapter` combines keypose and depth adapters.
 
 `adapter_conditioning_scale` balances the relative influence of the different adapters.
 
 ```py
-from diffusers import StableDiffusionAdapterPipeline, MultiAdapter
+import torch
+from diffusers import StableDiffusionAdapterPipeline, MultiAdapter, T2IAdapter
 
 adapters = MultiAdapter(
     [
@@ -221,19 +221,20 @@ pipe = StableDiffusionAdapterPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     torch_dtype=torch.float16,
     adapter=adapters,
-)
+).to("cuda")
 
-images = pipe(prompt, cond, adapter_conditioning_scale=[0.8, 0.8])
+image = pipe(prompt, cond, adapter_conditioning_scale=[0.8, 0.8]).images[0]
+make_image_grid([cond_keypose, cond_depth, image], rows=1, cols=3)
 ```
 
 ![img](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/t2i-adapter/keypose_depth_sample_output.png)
 
 
-## T2I Adapter vs ControlNet
+## T2I-Adapter vs ControlNet
 
-T2I-Adapter is similar to [ControlNet](https://huggingface.co/docs/diffusers/main/en/api/pipelines/controlnet). 
-T2i-Adapter uses a smaller auxiliary network which is only run once for the entire diffusion process. 
-However, T2I-Adapter performs slightly worse than ControlNet. 
+T2I-Adapter is similar to [ControlNet](https://huggingface.co/docs/diffusers/main/en/api/pipelines/controlnet).
+T2I-Adapter uses a smaller auxiliary network which is only run once for the entire diffusion process.
+However, T2I-Adapter performs slightly worse than ControlNet.
 
 ## StableDiffusionAdapterPipeline
 [[autodoc]] StableDiffusionAdapterPipeline

@@ -38,6 +38,8 @@ except OptionalDependencyNotAvailable:
     _dummy_modules.update(get_objects_from_module(dummy_pt_objects))
 
 else:
+    _import_structure["deprecated"] = ["KarrasVeScheduler", "ScoreSdeVpScheduler"]
+    _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
     _import_structure["scheduling_ddim_inverse"] = ["DDIMInverseScheduler"]
@@ -55,11 +57,10 @@ else:
     _import_structure["scheduling_ipndm"] = ["IPNDMScheduler"]
     _import_structure["scheduling_k_dpm_2_ancestral_discrete"] = ["KDPM2AncestralDiscreteScheduler"]
     _import_structure["scheduling_k_dpm_2_discrete"] = ["KDPM2DiscreteScheduler"]
-    _import_structure["scheduling_karras_ve"] = ["KarrasVeScheduler"]
+    _import_structure["scheduling_lcm"] = ["LCMScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
-    _import_structure["scheduling_sde_vp"] = ["ScoreSdeVpScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
     _import_structure["scheduling_utils"] = ["KarrasDiffusionSchedulers", "SchedulerMixin"]
@@ -127,6 +128,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
+        from .deprecated import KarrasVeScheduler, ScoreSdeVpScheduler
+        from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
         from .scheduling_ddim import DDIMScheduler
         from .scheduling_ddim_inverse import DDIMInverseScheduler
@@ -144,11 +147,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_ipndm import IPNDMScheduler
         from .scheduling_k_dpm_2_ancestral_discrete import KDPM2AncestralDiscreteScheduler
         from .scheduling_k_dpm_2_discrete import KDPM2DiscreteScheduler
-        from .scheduling_karras_ve import KarrasVeScheduler
+        from .scheduling_lcm import LCMScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
         from .scheduling_sde_ve import ScoreSdeVeScheduler
-        from .scheduling_sde_vp import ScoreSdeVpScheduler
         from .scheduling_unclip import UnCLIPScheduler
         from .scheduling_unipc_multistep import UniPCMultistepScheduler
         from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin

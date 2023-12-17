@@ -67,6 +67,9 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, FromSingleFileMixi
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
+
     Args:
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
@@ -79,6 +82,7 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, FromSingleFileMixi
         scheduler ([`SchedulerMixin`]):
             A [`EulerDiscreteScheduler`] to be used in combination with `unet` to denoise the encoded image latents.
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(
@@ -510,6 +514,8 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, FromSingleFileMixi
             image = latents
 
         image = self.image_processor.postprocess(image, output_type=output_type)
+
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image,)

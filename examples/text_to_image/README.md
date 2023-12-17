@@ -32,9 +32,11 @@ And initialize an [🤗Accelerate](https://github.com/huggingface/accelerate/) e
 accelerate config
 ```
 
+Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
+
 ### Pokemon example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree. 
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-4`, so you'll need to visit [its card](https://huggingface.co/CompVis/stable-diffusion-v1-4), read the license and tick the checkbox if you agree.
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
@@ -69,7 +71,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model" 
+  --output_dir="sd-pokemon-model"
 ```
 <!-- accelerate_snippet_end -->
 
@@ -143,11 +145,11 @@ accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
   --gradient_checkpointing \
-  --max_train_steps=15000 \ 
+  --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
   --lr_scheduler="constant" --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model" 
+  --output_dir="sd-pokemon-model"
 ```
 
 
@@ -155,7 +157,7 @@ accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
 
 We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence
 by rebalancing the loss. In order to use it, one needs to set the `--snr_gamma` argument. The recommended
-value when using it is 5.0. 
+value when using it is 5.0.
 
 You can find [this project on Weights and Biases](https://wandb.ai/sayakpaul/text2image-finetune-minsnr) that compares the loss surfaces of the following setups:
 
@@ -165,7 +167,7 @@ You can find [this project on Weights and Biases](https://wandb.ai/sayakpaul/tex
 
 For our small Pokemons dataset, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger datasets, we believe the effects will be more pronounced.
 
-Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds. 
+Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds.
 
 ## Training with LoRA
 
@@ -184,7 +186,7 @@ on consumer GPUs like Tesla T4, Tesla V100.
 
 ### Training
 
-First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).  
+First, you need to set up your development environment as is explained in the [installation section](#installing-the-dependencies). Make sure to set the `MODEL_NAME` and `DATASET_NAME` environment variables. Here, we will use [Stable Diffusion v1-4](https://hf.co/CompVis/stable-diffusion-v1-4) and the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
@@ -195,7 +197,7 @@ export MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export DATASET_NAME="lambdalabs/pokemon-blip-captions"
 ```
 
-For this example we want to directly store the trained LoRA embeddings on the Hub, so 
+For this example we want to directly store the trained LoRA embeddings on the Hub, so
 we need to be logged in and add the `--push_to_hub` flag.
 
 ```bash
@@ -223,11 +225,11 @@ The above command will also run inference as fine-tuning progresses and log the 
 
 The final LoRA embedding weights have been uploaded to [sayakpaul/sd-model-finetuned-lora-t4](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4). **___Note: [The final weights](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4/blob/main/pytorch_lora_weights.bin) are only 3 MB in size, which is orders of magnitudes smaller than the original model.___**
 
-You can check some inference samples that were logged during the course of the fine-tuning process [here](https://wandb.ai/sayakpaul/text2image-fine-tune/runs/q4lc0xsw). 
+You can check some inference samples that were logged during the course of the fine-tuning process [here](https://wandb.ai/sayakpaul/text2image-fine-tune/runs/q4lc0xsw).
 
 ### Inference
 
-Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline` after loading the trained LoRA weights.  You 
+Once you have trained a model using above command, the inference can be done simply using the `StableDiffusionPipeline` after loading the trained LoRA weights.  You
 need to pass the `output_dir` for loading the LoRA weights which, in this case, is `sd-pokemon-model-lora`.
 
 ```python
@@ -246,9 +248,9 @@ image.save("pokemon.png")
 
 If you are loading the LoRA parameters from the Hub and if the Hub repository has
 a `base_model` tag (such as [this](https://huggingface.co/sayakpaul/sd-model-finetuned-lora-t4/blob/main/README.md?code=true#L4)), then
-you can do: 
+you can do:
 
-```py 
+```py
 from huggingface_hub.repocard import RepoCard
 
 lora_model_id = "sayakpaul/sd-model-finetuned-lora-t4"
@@ -285,7 +287,7 @@ python train_text_to_image_flax.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
-  --output_dir="sd-pokemon-model" 
+  --output_dir="sd-pokemon-model"
 ```
 
 To run on your own training files prepare the dataset according to the format required by `datasets`, you can find the instructions for how to do that in this [document](https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder-with-metadata).
@@ -319,5 +321,5 @@ According to [this issue](https://github.com/huggingface/diffusers/issues/2234#i
 
 ## Stable Diffusion XL
 
-* We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md). 
-* We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md). 
+* We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md).
+* We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](./README_sdxl.md).

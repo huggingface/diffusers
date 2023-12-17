@@ -12,12 +12,10 @@ specific language governing permissions and limitations under the License.
 
 # Installation
 
-Install 🤗 Diffusers for whichever deep learning library you're working with.
+🤗 Diffusers is tested on Python 3.8+, PyTorch 1.7.0+, and Flax. Follow the installation instructions below for the deep learning library you are using:
 
-🤗 Diffusers is tested on Python 3.8+, PyTorch 1.7.0+ and Flax. Follow the installation instructions below for the deep learning library you are using:
-
-- [PyTorch](https://pytorch.org/get-started/locally/) installation instructions.
-- [Flax](https://flax.readthedocs.io/en/latest/) installation instructions.
+- [PyTorch](https://pytorch.org/get-started/locally/) installation instructions
+- [Flax](https://flax.readthedocs.io/en/latest/) installation instructions
 
 ## Install with pip
 
@@ -37,7 +35,7 @@ Activate the virtual environment:
 source .env/bin/activate
 ```
 
-🤗 Diffusers also relies on the 🤗 Transformers library, and you can install both with the following command:
+You should also install 🤗 Transformers because 🤗 Diffusers relies on its models:
 
 <frameworkcontent>
 <pt>
@@ -52,11 +50,17 @@ pip install diffusers["flax"] transformers
 </jax>
 </frameworkcontent>
 
+## Install with conda
+
+After activating your virtual environment, with `conda` (maintained by the community):
+
+```bash
+conda install -c conda-forge diffusers
+```
+
 ## Install from source
 
-Before installing 🤗 Diffusers from source, make sure you have `torch` and 🤗 Accelerate installed.
-
-For `torch` installation, refer to the `torch` [installation](https://pytorch.org/get-started/locally/#start-locally) guide.
+Before installing 🤗 Diffusers from source, make sure you have PyTorch and 🤗 Accelerate installed.
 
 To install 🤗 Accelerate:
 
@@ -64,7 +68,7 @@ To install 🤗 Accelerate:
 pip install accelerate
 ```
 
-Install 🤗 Diffusers from source with the following command:
+Then install 🤗 Diffusers from source:
 
 ```bash
 pip install git+https://github.com/huggingface/diffusers
@@ -75,7 +79,7 @@ The `main` version is useful for staying up-to-date with the latest developments
 For instance, if a bug has been fixed since the last official release but a new release hasn't been rolled out yet.
 However, this means the `main` version may not always be stable.
 We strive to keep the `main` version operational, and most issues are usually resolved within a few hours or a day.
-If you run into a problem, please open an [Issue](https://github.com/huggingface/diffusers/issues/new/choose), so we can fix it even sooner!
+If you run into a problem, please open an [Issue](https://github.com/huggingface/diffusers/issues/new/choose) so we can fix it even sooner!
 
 ## Editable install
 
@@ -123,17 +127,29 @@ git pull
 
 Your Python environment will find the `main` version of 🤗 Diffusers on the next run.
 
-## Notice on telemetry logging
+## Cache
 
-Our library gathers telemetry information during `from_pretrained()` requests.
-This data includes the version of Diffusers and PyTorch/Flax, the requested model or pipeline class,
-and the path to a pre-trained checkpoint if it is hosted on the Hub.
+Model weights and files are downloaded from the Hub to a cache which is usually your home directory. You can change the cache location by specifying the `HF_HOME` or `HUGGINFACE_HUB_CACHE` environment variables or configuring the `cache_dir` parameter in methods like [`~DiffusionPipeline.from_pretrained`].
+
+Cached files allow you to run 🤗 Diffusers offline. To prevent 🤗 Diffusers from connecting to the internet, set the `HF_HUB_OFFLINE` environment variable to `True` and 🤗 Diffusers will only load previously downloaded files in the cache.
+
+```shell
+export HF_HUB_OFFLINE=True
+```
+
+For more details about managing and cleaning the cache, take a look at the [caching](https://huggingface.co/docs/huggingface_hub/guides/manage-cache) guide.
+
+## Telemetry logging
+
+Our library gathers telemetry information during [`~DiffusionPipeline.from_pretrained`] requests.
+The data gathered includes the version of 🤗 Diffusers and PyTorch/Flax, the requested model or pipeline class,
+and the path to a pretrained checkpoint if it is hosted on the Hugging Face Hub.
 This usage data helps us debug issues and prioritize new features.
-Telemetry is only sent when loading models and pipelines from the HuggingFace Hub,
-and is not collected during local usage.
+Telemetry is only sent when loading models and pipelines from the Hub,
+and it is not collected if you're loading local files.
 
-We understand that not everyone wants to share additional information, and we respect your privacy,
-so you can disable telemetry collection by setting the `DISABLE_TELEMETRY` environment variable from your terminal:
+We understand that not everyone wants to share additional information,and we respect your privacy.
+You can disable telemetry collection by setting the `DISABLE_TELEMETRY` environment variable from your terminal:
 
 On Linux/MacOS:
 ```bash

@@ -10,74 +10,164 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-
 # Text-to-image
 
 <Tip warning={true}>
 
-The text-to-image fine-tuning script is experimental. It's easy to overfit and run into issues like catastrophic forgetting. We recommend you explore different hyperparameters to get the best results on your dataset.
+The text-to-image script is experimental, and it's easy to overfit and run into issues like catastrophic forgetting. Try exploring different hyperparameters to get the best results on your dataset.
 
 </Tip>
 
-Text-to-image models like Stable Diffusion generate an image from a text prompt. This guide will show you how to finetune the [`CompVis/stable-diffusion-v1-4`](https://huggingface.co/CompVis/stable-diffusion-v1-4) model on your own dataset with PyTorch and Flax. All the training scripts for text-to-image finetuning used in this guide can be found in this [repository](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) if you're interested in taking a closer look.
+Text-to-image models like Stable Diffusion are conditioned to generate images given a text prompt.
 
-Before running the scripts, make sure to install the library's training dependencies:
+Training a model can be taxing on your hardware, but if you enable `gradient_checkpointing` and `mixed_precision`, it is possible to train a model on a single 24GB GPU. If you're training with larger batch sizes or want to train faster, it's better to use GPUs with more than 30GB of memory. You can reduce your memory footprint by enabling memory-efficient attention with [xFormers](../optimization/xformers). JAX/Flax training is also supported for efficient training on TPUs and GPUs, but it doesn't support gradient checkpointing, gradient accumulation or xFormers. A GPU with at least 30GB of memory or a TPU v3 is recommended for training with Flax.
+
+This guide will explore the [train_text_to_image.py](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) training script to help you become familiar with it, and how you can adapt it for your own use-case.
+
+Before running the script, make sure you install the library from source:
 
 ```bash
-pip install git+https://github.com/huggingface/diffusers.git
-pip install -U -r requirements.txt
+git clone https://github.com/huggingface/diffusers
+cd diffusers
+pip install .
 ```
 
-And initialize an [🤗 Accelerate](https://github.com/huggingface/accelerate/) environment with:
+Then navigate to the example folder containing the training script and install the required dependencies for the script you're using:
+
+<hfoptions id="installation">
+<hfoption id="PyTorch">
+```bash
+cd examples/text_to_image
+pip install -r requirements.txt
+```
+</hfoption>
+<hfoption id="Flax">
+```bash
+cd examples/text_to_image
+pip install -r requirements_flax.txt
+```
+</hfoption>
+</hfoptions>
+
+<Tip>
+
+🤗 Accelerate is a library for helping you train on multiple GPUs/TPUs or with mixed-precision. It'll automatically configure your training setup based on your hardware and environment. Take a look at the 🤗 Accelerate [Quick tour](https://huggingface.co/docs/accelerate/quicktour) to learn more.
+
+</Tip>
+
+Initialize an 🤗 Accelerate environment:
 
 ```bash
 accelerate config
 ```
 
-If you have already cloned the repo, then you won't need to go through these steps. Instead, you can pass the path to your local checkout to the training script and it will be loaded from there.
-
-## Hardware requirements
-
-Using `gradient_checkpointing` and `mixed_precision`, it should be possible to finetune the model on a single 24GB GPU. For higher `batch_size`'s and faster training, it's better to use GPUs with more than 30GB of GPU memory. You can also use JAX/Flax for fine-tuning on TPUs or GPUs, which will be covered [below](#flax-jax-finetuning).
-
-You can reduce your memory footprint even more by enabling memory efficient attention with xFormers. Make sure you have [xFormers installed](./optimization/xformers) and pass the `--enable_xformers_memory_efficient_attention` flag to the training script.
-
-xFormers is not available for Flax.
-
-## Upload model to Hub
-
-Store your model on the Hub by adding the following argument to the training script:
+To setup a default 🤗 Accelerate environment without choosing any configurations:
 
 ```bash
-  --push_to_hub
+accelerate config default
 ```
 
-## Save and load checkpoints
-
-It is a good idea to regularly save checkpoints in case anything happens during training. To save a checkpoint, pass the following argument to the training script:
+Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
 ```bash
-  --checkpointing_steps=500
+from accelerate.utils import write_basic_config
+
+write_basic_config()
 ```
 
-Every 500 steps, the full training state is saved in a subfolder in the `output_dir`. The checkpoint has the format `checkpoint-` followed by the number of steps trained so far. For example, `checkpoint-1500` is a checkpoint saved after 1500 training steps.
+Lastly, if you want to train a model on your own dataset, take a look at the [Create a dataset for training](create_dataset) guide to learn how to create a dataset that works with the training script.
 
-To load a checkpoint to resume training, pass the argument `--resume_from_checkpoint` to the training script and specify the checkpoint you want to resume from. For example, the following argument resumes training from the checkpoint saved after 1500 training steps:
+## Script parameters
+
+<Tip>
+
+The following sections highlight parts of the training script that are important for understanding how to modify it, but it doesn't cover every aspect of the script in detail. If you're interested in learning more, feel free to read through the [script](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) and let us know if you have any questions or concerns.
+
+</Tip>
+
+The training script provides many parameters to help you customize your training run. All of the parameters and their descriptions are found in the [`parse_args()`](https://github.com/huggingface/diffusers/blob/8959c5b9dec1c94d6ba482c94a58d2215c5fd026/examples/text_to_image/train_text_to_image.py#L193) function. This function provides default values for each parameter, such as the training batch size and learning rate, but you can also set your own values in the training command if you'd like.
+
+For example, to speedup training with mixed precision using the fp16 format, add the `--mixed_precision` parameter to the training command:
 
 ```bash
-  --resume_from_checkpoint="checkpoint-1500"
+accelerate launch train_text_to_image.py \
+  --mixed_precision="fp16"
 ```
 
-## Fine-tuning
+Some basic and important parameters include:
 
-<frameworkcontent>
-<pt>
-Launch the [PyTorch training script](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image.py) for a fine-tuning run on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset like this.
+- `--pretrained_model_name_or_path`: the name of the model on the Hub or a local path to the pretrained model
+- `--dataset_name`: the name of the dataset on the Hub or a local path to the dataset to train on
+- `--image_column`: the name of the image column in the dataset to train on
+- `--caption_column`: the name of the text column in the dataset to train on
+- `--output_dir`: where to save the trained model
+- `--push_to_hub`: whether to push the trained model to the Hub
+- `--checkpointing_steps`: frequency of saving a checkpoint as the model trains; this is useful if for some reason training is interrupted, you can continue training from that checkpoint by adding `--resume_from_checkpoint` to your training command
 
-Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument.
+### Min-SNR weighting
+
+The [Min-SNR](https://huggingface.co/papers/2303.09556) weighting strategy can help with training by rebalancing the loss to achieve faster convergence. The training script supports predicting `epsilon` (noise) or `v_prediction`, but Min-SNR is compatible with both prediction types. This weighting strategy is only supported by PyTorch and is unavailable in the Flax training script.
+
+Add the `--snr_gamma` parameter and set it to the recommended value of 5.0:
 
 ```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
+accelerate launch train_text_to_image.py \
+  --snr_gamma=5.0
+```
+
+You can compare the loss surfaces for different `snr_gamma` values in this [Weights and Biases](https://wandb.ai/sayakpaul/text2image-finetune-minsnr) report. For smaller datasets, the effects of Min-SNR may not be as obvious compared to larger datasets.
+
+## Training script
+
+The dataset preprocessing code and training loop are found in the [`main()`](https://github.com/huggingface/diffusers/blob/8959c5b9dec1c94d6ba482c94a58d2215c5fd026/examples/text_to_image/train_text_to_image.py#L490) function. If you need to adapt the training script, this is where you'll need to make your changes.
+
+The `train_text_to_image` script starts by [loading a scheduler](https://github.com/huggingface/diffusers/blob/8959c5b9dec1c94d6ba482c94a58d2215c5fd026/examples/text_to_image/train_text_to_image.py#L543) and tokenizer. You can choose to use a different scheduler here if you want:
+
+```py
+noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+tokenizer = CLIPTokenizer.from_pretrained(
+    args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
+)
+```
+
+Then the script [loads the UNet](https://github.com/huggingface/diffusers/blob/8959c5b9dec1c94d6ba482c94a58d2215c5fd026/examples/text_to_image/train_text_to_image.py#L619) model:
+
+```py
+load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+model.register_to_config(**load_model.config)
+
+model.load_state_dict(load_model.state_dict())
+```
+
+Next, the text and image columns of the dataset need to be preprocessed. The [`tokenize_captions`](https://github.com/huggingface/diffusers/blob/8959c5b9dec1c94d6ba482c94a58d2215c5fd026/examples/text_to_image/train_text_to_image.py#L724) function handles tokenizing the inputs, and the [`train_transforms`](https://github.com/huggingface/diffusers/blob/8959c5b9dec1c94d6ba482c94a58d2215c5fd026/examples/text_to_image/train_text_to_image.py#L742) function specifies the type of transforms to apply to the image. Both of these functions are bundled into `preprocess_train`:
+
+```py
+def preprocess_train(examples):
+    images = [image.convert("RGB") for image in examples[image_column]]
+    examples["pixel_values"] = [train_transforms(image) for image in images]
+    examples["input_ids"] = tokenize_captions(examples)
+    return examples
+```
+
+Lastly, the [training loop](https://github.com/huggingface/diffusers/blob/8959c5b9dec1c94d6ba482c94a58d2215c5fd026/examples/text_to_image/train_text_to_image.py#L878) handles everything else. It encodes images into latent space, adds noise to the latents, computes the text embeddings to condition on, updates the model parameters, and saves and pushes the model to the Hub. If you want to learn more about how the training loop works, check out the [Understanding pipelines, models and schedulers](../using-diffusers/write_own_pipeline) tutorial which breaks down the basic pattern of the denoising process.
+
+## Launch the script
+
+Once you've made all your changes or you're okay with the default configuration, you're ready to launch the training script! 🚀
+
+<hfoptions id="training-inference">
+<hfoption id="PyTorch">
+
+Let's train on the [Pokémon BLIP captions](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions) dataset to generate your own Pokémon. Set the environment variables `MODEL_NAME` and `dataset_name` to the model and the dataset (either from the Hub or a local path). If you're training on more than one GPU, add the `--multi_gpu` parameter to the `accelerate launch` command.
+
+<Tip>
+
+To train on a local dataset, set the `TRAIN_DIR` and `OUTPUT_DIR` environment variables to the path of the dataset and where to save the model to.
+
+</Tip>
+
+```bash
+export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export dataset_name="lambdalabs/pokemon-blip-captions"
 
 accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
@@ -91,77 +181,24 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image.py \
   --max_train_steps=15000 \
   --learning_rate=1e-05 \
   --max_grad_norm=1 \
+  --enable_xformers_memory_efficient_attention
   --lr_scheduler="constant" --lr_warmup_steps=0 \
   --output_dir="sd-pokemon-model" \
   --push_to_hub
 ```
 
-To finetune on your own dataset, prepare the dataset according to the format required by 🤗 [Datasets](https://huggingface.co/docs/datasets/index). You can [upload your dataset to the Hub](https://huggingface.co/docs/datasets/image_dataset#upload-dataset-to-the-hub), or you can [prepare a local folder with your files](https://huggingface.co/docs/datasets/image_dataset#imagefolder).
+</hfoption>
+<hfoption id="Flax">
 
-Modify the script if you want to use custom loading logic. We left pointers in the code in the appropriate places to help you. 🤗 The example script below shows how to finetune on a local dataset in `TRAIN_DIR` and where to save the model to in `OUTPUT_DIR`:
+Training with Flax can be faster on TPUs and GPUs thanks to [@duongna211](https://github.com/duongna21). Flax is more efficient on a TPU, but GPU performance is also great.
 
-```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export TRAIN_DIR="path_to_your_dataset"
-export OUTPUT_DIR="path_to_save_model"
+Set the environment variables `MODEL_NAME` and `dataset_name` to the model and the dataset (either from the Hub or a local path).
 
-accelerate launch train_text_to_image.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --train_data_dir=$TRAIN_DIR \
-  --use_ema \
-  --resolution=512 --center_crop --random_flip \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=4 \
-  --gradient_checkpointing \
-  --mixed_precision="fp16" \
-  --max_train_steps=15000 \
-  --learning_rate=1e-05 \
-  --max_grad_norm=1 \
-  --lr_scheduler="constant" 
-  --lr_warmup_steps=0 \
-  --output_dir=${OUTPUT_DIR} \
-  --push_to_hub
-```
+<Tip>
 
-#### Training with multiple GPUs
+To train on a local dataset, set the `TRAIN_DIR` and `OUTPUT_DIR` environment variables to the path of the dataset and where to save the model to.
 
-`accelerate` allows for seamless multi-GPU training. Follow the instructions [here](https://huggingface.co/docs/accelerate/basic_tutorials/launch)
-for running distributed training with `accelerate`. Here is an example command:
-
-```bash
-export MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export dataset_name="lambdalabs/pokemon-blip-captions"
-
-accelerate launch --mixed_precision="fp16" --multi_gpu  train_text_to_image.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --dataset_name=$dataset_name \
-  --use_ema \
-  --resolution=512 --center_crop --random_flip \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=4 \
-  --gradient_checkpointing \
-  --max_train_steps=15000 \ 
-  --learning_rate=1e-05 \
-  --max_grad_norm=1 \
-  --lr_scheduler="constant" \
-  --lr_warmup_steps=0 \
-  --output_dir="sd-pokemon-model" \
-  --push_to_hub
-```
-
-</pt>
-<jax>
-With Flax, it's possible to train a Stable Diffusion model faster on TPUs and GPUs thanks to [@duongna211](https://github.com/duongna21). This is very efficient on TPU hardware but works great on GPUs too. The Flax training script doesn't support features like gradient checkpointing or gradient accumulation yet, so you'll need a GPU with at least 30GB of memory or a TPU v3.
-
-Before running the script, make sure you have the requirements installed:
-
-```bash
-pip install -U -r requirements_flax.txt
-```
-
-Specify the `MODEL_NAME` environment variable (either a Hub model repository id or a path to the directory containing the model weights) and pass it to the [`pretrained_model_name_or_path`](https://huggingface.co/docs/diffusers/en/api/diffusion_pipeline#diffusers.DiffusionPipeline.from_pretrained.pretrained_model_name_or_path) argument.
-
-Now you can launch the [Flax training script](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_flax.py) like this:
+</Tip>
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
@@ -179,82 +216,35 @@ python train_text_to_image_flax.py \
   --push_to_hub
 ```
 
-To finetune on your own dataset, prepare the dataset according to the format required by 🤗 [Datasets](https://huggingface.co/docs/datasets/index). You can [upload your dataset to the Hub](https://huggingface.co/docs/datasets/image_dataset#upload-dataset-to-the-hub), or you can [prepare a local folder with your files](https://huggingface.co/docs/datasets/image_dataset#imagefolder).
+</hfoption>
+</hfoptions>
 
-Modify the script if you want to use custom loading logic. We left pointers in the code in the appropriate places to help you. 🤗 The example script below shows how to finetune on a local dataset in `TRAIN_DIR`:
+Once training is complete, you can use your newly trained model for inference:
 
-```bash
-export MODEL_NAME="duongna/stable-diffusion-v1-4-flax"
-export TRAIN_DIR="path_to_your_dataset"
+<hfoptions id="training-inference">
+<hfoption id="PyTorch">
 
-python train_text_to_image_flax.py \
-  --pretrained_model_name_or_path=$MODEL_NAME \
-  --train_data_dir=$TRAIN_DIR \
-  --resolution=512 --center_crop --random_flip \
-  --train_batch_size=1 \
-  --mixed_precision="fp16" \
-  --max_train_steps=15000 \
-  --learning_rate=1e-05 \
-  --max_grad_norm=1 \
-  --output_dir="sd-pokemon-model" \
-  --push_to_hub
-```
-</jax>
-</frameworkcontent>
-
-## Training with Min-SNR weighting
-
-We support training with the Min-SNR weighting strategy proposed in [Efficient Diffusion Training via Min-SNR Weighting Strategy](https://arxiv.org/abs/2303.09556) which helps to achieve faster convergence
-by rebalancing the loss. In order to use it, one needs to set the `--snr_gamma` argument. The recommended
-value when using it is 5.0. 
-
-You can find [this project on Weights and Biases](https://wandb.ai/sayakpaul/text2image-finetune-minsnr) that compares the loss surfaces of the following setups:
-
-* Training without the Min-SNR weighting strategy
-* Training with the Min-SNR weighting strategy (`snr_gamma` set to 5.0)
-* Training with the Min-SNR weighting strategy (`snr_gamma` set to 1.0)
-
-For our small Pokemons dataset, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger datasets, we believe the effects will be more pronounced.
-
-Also, note that in this example, we either predict `epsilon` (i.e., the noise) or the `v_prediction`. For both of these cases, the formulation of the Min-SNR weighting strategy that we have used holds. 
-
-<Tip warning={true}>
-
-Training with Min-SNR weighting strategy is only supported in PyTorch.
-
-</Tip>
-
-## LoRA
-
-You can also use Low-Rank Adaptation of Large Language Models (LoRA), a fine-tuning technique for accelerating training large models, for fine-tuning text-to-image models. For more details, take a look at the [LoRA training](lora#text-to-image) guide.
-
-## Inference
-
-Now you can load the fine-tuned model for inference by passing the model path or model name on the Hub to the [`StableDiffusionPipeline`]:
-
-<frameworkcontent>
-<pt>
-```python
+```py
 from diffusers import StableDiffusionPipeline
+import torch
 
-model_path = "path_to_saved_model"
-pipe = StableDiffusionPipeline.from_pretrained(model_path, torch_dtype=torch.float16, use_safetensors=True)
-pipe.to("cuda")
+pipeline = StableDiffusionPipeline.from_pretrained("path/to/saved_model", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 
-image = pipe(prompt="yoda").images[0]
+image = pipeline(prompt="yoda").images[0]
 image.save("yoda-pokemon.png")
 ```
-</pt>
-<jax>
-```python
+
+</hfoption>
+<hfoption id="Flax">
+
+```py
 import jax
 import numpy as np
 from flax.jax_utils import replicate
 from flax.training.common_utils import shard
 from diffusers import FlaxStableDiffusionPipeline
 
-model_path = "path_to_saved_model"
-pipe, params = FlaxStableDiffusionPipeline.from_pretrained(model_path, dtype=jax.numpy.bfloat16)
+pipeline, params = FlaxStableDiffusionPipeline.from_pretrained("path/to/saved_model", dtype=jax.numpy.bfloat16)
 
 prompt = "yoda pokemon"
 prng_seed = jax.random.PRNGKey(0)
@@ -273,16 +263,13 @@ images = pipeline(prompt_ids, params, prng_seed, num_inference_steps, jit=True).
 images = pipeline.numpy_to_pil(np.asarray(images.reshape((num_samples,) + images.shape[-3:])))
 image.save("yoda-pokemon.png")
 ```
-</jax>
-</frameworkcontent>
 
+</hfoption>
+</hfoptions>
 
-## Stable Diffusion XL
+## Next steps
 
-* We support fine-tuning the UNet shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) via the `train_text_to_image_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 
-* We also support fine-tuning of the UNet and Text Encoder shipped in [Stable Diffusion XL](https://huggingface.co/papers/2307.01952) with LoRA via the `train_text_to_image_lora_sdxl.py` script. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/README_sdxl.md). 
+Congratulations on training your own text-to-image model! To learn more about how to use your new model, the following guides may be helpful:
 
-
-## Kandinsky 2.2
-
-* We support fine-tuning both the decoder and prior in Kandinsky2.2 with the `train_text_to_image_prior.py` and `train_text_to_image_decoder.py` scripts. LoRA support is also included. Please refer to the docs [here](https://github.com/huggingface/diffusers/blob/main/examples/kandinsky2_2/text_to_image/README_sdxl.md).
+- Learn how to [load LoRA weights](../using-diffusers/loading_adapters#LoRA) for inference if you trained your model with LoRA.
+- Learn more about how certain parameters like guidance scale or techniques such as prompt weighting can help you control inference in the [Text-to-image](../using-diffusers/conditional_image_generation) task guide.

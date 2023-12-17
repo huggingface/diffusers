@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 import unittest
 
 import numpy as np
@@ -182,6 +183,7 @@ class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         "output_type",
         "return_dict",
     ]
+    callback_cfg_params = ["prompt_embeds", "text_encoder_hidden_states", "text_mask"]
     test_xformers_attention = False
 
     def get_dummy_components(self):
@@ -235,3 +237,42 @@ class KandinskyV22PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             test_max_difference=test_max_difference,
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
+
+    # override default test because no output_type "latent", use "pt" instead
+    def test_callback_inputs(self):
+        sig = inspect.signature(self.pipeline_class.__call__)
+
+        if not ("callback_on_step_end_tensor_inputs" in sig.parameters and "callback_on_step_end" in sig.parameters):
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        self.assertTrue(
+            hasattr(pipe, "_callback_tensor_inputs"),
+            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+        )
+
+        def callback_inputs_test(pipe, i, t, callback_kwargs):
+            missing_callback_inputs = set()
+            for v in pipe._callback_tensor_inputs:
+                if v not in callback_kwargs:
+                    missing_callback_inputs.add(v)
+            self.assertTrue(
+                len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
+            )
+            last_i = pipe.num_timesteps - 1
+            if i == last_i:
+                callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["callback_on_step_end"] = callback_inputs_test
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        inputs["num_inference_steps"] = 2
+        inputs["output_type"] = "pt"
+
+        output = pipe(**inputs)[0]
+        assert output.abs().sum() == 0

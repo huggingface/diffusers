@@ -321,6 +321,9 @@ class KandinskyCombinedPipeline(DiffusionPipeline):
             callback_steps=callback_steps,
             return_dict=return_dict,
         )
+
+        self.maybe_free_model_hooks()
+
         return outputs
 
 
@@ -558,6 +561,9 @@ class KandinskyImg2ImgCombinedPipeline(DiffusionPipeline):
             callback_steps=callback_steps,
             return_dict=return_dict,
         )
+
+        self.maybe_free_model_hooks()
+
         return outputs
 
 
@@ -593,7 +599,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
     """
 
     _load_connected_pipes = True
-    model_cpu_offload_seq = "prior_text_encoder->prior_image_encoder->prior_prior->" "text_encoder->unet->movq"
+    model_cpu_offload_seq = "prior_text_encoder->prior_image_encoder->prior_prior->text_encoder->unet->movq"
 
     def __init__(
         self,
@@ -802,4 +808,7 @@ class KandinskyInpaintCombinedPipeline(DiffusionPipeline):
             callback_steps=callback_steps,
             return_dict=return_dict,
         )
+
+        self.maybe_free_model_hooks()
+
         return outputs

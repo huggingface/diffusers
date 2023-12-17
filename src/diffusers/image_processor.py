@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import warnings
-from typing import List, Optional, Union
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
@@ -25,6 +25,15 @@ from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
 
 
 PipelineImageInput = Union[
+    PIL.Image.Image,
+    np.ndarray,
+    torch.FloatTensor,
+    List[PIL.Image.Image],
+    List[np.ndarray],
+    List[torch.FloatTensor],
+]
+
+PipelineDepthInput = Union[
     PIL.Image.Image,
     np.ndarray,
     torch.FloatTensor,
@@ -79,7 +88,7 @@ class VaeImageProcessor(ConfigMixin):
             self.config.do_convert_rgb = False
 
     @staticmethod
-    def numpy_to_pil(images: np.ndarray) -> PIL.Image.Image:
+    def numpy_to_pil(images: np.ndarray) -> List[PIL.Image.Image]:
         """
         Convert a numpy image or a batch of images to a PIL image.
         """
@@ -126,14 +135,14 @@ class VaeImageProcessor(ConfigMixin):
         return images
 
     @staticmethod
-    def normalize(images):
+    def normalize(images: Union[np.ndarray, torch.Tensor]) -> Union[np.ndarray, torch.Tensor]:
         """
         Normalize an image array to [-1,1].
         """
         return 2.0 * images - 1.0
 
     @staticmethod
-    def denormalize(images):
+    def denormalize(images: Union[np.ndarray, torch.Tensor]) -> Union[np.ndarray, torch.Tensor]:
         """
         Denormalize an image array to [0,1].
         """
@@ -159,10 +168,10 @@ class VaeImageProcessor(ConfigMixin):
 
     def get_default_height_width(
         self,
-        image: [PIL.Image.Image, np.ndarray, torch.Tensor],
+        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
         height: Optional[int] = None,
         width: Optional[int] = None,
-    ):
+    ) -> Tuple[int, int]:
         """
         This function return the height and width that are downscaled to the next integer multiple of
         `vae_scale_factor`.
@@ -202,12 +211,24 @@ class VaeImageProcessor(ConfigMixin):
 
     def resize(
         self,
-        image: [PIL.Image.Image, np.ndarray, torch.Tensor],
+        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
         height: Optional[int] = None,
         width: Optional[int] = None,
-    ) -> [PIL.Image.Image, np.ndarray, torch.Tensor]:
+    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
         """
         Resize image.
+
+        Args:
+            image (`PIL.Image.Image`, `np.ndarray` or `torch.Tensor`):
+                The image input, can be a PIL image, numpy array or pytorch tensor.
+            height (`int`, *optional*, defaults to `None`):
+                The height to resize to.
+            width (`int`, *optional*`, defaults to `None`):
+                The width to resize to.
+
+        Returns:
+            `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
+                The resized image.
         """
         if isinstance(image, PIL.Image.Image):
             image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
@@ -227,7 +248,15 @@ class VaeImageProcessor(ConfigMixin):
 
     def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
         """
-        create a mask
+        Create a mask.
+
+        Args:
+            image (`PIL.Image.Image`):
+                The image input, should be a PIL image.
+
+        Returns:
+            `PIL.Image.Image`:
+                The binarized image. Values less than 0.5 are set to 0, values greater than 0.5 are set to 1.
         """
         image[image < 0.5] = 0
         image[image >= 0.5] = 1
@@ -306,7 +335,7 @@ class VaeImageProcessor(ConfigMixin):
 
         # expected range [0,1], normalize to [-1,1]
         do_normalize = self.config.do_normalize
-        if image.min() < 0 and do_normalize:
+        if do_normalize and image.min() < 0:
             warnings.warn(
                 "Passing `image` as torch tensor with value range in [-1,1] is deprecated. The expected value range for image tensor is [0,1] "
                 f"when passing as pytorch tensor or numpy Array. You passed `image` with value range [{image.min()},{image.max()}]",
@@ -327,7 +356,23 @@ class VaeImageProcessor(ConfigMixin):
         image: torch.FloatTensor,
         output_type: str = "pil",
         do_denormalize: Optional[List[bool]] = None,
-    ):
+    ) -> Union[PIL.Image.Image, np.ndarray, torch.FloatTensor]:
+        """
+        Postprocess the image output from tensor to `output_type`.
+
+        Args:
+            image (`torch.FloatTensor`):
+                The image input, should be a pytorch tensor with shape `B x C x H x W`.
+            output_type (`str`, *optional*, defaults to `pil`):
+                The output type of the image, can be one of `pil`, `np`, `pt`, `latent`.
+            do_denormalize (`List[bool]`, *optional*, defaults to `None`):
+                Whether to denormalize the image to [0,1]. If `None`, will use the value of `do_normalize` in the
+                `VaeImageProcessor` config.
+
+        Returns:
+            `PIL.Image.Image`, `np.ndarray` or `torch.FloatTensor`:
+                The postprocessed image.
+        """
         if not isinstance(image, torch.Tensor):
             raise ValueError(
                 f"Input for postprocessing is in incorrect format: {type(image)}. We only support pytorch tensor"
@@ -390,7 +435,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         super().__init__()
 
     @staticmethod
-    def numpy_to_pil(images):
+    def numpy_to_pil(images: np.ndarray) -> List[PIL.Image.Image]:
         """
         Convert a NumPy image or a batch of images to a PIL image.
         """
@@ -406,7 +451,19 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         return pil_images
 
     @staticmethod
-    def rgblike_to_depthmap(image):
+    def depth_pil_to_numpy(images: Union[List[PIL.Image.Image], PIL.Image.Image]) -> np.ndarray:
+        """
+        Convert a PIL image or a list of PIL images to NumPy arrays.
+        """
+        if not isinstance(images, list):
+            images = [images]
+
+        images = [np.array(image).astype(np.float32) / (2**16 - 1) for image in images]
+        images = np.stack(images, axis=0)
+        return images
+
+    @staticmethod
+    def rgblike_to_depthmap(image: Union[np.ndarray, torch.Tensor]) -> Union[np.ndarray, torch.Tensor]:
         """
         Args:
             image: RGB-like depth image
@@ -416,7 +473,7 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         """
         return image[:, :, 1] * 2**8 + image[:, :, 2]
 
-    def numpy_to_depth(self, images):
+    def numpy_to_depth(self, images: np.ndarray) -> List[PIL.Image.Image]:
         """
         Convert a NumPy depth image or a batch of images to a PIL image.
         """
@@ -441,7 +498,23 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
         image: torch.FloatTensor,
         output_type: str = "pil",
         do_denormalize: Optional[List[bool]] = None,
-    ):
+    ) -> Union[PIL.Image.Image, np.ndarray, torch.FloatTensor]:
+        """
+        Postprocess the image output from tensor to `output_type`.
+
+        Args:
+            image (`torch.FloatTensor`):
+                The image input, should be a pytorch tensor with shape `B x C x H x W`.
+            output_type (`str`, *optional*, defaults to `pil`):
+                The output type of the image, can be one of `pil`, `np`, `pt`, `latent`.
+            do_denormalize (`List[bool]`, *optional*, defaults to `None`):
+                Whether to denormalize the image to [0,1]. If `None`, will use the value of `do_normalize` in the
+                `VaeImageProcessor` config.
+
+        Returns:
+            `PIL.Image.Image`, `np.ndarray` or `torch.FloatTensor`:
+                The postprocessed image.
+        """
         if not isinstance(image, torch.Tensor):
             raise ValueError(
                 f"Input for postprocessing is in incorrect format: {type(image)}. We only support pytorch tensor"
@@ -474,3 +547,102 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             return self.numpy_to_pil(image), self.numpy_to_depth(image)
         else:
             raise Exception(f"This type {output_type} is not supported")
+
+    def preprocess(
+        self,
+        rgb: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
+        depth: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        target_res: Optional[int] = None,
+    ) -> torch.Tensor:
+        """
+        Preprocess the image input. Accepted formats are PIL images, NumPy arrays or PyTorch tensors.
+        """
+        supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
+
+        # Expand the missing dimension for 3-dimensional pytorch tensor or numpy array that represents grayscale image
+        if self.config.do_convert_grayscale and isinstance(rgb, (torch.Tensor, np.ndarray)) and rgb.ndim == 3:
+            raise Exception("This is not yet supported")
+
+        if isinstance(rgb, supported_formats):
+            rgb = [rgb]
+            depth = [depth]
+        elif not (isinstance(rgb, list) and all(isinstance(i, supported_formats) for i in rgb)):
+            raise ValueError(
+                f"Input is in incorrect format: {[type(i) for i in rgb]}. Currently, we only support {', '.join(supported_formats)}"
+            )
+
+        if isinstance(rgb[0], PIL.Image.Image):
+            if self.config.do_convert_rgb:
+                raise Exception("This is not yet supported")
+                # rgb = [self.convert_to_rgb(i) for i in rgb]
+                # depth = [self.convert_to_depth(i) for i in depth]  #TODO define convert_to_depth
+            if self.config.do_resize or target_res:
+                height, width = self.get_default_height_width(rgb[0], height, width) if not target_res else target_res
+                rgb = [self.resize(i, height, width) for i in rgb]
+                depth = [self.resize(i, height, width) for i in depth]
+            rgb = self.pil_to_numpy(rgb)  # to np
+            rgb = self.numpy_to_pt(rgb)  # to pt
+
+            depth = self.depth_pil_to_numpy(depth)  # to np
+            depth = self.numpy_to_pt(depth)  # to pt
+
+        elif isinstance(rgb[0], np.ndarray):
+            rgb = np.concatenate(rgb, axis=0) if rgb[0].ndim == 4 else np.stack(rgb, axis=0)
+            rgb = self.numpy_to_pt(rgb)
+            height, width = self.get_default_height_width(rgb, height, width)
+            if self.config.do_resize:
+                rgb = self.resize(rgb, height, width)
+
+            depth = np.concatenate(depth, axis=0) if rgb[0].ndim == 4 else np.stack(depth, axis=0)
+            depth = self.numpy_to_pt(depth)
+            height, width = self.get_default_height_width(depth, height, width)
+            if self.config.do_resize:
+                depth = self.resize(depth, height, width)
+
+        elif isinstance(rgb[0], torch.Tensor):
+            raise Exception("This is not yet supported")
+            # rgb = torch.cat(rgb, axis=0) if rgb[0].ndim == 4 else torch.stack(rgb, axis=0)
+
+            # if self.config.do_convert_grayscale and rgb.ndim == 3:
+            #     rgb = rgb.unsqueeze(1)
+
+            # channel = rgb.shape[1]
+
+            # height, width = self.get_default_height_width(rgb, height, width)
+            # if self.config.do_resize:
+            #     rgb = self.resize(rgb, height, width)
+
+            # depth = torch.cat(depth, axis=0) if depth[0].ndim == 4 else torch.stack(depth, axis=0)
+
+            # if self.config.do_convert_grayscale and depth.ndim == 3:
+            #     depth = depth.unsqueeze(1)
+
+            # channel = depth.shape[1]
+            # # don't need any preprocess if the image is latents
+            # if depth == 4:
+            #     return rgb, depth
+
+            # height, width = self.get_default_height_width(depth, height, width)
+            # if self.config.do_resize:
+            #     depth = self.resize(depth, height, width)
+        # expected range [0,1], normalize to [-1,1]
+        do_normalize = self.config.do_normalize
+        if rgb.min() < 0 and do_normalize:
+            warnings.warn(
+                "Passing `image` as torch tensor with value range in [-1,1] is deprecated. The expected value range for image tensor is [0,1] "
+                f"when passing as pytorch tensor or numpy Array. You passed `image` with value range [{rgb.min()},{rgb.max()}]",
+                FutureWarning,
+            )
+            do_normalize = False
+
+        if do_normalize:
+            rgb = self.normalize(rgb)
+            depth = self.normalize(depth)
+
+        if self.config.do_binarize:
+            rgb = self.binarize(rgb)
+            depth = self.binarize(depth)
+
+        return rgb, depth

@@ -16,13 +16,11 @@ specific language governing permissions and limitations under the License.
 
 The abstract from the paper is:
 
-*Denoising diffusion probabilistic models (DDPMs) have achieved high quality image generation without adversarial training, 
-yet they require simulating a Markov chain for many steps to produce a sample. 
+*Denoising diffusion probabilistic models (DDPMs) have achieved high quality image generation without adversarial training, yet they require simulating a Markov chain for many steps to produce a sample.
 To accelerate sampling, we present denoising diffusion implicit models (DDIMs), a more efficient class of iterative implicit probabilistic models
-with the same training procedure as DDPMs. In DDPMs, the generative process is defined as the reverse of a Markovian diffusion process. 
+with the same training procedure as DDPMs. In DDPMs, the generative process is defined as the reverse of a Markovian diffusion process.
 We construct a class of non-Markovian diffusion processes that lead to the same training objective, but whose reverse process can be much faster to sample from.
-We empirically demonstrate that DDIMs can produce high quality samples 10× to 50× faster in terms of wall-clock time compared to DDPMs, allow us to trade off 
-computation for sample quality, and can perform semantically meaningful image interpolation directly in the latent space.*
+We empirically demonstrate that DDIMs can produce high quality samples 10× to 50× faster in terms of wall-clock time compared to DDPMs, allow us to trade off computation for sample quality, and can perform semantically meaningful image interpolation directly in the latent space.*
 
 The original codebase of this paper can be found at [ermongroup/ddim](https://github.com/ermongroup/ddim), and you can contact the author on [tsong.me](https://tsong.me/).
 
@@ -57,13 +55,14 @@ pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config, timestep_spaci
 4. rescale classifier-free guidance to prevent over-exposure
 
 ```py
-image = pipeline(prompt, guidance_rescale=0.7).images[0]
+image = pipe(prompt, guidance_rescale=0.7).images[0]
 ```
 
 For example:
 
 ```py
 from diffusers import DiffusionPipeline, DDIMScheduler
+import torch
 
 pipe = DiffusionPipeline.from_pretrained("ptx0/pseudo-journey-v2", torch_dtype=torch.float16)
 pipe.scheduler = DDIMScheduler.from_config(
@@ -72,7 +71,8 @@ pipe.scheduler = DDIMScheduler.from_config(
 pipe.to("cuda")
 
 prompt = "A lion in galaxies, spirals, nebulae, stars, smoke, iridescent, intricate detail, octane render, 8k"
-image = pipeline(prompt, guidance_rescale=0.7).images[0]
+image = pipe(prompt, guidance_rescale=0.7).images[0]
+image
 ```
 
 ## DDIMScheduler

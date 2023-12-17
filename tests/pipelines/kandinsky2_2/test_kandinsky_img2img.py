@@ -192,6 +192,7 @@ class KandinskyV22Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
         "return_dict",
     ]
     test_xformers_attention = False
+    callback_cfg_params = ["image_embeds"]
 
     def get_dummy_components(self):
         dummies = Dummies()

@@ -29,7 +29,7 @@ if is_onnx_available():
     from ..onnx_utils import OnnxRuntimeModel
 
 from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline
-from .continous_encoder import SpectrogramContEncoder
+from .continuous_encoder import SpectrogramContEncoder
 from .notes_encoder import SpectrogramNotesEncoder
 
 
@@ -54,6 +54,7 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `decoder` to denoise the encoded audio latents.
         melgan ([`OnnxRuntimeModel`]):
     """
+
     _optional_components = ["melgan"]
 
     def __init__(

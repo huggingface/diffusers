@@ -1,3 +1,15 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # AutoPipeline
 
 ðŸ¤— Diffusers is able to complete many different tasks, and you can often reuse the same pretrained weights for multiple tasks such as text-to-image, image-to-image, and inpainting. If you're new to the library and diffusion models though, it may be difficult to know which pipeline to use for a task. For example, if you're using the [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint for text-to-image, you might not know that you could also use it for image-to-image and inpainting by loading the checkpoint with the [`StableDiffusionImg2ImgPipeline`] and [`StableDiffusionInpaintPipeline`] classes respectively.
@@ -6,7 +18,7 @@ The `AutoPipeline` class is designed to simplify the variety of pipelines in ðŸ¤
 
 <Tip>
 
-Take a look at the [AutoPipeline](./pipelines/auto_pipeline) reference to see which tasks are supported. Currently, it supports text-to-image, image-to-image, and inpainting.
+Take a look at the [AutoPipeline](../api/pipelines/auto_pipeline) reference to see which tasks are supported. Currently, it supports text-to-image, image-to-image, and inpainting.
 
 </Tip>
 
@@ -26,6 +38,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 prompt = "peasant and dragon combat, wood cutting style, viking era, bevel with rune"
 
 image = pipeline(prompt, num_inference_steps=25).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -35,12 +48,16 @@ image = pipeline(prompt, num_inference_steps=25).images[0]
 Under the hood, [`AutoPipelineForText2Image`]:
 
 1. automatically detects a `"stable-diffusion"` class from the [`model_index.json`](https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/model_index.json) file
-2. loads the corresponding text-to-image [`StableDiffusionPipline`] based on the `"stable-diffusion"` class name
+2. loads the corresponding text-to-image [`StableDiffusionPipeline`] based on the `"stable-diffusion"` class name
 
-Likewise, for image-to-image, [`AutoPipelineForImage2Image`] detects a `"stable-diffusion"` checkpoint from the `model_index.json` file and it'll load the corresponding [`StableDiffusionImg2ImgPipeline`] behind the scenes. You can also pass any additional arguments specific to the pipeline class such as `strength`, which determines the amount of noise or variation added to an input image: 
+Likewise, for image-to-image, [`AutoPipelineForImage2Image`] detects a `"stable-diffusion"` checkpoint from the `model_index.json` file and it'll load the corresponding [`StableDiffusionImg2ImgPipeline`] behind the scenes. You can also pass any additional arguments specific to the pipeline class such as `strength`, which determines the amount of noise or variation added to an input image:
 
 ```py
 from diffusers import AutoPipelineForImage2Image
+import torch
+import requests
+from PIL import Image
+from io import BytesIO
 
 pipeline = AutoPipelineForImage2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
@@ -56,6 +73,7 @@ image = Image.open(BytesIO(response.content)).convert("RGB")
 image.thumbnail((768, 768))
 
 image = pipeline(prompt, image, num_inference_steps=200, strength=0.75, guidance_scale=10.5).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -67,6 +85,7 @@ And if you want to do inpainting, then [`AutoPipelineForInpainting`] loads the u
 ```py
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
+import torch
 
 pipeline = AutoPipelineForInpainting.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16, use_safetensors=True
@@ -80,6 +99,7 @@ mask_image = load_image(mask_url).convert("RGB")
 
 prompt = "A majestic tiger sitting on a bench"
 image = pipeline(prompt, image=init_image, mask_image=mask_image, num_inference_steps=50, strength=0.80).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -106,6 +126,7 @@ The [`~AutoPipelineForImage2Image.from_pipe`] method detects the original pipeli
 
 ```py
 from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
+import torch
 
 pipeline_text2img = AutoPipelineForText2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True
@@ -126,6 +147,7 @@ If you passed an optional argument - like disabling the safety checker - to the 
 
 ```py
 from diffusers import AutoPipelineForText2Image, AutoPipelineForImage2Image
+import torch
 
 pipeline_text2img = AutoPipelineForText2Image.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
@@ -135,7 +157,7 @@ pipeline_text2img = AutoPipelineForText2Image.from_pretrained(
 ).to("cuda")
 
 pipeline_img2img = AutoPipelineForImage2Image.from_pipe(pipeline_text2img)
-print(pipe.config.requires_safety_checker)
+print(pipeline_img2img.config.requires_safety_checker)
 "False"
 ```
 
@@ -143,4 +165,6 @@ You can overwrite any of the arguments and even configuration from the original 
 
 ```py
 pipeline_img2img = AutoPipelineForImage2Image.from_pipe(pipeline_text2img, requires_safety_checker=True, strength=0.3)
+print(pipeline_img2img.config.requires_safety_checker)
+"True"
 ```

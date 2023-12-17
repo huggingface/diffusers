@@ -53,10 +53,12 @@ class VQModel(ModelMixin, ConfigMixin):
             Tuple of upsample block types.
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(64,)`):
             Tuple of block output channels.
+        layers_per_block (`int`, *optional*, defaults to `1`): Number of layers per block.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         latent_channels (`int`, *optional*, defaults to `3`): Number of channels in the latent space.
         sample_size (`int`, *optional*, defaults to `32`): Sample input size.
         num_vq_embeddings (`int`, *optional*, defaults to `256`): Number of codebook vectors in the VQ-VAE.
+        norm_num_groups (`int`, *optional*, defaults to `32`): Number of groups for normalization layers.
         vq_embed_dim (`int`, *optional*): Hidden dim of codebook vectors in the VQ-VAE.
         scaling_factor (`float`, *optional*, defaults to `0.18215`):
             The component-wise standard deviation of the trained latent space computed using the first batch of the
@@ -65,6 +67,8 @@ class VQModel(ModelMixin, ConfigMixin):
             diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z = 1
             / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution Image
             Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
+        norm_type (`str`, *optional*, defaults to `"group"`):
+            Type of normalization layer to use. Can be one of `"group"` or `"spatial"`.
     """
 
     @register_to_config
@@ -72,9 +76,9 @@ class VQModel(ModelMixin, ConfigMixin):
         self,
         in_channels: int = 3,
         out_channels: int = 3,
-        down_block_types: Tuple[str] = ("DownEncoderBlock2D",),
-        up_block_types: Tuple[str] = ("UpDecoderBlock2D",),
-        block_out_channels: Tuple[int] = (64,),
+        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
+        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
+        block_out_channels: Tuple[int, ...] = (64,),
         layers_per_block: int = 1,
         act_fn: str = "silu",
         latent_channels: int = 3,
@@ -144,7 +148,9 @@ class VQModel(ModelMixin, ConfigMixin):
 
         return DecoderOutput(sample=dec)
 
-    def forward(self, sample: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def forward(
+        self, sample: torch.FloatTensor, return_dict: bool = True
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor, ...]]:
         r"""
         The [`VQModel`] forward method.
 
@@ -158,8 +164,8 @@ class VQModel(ModelMixin, ConfigMixin):
                 If return_dict is True, a [`~models.vq_model.VQEncoderOutput`] is returned, otherwise a plain `tuple`
                 is returned.
         """
-        x = sample
-        h = self.encode(x).latents
+
+        h = self.encode(sample).latents
         dec = self.decode(h).sample
 
         if not return_dict:

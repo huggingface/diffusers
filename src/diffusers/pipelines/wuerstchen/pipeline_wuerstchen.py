@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import logging, replace_example_docstring
+from ...utils import deprecate, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from .modeling_paella_vq_model import PaellaVQModel
@@ -73,6 +73,12 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->decoder->vqgan"
+    _callback_tensor_inputs = [
+        "latents",
+        "text_encoder_hidden_states",
+        "negative_prompt_embeds",
+        "image_embeddings",
+    ]
 
     def __init__(
         self,
@@ -187,6 +193,18 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
         return text_encoder_hidden_states, uncond_text_encoder_hidden_states
 
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -202,8 +220,9 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        **kwargs,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -242,12 +261,15 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-            callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
@@ -257,10 +279,33 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             embeddings.
         """
 
+        callback = kwargs.pop("callback", None)
+        callback_steps = kwargs.pop("callback_steps", None)
+
+        if callback is not None:
+            deprecate(
+                "callback",
+                "1.0.0",
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+        if callback_steps is not None:
+            deprecate(
+                "callback_steps",
+                "1.0.0",
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
+            )
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
         # 0. Define commonly used variables
         device = self._execution_device
         dtype = self.decoder.dtype
-        do_classifier_free_guidance = guidance_scale > 1.0
+        self._guidance_scale = guidance_scale
 
         # 1. Check inputs. Raise error if not correct
         if not isinstance(prompt, list):
@@ -269,7 +314,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             else:
                 raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
 
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             if negative_prompt is not None and not isinstance(negative_prompt, list):
                 if isinstance(negative_prompt, str):
                     negative_prompt = [negative_prompt]
@@ -298,7 +343,7 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             prompt,
             device,
             image_embeddings.size(0) * num_images_per_prompt,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
             negative_prompt,
         )
         text_encoder_hidden_states = (
@@ -323,25 +368,26 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         latents = self.prepare_latents(latent_features_shape, dtype, device, generator, latents, self.scheduler)
 
         # 6. Run denoising loop
+        self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
             effnet = (
                 torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
-                if do_classifier_free_guidance
+                if self.do_classifier_free_guidance
                 else image_embeddings
             )
             # 7. Denoise latents
             predicted_latents = self.decoder(
-                torch.cat([latents] * 2) if do_classifier_free_guidance else latents,
-                r=torch.cat([ratio] * 2) if do_classifier_free_guidance else ratio,
+                torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
+                r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
                 effnet=effnet,
                 clip=text_encoder_hidden_states,
             )
 
             # 8. Check for classifier free guidance and apply it
-            if do_classifier_free_guidance:
+            if self.do_classifier_free_guidance:
                 predicted_latents_text, predicted_latents_uncond = predicted_latents.chunk(2)
-                predicted_latents = torch.lerp(predicted_latents_uncond, predicted_latents_text, guidance_scale)
+                predicted_latents = torch.lerp(predicted_latents_uncond, predicted_latents_text, self.guidance_scale)
 
             # 9. Renoise latents to next timestep
             latents = self.scheduler.step(
@@ -351,25 +397,41 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                latents = callback_outputs.pop("latents", latents)
+                image_embeddings = callback_outputs.pop("image_embeddings", image_embeddings)
+                text_encoder_hidden_states = callback_outputs.pop(
+                    "text_encoder_hidden_states", text_encoder_hidden_states
+                )
+
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)
                 callback(step_idx, t, latents)
 
-        # 10. Scale and decode the image latents with vq-vae
-        latents = self.vqgan.config.scale_factor * latents
-        images = self.vqgan.decode(latents).sample.clamp(0, 1)
+        if output_type not in ["pt", "np", "pil", "latent"]:
+            raise ValueError(
+                f"Only the output types `pt`, `np`, `pil` and `latent` are supported not output_type={output_type}"
+            )
+
+        if not output_type == "latent":
+            # 10. Scale and decode the image latents with vq-vae
+            latents = self.vqgan.config.scale_factor * latents
+            images = self.vqgan.decode(latents).sample.clamp(0, 1)
+            if output_type == "np":
+                images = images.permute(0, 2, 3, 1).cpu().numpy()
+            elif output_type == "pil":
+                images = images.permute(0, 2, 3, 1).cpu().numpy()
+                images = self.numpy_to_pil(images)
+        else:
+            images = latents
 
         # Offload all models
         self.maybe_free_model_hooks()
-
-        if output_type not in ["pt", "np", "pil"]:
-            raise ValueError(f"Only the output types `pt`, `np` and `pil` are supported not output_type={output_type}")
-
-        if output_type == "np":
-            images = images.permute(0, 2, 3, 1).cpu().numpy()
-        elif output_type == "pil":
-            images = images.permute(0, 2, 3, 1).cpu().numpy()
-            images = self.numpy_to_pil(images)
 
         if not return_dict:
             return images

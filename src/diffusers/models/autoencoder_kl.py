@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from dataclasses import dataclass
 from typing import Dict, Optional, Tuple, Union
 
 import torch
@@ -19,31 +18,18 @@ import torch.nn as nn
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import FromOriginalVAEMixin
-from ..utils import BaseOutput
 from ..utils.accelerate_utils import apply_forward_hook
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
+    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
+from .modeling_outputs import AutoencoderKLOutput
 from .modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
-
-
-@dataclass
-class AutoencoderKLOutput(BaseOutput):
-    """
-    Output of AutoencoderKL encoding method.
-
-    Args:
-        latent_dist (`DiagonalGaussianDistribution`):
-            Encoded outputs of `Encoder` represented as the mean and logvar of `DiagonalGaussianDistribution`.
-            `DiagonalGaussianDistribution` allows for sampling latents from the distribution.
-    """
-
-    latent_dist: "DiagonalGaussianDistribution"
 
 
 class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
@@ -294,7 +280,9 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         return DecoderOutput(sample=dec)
 
     @apply_forward_hook
-    def decode(self, z: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, torch.FloatTensor]:
+    def decode(
+        self, z: torch.FloatTensor, return_dict: bool = True, generator=None
+    ) -> Union[DecoderOutput, torch.FloatTensor]:
         """
         Decode a batch of images.
 
@@ -320,13 +308,13 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
 
         return DecoderOutput(sample=decoded)
 
-    def blend_v(self, a, b, blend_extent):
+    def blend_v(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[2], b.shape[2], blend_extent)
         for y in range(blend_extent):
             b[:, :, y, :] = a[:, :, -blend_extent + y, :] * (1 - y / blend_extent) + b[:, :, y, :] * (y / blend_extent)
         return b
 
-    def blend_h(self, a, b, blend_extent):
+    def blend_h(self, a: torch.Tensor, b: torch.Tensor, blend_extent: int) -> torch.Tensor:
         blend_extent = min(a.shape[3], b.shape[3], blend_extent)
         for x in range(blend_extent):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
@@ -461,3 +449,41 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
             return (dec,)
 
         return DecoderOutput(sample=dec)
+
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    def fuse_qkv_projections(self):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+        """
+        self.original_attn_processors = None
+
+        for _, attn_processor in self.attn_processors.items():
+            if "Added" in str(attn_processor.__class__.__name__):
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+
+        self.original_attn_processors = self.attn_processors
+
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.fuse_projections(fuse=True)
+
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
+    def unfuse_qkv_projections(self):
+        """Disables the fused QKV projection if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        """
+        if self.original_attn_processors is not None:
+            self.set_attn_processor(self.original_attn_processors)

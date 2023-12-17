@@ -1,10 +1,22 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Shap-E
 
 [[open-in-colab]]
 
 Shap-E is a conditional model for generating 3D assets which could be used for video game development, interior design, and architecture. It is trained on a large dataset of 3D assets, and post-processed to render more views of each object and produce 16K instead of 4K point clouds. The Shap-E model is trained in two steps:
 
-1. a encoder accepts the point clouds and rendered views of a 3D asset and outputs the parameters of implicit functions that represent the asset
+1. an encoder accepts the point clouds and rendered views of a 3D asset and outputs the parameters of implicit functions that represent the asset
 2. a diffusion model is trained on the latents produced by the encoder to generate either neural radiance fields (NeRFs) or a textured 3D mesh, making it easier to render and use the 3D asset in downstream applications
 
 This guide will show you how to use Shap-E to start generating your own 3D assets!
@@ -13,7 +25,7 @@ Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install diffusers transformers accelerate safetensors trimesh
+#!pip install -q diffusers transformers accelerate trimesh
 ```
 
 ## Text-to-3D
@@ -26,7 +38,7 @@ from diffusers import ShapEPipeline
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
+pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16")
 pipe = pipe.to(device)
 
 guidance_scale = 15.0
@@ -52,17 +64,17 @@ export_to_gif(images[1], "cake_3d.gif")
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/firecracker_out.gif"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">firecracker</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">prompt = "A firecracker"</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/shap_e/cake_out.gif"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">cupcake</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">prompt = "A birthday cupcake"</figcaption>
   </div>
 </div>
 
 ## Image-to-3D
 
-To generate a 3D object from another image, use the [`ShapEImg2ImgPipeline`]. You can use an existing image or generate an entirely new one. Let's use the the [Kandinsky 2.1](../api/pipelines/kandinsky) model to generate a new image.
+To generate a 3D object from another image, use the [`ShapEImg2ImgPipeline`]. You can use an existing image or generate an entirely new one. Let's use the [Kandinsky 2.1](../api/pipelines/kandinsky) model to generate a new image.
 
 ```py
 from diffusers import DiffusionPipeline
@@ -87,6 +99,7 @@ Pass the cheeseburger to the [`ShapEImg2ImgPipeline`] to generate a 3D represent
 
 ```py
 from PIL import Image
+from diffusers import ShapEImg2ImgPipeline
 from diffusers.utils import export_to_gif
 
 pipe = ShapEImg2ImgPipeline.from_pretrained("openai/shap-e-img2img", torch_dtype=torch.float16, variant="fp16").to("cuda")
@@ -127,7 +140,7 @@ from diffusers import ShapEPipeline
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
+pipe = ShapEPipeline.from_pretrained("openai/shap-e", torch_dtype=torch.float16, variant="fp16")
 pipe = pipe.to(device)
 
 guidance_scale = 15.0
@@ -148,7 +161,7 @@ You can optionally save the mesh output as an `obj` file with the [`~utils.expor
 from diffusers.utils import export_to_ply
 
 ply_path = export_to_ply(images[0], "3d_cake.ply")
-print(f"saved to folder: {ply_path}")
+print(f"Saved to folder: {ply_path}")
 ```
 
 Then you can convert the `ply` file to a `glb` file with the trimesh library:
@@ -157,7 +170,7 @@ Then you can convert the `ply` file to a `glb` file with the trimesh library:
 import trimesh
 
 mesh = trimesh.load("3d_cake.ply")
-mesh.export("3d_cake.glb", file_type="glb")
+mesh_export = mesh.export("3d_cake.glb", file_type="glb")
 ```
 
 By default, the mesh output is focused from the bottom viewpoint but you can change the default viewpoint by applying a rotation transform:
@@ -169,7 +182,7 @@ import numpy as np
 mesh = trimesh.load("3d_cake.ply")
 rot = trimesh.transformations.rotation_matrix(-np.pi / 2, [1, 0, 0])
 mesh = mesh.apply_transform(rot)
-mesh.export("3d_cake.glb", file_type="glb")
+mesh_export = mesh.export("3d_cake.glb", file_type="glb")
 ```
 
 Upload the mesh file to your dataset repository to visualize it with the Dataset viewer!

@@ -126,9 +126,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
+            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -142,6 +140,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
 
         self._step_index = None
+        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler.index_for_timestep
     def index_for_timestep(self, timestep, schedule_timesteps=None):
@@ -286,6 +285,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._index_counter = defaultdict(int)
 
         self._step_index = None
+        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def state_in_first_order(self):
@@ -312,7 +312,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
-        log_sigma = np.log(sigma)
+        log_sigma = np.log(np.maximum(sigma, 1e-10))
 
         # get distribution
         dists = log_sigma - log_sigmas[:, np.newaxis]
@@ -337,8 +337,20 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
-        sigma_min: float = in_sigmas[-1].item()
-        sigma_max: float = in_sigmas[0].item()
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)

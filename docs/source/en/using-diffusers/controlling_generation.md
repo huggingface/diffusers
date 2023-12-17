@@ -18,7 +18,7 @@ Most examples of preserving semantics reduce to being able to accurately map a c
 
 Additionally, there are qualities of generated images that we would like to influence beyond semantic preservation. I.e. in general, we would like our outputs to be of good quality, adhere to a particular style, or be realistic.
 
-We will document some of the techniques `diffusers` supports to control generation of diffusion models. Much is cutting edge research and can be quite nuanced. If something needs clarifying or you have a suggestion, don't hesitate to open a discussion on the [forum](https://discuss.huggingface.co/) or a [GitHub issue](https://github.com/huggingface/diffusers/issues).
+We will document some of the techniques `diffusers` supports to control generation of diffusion models. Much is cutting edge research and can be quite nuanced. If something needs clarifying or you have a suggestion, don't hesitate to open a discussion on the [forum](https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63) or a [GitHub issue](https://github.com/huggingface/diffusers/issues).
 
 We provide a high level explanation of how the generation can be controlled as well as a snippet of the technicals. For more in depth explanations on the technicals, the original papers which are linked from the pipelines are always the best resources.
 
@@ -26,11 +26,11 @@ Depending on the use case, one should choose a technique accordingly. In many ca
 
 Unless otherwise mentioned, these are techniques that work with existing models and don't require their own weights.
 
-1. [Instruct Pix2Pix](#instruct-pix2pix)
-2. [Pix2Pix Zero](#pix2pixzero)
+1. [InstructPix2Pix](#instruct-pix2pix)
+2. [Pix2Pix Zero](#pix2pix-zero)
 3. [Attend and Excite](#attend-and-excite)
-4. [Semantic Guidance](#semantic-guidance)
-5. [Self-attention Guidance](#self-attention-guidance)
+4. [Semantic Guidance](#semantic-guidance-sega)
+5. [Self-attention Guidance](#self-attention-guidance-sag)
 6. [Depth2Image](#depth2image)
 7. [MultiDiffusion Panorama](#multidiffusion-panorama)
 8. [DreamBooth](#dreambooth)
@@ -47,11 +47,11 @@ For convenience, we provide a table to denote which methods are inference-only a
 
 |                     **Method**                      | **Inference only** | **Requires training /<br> fine-tuning** |                                          **Comments**                                           |
 | :-------------------------------------------------: | :----------------: | :-------------------------------------: | :---------------------------------------------------------------------------------------------: |
-|        [Instruct Pix2Pix](#instruct-pix2pix)        |         ✅         |                   ❌                    | Can additionally be<br>fine-tuned for better <br>performance on specific <br>edit instructions. |
-|            [Pix2Pix Zero](#pix2pixzero)             |         ✅         |                   ❌                    |                                                                                                 |
+|        [InstructPix2Pix](#instruct-pix2pix)        |         ✅         |                   ❌                    | Can additionally be<br>fine-tuned for better <br>performance on specific <br>edit instructions. |
+|            [Pix2Pix Zero](#pix2pix-zero)            |         ✅         |                   ❌                    |                                                                                                 |
 |       [Attend and Excite](#attend-and-excite)       |         ✅         |                   ❌                    |                                                                                                 |
-|       [Semantic Guidance](#semantic-guidance)       |         ✅         |                   ❌                    |                                                                                                 |
-| [Self-attention Guidance](#self-attention-guidance) |         ✅         |                   ❌                    |                                                                                                 |
+|       [Semantic Guidance](#semantic-guidance-sega)       |         ✅         |                   ❌                    |                                                                                                 |
+| [Self-attention Guidance](#self-attention-guidance-sag) |         ✅         |                   ❌                    |                                                                                                 |
 |             [Depth2Image](#depth2image)             |         ✅         |                   ❌                    |                                                                                                 |
 | [MultiDiffusion Panorama](#multidiffusion-panorama) |         ✅         |                   ❌                    |                                                                                                 |
 |              [DreamBooth](#dreambooth)              |         ❌         |                   ✅                    |                                                                                                 |
@@ -63,14 +63,12 @@ For convenience, we provide a table to denote which methods are inference-only a
 |                [DiffEdit](#diffedit)                |         ✅         |                   ❌                    |                                                                                                 |
 |             [T2I-Adapter](#t2i-adapter)             |         ✅         |                   ❌                    |                                                                                                 |
 |                [Fabric](#fabric)                    |         ✅         |                   ❌                    |                                                                                                 |
-## Instruct Pix2Pix
+## InstructPix2Pix
 
 [Paper](https://arxiv.org/abs/2211.09800)
 
-[Instruct Pix2Pix](../api/pipelines/pix2pix) is fine-tuned from stable diffusion to support editing input images. It takes as inputs an image and a prompt describing an edit, and it outputs the edited image.
-Instruct Pix2Pix has been explicitly trained to work well with [InstructGPT](https://openai.com/blog/instruction-following/)-like prompts.
-
-See [here](../api/pipelines/pix2pix) for more information on how to use it.
+[InstructPix2Pix](../api/pipelines/pix2pix) is fine-tuned from Stable Diffusion to support editing input images. It takes as inputs an image and a prompt describing an edit, and it outputs the edited image.
+InstructPix2Pix has been explicitly trained to work well with [InstructGPT](https://openai.com/blog/instruction-following/)-like prompts.
 
 ## Pix2Pix Zero
 
@@ -84,7 +82,7 @@ Pix2Pix Zero can be used both to edit synthetic images as well as real images.
 
 - To edit synthetic images, one first generates an image given a caption.
   Next, we generate image captions for the concept that shall be edited and for the new target concept. We can use a model like [Flan-T5](https://huggingface.co/docs/transformers/model_doc/flan-t5) for this purpose. Then, "mean" prompt embeddings for both the source and target concepts are created via the text encoder. Finally, the pix2pix-zero algorithm is used to edit the synthetic image.
-- To edit a real image, one first generates an image caption using a model like [BLIP](https://huggingface.co/docs/transformers/model_doc/blip). Then one applies ddim inversion on the prompt and image to generate "inverse" latents. Similar to before, "mean" prompt embeddings for both source and target concepts are created and finally the pix2pix-zero algorithm in combination with the "inverse" latents is used to edit the image.
+- To edit a real image, one first generates an image caption using a model like [BLIP](https://huggingface.co/docs/transformers/model_doc/blip). Then one applies DDIM inversion on the prompt and image to generate "inverse" latents. Similar to before, "mean" prompt embeddings for both source and target concepts are created and finally the pix2pix-zero algorithm in combination with the "inverse" latents is used to edit the image.
 
 <Tip>
 
@@ -96,7 +94,13 @@ can edit an image in less than a minute on a consumer GPU as shown [here](../api
 As mentioned above, Pix2Pix Zero includes optimizing the latents (and not any of the UNet, VAE, or the text encoder) to steer the generation toward a specific concept. This means that the overall
 pipeline might require more memory than a standard [StableDiffusionPipeline](../api/pipelines/stable_diffusion/text2img).
 
-See [here](../api/pipelines/pix2pix_zero) for more information on how to use it.
+<Tip>
+
+An important distinction between methods like InstructPix2Pix and Pix2Pix Zero is that the former
+involves fine-tuning the pre-trained weights while the latter does not. This means that you can
+apply Pix2Pix Zero to any of the available Stable Diffusion models.
+
+</Tip>
 
 ## Attend and Excite
 
@@ -108,19 +112,15 @@ A set of token indices are given as input, corresponding to the subjects in the 
 
 Like Pix2Pix Zero, Attend and Excite also involves a mini optimization loop (leaving the pre-trained weights untouched) in its pipeline and can require more memory than the usual [StableDiffusionPipeline](../api/pipelines/stable_diffusion/text2img).
 
-See [here](../api/pipelines/attend_and_excite) for more information on how to use it.
-
 ## Semantic Guidance (SEGA)
 
 [Paper](https://arxiv.org/abs/2301.12247)
 
-SEGA allows applying or removing one or more concepts from an image. The strength of the concept can also be controlled. I.e. the smile concept can be used to incrementally increase or decrease the smile of a portrait.
+[SEGA](../api/pipelines/semantic_stable_diffusion) allows applying or removing one or more concepts from an image. The strength of the concept can also be controlled. I.e. the smile concept can be used to incrementally increase or decrease the smile of a portrait.
 
 Similar to how classifier free guidance provides guidance via empty prompt inputs, SEGA provides guidance on conceptual prompts. Multiple of these conceptual prompts can be applied simultaneously. Each conceptual prompt can either add or remove their concept depending on if the guidance is applied positively or negatively.
 
 Unlike Pix2Pix Zero or Attend and Excite, SEGA directly interacts with the diffusion process instead of performing any explicit gradient-based optimization.
-
-See [here](../api/pipelines/semantic_stable_diffusion) for more information on how to use it.
 
 ## Self-attention Guidance (SAG)
 
@@ -130,34 +130,20 @@ See [here](../api/pipelines/semantic_stable_diffusion) for more information on h
 
 SAG provides guidance from predictions not conditioned on high-frequency details to fully conditioned images. The high frequency details are extracted out of the UNet self-attention maps.
 
-See [here](../api/pipelines/self_attention_guidance) for more information on how to use it.
-
 ## Depth2Image
 
 [Project](https://huggingface.co/stabilityai/stable-diffusion-2-depth)
 
-[Depth2Image](../pipelines/stable_diffusion_2#depthtoimage) is fine-tuned from Stable Diffusion to better preserve semantics for text guided image variation.
+[Depth2Image](../api/pipelines/stable_diffusion/depth2img) is fine-tuned from Stable Diffusion to better preserve semantics for text guided image variation.
 
 It conditions on a monocular depth estimate of the original image.
-
-See [here](../api/pipelines/stable_diffusion_2#depthtoimage) for more information on how to use it.
-
-<Tip>
-
-An important distinction between methods like InstructPix2Pix and Pix2Pix Zero is that the former
-involves fine-tuning the pre-trained weights while the latter does not. This means that you can
-apply Pix2Pix Zero to any of the available Stable Diffusion models.
-
-</Tip>
 
 ## MultiDiffusion Panorama
 
 [Paper](https://arxiv.org/abs/2302.08113)
 
-MultiDiffusion defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation methods that can be readily applied to generate high quality and diverse images. Results adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
-[MultiDiffusion Panorama](../api/pipelines/panorama) allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
-
-See [here](../api/pipelines/panorama) for more information on how to use it to generate panoramic images.
+[MultiDiffusion Panorama](../api/pipelines/panorama) defines a new generation process over a pre-trained diffusion model. This process binds together multiple diffusion generation methods that can be readily applied to generate high quality and diverse images. Results adhere to user-provided controls, such as desired aspect ratio (e.g., panorama), and spatial guiding signals, ranging from tight segmentation masks to bounding boxes.
+MultiDiffusion Panorama allows to generate high-quality images at arbitrary aspect ratios (e.g., panoramas).
 
 ## Fine-tuning your own models
 
@@ -165,43 +151,38 @@ In addition to pre-trained models, Diffusers has training scripts for fine-tunin
 
 ## DreamBooth
 
-[DreamBooth](../training/dreambooth) fine-tunes a model to teach it about a new subject. I.e. a few pictures of a person can be used to generate images of that person in different styles.
+[Project](https://dreambooth.github.io/)
 
-See [here](../training/dreambooth) for more information on how to use it.
+[DreamBooth](../training/dreambooth) fine-tunes a model to teach it about a new subject. I.e. a few pictures of a person can be used to generate images of that person in different styles.
 
 ## Textual Inversion
 
-[Textual Inversion](../training/text_inversion) fine-tunes a model to teach it about a new concept. I.e. a few pictures of a style of artwork can be used to generate images in that style.
+[Paper](https://arxiv.org/abs/2208.01618)
 
-See [here](../training/text_inversion) for more information on how to use it.
+[Textual Inversion](../training/text_inversion) fine-tunes a model to teach it about a new concept. I.e. a few pictures of a style of artwork can be used to generate images in that style.
 
 ## ControlNet
 
 [Paper](https://arxiv.org/abs/2302.05543)
 
 [ControlNet](../api/pipelines/controlnet) is an auxiliary network which adds an extra condition.
-[ControlNet](../api/pipelines/controlnet) is an auxiliary network which adds an extra condition.
 There are 8 canonical pre-trained ControlNets trained on different conditionings such as edge detection, scribbles,
 depth maps, and semantic segmentations.
 
-See [here](../api/pipelines/controlnet) for more information on how to use it.
-
 ## Prompt Weighting
 
-Prompt weighting is a simple technique that puts more attention weight on certain parts of the text
+[Prompt weighting](../using-diffusers/weighted_prompts) is a simple technique that puts more attention weight on certain parts of the text
 input.
-
-For a more in-detail explanation and examples, see [here](../using-diffusers/weighted_prompts).
 
 ## Custom Diffusion
 
+[Paper](https://arxiv.org/abs/2212.04488)
+
 [Custom Diffusion](../training/custom_diffusion) only fine-tunes the cross-attention maps of a pre-trained
-text-to-image diffusion model. It also allows for additionally performing textual inversion. It supports
+text-to-image diffusion model. It also allows for additionally performing Textual Inversion. It supports
 multi-concept training by design. Like DreamBooth and Textual Inversion, Custom Diffusion is also used to
 teach a pre-trained text-to-image diffusion model about new concepts to generate outputs involving the
 concept(s) of interest.
-
-For more details, check out our [official doc](../training/custom_diffusion).
 
 ## Model Editing
 
@@ -211,16 +192,12 @@ The [text-to-image model editing pipeline](../api/pipelines/model_editing) helps
 diffusion model might make about the subjects present in the input prompt. For example, if you prompt Stable Diffusion to generate images for "A pack of roses", the roses in the generated images
 are more likely to be red. This pipeline helps you change that assumption.
 
-To know more details, check out the [official doc](../api/pipelines/model_editing).
-
 ## DiffEdit
 
 [Paper](https://arxiv.org/abs/2210.11427)
 
 [DiffEdit](../api/pipelines/diffedit) allows for semantic editing of input images along with
 input prompts while preserving the original input images as much as possible.
-
-To know more details, check out the [official doc](../api/pipelines/diffedit).
 
 ## T2I-Adapter
 
@@ -230,15 +207,11 @@ To know more details, check out the [official doc](../api/pipelines/diffedit).
 There are 8 canonical pre-trained adapters trained on different conditionings such as edge detection, sketch,
 depth maps, and semantic segmentations.
 
-See [here](../api/pipelines/stable_diffusion/adapter) for more information on how to use it.
-
 ## Fabric
 
 [Paper](https://arxiv.org/abs/2307.10159)
 
-[Fabric](../api/pipelines/fabric) is a training-free
+[Fabric](https://github.com/huggingface/diffusers/tree/442017ccc877279bcf24fbe92f92d3d0def191b6/examples/community#stable-diffusion-fabric-pipeline) is a training-free
 approach applicable to a wide range of popular diffusion models, which exploits
 the self-attention layer present in the most widely used architectures to condition
 the diffusion process on a set of feedback images.
-
-To know more details, check out the [official doc](../api/pipelines/fabric).

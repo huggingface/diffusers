@@ -33,7 +33,7 @@ from diffusers.utils import check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.22.0.dev0")
+check_min_version("0.25.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +53,12 @@ def parse_args():
         default=None,
         required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
         "--dataset_name",
@@ -208,6 +214,12 @@ def parse_args():
         ),
     )
     parser.add_argument("--local_rank", type=int, default=-1, help="For distributed training: local_rank")
+    parser.add_argument(
+        "--from_pt",
+        action="store_true",
+        default=False,
+        help="Flag to indicate whether to convert models from PyTorch.",
+    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -266,9 +278,7 @@ def main():
     if args.dataset_name is not None:
         # Downloading and loading a dataset from the hub.
         dataset = load_dataset(
-            args.dataset_name,
-            args.dataset_config_name,
-            cache_dir=args.cache_dir,
+            args.dataset_name, args.dataset_config_name, cache_dir=args.cache_dir, data_dir=args.train_data_dir
         )
     else:
         data_files = {}
@@ -374,16 +384,31 @@ def main():
 
     # Load models and create wrapper for stable diffusion
     tokenizer = CLIPTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path, revision=args.revision, subfolder="tokenizer"
+        args.pretrained_model_name_or_path,
+        from_pt=args.from_pt,
+        revision=args.revision,
+        subfolder="tokenizer",
     )
     text_encoder = FlaxCLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, revision=args.revision, subfolder="text_encoder", dtype=weight_dtype
+        args.pretrained_model_name_or_path,
+        from_pt=args.from_pt,
+        revision=args.revision,
+        subfolder="text_encoder",
+        dtype=weight_dtype,
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, revision=args.revision, subfolder="vae", dtype=weight_dtype
+        args.pretrained_model_name_or_path,
+        from_pt=args.from_pt,
+        revision=args.revision,
+        subfolder="vae",
+        dtype=weight_dtype,
     )
     unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, revision=args.revision, subfolder="unet", dtype=weight_dtype
+        args.pretrained_model_name_or_path,
+        from_pt=args.from_pt,
+        revision=args.revision,
+        subfolder="unet",
+        dtype=weight_dtype,
     )
 
     # Optimization

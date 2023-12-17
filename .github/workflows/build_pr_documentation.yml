@@ -15,4 +15,4 @@ jobs:
       pr_number: ${{ github.event.number }}
       install_libgl1: true
       package: diffusers
-      languages: en ko zh
+      languages: en ko zh ja pt

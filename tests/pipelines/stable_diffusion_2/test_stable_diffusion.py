@@ -34,16 +34,24 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     enable_full_determinism,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
+    require_torch_accelerator,
     require_torch_gpu,
+    skip_mps,
     slow,
     torch_device,
 )
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..pipeline_params import (
+    TEXT_TO_IMAGE_BATCH_PARAMS,
+    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
+    TEXT_TO_IMAGE_IMAGE_PARAMS,
+    TEXT_TO_IMAGE_PARAMS,
+)
 from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
@@ -58,6 +66,7 @@ class StableDiffusion2PipelineFastTests(
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -117,14 +126,17 @@ class StableDiffusion2PipelineFastTests(
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
+        generator_device = "cpu" if not device.startswith("cuda") else "cuda"
+        if not str(device).startswith("mps"):
+            generator = torch.Generator(device=generator_device).manual_seed(seed)
         else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+            generator = torch.manual_seed(seed)
+
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
@@ -292,15 +304,21 @@ class StableDiffusion2PipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
+@skip_mps
 class StableDiffusion2PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        _generator_device = "cpu" if not generator_device.startswith("cuda") else "cuda"
+        if not str(device).startswith("mps"):
+            generator = torch.Generator(device=_generator_device).manual_seed(seed)
+        else:
+            generator = torch.manual_seed(seed)
+
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
@@ -354,6 +372,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.10440, 0.13115, 0.11100, 0.10141, 0.11440, 0.07215, 0.11332, 0.09693, 0.10006])
         assert np.abs(image_slice - expected_slice).max() < 3e-3
 
+    @require_torch_gpu
     def test_stable_diffusion_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -425,6 +444,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         assert callback_fn.has_been_called
         assert number_of_steps == inputs["num_inference_steps"]
 
+    @require_torch_gpu
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -445,6 +465,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.8 GB is allocated
         assert mem_bytes < 2.8 * 10**9
 
+    @require_torch_gpu
     def test_stable_diffusion_pipeline_with_model_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -504,15 +525,21 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
+@skip_mps
 class StableDiffusion2PipelineNightlyTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        _generator_device = "cpu" if not generator_device.startswith("cuda") else "cuda"
+        if not str(device).startswith("mps"):
+            generator = torch.Generator(device=_generator_device).manual_seed(seed)
+        else:
+            generator = torch.manual_seed(seed)
+
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {

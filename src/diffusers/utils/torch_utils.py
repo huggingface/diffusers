@@ -82,14 +82,14 @@ def randn_tensor(
     return latents
 
 
-def is_compiled_module(module):
+def is_compiled_module(module) -> bool:
     """Check whether the module was compiled with torch.compile()"""
     if is_torch_version("<", "2.0.0") or not hasattr(torch, "_dynamo"):
         return False
     return isinstance(module, torch._dynamo.eval_frame.OptimizedModule)
 
 
-def fourier_filter(x_in, threshold, scale):
+def fourier_filter(x_in: torch.Tensor, threshold: int, scale: int) -> torch.Tensor:
     """Fourier filter as introduced in FreeU (https://arxiv.org/abs/2309.11497).
 
     This version of the method comes from here:

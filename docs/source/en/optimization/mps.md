@@ -31,6 +31,8 @@ pipe = pipe.to("mps")
 pipe.enable_attention_slicing()
 
 prompt = "a photo of an astronaut riding a horse on mars"
+image = pipe(prompt).images[0]
+image
 ```
 
 <Tip warning={true}>
@@ -48,10 +50,10 @@ If you're using **PyTorch 1.13**, you need to "prime" the pipeline with an addit
   pipe.enable_attention_slicing()
 
   prompt = "a photo of an astronaut riding a horse on mars"
-# First-time "warmup" pass if PyTorch version is 1.13
+  # First-time "warmup" pass if PyTorch version is 1.13
 + _ = pipe(prompt, num_inference_steps=1)
 
-# Results match those from the CPU device after the warmup pass.
+  # Results match those from the CPU device after the warmup pass.
   image = pipe(prompt).images[0]
 ```
 
@@ -63,6 +65,7 @@ To prevent this from happening, we recommend *attention slicing* to reduce memor
 
 ```py
 from diffusers import DiffusionPipeline
+import torch
 
 pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True).to("mps")
 pipeline.enable_attention_slicing()

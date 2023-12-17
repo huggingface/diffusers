@@ -22,9 +22,9 @@ import torch.nn.functional as F
 
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
-from .attention import AdaGroupNorm
 from .attention_processor import SpatialNorm
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
+from .normalization import AdaGroupNorm
 
 
 class Upsample1D(nn.Module):
@@ -164,7 +164,12 @@ class Upsample2D(nn.Module):
         else:
             self.Conv2d_0 = conv
 
-    def forward(self, hidden_states: torch.Tensor, output_size: Optional[int] = None, scale: float = 1.0):
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        output_size: Optional[int] = None,
+        scale: float = 1.0,
+    ) -> torch.FloatTensor:
         assert hidden_states.shape[1] == self.channels
 
         if self.use_conv_transpose:
@@ -256,7 +261,7 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
-    def forward(self, hidden_states, scale: float = 1.0):
+    def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
         assert hidden_states.shape[1] == self.channels
 
         if self.use_conv and self.padding == 0:
@@ -280,7 +285,7 @@ class FirUpsample2D(nn.Module):
     """A 2D FIR upsampling layer with an optional convolution.
 
     Parameters:
-        channels (`int`):
+        channels (`int`, optional):
             number of channels in the inputs and outputs.
         use_conv (`bool`, default `False`):
             option to use a convolution.
@@ -292,7 +297,7 @@ class FirUpsample2D(nn.Module):
 
     def __init__(
         self,
-        channels: int = None,
+        channels: Optional[int] = None,
         out_channels: Optional[int] = None,
         use_conv: bool = False,
         fir_kernel: Tuple[int, int, int, int] = (1, 3, 3, 1),
@@ -307,12 +312,12 @@ class FirUpsample2D(nn.Module):
 
     def _upsample_2d(
         self,
-        hidden_states: torch.Tensor,
-        weight: Optional[torch.Tensor] = None,
+        hidden_states: torch.FloatTensor,
+        weight: Optional[torch.FloatTensor] = None,
         kernel: Optional[torch.FloatTensor] = None,
         factor: int = 2,
         gain: float = 1,
-    ) -> torch.Tensor:
+    ) -> torch.FloatTensor:
         """Fused `upsample_2d()` followed by `Conv2d()`.
 
         Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
@@ -320,17 +325,21 @@ class FirUpsample2D(nn.Module):
         arbitrary order.
 
         Args:
-            hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-            weight: Weight tensor of the shape `[filterH, filterW, inChannels,
-                outChannels]`. Grouped convolution can be performed by `inChannels = x.shape[0] // numGroups`.
-            kernel: FIR filter of the shape `[firH, firW]` or `[firN]`
-                (separable). The default is `[1] * factor`, which corresponds to nearest-neighbor upsampling.
-            factor: Integer upsampling factor (default: 2).
-            gain: Scaling factor for signal magnitude (default: 1.0).
+            hidden_states (`torch.FloatTensor`):
+                Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
+            weight (`torch.FloatTensor`, *optional*):
+                Weight tensor of the shape `[filterH, filterW, inChannels, outChannels]`. Grouped convolution can be
+                performed by `inChannels = x.shape[0] // numGroups`.
+            kernel (`torch.FloatTensor`, *optional*):
+                FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
+                corresponds to nearest-neighbor upsampling.
+            factor (`int`, *optional*): Integer upsampling factor (default: 2).
+            gain (`float`, *optional*): Scaling factor for signal magnitude (default: 1.0).
 
         Returns:
-            output: Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same
-            datatype as `hidden_states`.
+            output (`torch.FloatTensor`):
+                Tensor of the shape `[N, C, H * factor, W * factor]` or `[N, H * factor, W * factor, C]`, and same
+                datatype as `hidden_states`.
         """
 
         assert isinstance(factor, int) and factor >= 1
@@ -373,7 +382,11 @@ class FirUpsample2D(nn.Module):
             weight = torch.reshape(weight, (num_groups * inC, -1, convH, convW))
 
             inverse_conv = F.conv_transpose2d(
-                hidden_states, weight, stride=stride, output_padding=output_padding, padding=0
+                hidden_states,
+                weight,
+                stride=stride,
+                output_padding=output_padding,
+                padding=0,
             )
 
             output = upfirdn2d_native(
@@ -392,7 +405,7 @@ class FirUpsample2D(nn.Module):
 
         return output
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
         if self.use_conv:
             height = self._upsample_2d(hidden_states, self.Conv2d_0.weight, kernel=self.fir_kernel)
             height = height + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
@@ -418,7 +431,7 @@ class FirDownsample2D(nn.Module):
 
     def __init__(
         self,
-        channels: int = None,
+        channels: Optional[int] = None,
         out_channels: Optional[int] = None,
         use_conv: bool = False,
         fir_kernel: Tuple[int, int, int, int] = (1, 3, 3, 1),
@@ -433,30 +446,35 @@ class FirDownsample2D(nn.Module):
 
     def _downsample_2d(
         self,
-        hidden_states: torch.Tensor,
-        weight: Optional[torch.Tensor] = None,
+        hidden_states: torch.FloatTensor,
+        weight: Optional[torch.FloatTensor] = None,
         kernel: Optional[torch.FloatTensor] = None,
         factor: int = 2,
         gain: float = 1,
-    ) -> torch.Tensor:
+    ) -> torch.FloatTensor:
         """Fused `Conv2d()` followed by `downsample_2d()`.
         Padding is performed only once at the beginning, not between the operations. The fused op is considerably more
         efficient than performing the same calculation using standard TensorFlow ops. It supports gradients of
         arbitrary order.
 
         Args:
-            hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-            weight:
+            hidden_states (`torch.FloatTensor`):
+                Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
+            weight (`torch.FloatTensor`, *optional*):
                 Weight tensor of the shape `[filterH, filterW, inChannels, outChannels]`. Grouped convolution can be
                 performed by `inChannels = x.shape[0] // numGroups`.
-            kernel: FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] *
-            factor`, which corresponds to average pooling.
-            factor: Integer downsampling factor (default: 2).
-            gain: Scaling factor for signal magnitude (default: 1.0).
+            kernel (`torch.FloatTensor`, *optional*):
+                FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
+                corresponds to average pooling.
+            factor (`int`, *optional*, default to `2`):
+                Integer downsampling factor.
+            gain (`float`, *optional*, default to `1.0`):
+                Scaling factor for signal magnitude.
 
         Returns:
-            output: Tensor of the shape `[N, C, H // factor, W // factor]` or `[N, H // factor, W // factor, C]`, and
-            same datatype as `x`.
+            output (`torch.FloatTensor`):
+                Tensor of the shape `[N, C, H // factor, W // factor]` or `[N, H // factor, W // factor, C]`, and same
+                datatype as `x`.
         """
 
         assert isinstance(factor, int) and factor >= 1
@@ -492,7 +510,7 @@ class FirDownsample2D(nn.Module):
 
         return output
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
         if self.use_conv:
             downsample_input = self._downsample_2d(hidden_states, weight=self.Conv2d_0.weight, kernel=self.fir_kernel)
             hidden_states = downsample_input + self.Conv2d_0.bias.reshape(1, -1, 1, 1)
@@ -519,7 +537,14 @@ class KDownsample2D(nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         inputs = F.pad(inputs, (self.pad,) * 4, self.pad_mode)
-        weight = inputs.new_zeros([inputs.shape[1], inputs.shape[1], self.kernel.shape[0], self.kernel.shape[1]])
+        weight = inputs.new_zeros(
+            [
+                inputs.shape[1],
+                inputs.shape[1],
+                self.kernel.shape[0],
+                self.kernel.shape[1],
+            ]
+        )
         indices = torch.arange(inputs.shape[1], device=inputs.device)
         kernel = self.kernel.to(weight)[None, :].expand(inputs.shape[1], -1, -1)
         weight[indices, indices] = kernel
@@ -542,7 +567,14 @@ class KUpsample2D(nn.Module):
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         inputs = F.pad(inputs, ((self.pad + 1) // 2,) * 4, self.pad_mode)
-        weight = inputs.new_zeros([inputs.shape[1], inputs.shape[1], self.kernel.shape[0], self.kernel.shape[1]])
+        weight = inputs.new_zeros(
+            [
+                inputs.shape[1],
+                inputs.shape[1],
+                self.kernel.shape[0],
+                self.kernel.shape[1],
+            ]
+        )
         indices = torch.arange(inputs.shape[1], device=inputs.device)
         kernel = self.kernel.to(weight)[None, :].expand(inputs.shape[1], -1, -1)
         weight[indices, indices] = kernel
@@ -679,10 +711,20 @@ class ResnetBlock2D(nn.Module):
         self.conv_shortcut = None
         if self.use_in_shortcut:
             self.conv_shortcut = conv_cls(
-                in_channels, conv_2d_out_channels, kernel_size=1, stride=1, padding=0, bias=conv_shortcut_bias
+                in_channels,
+                conv_2d_out_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+                bias=conv_shortcut_bias,
             )
 
-    def forward(self, input_tensor, temb, scale: float = 1.0):
+    def forward(
+        self,
+        input_tensor: torch.FloatTensor,
+        temb: torch.FloatTensor,
+        scale: float = 1.0,
+    ) -> torch.FloatTensor:
         hidden_states = input_tensor
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
@@ -778,16 +820,22 @@ class Conv1dBlock(nn.Module):
         out_channels (`int`): Number of output channels.
         kernel_size (`int` or `tuple`): Size of the convolving kernel.
         n_groups (`int`, default `8`): Number of groups to separate the channels into.
+        activation (`str`, defaults to `mish`): Name of the activation function.
     """
 
     def __init__(
-        self, inp_channels: int, out_channels: int, kernel_size: Union[int, Tuple[int, int]], n_groups: int = 8
+        self,
+        inp_channels: int,
+        out_channels: int,
+        kernel_size: Union[int, Tuple[int, int]],
+        n_groups: int = 8,
+        activation: str = "mish",
     ):
         super().__init__()
 
         self.conv1d = nn.Conv1d(inp_channels, out_channels, kernel_size, padding=kernel_size // 2)
         self.group_norm = nn.GroupNorm(n_groups, out_channels)
-        self.mish = nn.Mish()
+        self.mish = get_activation(activation)
 
     def forward(self, inputs: torch.Tensor) -> torch.Tensor:
         intermediate_repr = self.conv1d(inputs)
@@ -808,16 +856,22 @@ class ResidualTemporalBlock1D(nn.Module):
         out_channels (`int`): Number of output channels.
         embed_dim (`int`): Embedding dimension.
         kernel_size (`int` or `tuple`): Size of the convolving kernel.
+        activation (`str`, defaults `mish`): It is possible to choose the right activation function.
     """
 
     def __init__(
-        self, inp_channels: int, out_channels: int, embed_dim: int, kernel_size: Union[int, Tuple[int, int]] = 5
+        self,
+        inp_channels: int,
+        out_channels: int,
+        embed_dim: int,
+        kernel_size: Union[int, Tuple[int, int]] = 5,
+        activation: str = "mish",
     ):
         super().__init__()
         self.conv_in = Conv1dBlock(inp_channels, out_channels, kernel_size)
         self.conv_out = Conv1dBlock(out_channels, out_channels, kernel_size)
 
-        self.time_emb_act = nn.Mish()
+        self.time_emb_act = get_activation(activation)
         self.time_emb = nn.Linear(embed_dim, out_channels)
 
         self.residual_conv = (
@@ -841,8 +895,11 @@ class ResidualTemporalBlock1D(nn.Module):
 
 
 def upsample_2d(
-    hidden_states: torch.Tensor, kernel: Optional[torch.FloatTensor] = None, factor: int = 2, gain: float = 1
-) -> torch.Tensor:
+    hidden_states: torch.FloatTensor,
+    kernel: Optional[torch.FloatTensor] = None,
+    factor: int = 2,
+    gain: float = 1,
+) -> torch.FloatTensor:
     r"""Upsample2D a batch of 2D images with the given filter.
     Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and upsamples each image with the given
     filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the specified
@@ -850,14 +907,19 @@ def upsample_2d(
     a: multiple of the upsampling factor.
 
     Args:
-        hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-        kernel: FIR filter of the shape `[firH, firW]` or `[firN]`
-          (separable). The default is `[1] * factor`, which corresponds to nearest-neighbor upsampling.
-        factor: Integer upsampling factor (default: 2).
-        gain: Scaling factor for signal magnitude (default: 1.0).
+        hidden_states (`torch.FloatTensor`):
+            Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
+        kernel (`torch.FloatTensor`, *optional*):
+            FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
+            corresponds to nearest-neighbor upsampling.
+        factor (`int`, *optional*, default to `2`):
+            Integer upsampling factor.
+        gain (`float`, *optional*, default to `1.0`):
+            Scaling factor for signal magnitude (default: 1.0).
 
     Returns:
-        output: Tensor of the shape `[N, C, H * factor, W * factor]`
+        output (`torch.FloatTensor`):
+            Tensor of the shape `[N, C, H * factor, W * factor]`
     """
     assert isinstance(factor, int) and factor >= 1
     if kernel is None:
@@ -880,8 +942,11 @@ def upsample_2d(
 
 
 def downsample_2d(
-    hidden_states: torch.Tensor, kernel: Optional[torch.FloatTensor] = None, factor: int = 2, gain: float = 1
-) -> torch.Tensor:
+    hidden_states: torch.FloatTensor,
+    kernel: Optional[torch.FloatTensor] = None,
+    factor: int = 2,
+    gain: float = 1,
+) -> torch.FloatTensor:
     r"""Downsample2D a batch of 2D images with the given filter.
     Accepts a batch of 2D images of the shape `[N, C, H, W]` or `[N, H, W, C]` and downsamples each image with the
     given filter. The filter is normalized so that if the input pixels are constant, they will be scaled by the
@@ -889,14 +954,19 @@ def downsample_2d(
     shape is a multiple of the downsampling factor.
 
     Args:
-        hidden_states: Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
-        kernel: FIR filter of the shape `[firH, firW]` or `[firN]`
-          (separable). The default is `[1] * factor`, which corresponds to average pooling.
-        factor: Integer downsampling factor (default: 2).
-        gain: Scaling factor for signal magnitude (default: 1.0).
+        hidden_states (`torch.FloatTensor`)
+            Input tensor of the shape `[N, C, H, W]` or `[N, H, W, C]`.
+        kernel (`torch.FloatTensor`, *optional*):
+            FIR filter of the shape `[firH, firW]` or `[firN]` (separable). The default is `[1] * factor`, which
+            corresponds to average pooling.
+        factor (`int`, *optional*, default to `2`):
+            Integer downsampling factor.
+        gain (`float`, *optional*, default to `1.0`):
+            Scaling factor for signal magnitude.
 
     Returns:
-        output: Tensor of the shape `[N, C, H // factor, W // factor]`
+        output (`torch.FloatTensor`):
+            Tensor of the shape `[N, C, H // factor, W // factor]`
     """
 
     assert isinstance(factor, int) and factor >= 1
@@ -911,13 +981,20 @@ def downsample_2d(
     kernel = kernel * gain
     pad_value = kernel.shape[0] - factor
     output = upfirdn2d_native(
-        hidden_states, kernel.to(device=hidden_states.device), down=factor, pad=((pad_value + 1) // 2, pad_value // 2)
+        hidden_states,
+        kernel.to(device=hidden_states.device),
+        down=factor,
+        pad=((pad_value + 1) // 2, pad_value // 2),
     )
     return output
 
 
 def upfirdn2d_native(
-    tensor: torch.Tensor, kernel: torch.Tensor, up: int = 1, down: int = 1, pad: Tuple[int, int] = (0, 0)
+    tensor: torch.Tensor,
+    kernel: torch.Tensor,
+    up: int = 1,
+    down: int = 1,
+    pad: Tuple[int, int] = (0, 0),
 ) -> torch.Tensor:
     up_x = up_y = up
     down_x = down_y = down
@@ -973,7 +1050,13 @@ class TemporalConvLayer(nn.Module):
         dropout (`float`, *optional*, defaults to `0.0`): The dropout probability to use.
     """
 
-    def __init__(self, in_dim: int, out_dim: Optional[int] = None, dropout: float = 0.0):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: Optional[int] = None,
+        dropout: float = 0.0,
+        norm_num_groups: int = 32,
+    ):
         super().__init__()
         out_dim = out_dim or in_dim
         self.in_dim = in_dim
@@ -981,22 +1064,24 @@ class TemporalConvLayer(nn.Module):
 
         # conv layers
         self.conv1 = nn.Sequential(
-            nn.GroupNorm(32, in_dim), nn.SiLU(), nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0))
+            nn.GroupNorm(norm_num_groups, in_dim),
+            nn.SiLU(),
+            nn.Conv3d(in_dim, out_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv2 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv3 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
         )
         self.conv4 = nn.Sequential(
-            nn.GroupNorm(32, out_dim),
+            nn.GroupNorm(norm_num_groups, out_dim),
             nn.SiLU(),
             nn.Dropout(dropout),
             nn.Conv3d(out_dim, in_dim, (3, 1, 1), padding=(1, 0, 0)),
@@ -1023,3 +1108,261 @@ class TemporalConvLayer(nn.Module):
             (hidden_states.shape[0] * hidden_states.shape[2], -1) + hidden_states.shape[3:]
         )
         return hidden_states
+
+
+class TemporalResnetBlock(nn.Module):
+    r"""
+    A Resnet block.
+
+    Parameters:
+        in_channels (`int`): The number of channels in the input.
+        out_channels (`int`, *optional*, default to be `None`):
+            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
+        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
+        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the normalization.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        temb_channels: int = 512,
+        eps: float = 1e-6,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+        out_channels = in_channels if out_channels is None else out_channels
+        self.out_channels = out_channels
+
+        kernel_size = (3, 1, 1)
+        padding = [k // 2 for k in kernel_size]
+
+        self.norm1 = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=eps, affine=True)
+        self.conv1 = nn.Conv3d(
+            in_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=padding,
+        )
+
+        if temb_channels is not None:
+            self.time_emb_proj = nn.Linear(temb_channels, out_channels)
+        else:
+            self.time_emb_proj = None
+
+        self.norm2 = torch.nn.GroupNorm(num_groups=32, num_channels=out_channels, eps=eps, affine=True)
+
+        self.dropout = torch.nn.Dropout(0.0)
+        self.conv2 = nn.Conv3d(
+            out_channels,
+            out_channels,
+            kernel_size=kernel_size,
+            stride=1,
+            padding=padding,
+        )
+
+        self.nonlinearity = get_activation("silu")
+
+        self.use_in_shortcut = self.in_channels != out_channels
+
+        self.conv_shortcut = None
+        if self.use_in_shortcut:
+            self.conv_shortcut = nn.Conv3d(
+                in_channels,
+                out_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+            )
+
+    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor) -> torch.FloatTensor:
+        hidden_states = input_tensor
+
+        hidden_states = self.norm1(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
+        hidden_states = self.conv1(hidden_states)
+
+        if self.time_emb_proj is not None:
+            temb = self.nonlinearity(temb)
+            temb = self.time_emb_proj(temb)[:, :, :, None, None]
+            temb = temb.permute(0, 2, 1, 3, 4)
+            hidden_states = hidden_states + temb
+
+        hidden_states = self.norm2(hidden_states)
+        hidden_states = self.nonlinearity(hidden_states)
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = self.conv2(hidden_states)
+
+        if self.conv_shortcut is not None:
+            input_tensor = self.conv_shortcut(input_tensor)
+
+        output_tensor = input_tensor + hidden_states
+
+        return output_tensor
+
+
+# VideoResBlock
+class SpatioTemporalResBlock(nn.Module):
+    r"""
+    A SpatioTemporal Resnet block.
+
+    Parameters:
+        in_channels (`int`): The number of channels in the input.
+        out_channels (`int`, *optional*, default to be `None`):
+            The number of output channels for the first conv2d layer. If None, same as `in_channels`.
+        temb_channels (`int`, *optional*, default to `512`): the number of channels in timestep embedding.
+        eps (`float`, *optional*, defaults to `1e-6`): The epsilon to use for the spatial resenet.
+        temporal_eps (`float`, *optional*, defaults to `eps`): The epsilon to use for the temporal resnet.
+        merge_factor (`float`, *optional*, defaults to `0.5`): The merge factor to use for the temporal mixing.
+        merge_strategy (`str`, *optional*, defaults to `learned_with_images`):
+            The merge strategy to use for the temporal mixing.
+        switch_spatial_to_temporal_mix (`bool`, *optional*, defaults to `False`):
+            If `True`, switch the spatial and temporal mixing.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: Optional[int] = None,
+        temb_channels: int = 512,
+        eps: float = 1e-6,
+        temporal_eps: Optional[float] = None,
+        merge_factor: float = 0.5,
+        merge_strategy="learned_with_images",
+        switch_spatial_to_temporal_mix: bool = False,
+    ):
+        super().__init__()
+
+        self.spatial_res_block = ResnetBlock2D(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            temb_channels=temb_channels,
+            eps=eps,
+        )
+
+        self.temporal_res_block = TemporalResnetBlock(
+            in_channels=out_channels if out_channels is not None else in_channels,
+            out_channels=out_channels if out_channels is not None else in_channels,
+            temb_channels=temb_channels,
+            eps=temporal_eps if temporal_eps is not None else eps,
+        )
+
+        self.time_mixer = AlphaBlender(
+            alpha=merge_factor,
+            merge_strategy=merge_strategy,
+            switch_spatial_to_temporal_mix=switch_spatial_to_temporal_mix,
+        )
+
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        temb: Optional[torch.FloatTensor] = None,
+        image_only_indicator: Optional[torch.Tensor] = None,
+    ):
+        num_frames = image_only_indicator.shape[-1]
+        hidden_states = self.spatial_res_block(hidden_states, temb)
+
+        batch_frames, channels, height, width = hidden_states.shape
+        batch_size = batch_frames // num_frames
+
+        hidden_states_mix = (
+            hidden_states[None, :].reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
+        )
+        hidden_states = (
+            hidden_states[None, :].reshape(batch_size, num_frames, channels, height, width).permute(0, 2, 1, 3, 4)
+        )
+
+        if temb is not None:
+            temb = temb.reshape(batch_size, num_frames, -1)
+
+        hidden_states = self.temporal_res_block(hidden_states, temb)
+        hidden_states = self.time_mixer(
+            x_spatial=hidden_states_mix,
+            x_temporal=hidden_states,
+            image_only_indicator=image_only_indicator,
+        )
+
+        hidden_states = hidden_states.permute(0, 2, 1, 3, 4).reshape(batch_frames, channels, height, width)
+        return hidden_states
+
+
+class AlphaBlender(nn.Module):
+    r"""
+    A module to blend spatial and temporal features.
+
+    Parameters:
+        alpha (`float`): The initial value of the blending factor.
+        merge_strategy (`str`, *optional*, defaults to `learned_with_images`):
+            The merge strategy to use for the temporal mixing.
+        switch_spatial_to_temporal_mix (`bool`, *optional*, defaults to `False`):
+            If `True`, switch the spatial and temporal mixing.
+    """
+
+    strategies = ["learned", "fixed", "learned_with_images"]
+
+    def __init__(
+        self,
+        alpha: float,
+        merge_strategy: str = "learned_with_images",
+        switch_spatial_to_temporal_mix: bool = False,
+    ):
+        super().__init__()
+        self.merge_strategy = merge_strategy
+        self.switch_spatial_to_temporal_mix = switch_spatial_to_temporal_mix  # For TemporalVAE
+
+        if merge_strategy not in self.strategies:
+            raise ValueError(f"merge_strategy needs to be in {self.strategies}")
+
+        if self.merge_strategy == "fixed":
+            self.register_buffer("mix_factor", torch.Tensor([alpha]))
+        elif self.merge_strategy == "learned" or self.merge_strategy == "learned_with_images":
+            self.register_parameter("mix_factor", torch.nn.Parameter(torch.Tensor([alpha])))
+        else:
+            raise ValueError(f"Unknown merge strategy {self.merge_strategy}")
+
+    def get_alpha(self, image_only_indicator: torch.Tensor, ndims: int) -> torch.Tensor:
+        if self.merge_strategy == "fixed":
+            alpha = self.mix_factor
+
+        elif self.merge_strategy == "learned":
+            alpha = torch.sigmoid(self.mix_factor)
+
+        elif self.merge_strategy == "learned_with_images":
+            if image_only_indicator is None:
+                raise ValueError("Please provide image_only_indicator to use learned_with_images merge strategy")
+
+            alpha = torch.where(
+                image_only_indicator.bool(),
+                torch.ones(1, 1, device=image_only_indicator.device),
+                torch.sigmoid(self.mix_factor)[..., None],
+            )
+
+            # (batch, channel, frames, height, width)
+            if ndims == 5:
+                alpha = alpha[:, None, :, None, None]
+            # (batch*frames, height*width, channels)
+            elif ndims == 3:
+                alpha = alpha.reshape(-1)[:, None, None]
+            else:
+                raise ValueError(f"Unexpected ndims {ndims}. Dimensions should be 3 or 5")
+
+        else:
+            raise NotImplementedError
+
+        return alpha
+
+    def forward(
+        self,
+        x_spatial: torch.Tensor,
+        x_temporal: torch.Tensor,
+        image_only_indicator: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        alpha = self.get_alpha(image_only_indicator, x_spatial.ndim)
+        alpha = alpha.to(x_spatial.dtype)
+
+        if self.switch_spatial_to_temporal_mix:
+            alpha = 1.0 - alpha
+
+        x = alpha * x_spatial + (1.0 - alpha) * x_temporal
+        return x

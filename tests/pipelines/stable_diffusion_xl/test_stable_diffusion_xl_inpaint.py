@@ -20,7 +20,15 @@ import unittest
 import numpy as np
 import torch
 from PIL import Image
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -28,13 +36,18 @@ from diffusers import (
     DPMSolverMultistepScheduler,
     EulerDiscreteScheduler,
     HeunDiscreteScheduler,
+    LCMScheduler,
     StableDiffusionXLInpaintPipeline,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, torch_device
+from diffusers.utils.testing_utils import enable_full_determinism, floats_tensor, require_torch_gpu, slow, torch_device
 
-from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
+from ..pipeline_params import (
+    TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
+    TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
+    TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
+)
 from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
 
 
@@ -48,8 +61,16 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
     image_params = frozenset([])
     # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
     image_latents_params = frozenset([])
+    callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union(
+        {
+            "add_text_embeds",
+            "add_time_ids",
+            "mask",
+            "masked_image_latents",
+        }
+    )
 
-    def get_dummy_components(self, skip_first_text_encoder=False):
+    def get_dummy_components(self, skip_first_text_encoder=False, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -57,6 +78,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             sample_size=32,
             in_channels=4,
             out_channels=4,
+            time_cond_proj_dim=time_cond_proj_dim,
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             # SD2-specific config below
@@ -106,6 +128,31 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
+        torch.manual_seed(0)
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=32,
+            image_size=224,
+            projection_dim=32,
+            intermediate_size=37,
+            num_attention_heads=4,
+            num_channels=3,
+            num_hidden_layers=5,
+            patch_size=14,
+        )
+
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
+
+        feature_extractor = CLIPImageProcessor(
+            crop_size=224,
+            do_center_crop=True,
+            do_normalize=True,
+            do_resize=True,
+            image_mean=[0.48145466, 0.4578275, 0.40821073],
+            image_std=[0.26862954, 0.26130258, 0.27577711],
+            resample=3,
+            size=224,
+        )
+
         components = {
             "unet": unet,
             "scheduler": scheduler,
@@ -114,6 +161,8 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "image_encoder": image_encoder,
+            "feature_extractor": feature_extractor,
             "requires_aesthetics_score": True,
         }
         return components
@@ -194,6 +243,44 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
         assert image.shape == (1, 64, 64, 3)
 
         expected_slice = np.array([0.8029, 0.5523, 0.5825, 0.6003, 0.6702, 0.7018, 0.6369, 0.5955, 0.5123])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_xl_inpaint_euler_lcm(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLInpaintPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.config)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array([0.6611, 0.5569, 0.5531, 0.5471, 0.5918, 0.6393, 0.5074, 0.5468, 0.5185])
+
+        assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_stable_diffusion_xl_inpaint_euler_lcm_custom_timesteps(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components(time_cond_proj_dim=256)
+        sd_pipe = StableDiffusionXLInpaintPipeline(**components)
+        sd_pipe.scheduler = LCMScheduler.from_config(sd_pipe.config)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        del inputs["num_inference_steps"]
+        inputs["timesteps"] = [999, 499]
+        image = sd_pipe(**inputs).images
+        image_slice = image[0, -3:, -3:, -1]
+
+        assert image.shape == (1, 64, 64, 3)
+
+        expected_slice = np.array([0.6611, 0.5569, 0.5531, 0.5471, 0.5918, 0.6393, 0.5074, 0.5468, 0.5185])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
@@ -294,6 +381,66 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_stable_diffusion_two_xl_mixture_of_denoiser_fast(self):
+        components = self.get_dummy_components()
+        pipe_1 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
+        pipe_1.unet.set_default_attn_processor()
+        pipe_2 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
+        pipe_2.unet.set_default_attn_processor()
+
+        def assert_run_mixture(
+            num_steps, split, scheduler_cls_orig, num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps
+        ):
+            inputs = self.get_dummy_inputs(torch_device)
+            inputs["num_inference_steps"] = num_steps
+
+            class scheduler_cls(scheduler_cls_orig):
+                pass
+
+            pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
+            pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
+
+            # Let's retrieve the number of timesteps we want to use
+            pipe_1.scheduler.set_timesteps(num_steps)
+            expected_steps = pipe_1.scheduler.timesteps.tolist()
+
+            split_ts = num_train_timesteps - int(round(num_train_timesteps * split))
+
+            if pipe_1.scheduler.order == 2:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
+                expected_steps_2 = expected_steps_1[-1:] + list(filter(lambda ts: ts < split_ts, expected_steps))
+                expected_steps = expected_steps_1 + expected_steps_2
+            else:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
+                expected_steps_2 = list(filter(lambda ts: ts < split_ts, expected_steps))
+
+            # now we monkey patch step `done_steps`
+            # list into the step function for testing
+            done_steps = []
+            old_step = copy.copy(scheduler_cls.step)
+
+            def new_step(self, *args, **kwargs):
+                done_steps.append(args[1].cpu().item())  # args[1] is always the passed `t`
+                return old_step(self, *args, **kwargs)
+
+            scheduler_cls.step = new_step
+
+            inputs_1 = {**inputs, **{"denoising_end": split, "output_type": "latent"}}
+            latents = pipe_1(**inputs_1).images[0]
+
+            assert expected_steps_1 == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+            inputs_2 = {**inputs, **{"denoising_start": split, "image": latents}}
+            pipe_2(**inputs_2).images[0]
+
+            assert expected_steps_2 == done_steps[len(expected_steps_1) :]
+            assert expected_steps == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+        for steps in [7, 20]:
+            assert_run_mixture(steps, 0.33, EulerDiscreteScheduler)
+            assert_run_mixture(steps, 0.33, HeunDiscreteScheduler)
+
+    @slow
     def test_stable_diffusion_two_xl_mixture_of_denoiser(self):
         components = self.get_dummy_components()
         pipe_1 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
@@ -318,11 +465,14 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
             expected_steps = pipe_1.scheduler.timesteps.tolist()
 
             split_ts = num_train_timesteps - int(round(num_train_timesteps * split))
-            expected_steps_1 = expected_steps[:split_ts]
-            expected_steps_2 = expected_steps[split_ts:]
 
-            expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
-            expected_steps_2 = list(filter(lambda ts: ts < split_ts, expected_steps))
+            if pipe_1.scheduler.order == 2:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
+                expected_steps_2 = expected_steps_1[-1:] + list(filter(lambda ts: ts < split_ts, expected_steps))
+                expected_steps = expected_steps_1 + expected_steps_2
+            else:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_ts, expected_steps))
+                expected_steps_2 = list(filter(lambda ts: ts < split_ts, expected_steps))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing
@@ -357,6 +507,7 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
                 ]:
                     assert_run_mixture(steps, split, scheduler_cls)
 
+    @slow
     def test_stable_diffusion_three_xl_mixture_of_denoiser(self):
         components = self.get_dummy_components()
         pipe_1 = StableDiffusionXLInpaintPipeline(**components).to(torch_device)
@@ -389,13 +540,18 @@ class StableDiffusionXLInpaintPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
             split_1_ts = num_train_timesteps - int(round(num_train_timesteps * split_1))
             split_2_ts = num_train_timesteps - int(round(num_train_timesteps * split_2))
-            expected_steps_1 = expected_steps[:split_1_ts]
-            expected_steps_2 = expected_steps[split_1_ts:split_2_ts]
-            expected_steps_3 = expected_steps[split_2_ts:]
 
-            expected_steps_1 = list(filter(lambda ts: ts >= split_1_ts, expected_steps))
-            expected_steps_2 = list(filter(lambda ts: ts >= split_2_ts and ts < split_1_ts, expected_steps))
-            expected_steps_3 = list(filter(lambda ts: ts < split_2_ts, expected_steps))
+            if pipe_1.scheduler.order == 2:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_1_ts, expected_steps))
+                expected_steps_2 = expected_steps_1[-1:] + list(
+                    filter(lambda ts: ts >= split_2_ts and ts < split_1_ts, expected_steps)
+                )
+                expected_steps_3 = expected_steps_2[-1:] + list(filter(lambda ts: ts < split_2_ts, expected_steps))
+                expected_steps = expected_steps_1 + expected_steps_2 + expected_steps_3
+            else:
+                expected_steps_1 = list(filter(lambda ts: ts >= split_1_ts, expected_steps))
+                expected_steps_2 = list(filter(lambda ts: ts >= split_2_ts and ts < split_1_ts, expected_steps))
+                expected_steps_3 = list(filter(lambda ts: ts < split_2_ts, expected_steps))
 
             # now we monkey patch step `done_steps`
             # list into the step function for testing

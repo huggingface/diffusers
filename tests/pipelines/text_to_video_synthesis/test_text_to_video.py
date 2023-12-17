@@ -62,8 +62,8 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet3DConditionModel(
-            block_out_channels=(32, 32),
-            layers_per_block=2,
+            block_out_channels=(4, 8),
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
@@ -71,6 +71,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
             cross_attention_dim=4,
             attention_head_dim=4,
+            norm_num_groups=2,
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -81,13 +82,14 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=(32,),
+            block_out_channels=(8,),
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D"],
             latent_channels=4,
             sample_size=32,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
@@ -142,10 +144,11 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = frames[0][-3:, -3:, -1]
 
         assert frames[0].shape == (32, 32, 3)
-        expected_slice = np.array([91.0, 152.0, 66.0, 192.0, 94.0, 126.0, 101.0, 123.0, 152.0])
+        expected_slice = np.array([192.0, 44.0, 157.0, 140.0, 108.0, 104.0, 123.0, 144.0, 129.0])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skipIf(torch_device != "cuda", reason="Feature isn't heavily used. Test in CUDA environment only.")
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False, expected_max_diff=3e-3)
 

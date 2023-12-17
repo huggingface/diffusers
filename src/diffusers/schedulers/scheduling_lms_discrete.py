@@ -146,9 +146,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
+            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -170,6 +168,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = False
 
         self._step_index = None
+        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def init_noise_sigma(self):
@@ -281,6 +280,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
         self.timesteps = torch.from_numpy(timesteps).to(device=device)
         self._step_index = None
+        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
         self.derivatives = []
 
@@ -305,7 +305,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
     # copied from diffusers.schedulers.scheduling_euler_discrete._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
-        log_sigma = np.log(sigma)
+        log_sigma = np.log(np.maximum(sigma, 1e-10))
 
         # get distribution
         dists = log_sigma - log_sigmas[:, np.newaxis]

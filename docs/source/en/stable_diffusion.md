@@ -9,14 +9,14 @@ Unless required by applicable law or agreed to in writing, software distributed 
 an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
 specific language governing permissions and limitations under the License.
 -->
-                                                               
+
 # Effective and efficient diffusion
 
 [[open-in-colab]]
 
-Getting the [`DiffusionPipeline`] to generate images in a certain style or include what you want can be tricky. Often times, you have to run the [`DiffusionPipeline`] several times before you end up with an image you're happy with. But generating something out of nothing is a computationally intensive process, especially if you're running inference over and over again. 
+Getting the [`DiffusionPipeline`] to generate images in a certain style or include what you want can be tricky. Often times, you have to run the [`DiffusionPipeline`] several times before you end up with an image you're happy with. But generating something out of nothing is a computationally intensive process, especially if you're running inference over and over again.
 
-This is why it's important to get the most *computational* (speed) and *memory* (GPU RAM) efficiency from the pipeline to reduce the time between inference cycles so you can iterate faster.
+This is why it's important to get the most *computational* (speed) and *memory* (GPU vRAM) efficiency from the pipeline to reduce the time between inference cycles so you can iterate faster.
 
 This tutorial walks you through how to generate faster and better with the [`DiffusionPipeline`].
 
@@ -68,7 +68,7 @@ image
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/stable_diffusion_101/sd_101_1.png">
 </div>
 
-This process took ~30 seconds on a T4 GPU (it might be faster if your allocated GPU is better than a T4). By default, the [`DiffusionPipeline`] runs inference with full `float32` precision for 50 inference steps. You can speed this up by switching to a lower precision like `float16` or running fewer inference steps. 
+This process took ~30 seconds on a T4 GPU (it might be faster if your allocated GPU is better than a T4). By default, the [`DiffusionPipeline`] runs inference with full `float32` precision for 50 inference steps. You can speed this up by switching to a lower precision like `float16` or running fewer inference steps.
 
 Let's start by loading the model in `float16` and generate an image:
 
@@ -108,6 +108,7 @@ pipeline.scheduler.compatibles
     diffusers.schedulers.scheduling_ddpm.DDPMScheduler,
     diffusers.schedulers.scheduling_dpmsolver_singlestep.DPMSolverSinglestepScheduler,
     diffusers.schedulers.scheduling_k_dpm_2_ancestral_discrete.KDPM2AncestralDiscreteScheduler,
+    diffusers.utils.dummy_torch_and_torchsde_objects.DPMSolverSDEScheduler,
     diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler,
     diffusers.schedulers.scheduling_pndm.PNDMScheduler,
     diffusers.schedulers.scheduling_euler_ancestral_discrete.EulerAncestralDiscreteScheduler,
@@ -115,7 +116,7 @@ pipeline.scheduler.compatibles
 ]
 ```
 
-The Stable Diffusion model uses the [`PNDMScheduler`] by default which usually requires ~50 inference steps, but more performant schedulers like [`DPMSolverMultistepScheduler`], require only ~20 or 25 inference steps. Use the [`ConfigMixin.from_config`] method to load a new scheduler:
+The Stable Diffusion model uses the [`PNDMScheduler`] by default which usually requires ~50 inference steps, but more performant schedulers like [`DPMSolverMultistepScheduler`], require only ~20 or 25 inference steps. Use the [`~ConfigMixin.from_config`] method to load a new scheduler:
 
 ```python
 from diffusers import DPMSolverMultistepScheduler
@@ -155,13 +156,13 @@ def get_inputs(batch_size=1):
 Start with `batch_size=4` and see how much memory you've consumed:
 
 ```python
-from diffusers.utils import make_image_grid 
+from diffusers.utils import make_image_grid
 
 images = pipeline(**get_inputs(batch_size=4)).images
 make_image_grid(images, 2, 2)
 ```
 
-Unless you have a GPU with more RAM, the code above probably returned an `OOM` error! Most of the memory is taken up by the cross-attention layers. Instead of running this operation in a batch, you can run it sequentially to save a significant amount of memory. All you have to do is configure the pipeline to use the [`~DiffusionPipeline.enable_attention_slicing`] function:
+Unless you have a GPU with more vRAM, the code above probably returned an `OOM` error! Most of the memory is taken up by the cross-attention layers. Instead of running this operation in a batch, you can run it sequentially to save a significant amount of memory. All you have to do is configure the pipeline to use the [`~DiffusionPipeline.enable_attention_slicing`] function:
 
 ```python
 pipeline.enable_attention_slicing()
@@ -192,7 +193,7 @@ As the field grows, there are more and more high-quality checkpoints finetuned t
 
 ### Better pipeline components
 
-You can also try replacing the current pipeline components with a newer version. Let's try loading the latest [autodecoder](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae) from Stability AI into the pipeline, and generate some images:
+You can also try replacing the current pipeline components with a newer version. Let's try loading the latest [autoencoder](https://huggingface.co/stabilityai/stable-diffusion-2-1/tree/main/vae) from Stability AI into the pipeline, and generate some images:
 
 ```python
 from diffusers import AutoencoderKL

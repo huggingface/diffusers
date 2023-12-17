@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.7.1-cudnn8-runtime-ubuntu20.04
+FROM nvidia/cuda:12.1.0-runtime-ubuntu20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
@@ -25,8 +25,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir \
-        torch==2.0.1 \
-        torchvision==0.15.2 \
+        torch \
+        torchvision \
         torchaudio \
         invisible_watermark && \
     python3 -m pip install --no-cache-dir \

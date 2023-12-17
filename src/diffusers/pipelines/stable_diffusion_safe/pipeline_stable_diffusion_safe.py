@@ -5,10 +5,12 @@ from typing import Callable, List, Optional, Union
 import numpy as np
 import torch
 from packaging import version
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...configuration_utils import FrozenDict
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...image_processor import PipelineImageInput
+from ...loaders import IPAdapterMixin
+from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, logging
 from ...utils.torch_utils import randn_tensor
@@ -20,12 +22,15 @@ from .safety_checker import SafeStableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class StableDiffusionPipelineSafe(DiffusionPipeline):
+class StableDiffusionPipelineSafe(DiffusionPipeline, IPAdapterMixin):
     r"""
     Pipeline based on the [`StableDiffusionPipeline`] for text-to-image generation using Safe Latent Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -48,7 +53,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
     """
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
-    _optional_components = ["safety_checker", "feature_extractor"]
+    _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
 
     def __init__(
         self,
@@ -59,6 +64,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: SafeStableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -140,6 +146,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
         )
         self._safety_text_concept = safety_concept
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
@@ -364,16 +371,21 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
+            )
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -462,6 +474,31 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
                 noise_guidance = noise_guidance - noise_guidance_safety
         return noise_guidance, safety_momentum
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        dtype = next(self.image_encoder.parameters()).dtype
+
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_enc_hidden_states = self.image_encoder(
+                torch.zeros_like(image), output_hidden_states=True
+            ).hidden_states[-2]
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+            return image_enc_hidden_states, uncond_image_enc_hidden_states
+        else:
+            image_embeds = self.image_encoder(image).image_embeds
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_embeds = torch.zeros_like(image_embeds)
+
+            return image_embeds, uncond_image_embeds
+
     @torch.no_grad()
     def __call__(
         self,
@@ -475,6 +512,7 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
@@ -516,6 +554,8 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
                 Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor is generated by sampling using the supplied random `generator`.
+            ip_adapter_image: (`PipelineImageInput`, *optional*):
+                Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -555,10 +595,11 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         ```py
         import torch
         from diffusers import StableDiffusionPipelineSafe
+        from diffusers.pipelines.stable_diffusion_safe import SafetyConfig
 
         pipeline = StableDiffusionPipelineSafe.from_pretrained(
             "AIML-TUDA/stable-diffusion-safe", torch_dtype=torch.float16
-        )
+        ).to("cuda")
         prompt = "the four horsewomen of the apocalypse, painting by tom of finland, gaston bussiere, craig mullins, j. c. leyendecker"
         image = pipeline(prompt=prompt, **SafetyConfig.MEDIUM).images[0]
         ```
@@ -582,6 +623,17 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         enable_safety_guidance = sld_guidance_scale > 1.0 and do_classifier_free_guidance
         if not enable_safety_guidance:
             warnings.warn("Safety checker disabled!")
+
+        if ip_adapter_image is not None:
+            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
+            image_embeds, negative_image_embeds = self.encode_image(
+                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+            )
+            if do_classifier_free_guidance:
+                if enable_safety_guidance:
+                    image_embeds = torch.cat([negative_image_embeds, image_embeds, image_embeds])
+                else:
+                    image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 3. Encode input prompt
         prompt_embeds = self._encode_prompt(
@@ -608,6 +660,9 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
         # 6. Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        # 6.1 Add image embeds for IP-Adapter
+        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+
         safety_momentum = None
 
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -622,7 +677,9 @@ class StableDiffusionPipelineSafe(DiffusionPipeline):
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=prompt_embeds).sample
+                noise_pred = self.unet(
+                    latent_model_input, t, encoder_hidden_states=prompt_embeds, added_cond_kwargs=added_cond_kwargs
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:

@@ -22,7 +22,7 @@ The original codebase can be found at [Xiang-cd/DiffEdit-stable-diffusion](https
 
 This pipeline was contributed by [clarencechen](https://github.com/clarencechen). ❤️
 
-## Tips 
+## Tips
 
 * The pipeline can generate masks that can be fed into other inpainting pipelines.
 * In order to generate an image using this pipeline, both an image mask (source and target prompts can be manually specified or generated, and passed to [`~StableDiffusionDiffEditPipeline.generate_mask`])
@@ -34,7 +34,7 @@ this in the generated mask, you simply have to set the embeddings related to the
 `source_prompt` and "dog" to `target_prompt`.
 * When generating partially inverted latents using `invert`, assign a caption or text embedding describing the
 overall image to the `prompt` argument to help guide the inverse latent sampling process. In most cases, the
-source concept is sufficently descriptive to yield good results, but feel free to explore alternatives.
+source concept is sufficiently descriptive to yield good results, but feel free to explore alternatives.
 * When calling the pipeline to generate the final edited image, assign the source concept to `negative_prompt`
 and the target concept to `prompt`. Taking the above example, you simply have to set the embeddings related to
 the phrases including "cat" to `negative_prompt` and "dog" to `prompt`.
@@ -42,7 +42,7 @@ the phrases including "cat" to `negative_prompt` and "dog" to `prompt`.
     * Swap the `source_prompt` and `target_prompt` in the arguments to `generate_mask`.
     * Change the input prompt in [`~StableDiffusionDiffEditPipeline.invert`] to include "dog".
     * Swap the `prompt` and `negative_prompt` in the arguments to call the pipeline to generate the final edited image.
-* The source and target prompts, or their corresponding embeddings, can also be automatically generated. Please refer to the [DiffEdit](/using-diffusers/diffedit) guide for more details.
+* The source and target prompts, or their corresponding embeddings, can also be automatically generated. Please refer to the [DiffEdit](../../using-diffusers/diffedit) guide for more details.
 
 ## StableDiffusionDiffEditPipeline
 [[autodoc]] StableDiffusionDiffEditPipeline

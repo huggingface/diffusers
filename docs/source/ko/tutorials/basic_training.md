@@ -283,36 +283,27 @@ TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽
 
 ```py
 >>> from accelerate import Accelerator
->>> from huggingface_hub import HfFolder, Repository, whoami
+>>> from huggingface_hub import create_repo, upload_folder
 >>> from tqdm.auto import tqdm
 >>> from pathlib import Path
 >>> import os
 
 
->>> def get_full_repo_name(model_id: str, organization: str = None, token: str = None):
-...     if token is None:
-...         token = HfFolder.get_token()
-...     if organization is None:
-...         username = whoami(token)["name"]
-...         return f"{username}/{model_id}"
-...     else:
-...         return f"{organization}/{model_id}"
-
-
 >>> def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler):
-...     # accelerator와 tensorboard 로깅 초기화
+...     # Initialize accelerator and tensorboard logging
 ...     accelerator = Accelerator(
 ...         mixed_precision=config.mixed_precision,
 ...         gradient_accumulation_steps=config.gradient_accumulation_steps,
 ...         log_with="tensorboard",
-...         logging_dir=os.path.join(config.output_dir, "logs"),
+...         project_dir=os.path.join(config.output_dir, "logs"),
 ...     )
 ...     if accelerator.is_main_process:
-...         if config.push_to_hub:
-...             repo_name = get_full_repo_name(Path(config.output_dir).name)
-...             repo = Repository(config.output_dir, clone_from=repo_name)
-...         elif config.output_dir is not None:
+...         if config.output_dir is not None:
 ...             os.makedirs(config.output_dir, exist_ok=True)
+...         if config.push_to_hub:
+...             repo_id = create_repo(
+...                 repo_id=config.hub_model_id or Path(config.output_dir).name, exist_ok=True
+...             ).repo_id
 ...         accelerator.init_trackers("train_example")
 
 ...     # 모든 것이 준비되었습니다.
@@ -331,13 +322,14 @@ TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽
 ...         for step, batch in enumerate(train_dataloader):
 ...             clean_images = batch["images"]
 ...             # 이미지에 더할 노이즈를 샘플링합니다.
-...             noise = torch.randn(clean_images.shape).to(clean_images.device)
+...             noise = torch.randn(clean_images.shape, device=clean_images.device)
 ...             bs = clean_images.shape[0]
 
 ...             # 각 이미지를 위한 랜덤한 타임스텝(timestep)을 샘플링합니다.
 ...             timesteps = torch.randint(
-...                 0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device
-...             ).long()
+...                 0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device,
+...                 dtype=torch.int64
+...             )
 
 ...             # 각 타임스텝의 노이즈 크기에 따라 깨끗한 이미지에 노이즈를 추가합니다.
 ...             # (이는 foward diffusion 과정입니다.)
@@ -369,7 +361,12 @@ TensorBoard에 로깅, 그래디언트 누적 및 혼합 정밀도 학습을 쉽
 
 ...             if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
 ...                 if config.push_to_hub:
-...                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=True)
+...                     upload_folder(
+...                         repo_id=repo_id,
+...                         folder_path=config.output_dir,
+...                         commit_message=f"Epoch {epoch}",
+...                         ignore_patterns=["step_*", "epoch_*"],
+...                     )
 ...                 else:
 ...                     pipeline.save_pretrained(config.output_dir)
 ```

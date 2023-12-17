@@ -19,15 +19,13 @@ UniPC is by design model-agnostic, supporting pixel-space/latent-space DPMs on u
 
 The abstract from the paper is:
 
-*Diffusion probabilistic models (DPMs) have demonstrated a very promising ability in high-resolution image synthesis. However, sampling from a pre-trained DPM usually requires hundreds of model evaluations, which is computationally expensive. Despite recent progress in designing high-order solvers for DPMs, there still exists room for further speedup, especially in extremely few steps (e.g., 5~10 steps). Inspired by the predictor-corrector for ODE solvers, we develop a unified corrector (UniC) that can be applied after any existing DPM sampler to increase the order of accuracy without extra model evaluations, and derive a unified predictor (UniP) that supports arbitrary order as a byproduct. Combining UniP and UniC, we propose a unified predictor-corrector framework called UniPC for the fast sampling of DPMs, which has a unified analytical form for any order and can significantly improve the sampling quality over previous methods. We evaluate our methods through extensive experiments including both unconditional and conditional sampling using pixel-space and latent-space DPMs. Our UniPC can achieve 3.87 FID on CIFAR10 (unconditional) and 7.51 FID on ImageNet 256times256 (conditional) with only 10 function evaluations. Code is available at https://github.com/wl-zhao/UniPC*.
-
-The original codebase can be found at [wl-zhao/UniPC](https://github.com/wl-zhao/UniPC).
+*Diffusion probabilistic models (DPMs) have demonstrated a very promising ability in high-resolution image synthesis. However, sampling from a pre-trained DPM is time-consuming due to the multiple evaluations of the denoising network, making it more and more important to accelerate the sampling of DPMs. Despite recent progress in designing fast samplers, existing methods still cannot generate satisfying images in many applications where fewer steps (e.g., <10) are favored. In this paper, we develop a unified corrector (UniC) that can be applied after any existing DPM sampler to increase the order of accuracy without extra model evaluations, and derive a unified predictor (UniP) that supports arbitrary order as a byproduct. Combining UniP and UniC, we propose a unified predictor-corrector framework called UniPC for the fast sampling of DPMs, which has a unified analytical form for any order and can significantly improve the sampling quality over previous methods, especially in extremely few steps. We evaluate our methods through extensive experiments including both unconditional and conditional sampling using pixel-space and latent-space DPMs. Our UniPC can achieve 3.87 FID on CIFAR10 (unconditional) and 7.51 FID on ImageNet 256×256 (conditional) with only 10 function evaluations. Code is available at [this https URL](https://github.com/wl-zhao/UniPC).*
 
 ## Tips
 
 It is recommended to set `solver_order` to 2 for guide sampling, and `solver_order=3` for unconditional sampling.
 
-Dynamic thresholding from Imagen (https://huggingface.co/papers/2205.11487) is supported, and for pixel-space
+Dynamic thresholding from [Imagen](https://huggingface.co/papers/2205.11487) is supported, and for pixel-space
 diffusion models, you can set both `predict_x0=True` and `thresholding=True` to use dynamic thresholding. This thresholding method is unsuitable for latent-space diffusion models such as Stable Diffusion.
 
 ## UniPCMultistepScheduler

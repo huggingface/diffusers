@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Stable Diffusion models are available in different formats depending on the framework they're trained and saved with, and where you download them from. Converting these formats for use in 🤗 Diffusers allows you to use all the features supported by the library, such as [using different schedulers](schedulers) for inference, [building your custom pipeline](write_own_pipeline), and a variety of techniques and methods for [optimizing inference speed](./optimization/opt_overview).
+Stable Diffusion models are available in different formats depending on the framework they're trained and saved with, and where you download them from. Converting these formats for use in 🤗 Diffusers allows you to use all the features supported by the library, such as [using different schedulers](schedulers) for inference, [building your custom pipeline](write_own_pipeline), and a variety of techniques and methods for [optimizing inference speed](../optimization/opt_overview).
 
 <Tip>
 
@@ -28,17 +28,17 @@ This guide will show you how to convert other Stable Diffusion formats to be com
 
 The checkpoint - or `.ckpt` - format is commonly used to store and save models. The `.ckpt` file contains the entire model and is typically several GBs in size. While you can load and use a `.ckpt` file directly with the [`~StableDiffusionPipeline.from_single_file`] method, it is generally better to convert the `.ckpt` file to 🤗 Diffusers so both formats are available.
 
-There are two options for converting a `.ckpt` file; use a Space to convert the checkpoint or convert the `.ckpt` file with a script.
+There are two options for converting a `.ckpt` file: use a Space to convert the checkpoint or convert the `.ckpt` file with a script.
 
 ### Convert with a Space
 
 The easiest and most convenient way to convert a `.ckpt` file is to use the [SD to Diffusers](https://huggingface.co/spaces/diffusers/sd-to-diffusers) Space. You can follow the instructions on the Space to convert the `.ckpt` file.
 
-This approach works well for basic models, but it may struggle with more customized models. You'll know the Space failed if it returns an empty pull request or error. In this case, you can try converting the `.ckpt` file with a script. 
+This approach works well for basic models, but it may struggle with more customized models. You'll know the Space failed if it returns an empty pull request or error. In this case, you can try converting the `.ckpt` file with a script.
 
 ### Convert with a script
 
-🤗 Diffusers provides a [conversion script](https://github.com/huggingface/diffusers/blob/main/scripts/convert_original_stable_diffusion_to_diffusers.py) for converting `.ckpt` files. This approach is more reliable than the Space above. 
+🤗 Diffusers provides a [conversion script](https://github.com/huggingface/diffusers/blob/main/scripts/convert_original_stable_diffusion_to_diffusers.py) for converting `.ckpt` files. This approach is more reliable than the Space above.
 
 Before you start, make sure you have a local clone of 🤗 Diffusers to run the script and log in to your Hugging Face account so you can open pull requests and push your converted model to the Hub.
 
@@ -86,11 +86,11 @@ git push origin pr/13:refs/pr/13
 
 <Tip warning={true}>
 
-🧪 This is an experimental feature. Only Stable Diffusion v1 checkpoints are supported by the Convert KerasCV Space at the moment. 
+🧪 This is an experimental feature. Only Stable Diffusion v1 checkpoints are supported by the Convert KerasCV Space at the moment.
 
 </Tip>
 
-[KerasCV](https://keras.io/keras_cv/) supports training for [Stable Diffusion](https://github.com/keras-team/keras-cv/blob/master/keras_cv/models/stable_diffusion) v1 and v2. However, it offers limited support for experimenting with Stable Diffusion models for inference and deployment whereas 🤗 Diffusers has a more complete set of features for this purpose, such as different [noise schedulers](https://huggingface.co/docs/diffusers/using-diffusers/schedulers), [flash attention](https://huggingface.co/docs/diffusers/optimization/xformers), and [other 
+[KerasCV](https://keras.io/keras_cv/) supports training for [Stable Diffusion](https://github.com/keras-team/keras-cv/blob/master/keras_cv/models/stable_diffusion) v1 and v2. However, it offers limited support for experimenting with Stable Diffusion models for inference and deployment whereas 🤗 Diffusers has a more complete set of features for this purpose, such as different [noise schedulers](https://huggingface.co/docs/diffusers/using-diffusers/schedulers), [flash attention](https://huggingface.co/docs/diffusers/optimization/xformers), and [other
 optimization techniques](https://huggingface.co/docs/diffusers/optimization/fp16).
 
 The [Convert KerasCV](https://huggingface.co/spaces/sayakpaul/convert-kerascv-sd-diffusers) Space converts `.pb` or `.h5` files to PyTorch, and then wraps them in a [`StableDiffusionPipeline`] so it is ready for inference. The converted checkpoint is stored in a repository on the Hugging Face Hub.
@@ -116,7 +116,7 @@ pipeline = DiffusionPipeline.from_pretrained(
 )
 ```
 
-Then you can generate an image like:
+Then, you can generate an image like:
 
 ```py
 from diffusers import DiffusionPipeline
@@ -136,53 +136,41 @@ image = pipeline(prompt, num_inference_steps=50).images[0]
 [Automatic1111](https://github.com/AUTOMATIC1111/stable-diffusion-webui) (A1111) is a popular web UI for Stable Diffusion that supports model sharing platforms like [Civitai](https://civitai.com/). Models trained with the Low-Rank Adaptation (LoRA) technique are especially popular because they're fast to train and have a much smaller file size than a fully finetuned model. 🤗 Diffusers supports loading A1111 LoRA checkpoints with [`~loaders.LoraLoaderMixin.load_lora_weights`]:
 
 ```py
-from diffusers import DiffusionPipeline, UniPCMultistepScheduler
+from diffusers import StableDiffusionXLPipeline
 import torch
 
-pipeline = DiffusionPipeline.from_pretrained(
-    "andite/anything-v4.0", torch_dtype=torch.float16, safety_checker=None
+pipeline = StableDiffusionXLPipeline.from_pretrained(
+    "Lykon/dreamshaper-xl-1-0", torch_dtype=torch.float16, variant="fp16"
 ).to("cuda")
-pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
 ```
 
-Download a LoRA checkpoint from Civitai; this example uses the [Howls Moving Castle,Interior/Scenery LoRA (Ghibli Stlye)](https://civitai.com/models/14605?modelVersionId=19998) checkpoint, but feel free to try out any LoRA checkpoint!
+Download a LoRA checkpoint from Civitai; this example uses the [Blueprintify SD XL 1.0](https://civitai.com/models/150986/blueprintify-sd-xl-10) checkpoint, but feel free to try out any LoRA checkpoint!
 
 ```py
 # uncomment to download the safetensor weights
-#!wget https://civitai.com/api/download/models/19998 -O howls_moving_castle.safetensors
+#!wget https://civitai.com/api/download/models/168776 -O blueprintify.safetensors
 ```
 
 Load the LoRA checkpoint into the pipeline with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method:
 
 ```py
-pipeline.load_lora_weights(".", weight_name="howls_moving_castle.safetensors")
+pipeline.load_lora_weights(".", weight_name="blueprintify.safetensors")
 ```
 
 Now you can use the pipeline to generate images:
 
 ```py
-prompt = "masterpiece, illustration, ultra-detailed, cityscape, san francisco, golden gate bridge, california, bay area, in the snow, beautiful detailed starry sky"
+prompt = "bl3uprint, a highly detailed blueprint of the empire state building, explaining how to build all parts, many txt, blueprint grid backdrop"
 negative_prompt = "lowres, cropped, worst quality, low quality, normal quality, artifacts, signature, watermark, username, blurry, more than one bridge, bad architecture"
 
-images = pipeline(
+image = pipeline(
     prompt=prompt,
     negative_prompt=negative_prompt,
-    width=512,
-    height=512,
-    num_inference_steps=25,
-    num_images_per_prompt=4,
     generator=torch.manual_seed(0),
-).images
-```
-
-Display the images:
-
-```py
-from diffusers.utils import make_image_grid
-
-make_image_grid(images, 2, 2)
+).images[0]
+image
 ```
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/a1111-lora-sf.png"/>
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/blueprint-lora.png"/>
 </div>

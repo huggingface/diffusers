@@ -22,12 +22,10 @@ The abstract from the paper is:
 
 ## Tips
 
-Stable unCLIP takes  `noise_level` as input during inference which determines how much noise is added 
-to the image embeddings. A higher `noise_level` increases variation in the final un-noised images. By default, 
-we do not add any additional noise to the image embeddings (`noise_level = 0`).
+Stable unCLIP takes  `noise_level` as input during inference which determines how much noise is added to the image embeddings. A higher `noise_level` increases variation in the final un-noised images. By default, we do not add any additional noise to the image embeddings (`noise_level = 0`).
 
 ### Text-to-Image Generation
-Stable unCLIP can be leveraged for text-to-image generation by pipelining it with the prior model of KakaoBrain's open source DALL-E 2 replication [Karlo](https://huggingface.co/kakaobrain/karlo-v1-alpha)
+Stable unCLIP can be leveraged for text-to-image generation by pipelining it with the prior model of KakaoBrain's open source DALL-E 2 replication [Karlo](https://huggingface.co/kakaobrain/karlo-v1-alpha):
 
 ```python
 import torch
@@ -60,12 +58,12 @@ pipe = StableUnCLIPPipeline.from_pretrained(
 pipe = pipe.to("cuda")
 wave_prompt = "dramatic wave, the Oceans roar, Strong wave spiral across the oceans as the waves unfurl into roaring crests; perfect wave form; perfect wave shape; dramatic wave shape; wave shape unbelievable; wave; wave shape spectacular"
 
-images = pipe(prompt=wave_prompt).images
-images[0].save("waves.png")
+image = pipe(prompt=wave_prompt).images[0]
+image
 ```
 <Tip warning={true}>
 
-For text-to-image we use `stabilityai/stable-diffusion-2-1-unclip-small` as it was trained on CLIP ViT-L/14 embedding, the same as the Karlo model prior. [stabilityai/stable-diffusion-2-1-unclip](https://hf.co/stabilityai/stable-diffusion-2-1-unclip) was trained on OpenCLIP ViT-H, so we don't recommend its use. 
+For text-to-image we use `stabilityai/stable-diffusion-2-1-unclip-small` as it was trained on CLIP ViT-L/14 embedding, the same as the Karlo model prior. [stabilityai/stable-diffusion-2-1-unclip](https://hf.co/stabilityai/stable-diffusion-2-1-unclip) was trained on OpenCLIP ViT-H, so we don't recommend its use.
 
 </Tip>
 
@@ -90,12 +88,19 @@ images[0].save("variation_image.png")
 
 Optionally, you can also pass a prompt to `pipe` such as:
 
-```python 
+```python
 prompt = "A fantasy landscape, trending on artstation"
 
-images = pipe(init_image, prompt=prompt).images
-images[0].save("variation_image_two.png")
+image = pipe(init_image, prompt=prompt).images[0]
+image
 ```
+
+<Tip>
+
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
+
 ## StableUnCLIPPipeline
 
 [[autodoc]] StableUnCLIPPipeline
@@ -108,7 +113,6 @@ images[0].save("variation_image_two.png")
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
 
-
 ## StableUnCLIPImg2ImgPipeline
 
 [[autodoc]] StableUnCLIPImg2ImgPipeline
@@ -120,6 +124,6 @@ images[0].save("variation_image_two.png")
 	- disable_vae_slicing
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
-    
+
 ## ImagePipelineOutput
 [[autodoc]] pipelines.ImagePipelineOutput

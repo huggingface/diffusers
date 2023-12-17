@@ -17,16 +17,42 @@ import unittest
 
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenPriorPipeline
+from diffusers.loaders import AttnProcsLayers
+from diffusers.models.attention_processor import (
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+)
 from diffusers.pipelines.wuerstchen import WuerstchenPrior
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
+from diffusers.utils.import_utils import is_peft_available
+from diffusers.utils.testing_utils import enable_full_determinism, require_peft_backend, skip_mps, torch_device
+
+
+if is_peft_available():
+    from peft import LoraConfig
+    from peft.tuners.tuners_utils import BaseTunerLayer
 
 from ..test_pipelines_common import PipelineTesterMixin
 
 
 enable_full_determinism()
+
+
+def create_prior_lora_layers(unet: nn.Module):
+    lora_attn_procs = {}
+    for name in unet.attn_processors.keys():
+        lora_attn_processor_class = (
+            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+        )
+        lora_attn_procs[name] = lora_attn_processor_class(
+            hidden_size=unet.config.c,
+        )
+    unet_lora_layers = AttnProcsLayers(lora_attn_procs)
+    return lora_attn_procs, unet_lora_layers
 
 
 class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
@@ -44,6 +70,7 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "return_dict",
     ]
     test_xformers_attention = False
+    callback_cfg_params = ["text_encoder_hidden_states"]
 
     @property
     def text_embedder_hidden_size(self):
@@ -183,3 +210,87 @@ class WuerstchenPriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip(reason="flaky for now")
     def test_float16_inference(self):
         super().test_float16_inference()
+
+    # override because we need to make sure latent_mean and latent_std to be 0
+    def test_callback_inputs(self):
+        components = self.get_dummy_components()
+        components["latent_mean"] = 0
+        components["latent_std"] = 0
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        self.assertTrue(
+            hasattr(pipe, "_callback_tensor_inputs"),
+            f" {self.pipeline_class} should have `_callback_tensor_inputs` that defines a list of tensor variables its callback function can use as inputs",
+        )
+
+        def callback_inputs_test(pipe, i, t, callback_kwargs):
+            missing_callback_inputs = set()
+            for v in pipe._callback_tensor_inputs:
+                if v not in callback_kwargs:
+                    missing_callback_inputs.add(v)
+            self.assertTrue(
+                len(missing_callback_inputs) == 0, f"Missing callback tensor inputs: {missing_callback_inputs}"
+            )
+            last_i = pipe.num_timesteps - 1
+            if i == last_i:
+                callback_kwargs["latents"] = torch.zeros_like(callback_kwargs["latents"])
+            return callback_kwargs
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["callback_on_step_end"] = callback_inputs_test
+        inputs["callback_on_step_end_tensor_inputs"] = pipe._callback_tensor_inputs
+        inputs["output_type"] = "latent"
+
+        output = pipe(**inputs)[0]
+        assert output.abs().sum() == 0
+
+    def check_if_lora_correctly_set(self, model) -> bool:
+        """
+        Checks if the LoRA layers are correctly set with peft
+        """
+        for module in model.modules():
+            if isinstance(module, BaseTunerLayer):
+                return True
+        return False
+
+    def get_lora_components(self):
+        prior = self.dummy_prior
+
+        prior_lora_config = LoraConfig(
+            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+        )
+
+        prior_lora_attn_procs, prior_lora_layers = create_prior_lora_layers(prior)
+
+        lora_components = {
+            "prior_lora_layers": prior_lora_layers,
+            "prior_lora_attn_procs": prior_lora_attn_procs,
+        }
+
+        return prior, prior_lora_config, lora_components
+
+    @require_peft_backend
+    def test_inference_with_prior_lora(self):
+        _, prior_lora_config, _ = self.get_lora_components()
+        device = "cpu"
+
+        components = self.get_dummy_components()
+
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+
+        pipe.set_progress_bar_config(disable=None)
+
+        output_no_lora = pipe(**self.get_dummy_inputs(device))
+        image_embed = output_no_lora.image_embeddings
+        self.assertTrue(image_embed.shape == (1, 2, 24, 24))
+
+        pipe.prior.add_adapter(prior_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.prior), "Lora not correctly set in prior")
+
+        output_lora = pipe(**self.get_dummy_inputs(device))
+        lora_image_embed = output_lora.image_embeddings
+
+        self.assertTrue(image_embed.shape == lora_image_embed.shape)

@@ -12,12 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Text2Video-Zero
 
-[Text2Video-Zero: Text-to-Image Diffusion Models are Zero-Shot Video Generators](https://huggingface.co/papers/2303.13439) is by
-Levon Khachatryan,
-Andranik Movsisyan,
-Vahram Tadevosyan,
-Roberto Henschel,
-[Zhangyang Wang](https://www.ece.utexas.edu/people/faculty/atlas-wang), Shant Navasardyan, [Humphrey Shi](https://www.humphreyshi.com).
+[Text2Video-Zero: Text-to-Image Diffusion Models are Zero-Shot Video Generators](https://huggingface.co/papers/2303.13439) is by Levon Khachatryan, Andranik Movsisyan, Vahram Tadevosyan, Roberto Henschel, [Zhangyang Wang](https://www.ece.utexas.edu/people/faculty/atlas-wang), Shant Navasardyan, [Humphrey Shi](https://www.humphreyshi.com).
 
 Text2Video-Zero enables zero-shot video generation using either:
 1. A textual prompt
@@ -35,16 +30,15 @@ Our key modifications include (i) enriching the latent codes of the generated fr
 Experiments show that this leads to low overhead, yet high-quality and remarkably consistent video generation. Moreover, our approach is not limited to text-to-video synthesis but is also applicable to other tasks such as conditional and content-specialized video generation, and Video Instruct-Pix2Pix, i.e., instruction-guided video editing.
 As experiments show, our method performs comparably or sometimes better than recent approaches, despite not being trained on additional video data.*
 
-You can find additional information about Text-to-Video Zero on the [project page](https://text2video-zero.github.io/), [paper](https://arxiv.org/abs/2303.13439), and [original codebase](https://github.com/Picsart-AI-Research/Text2Video-Zero).
+You can find additional information about Text2Video-Zero on the [project page](https://text2video-zero.github.io/), [paper](https://arxiv.org/abs/2303.13439), and [original codebase](https://github.com/Picsart-AI-Research/Text2Video-Zero).
 
 ## Usage example
 
 ### Text-To-Video
 
-To generate a video from prompt, run the following python command
+To generate a video from prompt, run the following Python code:
 ```python
 import torch
-import imageio
 from diffusers import TextToVideoZeroPipeline
 
 model_id = "runwayml/stable-diffusion-v1-5"
@@ -63,18 +57,17 @@ You can change these parameters in the pipeline call:
 * Video length:
     * `video_length`, the number of frames video_length to be generated. Default: `video_length=8`
 
-We an also generate longer videos by doing the processing in a chunk-by-chunk manner:
+We can also generate longer videos by doing the processing in a chunk-by-chunk manner:
 ```python
 import torch
-import imageio
 from diffusers import TextToVideoZeroPipeline
 import numpy as np
 
 model_id = "runwayml/stable-diffusion-v1-5"
 pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")
 seed = 0
-video_length = 8
-chunk_size = 4
+video_length = 24  #24 ÷ 4fps = 6 seconds
+chunk_size = 8
 prompt = "A panda is playing guitar on times square"
 
 # Generate the video chunk-by-chunk
@@ -99,6 +92,19 @@ imageio.mimsave("video.mp4", result, fps=4)
 ```
 
 
+- #### SDXL Support
+In order to use the SDXL model when generating a video from prompt, use the `TextToVideoZeroSDXLPipeline` pipeline:
+
+```python
+import torch
+from diffusers import TextToVideoZeroSDXLPipeline
+
+model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
+    model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+).to("cuda")
+```
+
 ### Text-To-Video with Pose Control
 To generate a video from prompt with additional pose control
 
@@ -122,7 +128,7 @@ To generate a video from prompt with additional pose control
     frame_count = 8
     pose_images = [Image.fromarray(reader.get_data(i)) for i in range(frame_count)]
     ```
-    To extract pose from actual video, read [ControlNet documentation](./stable_diffusion/controlnet).
+    To extract pose from actual video, read [ControlNet documentation](controlnet).
 
 3. Run `StableDiffusionControlNetPipeline` with our custom attention processor
 
@@ -148,17 +154,42 @@ To generate a video from prompt with additional pose control
     result = pipe(prompt=[prompt] * len(pose_images), image=pose_images, latents=latents).images
     imageio.mimsave("video.mp4", result, fps=4)
     ```
-
+- #### SDXL Support
+	
+	Since our attention processor also works with SDXL, it can be utilized to generate a video from prompt using ControlNet models powered by SDXL:
+	```python
+	import torch
+	from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel
+	from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero import CrossFrameAttnProcessor
+	
+	controlnet_model_id = 'thibaud/controlnet-openpose-sdxl-1.0'
+	model_id = 'stabilityai/stable-diffusion-xl-base-1.0'
+	
+	controlnet = ControlNetModel.from_pretrained(controlnet_model_id, torch_dtype=torch.float16)
+	pipe = StableDiffusionControlNetPipeline.from_pretrained(
+		model_id, controlnet=controlnet, torch_dtype=torch.float16
+	).to('cuda')
+	
+	# Set the attention processor
+	pipe.unet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
+	pipe.controlnet.set_attn_processor(CrossFrameAttnProcessor(batch_size=2))
+	
+	# fix latents for all frames
+	latents = torch.randn((1, 4, 128, 128), device="cuda", dtype=torch.float16).repeat(len(pose_images), 1, 1, 1)
+	
+	prompt = "Darth Vader dancing in a desert"
+	result = pipe(prompt=[prompt] * len(pose_images), image=pose_images, latents=latents).images
+	imageio.mimsave("video.mp4", result, fps=4)
+	```
 
 ### Text-To-Video with Edge Control
 
-To generate a video from prompt with additional pose control,
-follow the steps described above for pose-guided generation using [Canny edge ControlNet model](https://huggingface.co/lllyasviel/sd-controlnet-canny).
+To generate a video from prompt with additional Canny edge control, follow the same steps described above for pose-guided generation using [Canny edge ControlNet model](https://huggingface.co/lllyasviel/sd-controlnet-canny).
 
 
 ### Video Instruct-Pix2Pix
 
-To perform text-guided video editing (with [InstructPix2Pix](./stable_diffusion/pix2pix)):
+To perform text-guided video editing (with [InstructPix2Pix](pix2pix)):
 
 1. Download a demo video
 
@@ -196,12 +227,12 @@ To perform text-guided video editing (with [InstructPix2Pix](./stable_diffusion/
     ```
 
 
-### DreamBooth specialization 
+### DreamBooth specialization
 
 Methods **Text-To-Video**, **Text-To-Video with Pose Control** and **Text-To-Video with Edge Control**
-can run with custom [DreamBooth](../training/dreambooth) models, as shown below for
+can run with custom [DreamBooth](../../training/dreambooth) models, as shown below for
 [Canny edge ControlNet model](https://huggingface.co/lllyasviel/sd-controlnet-canny) and
-[Avatar style DreamBooth](https://huggingface.co/PAIR/text2video-zero-controlnet-canny-avatar) model
+[Avatar style DreamBooth](https://huggingface.co/PAIR/text2video-zero-controlnet-canny-avatar) model:
 
 1. Download a demo video
 
@@ -250,9 +281,19 @@ can run with custom [DreamBooth](../training/dreambooth) models, as shown below 
 
 You can filter out some available DreamBooth-trained models with [this link](https://huggingface.co/models?search=dreambooth).
 
+<Tip>
+
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
 
 ## TextToVideoZeroPipeline
 [[autodoc]] TextToVideoZeroPipeline
+	- all
+	- __call__
+
+## TextToVideoZeroSDXLPipeline
+[[autodoc]] TextToVideoZeroSDXLPipeline
 	- all
 	- __call__
 

@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import hashlib
 import itertools
 import json
 import logging
@@ -35,6 +34,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import HfApi, create_repo
+from huggingface_hub.utils import insecure_hashlib
 from packaging import version
 from PIL import Image
 from torch.utils.data import Dataset
@@ -62,7 +62,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.22.0.dev0")
+check_min_version("0.25.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -331,6 +331,12 @@ def parse_args(input_args=None):
         default=None,
         required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -740,6 +746,7 @@ def main(args):
                         torch_dtype=torch_dtype,
                         safety_checker=None,
                         revision=args.revision,
+                        variant=args.variant,
                     )
                     pipeline.set_progress_bar_config(disable=True)
 
@@ -760,7 +767,7 @@ def main(args):
                         images = pipeline(example["prompt"]).images
 
                         for i, image in enumerate(images):
-                            hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                            hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                             image_filename = (
                                 class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                             )
@@ -801,11 +808,13 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder = text_encoder_cls.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+    )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
     # Adding a modifier token which is optimized ####
@@ -1229,6 +1238,7 @@ def main(args):
                         text_encoder=accelerator.unwrap_model(text_encoder),
                         tokenizer=tokenizer,
                         revision=args.revision,
+                        variant=args.variant,
                         torch_dtype=weight_dtype,
                     )
                     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
@@ -1278,7 +1288,7 @@ def main(args):
         # Final inference
         # Load previous pipeline
         pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
+            args.pretrained_model_name_or_path, revision=args.revision, variant=args.variant, torch_dtype=weight_dtype
         )
         pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
         pipeline = pipeline.to(accelerator.device)

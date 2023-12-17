@@ -53,7 +53,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.22.0.dev0")
+check_min_version("0.25.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -148,6 +148,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
         unet=accelerator.unwrap_model(unet),
         safety_checker=None,
         revision=args.revision,
+        variant=args.variant,
         torch_dtype=weight_dtype,
     )
     pipeline = pipeline.to(accelerator.device)
@@ -208,6 +209,12 @@ def parse_args():
         default=None,
         required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
         "--dataset_name",
@@ -567,10 +574,10 @@ def main():
     # across multiple gpus and only UNet2DConditionModel will get ZeRO sharded.
     with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
         text_encoder = CLIPTextModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+            args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
         )
         vae = AutoencoderKL.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision
+            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
         )
 
     unet = UNet2DConditionModel.from_pretrained(
@@ -585,7 +592,7 @@ def main():
     # Create EMA for the unet.
     if args.use_ema:
         ema_unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
         )
         ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
 
@@ -1026,6 +1033,7 @@ def main():
             vae=vae,
             unet=unet,
             revision=args.revision,
+            variant=args.variant,
         )
         pipeline.save_pretrained(args.output_dir)
 

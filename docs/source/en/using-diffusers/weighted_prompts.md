@@ -41,6 +41,7 @@ import torch
 
 pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", use_safetensors=True)
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
+pipe.to("cuda")
 
 prompt = "a red cat playing with a ball"
 
@@ -141,7 +142,7 @@ image
 ## Conjunction
 
 A conjunction diffuses each prompt independently and concatenates their results by their weighted sum. Add `.and()` to the end of a list of prompts to create a conjunction:
-  
+
 ```py
 prompt_embeds = compel_proc('["a red cat", "playing with a", "ball"].and()')
 generator = torch.Generator(device="cuda").manual_seed(55)
@@ -165,7 +166,9 @@ import torch
 from diffusers import StableDiffusionPipeline
 from compel import Compel, DiffusersTextualInversionManager
 
-pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True, variant="fp16").to("cuda")
+pipe = StableDiffusionPipeline.from_pretrained(
+  "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16,
+  use_safetensors=True, variant="fp16").to("cuda")
 pipe.load_textual_inversion("sd-concepts-library/midjourney-style")
 ```
 
@@ -173,7 +176,7 @@ Compel provides a `DiffusersTextualInversionManager` class to simplify prompt we
 
 ```py
 textual_inversion_manager = DiffusersTextualInversionManager(pipe)
-compel = Compel(
+compel_proc = Compel(
     tokenizer=pipe.tokenizer,
     text_encoder=pipe.text_encoder,
     textual_inversion_manager=textual_inversion_manager)
@@ -225,6 +228,8 @@ Stable Diffusion XL (SDXL) has two tokenizers and text encoders so it's usage is
 ```py
 from compel import Compel, ReturnedEmbeddingsType
 from diffusers import DiffusionPipeline
+from diffusers.utils import make_image_grid
+import torch
 
 pipeline = DiffusionPipeline.from_pretrained(
   "stabilityai/stable-diffusion-xl-base-1.0",
@@ -251,6 +256,7 @@ conditioning, pooled = compel(prompt)
 # generate image
 generator = [torch.Generator().manual_seed(33) for _ in range(len(prompt))]
 images = pipeline(prompt_embeds=conditioning, pooled_prompt_embeds=pooled, generator=generator, num_inference_steps=30).images
+make_image_grid(images, rows=1, cols=2)
 ```
 
 <div class="flex gap-4">

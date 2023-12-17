@@ -14,56 +14,42 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Unconditional image generation is a relatively straightforward task. The model only generates images - without any additional context like text or an image - resembling the training data it was trained on.
+Unconditional image generation generates images that look like a random sample from the training data the model was trained on because the denoising process is not guided by any additional context like text or image.
 
-The [`DiffusionPipeline`] is the easiest way to use a pre-trained diffusion system for inference.
+To get started, use the [`DiffusionPipeline`] to load the [anton-l/ddpm-butterflies-128](https://huggingface.co/anton-l/ddpm-butterflies-128) checkpoint to generate images of butterflies. The [`DiffusionPipeline`] downloads and caches all the model components required to generate an image.
 
-Start by creating an instance of [`DiffusionPipeline`] and specify which pipeline checkpoint you would like to download.
-You can use any of the 🧨 Diffusers [checkpoints](https://huggingface.co/models?library=diffusers&sort=downloads) from the Hub (the checkpoint you'll use generates images of butterflies).
+```py
+from diffusers import DiffusionPipeline
+
+generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128").to("cuda")
+image = generator().images[0]
+image
+```
 
 <Tip>
 
-💡 Want to train your own unconditional image generation model? Take a look at the training [guide](training/unconditional_training) to learn how to generate your own images.
+Want to generate images of something else? Take a look at the training [guide](../training/unconditional_training) to learn how to train a model to generate your own images.
 
 </Tip>
 
-In this guide, you'll use [`DiffusionPipeline`] for unconditional image generation with [DDPM](https://arxiv.org/abs/2006.11239):
+The output image is a [`PIL.Image`](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class) object that can be saved:
 
-```python
->>> from diffusers import DiffusionPipeline
-
->>> generator = DiffusionPipeline.from_pretrained("anton-l/ddpm-butterflies-128", use_safetensors=True)
+```py
+image.save("generated_image.png")
 ```
 
-The [`DiffusionPipeline`] downloads and caches all modeling, tokenization, and scheduling components. 
-Because the model consists of roughly 1.4 billion parameters, we strongly recommend running it on a GPU.
-You can move the generator object to a GPU, just like you would in PyTorch:
+You can also try experimenting with the `num_inference_steps` parameter, which controls the number of denoising steps. More denoising steps typically produce higher quality images, but it'll take longer to generate. Feel free to play around with this parameter to see how it affects the image quality.
 
-```python
->>> generator.to("cuda")
+```py
+image = generator(num_inference_steps=100).images[0]
+image
 ```
 
-Now you can use the `generator` to generate an image:
-
-```python
->>> image = generator().images[0]
-```
-
-The output is by default wrapped into a [`PIL.Image`](https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=image#the-image-class) object.
-
-You can save the image by calling:
-
-```python
->>> image.save("generated_image.png")
-```
-
-Try out the Spaces below, and feel free to play around with the inference steps parameter to see how it affects the image quality!
+Try out the Space below to generate an image of a butterfly!
 
 <iframe
-	src="https://stevhliu-ddpm-butterflies-128.hf.space"
+	src="https://stevhliu-unconditional-image-generation.hf.space"
 	frameborder="0"
 	width="850"
 	height="500"
 ></iframe>
-
-

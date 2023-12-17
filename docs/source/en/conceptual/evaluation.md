@@ -12,9 +12,9 @@ specific language governing permissions and limitations under the License.
 
 # Evaluating Diffusion Models
 
-<a target="_blank" href="https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/evaluation.ipynb">                                                                                                                                                                                                                                                                                                                                                            
-    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>                                                                                                                                                 
-</a>   
+<a target="_blank" href="https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/evaluation.ipynb">
+    <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Open In Colab"/>
+</a>
 
 Evaluation of generative models like [Stable Diffusion](https://huggingface.co/docs/diffusers/stable_diffusion) is subjective in nature. But as practitioners and researchers, we often have to make careful choices amongst many different possibilities. So, when working with different generative models (like GANs, Diffusion, etc.), how do we choose one over the other?
 
@@ -23,7 +23,7 @@ However, quantitative metrics don't necessarily correspond to image quality. So,
 of both qualitative and quantitative evaluations provides a stronger signal when choosing one model
 over the other.
 
-In this document, we provide a non-exhaustive overview of qualitative and quantitative methods to evaluate Diffusion models. For quantitative methods, we specifically focus on how to implement them alongside `diffusers`. 
+In this document, we provide a non-exhaustive overview of qualitative and quantitative methods to evaluate Diffusion models. For quantitative methods, we specifically focus on how to implement them alongside `diffusers`.
 
 The methods shown in this document can also be used to evaluate different [noise schedulers](https://huggingface.co/docs/diffusers/main/en/api/schedulers/overview) keeping the underlying generation model fixed.
 
@@ -32,15 +32,15 @@ The methods shown in this document can also be used to evaluate different [noise
 We cover Diffusion models with the following pipelines:
 
 - Text-guided image generation (such as the [`StableDiffusionPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/text2img)).
-- Text-guided image generation, additionally conditioned on an input image (such as the [`StableDiffusionImg2ImgPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/img2img), and [`StableDiffusionInstructPix2PixPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix)).
+- Text-guided image generation, additionally conditioned on an input image (such as the [`StableDiffusionImg2ImgPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/img2img) and [`StableDiffusionInstructPix2PixPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pix2pix)).
 - Class-conditioned image generation models (such as the [`DiTPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/dit)).
 
 ## Qualitative Evaluation
 
 Qualitative evaluation typically involves human assessment of generated images. Quality is measured across aspects such as compositionality, image-text alignment, and spatial relations. Common prompts provide a degree of uniformity for subjective metrics.
-DrawBench and PartiPrompts are prompt datasets used for qualitative benchmarking. DrawBench and PartiPrompts were introduced by [Imagen](https://imagen.research.google/) and [Parti](https://parti.research.google/) respectively. 
+DrawBench and PartiPrompts are prompt datasets used for qualitative benchmarking. DrawBench and PartiPrompts were introduced by [Imagen](https://imagen.research.google/) and [Parti](https://parti.research.google/) respectively.
 
-From the [official Parti website](https://parti.research.google/): 
+From the [official Parti website](https://parti.research.google/):
 
 > PartiPrompts (P2) is a rich set of over 1600 prompts in English that we release as part of this work. P2 can be used to measure model capabilities across various categories and challenge aspects.
 
@@ -52,13 +52,13 @@ PartiPrompts has the following columns:
 - Category of the prompt (such as “Abstract”, “World Knowledge”, etc.)
 - Challenge reflecting the difficulty (such as “Basic”, “Complex”, “Writing & Symbols”, etc.)
 
-These benchmarks allow for side-by-side human evaluation of different image generation models. 
+These benchmarks allow for side-by-side human evaluation of different image generation models.
 
 For this, the 🧨 Diffusers team has built **Open Parti Prompts**, which is a community-driven qualitative benchmark based on Parti Prompts to compare state-of-the-art open-source diffusion models:
 - [Open Parti Prompts Game](https://huggingface.co/spaces/OpenGenAI/open-parti-prompts): For 10 parti prompts, 4 generated images are shown and the user selects the image that suits the prompt best.
 - [Open Parti Prompts Leaderboard](https://huggingface.co/spaces/OpenGenAI/parti-prompts-leaderboard): The leaderboard comparing the currently best open-sourced diffusion models to each other.
 
-To manually compare images, let’s see how we can use `diffusers` on a couple of PartiPrompts. 
+To manually compare images, let’s see how we can use `diffusers` on a couple of PartiPrompts.
 
 Below we show some prompts sampled across different challenges: Basic, Complex, Linguistic Structures, Imagination, and Writing & Symbols. Here we are using PartiPrompts as a [dataset](https://huggingface.co/datasets/nateraw/parti-prompts).
 
@@ -87,21 +87,21 @@ import torch
 seed = 0
 generator = torch.manual_seed(seed)
 
-images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
+images = sd_pipeline(sample_prompts, num_images_per_prompt=1, generator=generator).images
 ```
 
 ![parti-prompts-14](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-14.png)
 
-We can also set `num_images_per_prompt` accordingly to compare different images for the same prompt. Running the same pipeline but with a different checkpoint ([v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)), yields: 
+We can also set `num_images_per_prompt` accordingly to compare different images for the same prompt. Running the same pipeline but with a different checkpoint ([v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)), yields:
 
 ![parti-prompts-15](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/parti-prompts-15.png)
 
 Once several images are generated from all the prompts using multiple models (under evaluation), these results are presented to human evaluators for scoring. For
-more details on the DrawBench and PartiPrompts benchmarks, refer to their respective papers.  
+more details on the DrawBench and PartiPrompts benchmarks, refer to their respective papers.
 
-<Tip> 
+<Tip>
 
-It is useful to look at some inference samples while a model is training to measure the 
+It is useful to look at some inference samples while a model is training to measure the
 training progress. In our [training scripts](https://github.com/huggingface/diffusers/tree/main/examples/), we support this utility with additional support for
 logging to TensorBoard and Weights & Biases.
 
@@ -141,7 +141,7 @@ prompts = [
     "A small cabin on top of a snowy mountain in the style of Disney, artstation",
 ]
 
-images = sd_pipeline(prompts, num_images_per_prompt=1, output_type="numpy").images
+images = sd_pipeline(prompts, num_images_per_prompt=1, output_type="np").images
 
 print(images.shape)
 # (6, 512, 512, 3)
@@ -155,12 +155,10 @@ from functools import partial
 
 clip_score_fn = partial(clip_score, model_name_or_path="openai/clip-vit-base-patch16")
 
-
 def calculate_clip_score(images, prompts):
     images_int = (images * 255).astype("uint8")
     clip_score = clip_score_fn(torch.from_numpy(images_int).permute(0, 3, 1, 2), prompts).detach()
     return round(float(clip_score), 4)
-
 
 sd_clip_score = calculate_clip_score(images, prompts)
 print(f"CLIP score: {sd_clip_score}")
@@ -176,16 +174,16 @@ fixed seed with the [v1-4 Stable Diffusion checkpoint](https://huggingface.co/Co
 seed = 0
 generator = torch.manual_seed(seed)
 
-images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
+images = sd_pipeline(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
 
-Then we load the [v1-5 checkpoint](https://huggingface.co/runwayml/stable-diffusion-v1-5) to generate images: 
+Then we load the [v1-5 checkpoint](https://huggingface.co/runwayml/stable-diffusion-v1-5) to generate images:
 
 ```python
 model_ckpt_1_5 = "runwayml/stable-diffusion-v1-5"
 sd_pipeline_1_5 = StableDiffusionPipeline.from_pretrained(model_ckpt_1_5, torch_dtype=weight_dtype).to(device)
 
-images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="numpy").images
+images_1_5 = sd_pipeline_1_5(prompts, num_images_per_prompt=1, generator=generator, output_type="np").images
 ```
 
 And finally, we compare their CLIP scores:
@@ -207,7 +205,7 @@ It seems like the [v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) 
 By construction, there are some limitations in this score. The captions in the training dataset
 were crawled from the web and extracted from `alt` and similar tags associated an image on the internet.
 They are not necessarily representative of what a human being would use to describe an image. Hence we
-had to "engineer" some prompts here. 
+had to "engineer" some prompts here.
 
 </Tip>
 
@@ -295,11 +293,10 @@ def edit_image(input_image, instruction):
     image = instruct_pix2pix_pipeline(
         instruction,
         image=input_image,
-        output_type="numpy",
+        output_type="np",
         generator=generator,
     ).images[0]
     return image
-
 
 input_images = []
 original_captions = []
@@ -417,7 +414,7 @@ It should be noted that the `StableDiffusionInstructPix2PixPipeline` exposes t
 
 We can extend the idea of this metric to measure how similar the original image and edited version are. To do that, we can just do `F.cosine_similarity(img_feat_two, img_feat_one)`. For these kinds of edits, we would still want the primary semantics of the images to be preserved as much as possible, i.e., a high similarity score.
 
-We can use these metrics for similar pipelines such as the [`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline).
+We can use these metrics for similar pipelines such as the [`StableDiffusionPix2PixZeroPipeline`](https://huggingface.co/docs/diffusers/main/en/api/pipelines/pix2pix_zero#diffusers.StableDiffusionPix2PixZeroPipeline).
 
 <Tip>
 
@@ -427,7 +424,7 @@ Both CLIP score and CLIP direction similarity rely on the CLIP model, which can 
 
 ***Extending metrics like IS, FID (discussed later), or KID can be difficult*** when the model under evaluation was pre-trained on a large image-captioning dataset (such as the [LAION-5B dataset](https://laion.ai/blog/laion-5b/)). This is because underlying these metrics is an InceptionNet (pre-trained on the ImageNet-1k dataset) used for extracting intermediate image features. The pre-training dataset of Stable Diffusion may have limited overlap with the pre-training dataset of InceptionNet, so it is not a good candidate here for feature extraction.
 
-***Using the above metrics helps evaluate models that are class-conditioned. For example, [DiT](https://huggingface.co/docs/diffusers/main/en/api/pipelines/stable_diffusion/overview). It was pre-trained being conditioned on the ImageNet-1k classes.***
+***Using the above metrics helps evaluate models that are class-conditioned. For example, [DiT](https://huggingface.co/docs/diffusers/main/en/api/pipelines/dit). It was pre-trained being conditioned on the ImageNet-1k classes.***
 
 ### Class-conditioned image generation
 
@@ -452,7 +449,6 @@ def download(url, local_filepath):
         f.write(r.content)
     return local_filepath
 
-
 dummy_dataset_url = "https://hf.co/datasets/sayakpaul/sample-datasets/resolve/main/sample-imagenet-images.zip"
 local_filepath = download(dummy_dataset_url, dummy_dataset_url.split("/")[-1])
 
@@ -470,7 +466,7 @@ image_paths = sorted([os.path.join(dataset_path, x) for x in os.listdir(dataset_
 real_images = [np.array(Image.open(path).convert("RGB")) for path in image_paths]
 ```
 
-These are 10 images from the following Imagenet-1k classes: "cassette_player", "chain_saw" (x2), "church", "gas_pump" (x3), "parachute" (x2), and "tench".
+These are 10 images from the following ImageNet-1k classes: "cassette_player", "chain_saw" (x2), "church", "gas_pump" (x3), "parachute" (x2), and "tench".
 
 <p align="center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/real-images.png" alt="real-images"><br>
@@ -487,7 +483,6 @@ def preprocess_image(image):
     image = torch.tensor(image).unsqueeze(0)
     image = image.permute(0, 3, 1, 2) / 255.0
     return F.center_crop(image, (256, 256))
-
 
 real_images = torch.cat([preprocess_image(image) for image in real_images])
 print(real_images.shape)
@@ -517,7 +512,7 @@ words = [
 ]
 
 class_ids = dit_pipeline.get_label_ids(words)
-output = dit_pipeline(class_labels=class_ids, generator=generator, output_type="numpy")
+output = dit_pipeline(class_labels=class_ids, generator=generator, output_type="np")
 
 fake_images = output.images
 fake_images = torch.tensor(fake_images)
@@ -556,15 +551,15 @@ FID results tend to be fragile as they depend on a lot of factors:
 * The implementation accuracy of the computation.
 * The image format (not the same if we start from PNGs vs JPGs).
 
-Keeping that in mind, FID is often most useful when comparing similar runs, but it is 
-hard to reproduce paper results unless the authors carefully disclose the FID 
+Keeping that in mind, FID is often most useful when comparing similar runs, but it is
+hard to reproduce paper results unless the authors carefully disclose the FID
 measurement code.
 
-These points apply to other related metrics too, such as KID and IS. 
+These points apply to other related metrics too, such as KID and IS.
 
 </Tip>
 
-As a final step, let's visually inspect the `fake_images`. 
+As a final step, let's visually inspect the `fake_images`.
 
 <p align="center">
     <img src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/evaluation_diffusion_models/fake-images.png" alt="fake-images"><br>

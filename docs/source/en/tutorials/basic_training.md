@@ -31,7 +31,7 @@ Before you begin, make sure you have 🤗 Datasets installed to load and preproc
 #!pip install diffusers[training]
 ```
 
-We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted:
+We encourage you to share your model with the community, and in order to do that, you'll need to login to your Hugging Face account (create one [here](https://hf.co/join) if you don't already have one!). You can login from a notebook and enter your token when prompted. Make sure your token has the write role.
 
 ```py
 >>> from huggingface_hub import notebook_login
@@ -59,7 +59,6 @@ For convenience, create a `TrainingConfig` class containing the training hyperpa
 ```py
 >>> from dataclasses import dataclass
 
-
 >>> @dataclass
 ... class TrainingConfig:
 ...     image_size = 128  # the generated image resolution
@@ -75,6 +74,7 @@ For convenience, create a `TrainingConfig` class containing the training hyperpa
 ...     output_dir = "ddpm-butterflies-128"  # the model name locally and on the HF Hub
 
 ...     push_to_hub = True  # whether to upload the saved model to the HF Hub
+...     hub_model_id = "<your-username>/<my-awesome-model>"  # the name of the repository to create on the HF Hub
 ...     hub_private_repo = False
 ...     overwrite_output_dir = True  # overwrite the old model when re-running the notebook
 ...     seed = 0
@@ -253,9 +253,7 @@ Then, you'll need a way to evaluate the model. For evaluation, you can use the [
 ```py
 >>> from diffusers import DDPMPipeline
 >>> from diffusers.utils import make_image_grid
->>> import math
 >>> import os
-
 
 >>> def evaluate(config, epoch, pipeline):
 ...     # Sample some images from random noise (this is the backward diffusion process).
@@ -284,21 +282,10 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 
 ```py
 >>> from accelerate import Accelerator
->>> from huggingface_hub import HfFolder, Repository, whoami
+>>> from huggingface_hub import create_repo, upload_folder
 >>> from tqdm.auto import tqdm
 >>> from pathlib import Path
 >>> import os
-
-
->>> def get_full_repo_name(model_id: str, organization: str = None, token: str = None):
-...     if token is None:
-...         token = HfFolder.get_token()
-...     if organization is None:
-...         username = whoami(token)["name"]
-...         return f"{username}/{model_id}"
-...     else:
-...         return f"{organization}/{model_id}"
-
 
 >>> def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler):
 ...     # Initialize accelerator and tensorboard logging
@@ -309,11 +296,12 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 ...         project_dir=os.path.join(config.output_dir, "logs"),
 ...     )
 ...     if accelerator.is_main_process:
-...         if config.push_to_hub:
-...             repo_name = get_full_repo_name(Path(config.output_dir).name)
-...             repo = Repository(config.output_dir, clone_from=repo_name)
-...         elif config.output_dir is not None:
+...         if config.output_dir is not None:
 ...             os.makedirs(config.output_dir, exist_ok=True)
+...         if config.push_to_hub:
+...             repo_id = create_repo(
+...                 repo_id=config.hub_model_id or Path(config.output_dir).name, exist_ok=True
+...             ).repo_id
 ...         accelerator.init_trackers("train_example")
 
 ...     # Prepare everything
@@ -333,13 +321,14 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 ...         for step, batch in enumerate(train_dataloader):
 ...             clean_images = batch["images"]
 ...             # Sample noise to add to the images
-...             noise = torch.randn(clean_images.shape).to(clean_images.device)
+...             noise = torch.randn(clean_images.shape, device=clean_images.device)
 ...             bs = clean_images.shape[0]
 
 ...             # Sample a random timestep for each image
 ...             timesteps = torch.randint(
-...                 0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device
-...             ).long()
+...                 0, noise_scheduler.config.num_train_timesteps, (bs,), device=clean_images.device,
+...                 dtype=torch.int64
+...             )
 
 ...             # Add noise to the clean images according to the noise magnitude at each timestep
 ...             # (this is the forward diffusion process)
@@ -371,7 +360,12 @@ Now you can wrap all these components together in a training loop with 🤗 Acce
 
 ...             if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
 ...                 if config.push_to_hub:
-...                     repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=True)
+...                     upload_folder(
+...                         repo_id=repo_id,
+...                         folder_path=config.output_dir,
+...                         commit_message=f"Epoch {epoch}",
+...                         ignore_patterns=["step_*", "epoch_*"],
+...                     )
 ...                 else:
 ...                     pipeline.save_pretrained(config.output_dir)
 ```

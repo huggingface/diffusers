@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import itertools
 import json
 import logging
@@ -21,6 +20,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
+from huggingface_hub.utils import insecure_hashlib
 from PIL import Image
 from torch import dtype
 from torch.nn import Module
@@ -843,7 +843,7 @@ def main(args):
                     images = pipeline(example["prompt"]).images
 
                     for ii, image in enumerate(images):
-                        hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                        hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                         image_filename = (
                             class_images_dir / f"{example['index'][ii] + cur_class_images}-{hash_image}.jpg"
                         )

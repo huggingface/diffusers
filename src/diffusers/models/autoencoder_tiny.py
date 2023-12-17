@@ -14,7 +14,7 @@
 
 
 from dataclasses import dataclass
-from typing import Tuple, Union
+from typing import Optional, Tuple, Union
 
 import torch
 
@@ -91,23 +91,24 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
             `force_upcast` can be set to `False` (see this fp16-friendly
             [AutoEncoder](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
     """
+
     _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(
         self,
-        in_channels=3,
-        out_channels=3,
-        encoder_block_out_channels: Tuple[int] = (64, 64, 64, 64),
-        decoder_block_out_channels: Tuple[int] = (64, 64, 64, 64),
+        in_channels: int = 3,
+        out_channels: int = 3,
+        encoder_block_out_channels: Tuple[int, ...] = (64, 64, 64, 64),
+        decoder_block_out_channels: Tuple[int, ...] = (64, 64, 64, 64),
         act_fn: str = "relu",
         latent_channels: int = 4,
         upsampling_scaling_factor: int = 2,
-        num_encoder_blocks: Tuple[int] = (1, 3, 3, 3),
-        num_decoder_blocks: Tuple[int] = (3, 3, 3, 1),
+        num_encoder_blocks: Tuple[int, ...] = (1, 3, 3, 3),
+        num_decoder_blocks: Tuple[int, ...] = (3, 3, 3, 1),
         latent_magnitude: int = 3,
         latent_shift: float = 0.5,
-        force_upcast: float = False,
+        force_upcast: bool = False,
         scaling_factor: float = 1.0,
     ):
         super().__init__()
@@ -147,33 +148,36 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self.tile_sample_min_size = 512
         self.tile_latent_min_size = self.tile_sample_min_size // self.spatial_scale_factor
 
-    def _set_gradient_checkpointing(self, module, value=False):
+        self.register_to_config(block_out_channels=decoder_block_out_channels)
+        self.register_to_config(force_upcast=False)
+
+    def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
         if isinstance(module, (EncoderTiny, DecoderTiny)):
             module.gradient_checkpointing = value
 
-    def scale_latents(self, x):
+    def scale_latents(self, x: torch.FloatTensor) -> torch.FloatTensor:
         """raw latents -> [0, 1]"""
         return x.div(2 * self.latent_magnitude).add(self.latent_shift).clamp(0, 1)
 
-    def unscale_latents(self, x):
+    def unscale_latents(self, x: torch.FloatTensor) -> torch.FloatTensor:
         """[0, 1] -> raw latents"""
         return x.sub(self.latent_shift).mul(2 * self.latent_magnitude)
 
-    def enable_slicing(self):
+    def enable_slicing(self) -> None:
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
         compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
         """
         self.use_slicing = True
 
-    def disable_slicing(self):
+    def disable_slicing(self) -> None:
         r"""
         Disable sliced VAE decoding. If `enable_slicing` was previously enabled, this method will go back to computing
         decoding in one step.
         """
         self.use_slicing = False
 
-    def enable_tiling(self, use_tiling: bool = True):
+    def enable_tiling(self, use_tiling: bool = True) -> None:
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
@@ -181,7 +185,7 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         """
         self.use_tiling = use_tiling
 
-    def disable_tiling(self):
+    def disable_tiling(self) -> None:
         r"""
         Disable tiled VAE decoding. If `enable_tiling` was previously enabled, this method will go back to computing
         decoding in one step.
@@ -197,13 +201,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
 
         Args:
             x (`torch.FloatTensor`): Input batch of images.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.autoencoder_tiny.AutoencoderTinyOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.autoencoder_tiny.AutoencoderTinyOutput`] or `tuple`:
-                If return_dict is True, a [`~models.autoencoder_tiny.AutoencoderTinyOutput`] is returned, otherwise a
-                plain `tuple` is returned.
+            `torch.FloatTensor`: Encoded batch of images.
         """
         # scale of encoder output relative to input
         sf = self.spatial_scale_factor
@@ -249,13 +249,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
 
         Args:
             x (`torch.FloatTensor`): Input batch of images.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.autoencoder_tiny.AutoencoderTinyOutput`] instead of a plain tuple.
 
         Returns:
-            [`~models.vae.DecoderOutput`] or `tuple`:
-                If return_dict is True, a [`~models.vae.DecoderOutput`] is returned, otherwise a plain `tuple` is
-                returned.
+            `torch.FloatTensor`: Encoded batch of images.
         """
         # scale of decoder output relative to input
         sf = self.spatial_scale_factor
@@ -307,7 +303,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         return AutoencoderTinyOutput(latents=output)
 
     @apply_forward_hook
-    def decode(self, x: torch.FloatTensor, return_dict: bool = True) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
+    def decode(
+        self, x: torch.FloatTensor, generator: Optional[torch.Generator] = None, return_dict: bool = True
+    ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
         if self.use_slicing and x.shape[0] > 1:
             output = [self._tiled_decode(x_slice) if self.use_tiling else self.decoder(x) for x_slice in x.split(1)]
             output = torch.cat(output)

@@ -117,6 +117,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final (`bool`, defaults to `True`):
             Whether to use lower-order solvers in the final steps. Only valid for < 15 inference steps. This can
             stabilize the sampling of DPMSolver for steps < 15, especially for steps <= 10.
+        euler_at_final (`bool`, defaults to `False`):
+            Whether to use Euler's method in the final step. It is a trade-off between numerical stability and detail
+            richness. This can stabilize the sampling of the SDE variant of DPMSolver for small number of inference
+            steps, but sometimes may result in blurring.
         use_karras_sigmas (`bool`, *optional*, defaults to `False`):
             Whether to use Karras sigmas for step sizes in the noise schedule during the sampling process. If `True`,
             the sigmas are determined according to a sequence of noise levels {σi}.
@@ -154,6 +158,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         algorithm_type: str = "dpmsolver++",
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
+        euler_at_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
@@ -166,9 +171,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
+            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -181,6 +184,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
         self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
+        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -205,6 +209,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
         self._step_index = None
+        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
         self.use_karras_sigmas = use_karras_sigmas
 
     @property
@@ -285,6 +290,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
+        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -323,7 +329,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
         # get log sigma
-        log_sigma = np.log(sigma)
+        log_sigma = np.log(np.maximum(sigma, 1e-10))
 
         # get distribution
         dists = log_sigma - log_sigmas[:, np.newaxis]
@@ -355,8 +361,20 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
-        sigma_min: float = in_sigmas[-1].item()
-        sigma_max: float = in_sigmas[0].item()
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)
@@ -804,8 +822,9 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         if self.step_index is None:
             self._init_step_index(timestep)
 
-        lower_order_final = (
-            (self.step_index == len(self.timesteps) - 1) and self.config.lower_order_final and len(self.timesteps) < 15
+        # Improve numerical stability for small number of steps
+        lower_order_final = (self.step_index == len(self.timesteps) - 1) and (
+            self.config.euler_at_final or (self.config.lower_order_final and len(self.timesteps) < 15)
         )
         lower_order_second = (
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
@@ -874,7 +893,16 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        step_indices = []
+        for timestep in timesteps:
+            index_candidates = (schedule_timesteps == timestep).nonzero()
+            if len(index_candidates) == 0:
+                step_index = len(schedule_timesteps) - 1
+            elif len(index_candidates) > 1:
+                step_index = index_candidates[1].item()
+            else:
+                step_index = index_candidates[0].item()
+            step_indices.append(step_index)
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
