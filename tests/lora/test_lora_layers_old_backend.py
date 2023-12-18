@@ -343,6 +343,21 @@ class LoraLoaderMixinTests(unittest.TestCase):
         image = sd_pipe(**inputs).images
         assert image.shape == (1, 64, 64, 3)
 
+    @unittest.skipIf(not torch.cuda.is_available() or not is_xformers_available(), reason="xformers requires cuda")
+    def test_stable_diffusion_set_xformers_attn_processors(self):
+        # disable_full_determinism()
+        device = "cuda"  # ensure determinism for the device-dependent torch.Generator
+        components, _ = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        _, _, inputs = self.get_dummy_inputs()
+
+        # run normal sd pipe
+        image = sd_pipe(**inputs).images
+        assert image.shape == (1, 64, 64, 3)
+
         # run lora xformers attention
         attn_processors, _ = create_unet_lora_layers(sd_pipe.unet)
         attn_processors = {
@@ -607,7 +622,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
             orig_image_slice, orig_image_slice_two, atol=1e-3
         ), "Unloading LoRA parameters should lead to results similar to what was obtained with the pipeline without any LoRA parameters."
 
-    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    @unittest.skipIf(torch_device != "cuda" or not is_xformers_available(), "This test is supposed to run on GPU")
     def test_lora_unet_attn_processors_with_xformers(self):
         with tempfile.TemporaryDirectory() as tmpdirname:
             self.create_lora_weight_file(tmpdirname)
@@ -644,7 +659,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
                 if isinstance(module, Attention):
                     self.assertIsInstance(module.processor, XFormersAttnProcessor)
 
-    @unittest.skipIf(torch_device != "cuda", "This test is supposed to run on GPU")
+    @unittest.skipIf(torch_device != "cuda" or not is_xformers_available(), "This test is supposed to run on GPU")
     def test_lora_save_load_with_xformers(self):
         pipeline_components, lora_components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**pipeline_components)
@@ -2270,8 +2285,8 @@ class LoraIntegrationTests(unittest.TestCase):
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
         start_time = time.time()
@@ -2284,13 +2299,13 @@ class LoraIntegrationTests(unittest.TestCase):
 
         del pipe
 
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename)
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.float16)
         pipe.fuse_lora()
         pipe.enable_model_cpu_offload()
 
-        start_time = time.time()
         generator = torch.Generator().manual_seed(0)
+        start_time = time.time()
         for _ in range(3):
             pipe(
                 "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
