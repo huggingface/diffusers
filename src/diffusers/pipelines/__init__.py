@@ -188,7 +188,6 @@ else:
     _import_structure["text_to_video_synthesis"] = [
         "TextToVideoSDPipeline",
         "TextToVideoZeroPipeline",
-        "TextToVideoZeroSDXLPipeline",
         "VideoToVideoSDPipeline",
     ]
     _import_structure["unclip"] = ["UnCLIPImageVariationPipeline", "UnCLIPPipeline"]
@@ -441,7 +440,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .text_to_video_synthesis import (
             TextToVideoSDPipeline,
             TextToVideoZeroPipeline,
-            TextToVideoZeroSDXLPipeline,
             VideoToVideoSDPipeline,
         )
         from .unclip import UnCLIPImageVariationPipeline, UnCLIPPipeline
