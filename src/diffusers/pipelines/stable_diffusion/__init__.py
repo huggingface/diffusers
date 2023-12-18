@@ -133,9 +133,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_objects import *
 
     else:
-        from ..deprecated.stable_diffusion_variants.pipeline_stable_diffusion_inpaint_legacy import (
-            StableDiffusionInpaintPipelineLegacy,
-        )
         from .clip_image_project_model import CLIPImageProjection
         from .pipeline_stable_diffusion import (
             StableDiffusionPipeline,
