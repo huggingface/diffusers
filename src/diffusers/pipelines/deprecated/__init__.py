@@ -109,7 +109,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionInpaintPipelineLegacy,
             StableDiffusionModelEditingPipeline,
             StableDiffusionParadigmsPipeline,
-            StableDiffusionPix2PixZero,
+            StableDiffusionPix2PixZeroPipeline,
         )
         from .stochastic_karras_ve import KarrasVePipeline
         from .versatile_diffusion import (
