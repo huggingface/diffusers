@@ -16,10 +16,10 @@ from typing import Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils.accelerate_utils import apply_forward_hook
-from .modeling_outputs import AutoencoderKLOutput
-from .modeling_utils import ModelMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils.accelerate_utils import apply_forward_hook
+from ..modeling_outputs import AutoencoderKLOutput
+from ..modeling_utils import ModelMixin
 from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder, MaskConditionDecoder
 
 
