@@ -283,6 +283,9 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
                 f"Only the output types `pil`, `np`, `latent` and `mesh` are supported not output_type={output_type}"
             )
 
+        # Offload all models
+        self.maybe_free_model_hooks()
+
         if output_type == "latent":
             return ShapEPipelineOutput(images=latents)
 
@@ -311,9 +314,6 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
             if output_type == "pil":
                 images = [self.numpy_to_pil(image) for image in images]
-
-        # Offload all models
-        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (images,)
