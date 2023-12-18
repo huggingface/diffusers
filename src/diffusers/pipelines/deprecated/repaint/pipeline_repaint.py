@@ -87,7 +87,6 @@ class RePaintPipeline(DiffusionPipeline):
             A `RePaintScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
 
-
     unet: UNet2DModel
     scheduler: RePaintScheduler
     model_cpu_offload_seq = "unet"

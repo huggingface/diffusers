@@ -52,7 +52,6 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
 
-
     model_cpu_offload_seq = "bert->unet->vqvae"
 
     tokenizer: CLIPTokenizer
