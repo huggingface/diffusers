@@ -16,14 +16,14 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import FromOriginalVAEMixin
-from ..utils import is_torch_version
-from ..utils.accelerate_utils import apply_forward_hook
-from .attention_processor import CROSS_ATTENTION_PROCESSORS, AttentionProcessor, AttnProcessor
-from .modeling_outputs import AutoencoderKLOutput
-from .modeling_utils import ModelMixin
-from .unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import FromOriginalVAEMixin
+from ...utils import is_torch_version
+from ...utils.accelerate_utils import apply_forward_hook
+from ..attention_processor import CROSS_ATTENTION_PROCESSORS, AttentionProcessor, AttnProcessor
+from ..modeling_outputs import AutoencoderKLOutput
+from ..modeling_utils import ModelMixin
+from ..unet_3d_blocks import MidBlockTemporalDecoder, UpBlockTemporalDecoder
 from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
 
 
