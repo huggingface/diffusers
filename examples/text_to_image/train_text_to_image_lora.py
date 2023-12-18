@@ -832,7 +832,7 @@ def main():
                         save_path = os.path.join(args.output_dir, f"checkpoint-{global_step}")
                         accelerator.save_state(save_path)
 
-                        unet_lora_state_dict = get_peft_model_state_dict(unet)
+                        unet_lora_state_dict = get_peft_model_state_dict(accelerator.unwrap_model(unet))
 
                         StableDiffusionPipeline.save_lora_weights(
                             save_directory=save_path,
