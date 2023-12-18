@@ -40,7 +40,6 @@ class LDMPipeline(DiffusionPipeline):
             [`DDIMScheduler`] is used in combination with `unet` to denoise the encoded image latents.
     """
 
-    deprecate("LDMPipeline", "1.0.0", "")
 
     def __init__(self, vqvae: VQModel, unet: UNet2DModel, scheduler: DDIMScheduler):
         super().__init__()

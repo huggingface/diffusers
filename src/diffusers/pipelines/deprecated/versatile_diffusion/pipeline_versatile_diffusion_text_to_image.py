@@ -52,7 +52,6 @@ class VersatileDiffusionTextToImagePipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
 
-    deprecate("VersatileDiffusionTextToImagePipeline", "1.0.0", "")
 
     model_cpu_offload_seq = "bert->unet->vqvae"
 

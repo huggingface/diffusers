@@ -55,7 +55,6 @@ class SpectrogramDiffusionPipeline(DiffusionPipeline):
         melgan ([`OnnxRuntimeModel`]):
     """
 
-    deprecate("SpectrogramDiffusionPipeline", "1.0.0", "")
 
     _optional_components = ["melgan"]
 

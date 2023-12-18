@@ -311,7 +311,6 @@ class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
             pipeline publicly.
     """
 
-    deprecate("StableDiffusionPix2PixZeroPipeline", "1.0.0", "")
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = [

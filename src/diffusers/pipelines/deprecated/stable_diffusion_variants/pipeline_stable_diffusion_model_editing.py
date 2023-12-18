@@ -67,7 +67,6 @@ class StableDiffusionModelEditingPipeline(DiffusionPipeline, TextualInversionLoa
             Textual augmentations to apply while editing the text-to-image model. Set to `[]` for no augmentations.
     """
 
-    deprecate("StableDiffusionModelEditingPipeline", "1.0.0", "")
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]

@@ -47,7 +47,6 @@ class AudioDiffusionPipeline(DiffusionPipeline):
             [`DDIMScheduler`] or [`DDPMScheduler`].
     """
 
-    deprecate("AudioDiffusionPipeline", "1.0.0", "")
     _optional_components = ["vqvae"]
 
     def __init__(

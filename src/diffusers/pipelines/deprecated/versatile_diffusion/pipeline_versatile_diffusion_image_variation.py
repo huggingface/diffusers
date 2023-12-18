@@ -53,7 +53,6 @@ class VersatileDiffusionImageVariationPipeline(DiffusionPipeline):
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
 
-    deprecate("VersatileDiffusionImageVariationPipeline", "1.0.0", "")
 
     model_cpu_offload_seq = "bert->unet->vqvae"
 

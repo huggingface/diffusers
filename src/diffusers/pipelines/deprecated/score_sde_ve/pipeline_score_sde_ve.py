@@ -37,7 +37,6 @@ class ScoreSdeVePipeline(DiffusionPipeline):
             A `ScoreSdeVeScheduler` to be used in combination with `unet` to denoise the encoded image.
     """
 
-    deprecate("ScoreSdeVePipeline", "1.0.0", "")
 
     unet: UNet2DModel
     scheduler: ScoreSdeVeScheduler
