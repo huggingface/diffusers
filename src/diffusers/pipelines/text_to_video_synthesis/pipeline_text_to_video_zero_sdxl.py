@@ -16,7 +16,6 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-from ...models.lora import adjust_lora_scale_text_encoder
 from ...image_processor import VaeImageProcessor
 from ...loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, UNet2DConditionModel
@@ -27,6 +26,7 @@ from ...models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
+from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
@@ -45,6 +45,7 @@ if is_invisible_watermark_available():
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.rearrange_0
 def rearrange_0(tensor, f):
@@ -359,6 +360,7 @@ class TextToVideoZeroSDXLPipeline(
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
+
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
     _optional_components = [
         "tokenizer",
