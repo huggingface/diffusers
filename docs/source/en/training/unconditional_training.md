@@ -186,7 +186,7 @@ accelerate launch train_unconditional.py \
 If you're training with more than one GPU, add the `--multi_gpu` parameter to the training command:
 
 ```bash
-accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
+accelerate launch --multi_gpu train_unconditional.py \
   --dataset_name="huggan/flowers-102-categories" \
   --output_dir="ddpm-ema-flowers-64" \
   --mixed_precision="fp16" \
