@@ -19,9 +19,9 @@ import math
 import numpy as np
 import torch
 from typing import List, Optional, Tuple, Union, Callable
-from diffusers.configuration_utils import ConfigMixin, register_to_config
-from diffusers.utils.torch_utils import randn_tensor
-from diffusers.schedulers.scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils.torch_utils import randn_tensor
+from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
