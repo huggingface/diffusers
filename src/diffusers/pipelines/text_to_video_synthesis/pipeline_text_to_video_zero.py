@@ -11,14 +11,14 @@ from torch.nn.functional import grid_sample
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import VaeImageProcessor
-from ...models import AutoencoderKL, UNet2DConditionModel
-from ..pipeline_utils import DiffusionPipeline
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
-from ..stable_diffusion import StableDiffusionSafetyChecker
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import BaseOutput, logging, USE_PEFT_BACKEND, unscale_lora_layers, scale_lora_layers
+from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
+from ..pipeline_utils import DiffusionPipeline
+from ..stable_diffusion import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -281,9 +281,7 @@ def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_s
     return warped_latents
 
 
-class TextToVideoZeroPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin
-):
+class TextToVideoZeroPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for zero-shot text-to-video generation using Stable Diffusion.
 
