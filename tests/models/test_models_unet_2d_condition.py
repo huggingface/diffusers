@@ -869,7 +869,7 @@ class UNet2DConditionModelIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        backend_empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_latents(self, seed=0, shape=(4, 4, 64, 64), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32

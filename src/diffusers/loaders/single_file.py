@@ -169,10 +169,12 @@ class FromSingleFileMixin:
         load_safety_checker = kwargs.pop("load_safety_checker", True)
         prediction_type = kwargs.pop("prediction_type", None)
         text_encoder = kwargs.pop("text_encoder", None)
+        text_encoder_2 = kwargs.pop("text_encoder_2", None)
         vae = kwargs.pop("vae", None)
         controlnet = kwargs.pop("controlnet", None)
         adapter = kwargs.pop("adapter", None)
         tokenizer = kwargs.pop("tokenizer", None)
+        tokenizer_2 = kwargs.pop("tokenizer_2", None)
 
         torch_dtype = kwargs.pop("torch_dtype", None)
 
@@ -274,8 +276,10 @@ class FromSingleFileMixin:
             load_safety_checker=load_safety_checker,
             prediction_type=prediction_type,
             text_encoder=text_encoder,
+            text_encoder_2=text_encoder_2,
             vae=vae,
             tokenizer=tokenizer,
+            tokenizer_2=tokenizer_2,
             original_config_file=original_config_file,
             config_files=config_files,
             local_files_only=local_files_only,

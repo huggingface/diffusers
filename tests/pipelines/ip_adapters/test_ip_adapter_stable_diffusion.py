@@ -182,6 +182,25 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
+    def test_text_to_image_full_face(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
+        pipeline.set_ip_adapter_scale(0.7)
+
+        inputs = self.get_dummy_inputs()
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array(
+            [0.1706543, 0.1303711, 0.12573242, 0.21777344, 0.14550781, 0.14038086, 0.40820312, 0.41455078, 0.42529297]
+        )
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
 
 @slow
 @require_torch_gpu

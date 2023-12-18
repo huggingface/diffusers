@@ -72,7 +72,7 @@ In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-de
 
 ### Prior Training
 
-First, you need to set up your development environment as explained in the [installation](#Running-locally-with-PyTorch) section. Make sure to set the `DATASET_NAME` environment variable. Here, we will use the [Pokemon captions dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).  
+First, you need to set up your development environment as explained in the [installation](#Running-locally-with-PyTorch) section. Make sure to set the `DATASET_NAME` environment variable. Here, we will use the [Pokemon captions dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions).
 
 ```bash
 export DATASET_NAME="lambdalabs/pokemon-blip-captions"
