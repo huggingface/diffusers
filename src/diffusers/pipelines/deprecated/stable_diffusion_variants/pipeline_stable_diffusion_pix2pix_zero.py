@@ -282,7 +282,7 @@ class Pix2PixZeroAttnProcessor:
 
 class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
     r"""
-    Pipeline for pixel-levl image editing using Pix2Pix Zero. Based on Stable Diffusion.
+    Pipeline for pixel-level image editing using Pix2Pix Zero. Based on Stable Diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
