@@ -16,9 +16,11 @@
 # The codebase is modified based on https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_dpmsolver_multistep.py
 
 import math
+from typing import List, Optional, Tuple, Union, Callable
+
 import numpy as np
 import torch
-from typing import List, Optional, Tuple, Union, Callable
+
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput

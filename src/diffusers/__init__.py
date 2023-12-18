@@ -152,12 +152,12 @@ else:
             "LCMScheduler",
             "PNDMScheduler",
             "RePaintScheduler",
+            "SASolverScheduler",
             "SchedulerMixin",
             "ScoreSdeVeScheduler",
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
             "VQDiffusionScheduler",
-            "SASolverScheduler",
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
@@ -528,12 +528,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LCMScheduler,
             PNDMScheduler,
             RePaintScheduler,
+            SASolverScheduler,
             SchedulerMixin,
             ScoreSdeVeScheduler,
             UnCLIPScheduler,
             UniPCMultistepScheduler,
             VQDiffusionScheduler,
-            SASolverScheduler,
         )
         from .training_utils import EMAModel
 

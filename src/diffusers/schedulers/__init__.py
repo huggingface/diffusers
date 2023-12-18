@@ -60,12 +60,12 @@ else:
     _import_structure["scheduling_lcm"] = ["LCMScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
+    _import_structure["scheduling_sasolver"] = ["SASolverScheduler"]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
     _import_structure["scheduling_utils"] = ["KarrasDiffusionSchedulers", "SchedulerMixin"]
     _import_structure["scheduling_vq_diffusion"] = ["VQDiffusionScheduler"]
-    _import_structure["scheduling_sasolver"] = ["SASolverScheduler"]
 
 try:
     if not is_flax_available():
@@ -151,12 +151,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_lcm import LCMScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
+        from .scheduling_sasolver import SASolverScheduler
         from .scheduling_sde_ve import ScoreSdeVeScheduler
         from .scheduling_unclip import UnCLIPScheduler
         from .scheduling_unipc_multistep import UniPCMultistepScheduler
         from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin
         from .scheduling_vq_diffusion import VQDiffusionScheduler
-        from .scheduling_sasolver import SASolverScheduler
 
     try:
         if not is_flax_available():
