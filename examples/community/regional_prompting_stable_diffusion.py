@@ -13,7 +13,6 @@ from diffusers.pipelines.stable_diffusion.safety_checker import (
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import USE_PEFT_BACKEND
 
-
 try:
     from compel import Compel
 except ImportError:
@@ -170,12 +169,8 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
             orig_hw = (height, width)
             revers = True
 
-            def pcallback(
-                s_self, step: int, timestep: int, latents: torch.FloatTensor, selfs=None
-            ):
-                if (
-                    "PRO" in mode
-                ):  # in Prompt mode, make masks from sum of attension maps
+            def pcallback(s_self, step: int, timestep: int, latents: torch.FloatTensor, selfs=None):
+                if "PRO" in mode:  # in Prompt mode, make masks from sum of attension maps
                     self.step = step
 
                     if len(self.attnmaps_sizes) > 3:
@@ -186,24 +181,13 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                             for tt, th in zip(target_tokens, thresholds):
                                 for b in range(batch):
                                     key = f"{tt}-{b}"
-                                    _, mask, _ = makepmask(
-                                        self, self.attnmaps[key], hw[0], hw[1], th, step
-                                    )
+                                    _, mask, _ = makepmask(self, self.attnmaps[key], hw[0], hw[1], th, step)
                                     mask = mask.unsqueeze(0).unsqueeze(-1)
                                     if self.ex:
-                                        allmasks[b::batch] = [
-                                            x - mask for x in allmasks[b::batch]
-                                        ]
-                                        allmasks[b::batch] = [
-                                            torch.where(x > 0, 1, 0)
-                                            for x in allmasks[b::batch]
-                                        ]
+                                        allmasks[b::batch] = [x - mask for x in allmasks[b::batch]]
+                                        allmasks[b::batch] = [torch.where(x > 0, 1, 0) for x in allmasks[b::batch]]
                                     allmasks.append(mask)
-                                    basemasks[b] = (
-                                        mask
-                                        if basemasks[b] is None
-                                        else basemasks[b] + mask
-                                    )
+                                    basemasks[b] = mask if basemasks[b] is None else basemasks[b] + mask
                             basemasks = [1 - mask for mask in basemasks]
                             basemasks = [torch.where(x > 0, 1, 0) for x in basemasks]
                             allmasks = basemasks + allmasks
@@ -237,9 +221,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                         )
                         encoder_hidden_states = torch.cat([conds] + [unconds])
                     else:
-                        hidden_states = torch.cat(
-                            [px for i in range(regions)] + [nx], 0
-                        )
+                        hidden_states = torch.cat([px for i in range(regions)] + [nx], 0)
                         encoder_hidden_states = torch.cat([conds] + [unconds])
 
                     residual = hidden_states
@@ -253,28 +235,18 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
 
                     if input_ndim == 4:
                         batch_size, channel, height, width = hidden_states.shape
-                        hidden_states = hidden_states.view(
-                            batch_size, channel, height * width
-                        ).transpose(1, 2)
+                        hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
                     batch_size, sequence_length, _ = (
-                        hidden_states.shape
-                        if encoder_hidden_states is None
-                        else encoder_hidden_states.shape
+                        hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
                     )
 
                     if attention_mask is not None:
-                        attention_mask = attn.prepare_attention_mask(
-                            attention_mask, sequence_length, batch_size
-                        )
-                        attention_mask = attention_mask.view(
-                            batch_size, attn.heads, -1, attention_mask.shape[-1]
-                        )
+                        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+                        attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
 
                     if attn.group_norm is not None:
-                        hidden_states = attn.group_norm(
-                            hidden_states.transpose(1, 2)
-                        ).transpose(1, 2)
+                        hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
                     args = () if USE_PEFT_BACKEND else (scale,)
                     query = attn.to_q(hidden_states, *args)
@@ -282,9 +254,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                     if encoder_hidden_states is None:
                         encoder_hidden_states = hidden_states
                     elif attn.norm_cross:
-                        encoder_hidden_states = attn.norm_encoder_hidden_states(
-                            encoder_hidden_states
-                        )
+                        encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
                     key = attn.to_k(encoder_hidden_states, *args)
                     value = attn.to_v(encoder_hidden_states, *args)
@@ -292,14 +262,10 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                     inner_dim = key.shape[-1]
                     head_dim = inner_dim // attn.heads
 
-                    query = query.view(batch_size, -1, attn.heads, head_dim).transpose(
-                        1, 2
-                    )
+                    query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
                     key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-                    value = value.view(batch_size, -1, attn.heads, head_dim).transpose(
-                        1, 2
-                    )
+                    value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
                     # the output of sdp = (batch, num_heads, seq_len, head_dim)
                     # TODO: add support for attn.scale when we move to Torch 2.1
@@ -314,9 +280,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                         getattn="PRO" in mode,
                     )
 
-                    hidden_states = hidden_states.transpose(1, 2).reshape(
-                        batch_size, -1, attn.heads * head_dim
-                    )
+                    hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
                     hidden_states = hidden_states.to(query.dtype)
 
                     # linear proj
@@ -325,9 +289,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                     hidden_states = attn.to_out[1](hidden_states)
 
                     if input_ndim == 4:
-                        hidden_states = hidden_states.transpose(-1, -2).reshape(
-                            batch_size, channel, height, width
-                        )
+                        hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
 
                     if attn.residual_connection:
                         hidden_states = hidden_states + residual
@@ -336,9 +298,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
 
                     #### Regional Prompting Col/Row mode
                     if any(x in mode for x in ["COL", "ROW"]):
-                        reshaped = hidden_states.reshape(
-                            hidden_states.size()[0], h, w, hidden_states.size()[2]
-                        )
+                        reshaped = hidden_states.reshape(hidden_states.size()[0], h, w, hidden_states.size()[2])
                         center = reshaped.shape[0] // 2
                         px = reshaped[0:center] if equal else reshaped[0:-batch]
                         nx = reshaped[center:] if equal else reshaped[-batch:]
@@ -372,20 +332,14 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                                             :,
                                         ]
                                     c += 1
-                        px, nx = (
-                            (px[0:batch], nx[0:batch]) if equal else (px[0:batch], nx)
-                        )
-                        hidden_states = (
-                            torch.cat([nx, px], 0) if revers else torch.cat([px, nx], 0)
-                        )
+                        px, nx = (px[0:batch], nx[0:batch]) if equal else (px[0:batch], nx)
+                        hidden_states = torch.cat([nx, px], 0) if revers else torch.cat([px, nx], 0)
                         hidden_states = hidden_states.reshape(xshape)
 
                     #### Regional Prompting Prompt mode
                     elif "PRO" in mode:
                         px, nx = (
-                            torch.chunk(hidden_states)
-                            if equal
-                            else hidden_states[0:-batch],
+                            torch.chunk(hidden_states) if equal else hidden_states[0:-batch],
                             hidden_states[-batch:],
                         )
 
@@ -399,12 +353,8 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
                                 return out
 
                             px, nx = (mask(px), mask(nx)) if equal else (mask(px), nx)
-                        px, nx = (
-                            (px[0:batch], nx[0:batch]) if equal else (px[0:batch], nx)
-                        )
-                        hidden_states = (
-                            torch.cat([nx, px], 0) if revers else torch.cat([px, nx], 0)
-                        )
+                        px, nx = (px[0:batch], nx[0:batch]) if equal else (px[0:batch], nx)
+                        hidden_states = torch.cat([nx, px], 0) if revers else torch.cat([px, nx], 0)
                     return hidden_states
 
                 return forward
@@ -468,9 +418,7 @@ def promptsmaker(prompts, batch):
     for p, prs in enumerate(out_p):  # inputs prompts
         for r, pr in enumerate(prs):  # prompts for regions
             start = (p + r * plen) * batch
-            out[start : start + batch] = [
-                pr
-            ] * batch  # P1R1B1,P1R1B2...,P1R2B1,P1R2B2...,P2R1B1...
+            out[start : start + batch] = [pr] * batch  # P1R1B1,P1R1B2...,P1R2B1,P1R2B2...,P2R1B1...
     return out, out_p
 
 
@@ -515,9 +463,7 @@ def make_emblist(self, prompts):
             truncation=True,
             return_tensors="pt",
         ).input_ids.to(self.device)
-        embs = self.text_encoder(
-            tokens, output_hidden_states=True
-        ).last_hidden_state.to(self.device, dtype=self.dtype)
+        embs = self.text_encoder(tokens, output_hidden_states=True).last_hidden_state.to(self.device, dtype=self.dtype)
     return embs
 
 
@@ -546,9 +492,7 @@ def get_attn_maps(self, attn):
     for b in range(self.batch):
         for t in target_tokens:
             power = self.power
-            add = attn[b, :, :, t[0] : t[0] + len(t)] ** (power) * (
-                self.attnmaps_sizes.index((height, width)) + 1
-            )
+            add = attn[b, :, :, t[0] : t[0] + len(t)] ** (power) * (self.attnmaps_sizes.index((height, width)) + 1)
             add = torch.sum(add, dim=2)
             key = f"{t}-{b}"
             if key not in self.attnmaps:
@@ -598,9 +542,7 @@ def makepmask(
     mask = mask.view(1, *self.attnmaps_sizes[0])
     img = FF.to_pil_image(mask)
     img = img.resize((w, h))
-    mask = FF.resize(
-        mask, (h, w), interpolation=FF.InterpolationMode.NEAREST, antialias=None
-    )
+    mask = FF.resize(mask, (h, w), interpolation=FF.InterpolationMode.NEAREST, antialias=None)
     lmask = mask
     mask = mask.reshape(h * w)
     mask = torch.where(mask > 0.1, 1, 0)
