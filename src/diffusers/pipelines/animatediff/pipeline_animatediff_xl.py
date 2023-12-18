@@ -23,6 +23,12 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import IPAdapterMixin, LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
+from ...models.attention_processor import (
+    AttnProcessor2_0,
+    LoRAAttnProcessor2_0,
+    LoRAXFormersAttnProcessor,
+    XFormersAttnProcessor,
+)
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unet_motion_model import MotionAdapter
 from ...schedulers import (
@@ -124,8 +130,8 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
             EulerAncestralDiscreteScheduler,
             DPMSolverMultistepScheduler,
         ],
-        feature_extractor: CLIPImageProcessor = None,
-        image_encoder: CLIPVisionModelWithProjection = None,
+        feature_extractor: Optional[CLIPImageProcessor] = None,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
     ):
         super().__init__()
         unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
@@ -627,6 +633,26 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
 
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         return add_time_ids
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
+    def upcast_vae(self):
+        dtype = self.vae.dtype
+        self.vae.to(dtype=torch.float32)
+        use_torch_2_0_or_xformers = isinstance(
+            self.vae.decoder.mid_block.attentions[0].processor,
+            (
+                AttnProcessor2_0,
+                XFormersAttnProcessor,
+                LoRAXFormersAttnProcessor,
+                LoRAAttnProcessor2_0,
+            ),
+        )
+        # if xformers or torch_2_0 is used attention block does not need
+        # to be in float32 which can save lots of memory
+        if use_torch_2_0_or_xformers:
+            self.vae.post_quant_conv.to(dtype)
+            self.vae.decoder.conv_in.to(dtype)
+            self.vae.decoder.mid_block.to(dtype)
 
     @torch.no_grad()
     def __call__(
