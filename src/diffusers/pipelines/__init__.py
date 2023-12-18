@@ -317,12 +317,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .dance_diffusion import DanceDiffusionPipeline
         from .ddim import DDIMPipeline
         from .ddpm import DDPMPipeline
-        from .deprecated import (
-            KarrasVePipeline,
-            PNDMPipeline,
-            RePaintPipeline,
-            ScoreSdeVePipeline,
-        )
+        from .deprecated import KarrasVePipeline, LDMPipeline, PNDMPipeline, RePaintPipeline, ScoreSdeVePipeline
         from .dit import DiTPipeline
         from .latent_diffusion import LDMSuperResolutionPipeline
         from .pipeline_utils import (
