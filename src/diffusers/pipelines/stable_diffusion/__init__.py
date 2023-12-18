@@ -134,7 +134,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 
     else:
         from .clip_image_project_model import CLIPImageProjection
-        from .pipeline_cycle_diffusion import CycleDiffusionPipeline
         from .pipeline_stable_diffusion import (
             StableDiffusionPipeline,
             StableDiffusionPipelineOutput,
@@ -149,9 +148,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
         from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
-        from .pipeline_stable_diffusion_inpaint_legacy import (
-            StableDiffusionInpaintPipelineLegacy,
-        )
         from .pipeline_stable_diffusion_instruct_pix2pix import (
             StableDiffusionInstructPix2PixPipeline,
         )
@@ -159,13 +155,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionLatentUpscalePipeline,
         )
         from .pipeline_stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
-        from .pipeline_stable_diffusion_model_editing import (
-            StableDiffusionModelEditingPipeline,
-        )
         from .pipeline_stable_diffusion_panorama import StableDiffusionPanoramaPipeline
-        from .pipeline_stable_diffusion_paradigms import (
-            StableDiffusionParadigmsPipeline,
-        )
         from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
         from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
         from .pipeline_stable_unclip import StableUnCLIPPipeline
@@ -199,9 +189,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionDepth2ImgPipeline,
         )
         from .pipeline_stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
-        from .pipeline_stable_diffusion_pix2pix_zero import (
-            StableDiffusionPix2PixZeroPipeline,
-        )
 
     try:
         if not (
@@ -233,9 +220,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .pipeline_onnx_stable_diffusion_inpaint import (
             OnnxStableDiffusionInpaintPipeline,
-        )
-        from .pipeline_onnx_stable_diffusion_inpaint_legacy import (
-            OnnxStableDiffusionInpaintPipelineLegacy,
         )
         from .pipeline_onnx_stable_diffusion_upscale import (
             OnnxStableDiffusionUpscalePipeline,
