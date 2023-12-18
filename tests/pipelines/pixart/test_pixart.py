@@ -64,7 +64,9 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             norm_elementwise_affine=False,
             norm_eps=1e-6,
         )
+        torch.manual_seed(0)
         vae = AutoencoderKL()
+
         scheduler = DDIMScheduler()
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
 
