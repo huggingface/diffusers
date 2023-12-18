@@ -7,12 +7,10 @@ from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers import StableDiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.stable_diffusion.safety_checker import (
-    StableDiffusionSafetyChecker,
-)
+from diffusers.pipelines.stable_diffusion.safety_checker import \
+    StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import USE_PEFT_BACKEND
-
 
 try:
     from compel import Compel
@@ -121,9 +119,7 @@ class RegionalPromptingStableDiffusionPipeline(StableDiffusionPipeline):
         self.power = int(rp_args["power"]) if "power" in rp_args else 1
 
         prompts = prompt if isinstance(prompt, list) else [prompt]
-        n_prompts = (
-            negative_prompt if isinstance(prompt, str) else [negative_prompt]
-        )
+        n_prompts = negative_prompt if isinstance(prompt, str) else [negative_prompt]
         self.batch = batch = num_images_per_prompt * len(prompts)
         all_prompts_cn, all_prompts_p = promptsmaker(prompts, num_images_per_prompt)
         all_n_prompts_cn, _ = promptsmaker(n_prompts, num_images_per_prompt)
