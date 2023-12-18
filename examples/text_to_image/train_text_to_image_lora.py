@@ -495,9 +495,10 @@ def main():
 
     # Add adapter and make sure the trainable params are in float32.
     unet.add_adapter(unet_lora_config)
-    for param in unet.parameters():
-        if param.requires_grad:
-            param.data = param.to(torch.float32)
+    if args.mixed_precision == "fp16":
+        for param in unet.parameters():
+            if param.requires_grad:
+                param.data = param.to(torch.float32)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():

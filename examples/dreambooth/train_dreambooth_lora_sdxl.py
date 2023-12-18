@@ -1025,10 +1025,14 @@ def main(args):
         text_encoder_two.add_adapter(text_lora_config)
 
     # Make sure the trainable params are in float32.
-    for model in [unet, text_encoder_one, text_encoder_two]:
-        for param in model.parameters():
-            if param.requires_grad:
-                param.data = param.to(torch.float32)
+    if args.mixed_precision == "fp16":
+        models = [unet]
+        if args.train_text_encoder:
+            models.extend([text_encoder_one, text_encoder_two])
+        for model in models:
+            for param in model.parameters():
+                if param.requires_grad:
+                    param.data = param.to(torch.float32)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
