@@ -99,7 +99,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         # time
         if time_embedding_type == "fourier":
             self.time_proj = GaussianFourierProjection(
-                embedding_size=8, set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
+                embedding_size=block_out_channels[0], set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
             )
             timestep_input_dim = 2 * block_out_channels[0]
         elif time_embedding_type == "positional":
@@ -107,6 +107,8 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 block_out_channels[0], flip_sin_to_cos=flip_sin_to_cos, downscale_freq_shift=freq_shift
             )
             timestep_input_dim = block_out_channels[0]
+        else:
+            raise ValueError(f"Time embedding type {time_embedding_type} not supported.")
 
         if use_timestep_embedding:
             time_embed_dim = block_out_channels[0] * 4
@@ -116,6 +118,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 act_fn=act_fn,
                 out_dim=block_out_channels[0],
             )
+        temb_channel_dim = block_out_channels[0] if use_timestep_embedding else timestep_input_dim
 
         self.down_blocks = nn.ModuleList([])
         self.mid_block = None
@@ -138,7 +141,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 num_layers=layers_per_block,
                 in_channels=input_channel,
                 out_channels=output_channel,
-                temb_channels=block_out_channels[0],
+                temb_channels=temb_channel_dim,
                 add_downsample=not is_final_block or downsample_each_block,
             )
             self.down_blocks.append(down_block)
@@ -149,7 +152,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
             in_channels=block_out_channels[-1],
             mid_channels=block_out_channels[-1],
             out_channels=block_out_channels[-1],
-            embed_dim=block_out_channels[0],
+            embed_dim=temb_channel_dim,
             num_layers=layers_per_block,
             add_downsample=downsample_each_block,
         )
@@ -175,7 +178,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
                 num_layers=layers_per_block,
                 in_channels=prev_output_channel,
                 out_channels=output_channel,
-                temb_channels=block_out_channels[0],
+                temb_channels=temb_channel_dim,
                 add_upsample=not is_final_block,
             )
             self.up_blocks.append(up_block)
@@ -186,7 +189,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         self.out_block = get_out_block(
             out_block_type=out_block_type,
             num_groups_out=num_groups_out,
-            embed_dim=block_out_channels[0],
+            embed_dim=temb_channel_dim,
             out_channels=out_channels,
             act_fn=act_fn,
             fc_dim=block_out_channels[-1] // 4,
@@ -224,10 +227,10 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         timestep_embed = self.time_proj(timesteps)
         if self.config.use_timestep_embedding:
             timestep_embed = self.time_mlp(timestep_embed)
-        else:
-            timestep_embed = timestep_embed[..., None]
-            timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
-            timestep_embed = timestep_embed.broadcast_to((sample.shape[:1] + timestep_embed.shape[1:]))
+        
+        timestep_embed = timestep_embed[..., None]
+        timestep_embed = timestep_embed.repeat([1, 1, sample.shape[2]]).to(sample.dtype)
+        timestep_embed = timestep_embed.broadcast_to((sample.shape[:1] + timestep_embed.shape[1:]))
 
         # 2. down
         down_block_res_samples = ()

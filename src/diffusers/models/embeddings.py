@@ -207,8 +207,10 @@ class TimestepEmbedding(nn.Module):
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
         else:
             self.cond_proj = None
-
-        self.act = get_activation(act_fn)
+        if act_fn is None:
+            self.act = None
+        else:
+            self.act = get_activation(act_fn)
 
         if out_dim is not None:
             time_embed_dim_out = out_dim
