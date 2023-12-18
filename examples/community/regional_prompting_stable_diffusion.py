@@ -11,6 +11,7 @@ from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionS
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import USE_PEFT_BACKEND
 
+
 try:
     from compel import Compel
 except ImportError:
