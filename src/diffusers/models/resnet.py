@@ -1334,7 +1334,7 @@ class AlphaBlender(nn.Module):
 
             alpha = torch.where(
                 image_only_indicator.bool(),
-                torch.ones(1, 1, device=image_only_indicator.device),
+                torch.ones(1, 1, device=image_only_indicator.device, dtype=self.mix_factor.dtype),
                 torch.sigmoid(self.mix_factor)[..., None],
             )
 
