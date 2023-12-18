@@ -157,6 +157,7 @@ else:
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
             "VQDiffusionScheduler",
+            "SASolverScheduler",
         ]
     )
     _import_structure["training_utils"] = ["EMAModel"]
@@ -532,6 +533,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UnCLIPScheduler,
             UniPCMultistepScheduler,
             VQDiffusionScheduler,
+            SASolverScheduler,
         )
         from .training_utils import EMAModel
 
