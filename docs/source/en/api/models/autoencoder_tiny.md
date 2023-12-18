@@ -54,4 +54,4 @@ image
 
 ## AutoencoderTinyOutput
 
-[[autodoc]] models.autoencoder_tiny.AutoencoderTinyOutput
+[[autodoc]] models.autoencoders.autoencoder_tiny.AutoencoderTinyOutput
