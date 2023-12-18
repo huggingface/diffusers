@@ -298,8 +298,6 @@
       title: Paint by Example
     - local: api/pipelines/pixart
       title: PixArt-α
-    - local: api/pipelines/score_sde_ve
-      title: Score SDE VE
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
