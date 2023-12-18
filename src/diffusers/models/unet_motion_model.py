@@ -58,6 +58,10 @@ class MotionModules(nn.Module):
         activation_fn: str = "geglu",
         norm_num_groups: int = 32,
         max_seq_length: int = 32,
+        positional_embeddings: Optional[str] = None,
+        attention_type: str = "default",
+        temporal_position_encoding: Optional[bool] = False,
+        temporal_position_encoding_max_len: int = 32,
     ):
         super().__init__()
         self.motion_modules = nn.ModuleList([])
@@ -72,8 +76,11 @@ class MotionModules(nn.Module):
                     attention_bias=attention_bias,
                     num_attention_heads=num_attention_heads,
                     attention_head_dim=in_channels // num_attention_heads,
-                    positional_embeddings="sinusoidal",
+                    positional_embeddings=positional_embeddings,
                     num_positional_embeddings=max_seq_length,
+                    attention_type=attention_type,
+                    temporal_position_encoding=temporal_position_encoding,
+                    temporal_position_encoding_max_len=temporal_position_encoding_max_len,
                 )
             )
 
@@ -125,6 +132,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                     num_attention_heads=motion_num_attention_heads,
                     max_seq_length=motion_max_seq_length,
                     layers_per_block=motion_layers_per_block,
+                    positional_embeddings="sinusoidal",
                 )
             )
 
@@ -138,6 +146,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                 num_attention_heads=motion_num_attention_heads,
                 layers_per_block=motion_mid_block_layers_per_block,
                 max_seq_length=motion_max_seq_length,
+                positional_embeddings="sinusoidal",
             )
         else:
             self.mid_block = None
@@ -156,6 +165,109 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                     num_attention_heads=motion_num_attention_heads,
                     max_seq_length=motion_max_seq_length,
                     layers_per_block=motion_layers_per_block + 1,
+                    positional_embeddings="sinusoidal",
+                )
+            )
+
+        self.down_blocks = nn.ModuleList(down_blocks)
+        self.up_blocks = nn.ModuleList(up_blocks)
+
+    def forward(self, sample):
+        pass
+
+
+class MotionAdapterXL(ModelMixin, ConfigMixin):
+    @register_to_config
+    def __init__(
+        self,
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        motion_layers_per_block: int = 2,
+        motion_mid_block_layers_per_block: int = 1,
+        motion_num_attention_heads: int = 8,
+        motion_norm_num_groups: int = 32,
+        motion_max_seq_length: int = 32,
+        use_motion_mid_block: bool = True,
+        temporal_position_encoding: Optional[bool] = False,
+        temporal_position_encoding_max_len: int = 32,
+    ):
+        """Container to store AnimateDiff Motion Modules
+
+        Args:
+            block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
+                The tuple of output channels for each UNet block.
+            motion_layers_per_block (`int`, *optional*, defaults to 2):
+                The number of motion layers per UNet block.
+            motion_mid_block_layers_per_block (`int`, *optional*, defaults to 1):
+                The number of motion layers in the middle UNet block.
+            motion_num_attention_heads (`int`, *optional*, defaults to 8):
+                The number of heads to use in each attention layer of the motion module.
+            motion_norm_num_groups (`int`, *optional*, defaults to 32):
+                The number of groups to use in each group normalization layer of the motion module.
+            motion_max_seq_length (`int`, *optional*, defaults to 32):
+                The maximum sequence length to use in the motion module.
+            use_motion_mid_block (`bool`, *optional*, defaults to True):
+                Whether to use a motion module in the middle of the UNet.
+        """
+
+        super().__init__()
+        down_blocks = []
+        up_blocks = []
+
+        for i, channel in enumerate(block_out_channels):
+            output_channel = block_out_channels[i]
+            down_blocks.append(
+                MotionModules(
+                    in_channels=output_channel,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=None,
+                    activation_fn="geglu",
+                    attention_bias=False,
+                    num_attention_heads=motion_num_attention_heads,
+                    max_seq_length=motion_max_seq_length,
+                    layers_per_block=motion_layers_per_block,
+                    positional_embeddings=None,
+                    attention_type="temporal",
+                    temporal_position_encoding=temporal_position_encoding,
+                    temporal_position_encoding_max_len=temporal_position_encoding_max_len,
+                )
+            )
+
+        if use_motion_mid_block:
+            self.mid_block = MotionModules(
+                in_channels=block_out_channels[-1],
+                norm_num_groups=motion_norm_num_groups,
+                cross_attention_dim=None,
+                activation_fn="geglu",
+                attention_bias=False,
+                num_attention_heads=motion_num_attention_heads,
+                layers_per_block=motion_mid_block_layers_per_block,
+                max_seq_length=motion_max_seq_length,
+                positional_embeddings=None,
+                attention_type="temporal",
+                temporal_position_encoding=temporal_position_encoding,
+                temporal_position_encoding_max_len=temporal_position_encoding_max_len,
+            )
+        else:
+            self.mid_block = None
+
+        reversed_block_out_channels = list(reversed(block_out_channels))
+        output_channel = reversed_block_out_channels[0]
+        for i, channel in enumerate(reversed_block_out_channels):
+            output_channel = reversed_block_out_channels[i]
+            up_blocks.append(
+                MotionModules(
+                    in_channels=output_channel,
+                    norm_num_groups=motion_norm_num_groups,
+                    cross_attention_dim=None,
+                    activation_fn="geglu",
+                    attention_bias=False,
+                    num_attention_heads=motion_num_attention_heads,
+                    max_seq_length=motion_max_seq_length,
+                    layers_per_block=motion_layers_per_block + 1,
+                    positional_embeddings=None,
+                    attention_type="temporal",
+                    temporal_position_encoding=temporal_position_encoding,
+                    temporal_position_encoding_max_len=temporal_position_encoding_max_len,
                 )
             )
 

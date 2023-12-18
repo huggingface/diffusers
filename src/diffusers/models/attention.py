@@ -92,6 +92,20 @@ class GatedSelfAttentionDense(nn.Module):
         return x
 
 
+class TemporalSelfAttention(Attention):
+    def __init__(
+        self, temporal_position_encoding: bool = False, temporal_position_encoding_max_len: int = 32, *args, **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.pos_embed = (
+            SinusoidalPositionalEmbedding(
+                embed_dim=kwargs["query_dim"], max_seq_length=temporal_position_encoding_max_len
+            )
+            if temporal_position_encoding
+            else None
+        )
+
+
 @maybe_allow_in_graph
 class BasicTransformerBlock(nn.Module):
     r"""
@@ -148,6 +162,8 @@ class BasicTransformerBlock(nn.Module):
         attention_type: str = "default",
         positional_embeddings: Optional[str] = None,
         num_positional_embeddings: Optional[int] = None,
+        temporal_position_encoding: Optional[bool] = False,
+        temporal_position_encoding_max_len: int = 32,
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
@@ -182,15 +198,28 @@ class BasicTransformerBlock(nn.Module):
         else:
             self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
 
-        self.attn1 = Attention(
-            query_dim=dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            dropout=dropout,
-            bias=attention_bias,
-            cross_attention_dim=cross_attention_dim if only_cross_attention else None,
-            upcast_attention=upcast_attention,
-        )
+        if attention_type == "temporal":
+            self.attn1 = TemporalSelfAttention(
+                temporal_position_encoding=temporal_position_encoding,
+                temporal_position_encoding_max_len=temporal_position_encoding_max_len,
+                query_dim=dim,
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                dropout=dropout,
+                bias=attention_bias,
+                cross_attention_dim=cross_attention_dim if only_cross_attention else None,
+                upcast_attention=upcast_attention,
+            )
+        else:
+            self.attn1 = Attention(
+                query_dim=dim,
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                dropout=dropout,
+                bias=attention_bias,
+                cross_attention_dim=cross_attention_dim if only_cross_attention else None,
+                upcast_attention=upcast_attention,
+            )
 
         # 2. Cross-Attn
         if cross_attention_dim is not None or double_self_attention:
@@ -202,15 +231,28 @@ class BasicTransformerBlock(nn.Module):
                 if self.use_ada_layer_norm
                 else nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
             )
-            self.attn2 = Attention(
-                query_dim=dim,
-                cross_attention_dim=cross_attention_dim if not double_self_attention else None,
-                heads=num_attention_heads,
-                dim_head=attention_head_dim,
-                dropout=dropout,
-                bias=attention_bias,
-                upcast_attention=upcast_attention,
-            )  # is self-attn if encoder_hidden_states is none
+            if attention_type == "temporal":
+                self.attn2 = TemporalSelfAttention(
+                    temporal_position_encoding=temporal_position_encoding,
+                    temporal_position_encoding_max_len=temporal_position_encoding_max_len,
+                    query_dim=dim,
+                    heads=num_attention_heads,
+                    dim_head=attention_head_dim,
+                    dropout=dropout,
+                    bias=attention_bias,
+                    cross_attention_dim=cross_attention_dim if only_cross_attention else None,
+                    upcast_attention=upcast_attention,
+                )
+            else:
+                self.attn2 = Attention(
+                    query_dim=dim,
+                    cross_attention_dim=cross_attention_dim if not double_self_attention else None,
+                    heads=num_attention_heads,
+                    dim_head=attention_head_dim,
+                    dropout=dropout,
+                    bias=attention_bias,
+                    upcast_attention=upcast_attention,
+                )  # is self-attn if encoder_hidden_states is none
         else:
             self.norm2 = None
             self.attn2 = None
