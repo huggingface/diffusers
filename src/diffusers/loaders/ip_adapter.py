@@ -141,7 +141,7 @@ class IPAdapterMixin:
                     subfolder=os.path.join(subfolder, "image_encoder"),
                 ).to(self.device, dtype=self.dtype)
                 self.image_encoder = image_encoder
-                self.register_to_config(image_encoder=CLIPVisionModelWithProjection)
+                self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
             else:
                 raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
 
