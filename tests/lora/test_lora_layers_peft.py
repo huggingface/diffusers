@@ -109,7 +109,8 @@ class PeftLoraLoaderMixinTests:
 
     def get_dummy_components(self, scheduler_cls=None, lora_alpha=None):
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
-        lora_alpha = 4 if lora_alpha is None else lora_alpha
+        rank = 4
+        lora_alpha = rank if lora_alpha is None else lora_alpha
 
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**self.unet_kwargs)
@@ -124,14 +125,14 @@ class PeftLoraLoaderMixinTests:
             tokenizer_2 = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
         text_lora_config = LoraConfig(
-            r=4,
+            r=rank,
             lora_alpha=lora_alpha,
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
             init_lora_weights=False,
         )
 
         unet_lora_config = LoraConfig(
-            r=4, lora_alpha=lora_alpha, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+            r=rank, lora_alpha=lora_alpha, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
         )
 
         unet_lora_attn_procs, unet_lora_layers = create_unet_lora_layers(unet)
