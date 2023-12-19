@@ -23,18 +23,21 @@ import torch.nn.functional as F
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
 from .attention_processor import SpatialNorm
-from .lora import LoRACompatibleConv, LoRACompatibleLinear
-from .normalization import AdaGroupNorm
-from .samplers import (  # noqa
+from .downsamplers import (  # noqa
     Downsample1D,
     Downsample2D,
     FirDownsample2D,
+    KDownsample2D,
+    downsample_2d,
+)
+from .lora import LoRACompatibleConv, LoRACompatibleLinear
+from .normalization import AdaGroupNorm
+from .upsamplers import (  # noqa
     FirUpsample2D,
     KDownsample2D,
     KUpsample2D,
     Upsample1D,
     Upsample2D,
-    downsample_2d,
     upfirdn2d_native,
     upsample_2d,
 )
