@@ -185,4 +185,4 @@ class IPAdapterMixin:
         self.config.encoder_hid_dim_type = None
 
         # restore original Unet attention processors layers
-        self.unet._restore_attn_processors()
+        self.unet.set_default_attn_processor()
