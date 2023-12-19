@@ -15,11 +15,10 @@ import os
 from typing import Dict, Union
 
 import torch
+from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
 from ..utils import (
-    DIFFUSERS_CACHE,
-    HF_HUB_OFFLINE,
     _get_model_file,
     is_transformers_available,
     logging,
@@ -43,6 +42,7 @@ logger = logging.get_logger(__name__)
 class IPAdapterMixin:
     """Mixin for handling IP Adapters."""
 
+    @validate_hf_hub_args
     def load_ip_adapter(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -77,7 +77,7 @@ class IPAdapterMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -88,12 +88,12 @@ class IPAdapterMixin:
         """
 
         # Load the main state dict first.
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
 
         user_agent = {
@@ -110,7 +110,7 @@ class IPAdapterMixin:
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 subfolder=subfolder,
                 user_agent=user_agent,

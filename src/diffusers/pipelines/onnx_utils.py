@@ -22,6 +22,7 @@ from typing import Optional, Union
 
 import numpy as np
 from huggingface_hub import hf_hub_download
+from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME, is_onnx_available, logging
 
@@ -130,10 +131,11 @@ class OnnxRuntimeModel:
         self._save_pretrained(save_directory, **kwargs)
 
     @classmethod
+    @validate_hf_hub_args
     def _from_pretrained(
         cls,
         model_id: Union[str, Path],
-        use_auth_token: Optional[Union[bool, str, None]] = None,
+        token: Optional[Union[bool, str, None]] = None,
         revision: Optional[Union[str, None]] = None,
         force_download: bool = False,
         cache_dir: Optional[str] = None,
@@ -148,7 +150,7 @@ class OnnxRuntimeModel:
         Arguments:
             model_id (`str` or `Path`):
                 Directory from which to load
-            use_auth_token (`str` or `bool`):
+            token (`str` or `bool`):
                 Is needed to load models from a private or gated repository
             revision (`str`):
                 Revision is the specific model version to use. It can be a branch name, a tag name, or a commit id
@@ -179,7 +181,7 @@ class OnnxRuntimeModel:
             model_cache_path = hf_hub_download(
                 repo_id=model_id,
                 filename=model_file_name,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 cache_dir=cache_dir,
                 force_download=force_download,
@@ -190,11 +192,12 @@ class OnnxRuntimeModel:
         return cls(model=model, **kwargs)
 
     @classmethod
+    @validate_hf_hub_args
     def from_pretrained(
         cls,
         model_id: Union[str, Path],
         force_download: bool = True,
-        use_auth_token: Optional[str] = None,
+        token: Optional[str] = None,
         cache_dir: Optional[str] = None,
         **model_kwargs,
     ):
@@ -207,6 +210,6 @@ class OnnxRuntimeModel:
             revision=revision,
             cache_dir=cache_dir,
             force_download=force_download,
-            use_auth_token=use_auth_token,
+            token=token,
             **model_kwargs,
         )

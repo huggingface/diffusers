@@ -118,7 +118,7 @@ _deps = [
     "pytest-timeout",
     "pytest-xdist",
     "python>=3.8.0",
-    "ruff>=0.1.5,<=0.2",
+    "ruff==0.1.5",
     "safetensors>=0.3.1",
     "sentencepiece>=0.1.91,!=0.1.92",
     "GitPython<3.1.19",
@@ -204,7 +204,7 @@ class DepsTableUpdateCommand(Command):
 extras = {}
 extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
 extras["docs"] = deps_list("hf-doc-builder")
-extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2")
+extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft")
 extras["test"] = deps_list(
     "compel",
     "GitPython",

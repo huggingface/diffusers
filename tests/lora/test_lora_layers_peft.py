@@ -46,6 +46,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     nightly,
+    numpy_cosine_similarity_distance,
     require_peft_backend,
     require_peft_version_greater,
     require_torch_gpu,
@@ -1776,7 +1777,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdxl_1_0_lora(self):
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.enable_model_cpu_offload()
@@ -1799,7 +1800,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdxl"
 
@@ -1816,7 +1817,8 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         image_np = pipe.image_processor.pil_to_numpy(image)
         expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
 
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+        max_diff = numpy_cosine_similarity_distance(image_np.flatten(), expected_image_np.flatten())
+        assert max_diff < 1e-4
 
         pipe.unload_lora_weights()
 
@@ -1827,7 +1829,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.to("cuda")
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
         pipe.load_lora_weights(lora_model_id)
@@ -1843,7 +1845,8 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         image_np = pipe.image_processor.pil_to_numpy(image)
         expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
 
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+        max_diff = numpy_cosine_similarity_distance(image_np.flatten(), expected_image_np.flatten())
+        assert max_diff < 1e-4
 
         pipe.unload_lora_weights()
 
@@ -1858,7 +1861,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.png"
         )
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
         pipe.load_lora_weights(lora_model_id)
@@ -1879,7 +1882,8 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         image_np = pipe.image_processor.pil_to_numpy(image)
         expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
 
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+        max_diff = numpy_cosine_similarity_distance(image_np.flatten(), expected_image_np.flatten())
+        assert max_diff < 1e-4
 
         pipe.unload_lora_weights()
 
@@ -1912,7 +1916,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion(self):
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
@@ -1923,16 +1927,16 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.enable_model_cpu_offload()
 
         images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=3
         ).images
-        images_with_fusion = images[0, -3:, -3:, -1].flatten()
+        images_with_fusion = images.flatten()
 
         pipe.unfuse_lora()
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
         images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=3
         ).images
-        images_without_fusion = images[0, -3:, -3:, -1].flatten()
+        images_without_fusion = images.flatten()
 
         self.assertTrue(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
         release_memory(pipe)
@@ -1976,10 +1980,8 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
 
-        pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16
-        )
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.bfloat16)
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
         start_time = time.time()
@@ -1992,19 +1994,17 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         del pipe
 
-        pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16
-        )
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.bfloat16)
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.float16)
         pipe.fuse_lora()
+
         # We need to unload the lora weights since in the previous API `fuse_lora` led to lora weights being
         # silently deleted - otherwise this will CPU OOM
         pipe.unload_lora_weights()
-
         pipe.enable_model_cpu_offload()
 
-        start_time = time.time()
         generator = torch.Generator().manual_seed(0)
+        start_time = time.time()
         for _ in range(3):
             pipe(
                 "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
