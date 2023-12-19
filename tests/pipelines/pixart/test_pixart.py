@@ -186,7 +186,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-        image_slice_str = ", ".join([str(round(x ,4)) for x in image_slice.tolist()])
+        image_slice_str = ", ".join([str(round(x ,4)) for x in image_slice.flatten().tolist()])
         print(image_slice_str)
         
         self.assertEqual(image.shape, (1, 8, 8, 3))
@@ -205,7 +205,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs, height=32, width=48).images
         image_slice = image[0, -3:, -3:, -1]
-        image_slice_str = ", ".join([str(round(x ,4)) for x in image_slice.tolist()])
+        image_slice_str = ", ".join([str(round(x ,4)) for x in image_slice.flatten().tolist()])
         print(image_slice_str)
         self.assertEqual(image.shape, (1, 32, 48, 3))
 
