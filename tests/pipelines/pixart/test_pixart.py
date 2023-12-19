@@ -186,7 +186,9 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
-
+        image_slice_str = ", ".join([str(round(x ,4)) for x in image_slice.tolist()])
+        print(image_slice_str)
+        
         self.assertEqual(image.shape, (1, 8, 8, 3))
         expected_slice = np.array([0.5303, 0.2658, 0.7979, 0.1182, 0.3304, 0.4608, 0.5195, 0.4261, 0.4675])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
@@ -203,6 +205,8 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         image = pipe(**inputs, height=32, width=48).images
         image_slice = image[0, -3:, -3:, -1]
+        image_slice_str = ", ".join([str(round(x ,4)) for x in image_slice.tolist()])
+        print(image_slice_str)
         self.assertEqual(image.shape, (1, 32, 48, 3))
 
         expected_slice = np.array([0.3859, 0.2987, 0.2333, 0.5243, 0.6721, 0.4436, 0.5292, 0.5373, 0.4416])
