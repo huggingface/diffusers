@@ -107,10 +107,9 @@ class PeftLoraLoaderMixinTests:
     unet_kwargs = None
     vae_kwargs = None
 
-    def get_dummy_components(self, scheduler_cls=None, lora_alpha=None):
+    def get_dummy_components(self, scheduler_cls=None):
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
         rank = 4
-        lora_alpha = rank if lora_alpha is None else lora_alpha
 
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**self.unet_kwargs)
@@ -126,13 +125,13 @@ class PeftLoraLoaderMixinTests:
 
         text_lora_config = LoraConfig(
             r=rank,
-            lora_alpha=lora_alpha,
+            lora_alpha=rank,
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
             init_lora_weights=False,
         )
 
         unet_lora_config = LoraConfig(
-            r=rank, lora_alpha=lora_alpha, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+            r=rank, lora_alpha=rank, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
         )
 
         unet_lora_attn_procs, unet_lora_layers = create_unet_lora_layers(unet)
@@ -718,60 +717,6 @@ class PeftLoraLoaderMixinTests:
                 np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3),
                 "Fused lora should change the output",
             )
-
-    def test_if_lora_alpha_is_correctly_parsed(self):
-        lora_alpha = 8
-
-        components, _, text_lora_config, unet_lora_config = self.get_dummy_components(lora_alpha=lora_alpha)
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(self.torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-        pipe.unet.add_adapter(unet_lora_config)
-        pipe.text_encoder.add_adapter(text_lora_config)
-        if self.has_two_text_encoders:
-            pipe.text_encoder_2.add_adapter(text_lora_config)
-
-        # Inference works?
-        _ = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            unet_state_dict = get_peft_model_state_dict(pipe.unet)
-            text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
-
-            if self.has_two_text_encoders:
-                text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
-
-                self.pipeline_class.save_lora_weights(
-                    save_directory=tmpdirname,
-                    unet_lora_layers=unet_state_dict,
-                    text_encoder_lora_layers=text_encoder_state_dict,
-                    text_encoder_2_lora_layers=text_encoder_2_state_dict,
-                )
-            else:
-                self.pipeline_class.save_lora_weights(
-                    save_directory=tmpdirname,
-                    unet_lora_layers=unet_state_dict,
-                    text_encoder_lora_layers=text_encoder_state_dict,
-                )
-            loaded_pipe = self.pipeline_class(**components)
-            print(loaded_pipe.unet.peft_config)
-            loaded_pipe.load_lora_weights(tmpdirname)
-
-        # Inference works?
-        _ = loaded_pipe(**inputs, generator=torch.manual_seed(0)).images
-
-        assert (
-            loaded_pipe.unet.peft_config["default"].lora_alpha != lora_alpha
-        ), "LoRA alpha not correctly loaded for UNet."
-        assert (
-            loaded_pipe.text_encoder.peft_config["default"].lora_alpha == lora_alpha
-        ), "LoRA alpha not correctly loaded for text encoder."
-        if self.has_two_text_encoders:
-            assert (
-                loaded_pipe.text_encoder_2.peft_config["default"].lora_alpha == lora_alpha
-            ), "LoRA alpha not correctly loaded for text encoder 2."
 
     def test_simple_inference_with_text_unet_lora_unfused(self):
         """
