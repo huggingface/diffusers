@@ -801,6 +801,9 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
+        original_size = original_size or (height, width)
+        target_size = target_size or (height, width)
+
         num_videos_per_prompt = 1
 
         # 1. Check inputs. Raise error if not correct
@@ -844,13 +847,17 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
         ) = self.encode_prompt(
-            prompt,
-            device,
-            num_videos_per_prompt,
-            do_classifier_free_guidance,
-            negative_prompt,
+            prompt=prompt,
+            prompt_2=prompt_2,
+            device=device,
+            num_videos_per_prompt=num_videos_per_prompt,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+            negative_prompt=negative_prompt,
+            negative_prompt_2=negative_prompt_2,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
             clip_skip=clip_skip,
         )
@@ -893,19 +900,19 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
         # 8. Prepare added time ids & embeddings
-        add_text_embeds = pooled_prompt_embeds
-        add_time_ids = self._get_add_time_ids(
-            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
-        )
+        # add_text_embeds = pooled_prompt_embeds
+        # add_time_ids = self._get_add_time_ids(
+        #     original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+        # )
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
+            # add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            # add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
-        add_text_embeds = add_text_embeds.to(device)
-        add_time_ids = add_time_ids.to(device)
+        # add_text_embeds = add_text_embeds.to(device)
+        # add_time_ids = add_time_ids.to(device)
 
         # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -928,7 +935,7 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                added_cond_kwargs.update({"text_embeds": add_text_embeds, "time_ids": add_time_ids})
+                # added_cond_kwargs.update({"text_embeds": add_text_embeds, "time_ids": add_time_ids})
                 ts = torch.tensor([t], dtype=latent_model_input.dtype, device=latent_model_input.device)
                 if do_classifier_free_guidance:
                     ts = ts.repeat(2)
