@@ -737,31 +737,22 @@ class PeftLoraLoaderMixinTests:
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             unet_state_dict = get_peft_model_state_dict(pipe.unet)
-            unet_lora_config = pipe.unet.peft_config["default"]
-
             text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
-            text_encoder_lora_config = pipe.text_encoder.peft_config["default"]
 
             if self.has_two_text_encoders:
                 text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
-                text_encoder_2_lora_config = pipe.text_encoder_2.peft_config["default"]
 
                 self.pipeline_class.save_lora_weights(
                     save_directory=tmpdirname,
                     unet_lora_layers=unet_state_dict,
                     text_encoder_lora_layers=text_encoder_state_dict,
                     text_encoder_2_lora_layers=text_encoder_2_state_dict,
-                    unet_lora_config=unet_lora_config,
-                    text_encoder_lora_config=text_encoder_lora_config,
-                    text_encoder_2_lora_config=text_encoder_2_lora_config,
                 )
             else:
                 self.pipeline_class.save_lora_weights(
                     save_directory=tmpdirname,
                     unet_lora_layers=unet_state_dict,
                     text_encoder_lora_layers=text_encoder_state_dict,
-                    unet_lora_config=unet_lora_config,
-                    text_encoder_lora_config=text_encoder_lora_config,
                 )
             loaded_pipe = self.pipeline_class(**components)
             loaded_pipe.load_lora_weights(tmpdirname)
