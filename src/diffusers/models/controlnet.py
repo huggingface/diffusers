@@ -344,7 +344,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             )
         elif controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
             self.controlnet_cond_embedding = UniControlTaskMOEEmbedding(time_embed_dim=time_embed_dim, model_channels=block_out_channels[0])
-            self.task_id_hypernet = UniControlTaskIDHypernet(time_embed_dim=time_embed_dim)
+            self.task_id_hypernet = UniControlTaskIDHypernet(time_embed_dim=time_embed_dim, cross_attention_dim=cross_attention_dim)
         else:
             raise ValueError(f"Unsupported value for controlnet_conditioning_embedding: {controlnet_conditioning_embedding}")
         self.down_blocks = nn.ModuleList([])
