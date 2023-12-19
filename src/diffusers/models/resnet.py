@@ -34,7 +34,6 @@ from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .normalization import AdaGroupNorm
 from .upsamplers import (  # noqa
     FirUpsample2D,
-    KDownsample2D,
     KUpsample2D,
     Upsample1D,
     Upsample2D,
