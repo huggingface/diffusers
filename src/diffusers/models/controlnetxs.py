@@ -26,7 +26,7 @@ from ..utils import BaseOutput, logging
 from .attention_processor import (
     AttentionProcessor,
 )
-from .autoencoder_kl import AutoencoderKL
+from .autoencoders import AutoencoderKL
 from .lora import LoRACompatibleConv
 from .modeling_utils import ModelMixin
 from .unet_2d_blocks import (
