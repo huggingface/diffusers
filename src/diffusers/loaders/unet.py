@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from ..models.embeddings import ImageProjection, MLPProjection, Resampler
+from ..models.embeddings import ImageProjection, MLPProjection, IPAdapterPlusImageProjection
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -757,7 +757,7 @@ class UNet2DConditionLoadersMixin:
             num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
 
         # Set encoder_hid_proj after loading ip_adapter weights,
-        # because `Resampler` also has `attn_processors`.
+        # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None
 
         # set ip-adapter cross-attention processors & load state_dict
