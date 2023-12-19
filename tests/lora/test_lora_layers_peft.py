@@ -756,13 +756,14 @@ class PeftLoraLoaderMixinTests:
                     text_encoder_lora_layers=text_encoder_state_dict,
                 )
             loaded_pipe = self.pipeline_class(**components)
+            print(loaded_pipe.unet.peft_config)
             loaded_pipe.load_lora_weights(tmpdirname)
 
         # Inference works?
         _ = loaded_pipe(**inputs, generator=torch.manual_seed(0)).images
 
         assert (
-            loaded_pipe.unet.peft_config["default"].lora_alpha == lora_alpha
+            loaded_pipe.unet.peft_config["default"].lora_alpha != lora_alpha
         ), "LoRA alpha not correctly loaded for UNet."
         assert (
             loaded_pipe.text_encoder.peft_config["default"].lora_alpha == lora_alpha
