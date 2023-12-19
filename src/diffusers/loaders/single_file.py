@@ -28,6 +28,7 @@ from ..utils import (
     logging,
 )
 from ..utils.import_utils import BACKENDS_MAPPING
+from .single_file_utils import download_from_original_stable_diffusion_ckpt
 
 
 if is_transformers_available():
@@ -149,8 +150,6 @@ class FromSingleFileMixin:
         >>> pipeline.to("cuda")
         ```
         """
-        # import here to avoid circular dependency
-        from ..pipelines.stable_diffusion.convert_from_ckpt import download_from_original_stable_diffusion_ckpt
 
         original_config_file = kwargs.pop("original_config_file", None)
         config_files = kwargs.pop("config_files", None)
