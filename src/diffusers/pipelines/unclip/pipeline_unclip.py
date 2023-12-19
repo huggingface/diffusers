@@ -477,8 +477,9 @@ class UnCLIPPipeline(DiffusionPipeline):
         image = super_res_latents
         # done super res
 
-        # post processing
+        self.maybe_free_model_hooks()
 
+        # post processing
         image = image * 0.5 + 0.5
         image = image.clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
