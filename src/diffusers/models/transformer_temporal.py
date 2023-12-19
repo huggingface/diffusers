@@ -85,9 +85,6 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
         double_self_attention: bool = True,
         positional_embeddings: Optional[str] = None,
         num_positional_embeddings: Optional[int] = None,
-        attention_type: str = "default",
-        temporal_position_encoding: Optional[bool] = False,
-        temporal_position_encoding_max_len: int = 32,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -114,9 +111,6 @@ class TransformerTemporalModel(ModelMixin, ConfigMixin):
                     norm_elementwise_affine=norm_elementwise_affine,
                     positional_embeddings=positional_embeddings,
                     num_positional_embeddings=num_positional_embeddings,
-                    attention_type=attention_type,
-                    temporal_position_encoding=temporal_position_encoding,
-                    temporal_position_encoding_max_len=temporal_position_encoding_max_len,
                 )
                 for d in range(num_layers)
             ]
