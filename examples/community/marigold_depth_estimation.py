@@ -155,9 +155,7 @@ class MarigoldPipeline(DiffusionPipeline):
         input_size = input_image.size
 
         if not match_input_res:
-            assert (
-                processing_res is not None
-            ), "Value error: `resize_output_back` is only valid with "
+            assert processing_res is not None, "Value error: `resize_output_back` is only valid with "
         assert processing_res >= 0
         assert denoising_steps >= 1
         assert ensemble_size >= 1
@@ -165,9 +163,7 @@ class MarigoldPipeline(DiffusionPipeline):
         # ----------------- Image Preprocess -----------------
         # Resize image
         if processing_res > 0:
-            input_image = self.resize_max_res(
-                input_image, max_edge_resolution=processing_res
-            )
+            input_image = self.resize_max_res(input_image, max_edge_resolution=processing_res)
         # Convert the image to RGB, to 1.remove the alpha channel 2.convert B&W to 3-channel
         input_image = input_image.convert("RGB")
         image = np.asarray(input_image)
@@ -192,16 +188,12 @@ class MarigoldPipeline(DiffusionPipeline):
                 dtype=self.dtype,
             )
 
-        single_rgb_loader = DataLoader(
-            single_rgb_dataset, batch_size=_bs, shuffle=False
-        )
+        single_rgb_loader = DataLoader(single_rgb_dataset, batch_size=_bs, shuffle=False)
 
         # Predict depth maps (batched)
         depth_pred_ls = []
         if show_progress_bar:
-            iterable = tqdm(
-                single_rgb_loader, desc=" " * 2 + "Inference batches", leave=False
-            )
+            iterable = tqdm(single_rgb_loader, desc=" " * 2 + "Inference batches", leave=False)
         else:
             iterable = single_rgb_loader
         for batch in iterable:
@@ -217,9 +209,7 @@ class MarigoldPipeline(DiffusionPipeline):
 
         # ----------------- Test-time ensembling -----------------
         if ensemble_size > 1:
-            depth_pred, pred_uncert = self.ensemble_depths(
-                depth_preds, **(ensemble_kwargs or {})
-            )
+            depth_pred, pred_uncert = self.ensemble_depths(depth_preds, **(ensemble_kwargs or {}))
         else:
             depth_pred = depth_preds
             pred_uncert = None
@@ -271,9 +261,7 @@ class MarigoldPipeline(DiffusionPipeline):
         self.empty_text_embed = self.text_encoder(text_input_ids)[0].to(self.dtype)
 
     @torch.no_grad()
-    def single_infer(
-        self, rgb_in: torch.Tensor, num_inference_steps: int, show_pbar: bool
-    ) -> torch.Tensor:
+    def single_infer(self, rgb_in: torch.Tensor, num_inference_steps: int, show_pbar: bool) -> torch.Tensor:
         """
         Perform an individual depth prediction without ensembling.
 
@@ -297,16 +285,12 @@ class MarigoldPipeline(DiffusionPipeline):
         rgb_latent = self._encode_rgb(rgb_in)
 
         # Initial depth map (noise)
-        depth_latent = torch.randn(
-            rgb_latent.shape, device=device, dtype=self.dtype
-        )  # [B, 4, h, w]
+        depth_latent = torch.randn(rgb_latent.shape, device=device, dtype=self.dtype)  # [B, 4, h, w]
 
         # Batched empty text embedding
         if self.empty_text_embed is None:
             self._encode_empty_text()
-        batch_empty_text_embed = self.empty_text_embed.repeat(
-            (rgb_latent.shape[0], 1, 1)
-        )  # [B, 2, 1024]
+        batch_empty_text_embed = self.empty_text_embed.repeat((rgb_latent.shape[0], 1, 1))  # [B, 2, 1024]
 
         # Denoising loop
         if show_pbar:
@@ -320,14 +304,10 @@ class MarigoldPipeline(DiffusionPipeline):
             iterable = enumerate(timesteps)
 
         for i, t in iterable:
-            unet_input = torch.cat(
-                [rgb_latent, depth_latent], dim=1
-            )  # this order is important
+            unet_input = torch.cat([rgb_latent, depth_latent], dim=1)  # this order is important
 
             # predict the noise residual
-            noise_pred = self.unet(
-                unet_input, t, encoder_hidden_states=batch_empty_text_embed
-            ).sample  # [B, 4, h, w]
+            noise_pred = self.unet(unet_input, t, encoder_hidden_states=batch_empty_text_embed).sample  # [B, 4, h, w]
 
             # compute the previous noisy sample x_t -> x_t-1
             depth_latent = self.scheduler.step(noise_pred, t, depth_latent).prev_sample
@@ -395,9 +375,7 @@ class MarigoldPipeline(DiffusionPipeline):
             `Image.Image`: Resized image.
         """
         original_width, original_height = img.size
-        downscale_factor = min(
-            max_edge_resolution / original_width, max_edge_resolution / original_height
-        )
+        downscale_factor = min(max_edge_resolution / original_width, max_edge_resolution / original_height)
 
         new_width = int(original_width * downscale_factor)
         new_height = int(original_height * downscale_factor)
@@ -406,9 +384,7 @@ class MarigoldPipeline(DiffusionPipeline):
         return resized_img
 
     @staticmethod
-    def colorize_depth_maps(
-        depth_map, min_depth, max_depth, cmap="Spectral", valid_mask=None
-    ):
+    def colorize_depth_maps(depth_map, min_depth, max_depth, cmap="Spectral", valid_mask=None):
         """
         Colorize depth maps.
         """
@@ -550,9 +526,7 @@ class MarigoldPipeline(DiffusionPipeline):
         if max_res is not None:
             scale_factor = torch.min(max_res / torch.tensor(ori_shape[-2:]))
             if scale_factor < 1:
-                downscaler = torch.nn.Upsample(
-                    scale_factor=scale_factor, mode="nearest"
-                )
+                downscaler = torch.nn.Upsample(scale_factor=scale_factor, mode="nearest")
                 input_images = downscaler(torch.from_numpy(input_images)).numpy()
 
         # init guess
