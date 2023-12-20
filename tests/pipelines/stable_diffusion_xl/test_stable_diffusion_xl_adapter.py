@@ -681,7 +681,7 @@ class AdapterSDXLPipelineSlowTests(unittest.TestCase):
             variant="fp16",
         )
         pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors")
-        pipe.enable_sequential_cpu_offload()
+        pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -694,8 +694,6 @@ class AdapterSDXLPipelineSlowTests(unittest.TestCase):
 
         assert images[0].shape == (768, 512, 3)
 
-        original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array(
-            [0.50346327, 0.50708383, 0.50719553, 0.5135172, 0.5155377, 0.5066059, 0.49680984, 0.5005894, 0.48509413]
-        )
-        assert numpy_cosine_similarity_distance(original_image, expected_image) < 1e-4
+        image_slice = images[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.4284, 0.4337, 0.4319, 0.4255, 0.4329, 0.4280, 0.4338, 0.4420, 0.4226])
+        assert numpy_cosine_similarity_distance(image_slice, expected_slice) < 1e-4

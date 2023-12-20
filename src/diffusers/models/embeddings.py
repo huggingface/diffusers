@@ -20,6 +20,7 @@ from torch import nn
 
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
+from .attention_processor import Attention
 from .lora import LoRACompatibleLinear
 
 
@@ -460,6 +461,18 @@ class ImageProjection(nn.Module):
         return image_embeds
 
 
+class MLPProjection(nn.Module):
+    def __init__(self, image_embed_dim=1024, cross_attention_dim=1024):
+        super().__init__()
+        from .attention import FeedForward
+
+        self.ff = FeedForward(image_embed_dim, cross_attention_dim, mult=1, activation_fn="gelu")
+        self.norm = nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds: torch.FloatTensor):
+        return self.norm(self.ff(image_embeds))
+
+
 class CombinedTimestepLabelEmbeddings(nn.Module):
     def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
         super().__init__()
@@ -716,7 +729,7 @@ class PositionNet(nn.Module):
         return objs
 
 
-class CombinedTimestepSizeEmbeddings(nn.Module):
+class PixArtAlphaCombinedTimestepSizeEmbeddings(nn.Module):
     """
     For PixArt-Alpha.
 
@@ -733,45 +746,27 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
 
         self.use_additional_conditions = use_additional_conditions
         if use_additional_conditions:
-            self.use_additional_conditions = True
             self.additional_condition_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
             self.resolution_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
             self.aspect_ratio_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
-
-    def apply_condition(self, size: torch.Tensor, batch_size: int, embedder: nn.Module):
-        if size.ndim == 1:
-            size = size[:, None]
-
-        if size.shape[0] != batch_size:
-            size = size.repeat(batch_size // size.shape[0], 1)
-            if size.shape[0] != batch_size:
-                raise ValueError(f"`batch_size` should be {size.shape[0]} but found {batch_size}.")
-
-        current_batch_size, dims = size.shape[0], size.shape[1]
-        size = size.reshape(-1)
-        size_freq = self.additional_condition_proj(size).to(size.dtype)
-
-        size_emb = embedder(size_freq)
-        size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
-        return size_emb
 
     def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
         if self.use_additional_conditions:
-            resolution = self.apply_condition(resolution, batch_size=batch_size, embedder=self.resolution_embedder)
-            aspect_ratio = self.apply_condition(
-                aspect_ratio, batch_size=batch_size, embedder=self.aspect_ratio_embedder
-            )
-            conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
+            resolution_emb = self.additional_condition_proj(resolution.flatten()).to(hidden_dtype)
+            resolution_emb = self.resolution_embedder(resolution_emb).reshape(batch_size, -1)
+            aspect_ratio_emb = self.additional_condition_proj(aspect_ratio.flatten()).to(hidden_dtype)
+            aspect_ratio_emb = self.aspect_ratio_embedder(aspect_ratio_emb).reshape(batch_size, -1)
+            conditioning = timesteps_emb + torch.cat([resolution_emb, aspect_ratio_emb], dim=1)
         else:
             conditioning = timesteps_emb
 
         return conditioning
 
 
-class CaptionProjection(nn.Module):
+class PixArtAlphaTextProjection(nn.Module):
     """
     Projects caption embeddings. Also handles dropout for classifier-free guidance.
 
@@ -783,10 +778,97 @@ class CaptionProjection(nn.Module):
         self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
         self.act_1 = nn.GELU(approximate="tanh")
         self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
-        self.register_buffer("y_embedding", nn.Parameter(torch.randn(num_tokens, in_features) / in_features**0.5))
 
-    def forward(self, caption, force_drop_ids=None):
+    def forward(self, caption):
         hidden_states = self.linear_1(caption)
         hidden_states = self.act_1(hidden_states)
         hidden_states = self.linear_2(hidden_states)
         return hidden_states
+
+
+class Resampler(nn.Module):
+    """Resampler of IP-Adapter Plus.
+
+    Args:
+    ----
+        embed_dims (int): The feature dimension. Defaults to 768.
+        output_dims (int): The number of output channels, that is the same
+            number of the channels in the
+            `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int): The number of hidden channels. Defaults to 1280.
+        depth (int): The number of blocks. Defaults to 8.
+        dim_head (int): The number of head channels. Defaults to 64.
+        heads (int): Parallel attention heads. Defaults to 16.
+        num_queries (int): The number of queries. Defaults to 8.
+        ffn_ratio (float): The expansion ratio of feedforward network hidden
+            layer channels. Defaults to 4.
+    """
+
+    def __init__(
+        self,
+        embed_dims: int = 768,
+        output_dims: int = 1024,
+        hidden_dims: int = 1280,
+        depth: int = 4,
+        dim_head: int = 64,
+        heads: int = 16,
+        num_queries: int = 8,
+        ffn_ratio: float = 4,
+    ) -> None:
+        super().__init__()
+        from .attention import FeedForward  # Lazy import to avoid circular import
+
+        self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dims) / hidden_dims**0.5)
+
+        self.proj_in = nn.Linear(embed_dims, hidden_dims)
+
+        self.proj_out = nn.Linear(hidden_dims, output_dims)
+        self.norm_out = nn.LayerNorm(output_dims)
+
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        nn.LayerNorm(hidden_dims),
+                        nn.LayerNorm(hidden_dims),
+                        Attention(
+                            query_dim=hidden_dims,
+                            dim_head=dim_head,
+                            heads=heads,
+                            out_bias=False,
+                        ),
+                        nn.Sequential(
+                            nn.LayerNorm(hidden_dims),
+                            FeedForward(hidden_dims, hidden_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
+                        ),
+                    ]
+                )
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+        ----
+            x (torch.Tensor): Input Tensor.
+
+        Returns:
+        -------
+            torch.Tensor: Output Tensor.
+        """
+        latents = self.latents.repeat(x.size(0), 1, 1)
+
+        x = self.proj_in(x)
+
+        for ln0, ln1, attn, ff in self.layers:
+            residual = latents
+
+            encoder_hidden_states = ln0(x)
+            latents = ln1(latents)
+            encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
+            latents = attn(latents, encoder_hidden_states) + residual
+            latents = ff(latents) + latents
+
+        latents = self.proj_out(latents)
+        return self.norm_out(latents)

@@ -23,6 +23,7 @@ from parameterized import parameterized
 from diffusers import (
     AsymmetricAutoencoderKL,
     AutoencoderKL,
+    AutoencoderKLTemporalDecoder,
     AutoencoderTiny,
     ConsistencyDecoderVAE,
     StableDiffusionPipeline,
@@ -30,10 +31,15 @@ from diffusers import (
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.loading_utils import load_image
 from diffusers.utils.testing_utils import (
+    backend_empty_cache,
     enable_full_determinism,
     floats_tensor,
     load_hf_numpy,
+    require_torch_accelerator,
+    require_torch_accelerator_with_fp16,
+    require_torch_accelerator_with_training,
     require_torch_gpu,
+    skip_mps,
     slow,
     torch_all_close,
     torch_device,
@@ -156,7 +162,7 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     def test_training(self):
         pass
 
-    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
+    @require_torch_accelerator_with_training
     def test_gradient_checkpointing(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -212,10 +218,12 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         model = model.to(torch_device)
         model.eval()
 
-        if torch_device == "mps":
-            generator = torch.manual_seed(0)
+        # Keep generator on CPU for non-CUDA devices to compare outputs with CPU result tensors
+        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
+        if torch_device != "mps":
+            generator = torch.Generator(device=generator_device).manual_seed(0)
         else:
-            generator = torch.Generator(device=torch_device).manual_seed(0)
+            generator = torch.manual_seed(0)
 
         image = torch.randn(
             1,
@@ -246,13 +254,33 @@ class AutoencoderKLTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
                     -9.8644e-03,
                 ]
             )
-        elif torch_device == "cpu":
+        elif generator_device == "cpu":
             expected_output_slice = torch.tensor(
-                [-0.1352, 0.0878, 0.0419, -0.0818, -0.1069, 0.0688, -0.1458, -0.4446, -0.0026]
+                [
+                    -0.1352,
+                    0.0878,
+                    0.0419,
+                    -0.0818,
+                    -0.1069,
+                    0.0688,
+                    -0.1458,
+                    -0.4446,
+                    -0.0026,
+                ]
             )
         else:
             expected_output_slice = torch.tensor(
-                [-0.2421, 0.4642, 0.2507, -0.0438, 0.0682, 0.3160, -0.2018, -0.0727, 0.2485]
+                [
+                    -0.2421,
+                    0.4642,
+                    0.2507,
+                    -0.0438,
+                    0.0682,
+                    0.3160,
+                    -0.2018,
+                    -0.0727,
+                    0.2485,
+                ]
             )
 
         self.assertTrue(torch_all_close(output_slice, expected_output_slice, rtol=1e-2))
@@ -364,13 +392,100 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
         ...
 
 
+class AutoncoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
+    model_class = AutoencoderKLTemporalDecoder
+    main_input_name = "sample"
+    base_precision = 1e-2
+
+    @property
+    def dummy_input(self):
+        batch_size = 3
+        num_channels = 3
+        sizes = (32, 32)
+
+        image = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        num_frames = 3
+
+        return {"sample": image, "num_frames": num_frames}
+
+    @property
+    def input_shape(self):
+        return (3, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (3, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "block_out_channels": [32, 64],
+            "in_channels": 3,
+            "out_channels": 3,
+            "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+            "latent_channels": 4,
+            "layers_per_block": 2,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def test_forward_signature(self):
+        pass
+
+    def test_training(self):
+        pass
+
+    @unittest.skipIf(torch_device == "mps", "Gradient checkpointing skipped on MPS")
+    def test_gradient_checkpointing(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        assert not model.is_gradient_checkpointing and model.training
+
+        out = model(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model.zero_grad()
+
+        labels = torch.randn_like(out)
+        loss = (out - labels).mean()
+        loss.backward()
+
+        # re-instantiate the model now enabling gradient checkpointing
+        model_2 = self.model_class(**init_dict)
+        # clone model
+        model_2.load_state_dict(model.state_dict())
+        model_2.to(torch_device)
+        model_2.enable_gradient_checkpointing()
+
+        assert model_2.is_gradient_checkpointing and model_2.training
+
+        out_2 = model_2(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model_2.zero_grad()
+        loss_2 = (out_2 - labels).mean()
+        loss_2.backward()
+
+        # compare the output and parameters gradients
+        self.assertTrue((loss - loss_2).abs() < 1e-5)
+        named_params = dict(model.named_parameters())
+        named_params_2 = dict(model_2.named_parameters())
+        for name, param in named_params.items():
+            if "post_quant_conv" in name:
+                continue
+
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
+
+
 @slow
 class AutoencoderTinyIntegrationTests(unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_file_format(self, seed, shape):
         return f"gaussian_noise_s={seed}_shape={'_'.join([str(s) for s in shape])}.npy"
@@ -450,7 +565,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
@@ -472,9 +587,10 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         return model
 
     def get_generator(self, seed=0):
-        if torch_device == "mps":
-            return torch.manual_seed(seed)
-        return torch.Generator(device=torch_device).manual_seed(seed)
+        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
+        if torch_device != "mps":
+            return torch.Generator(device=generator_device).manual_seed(seed)
+        return torch.manual_seed(seed)
 
     @parameterized.expand(
         [
@@ -515,7 +631,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator_with_fp16
     def test_stable_diffusion_fp16(self, seed, expected_slice):
         model = self.get_sd_vae_model(fp16=True)
         image = self.get_sd_image(seed, fp16=True)
@@ -569,7 +685,8 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator
+    @skip_mps
     def test_stable_diffusion_decode(self, seed, expected_slice):
         model = self.get_sd_vae_model()
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64))
@@ -592,7 +709,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator_with_fp16
     def test_stable_diffusion_decode_fp16(self, seed, expected_slice):
         model = self.get_sd_vae_model(fp16=True)
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64), fp16=True)
@@ -609,7 +726,10 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     @parameterized.expand([(13,), (16,), (27,)])
     @require_torch_gpu
-    @unittest.skipIf(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
+    @unittest.skipIf(
+        not is_xformers_available(),
+        reason="xformers is not required when using PyTorch 2.0.",
+    )
     def test_stable_diffusion_decode_xformers_vs_2_0_fp16(self, seed):
         model = self.get_sd_vae_model(fp16=True)
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64), fp16=True)
@@ -627,7 +747,10 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
     @parameterized.expand([(13,), (16,), (37,)])
     @require_torch_gpu
-    @unittest.skipIf(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
+    @unittest.skipIf(
+        not is_xformers_available(),
+        reason="xformers is not required when using PyTorch 2.0.",
+    )
     def test_stable_diffusion_decode_xformers_vs_2_0(self, seed):
         model = self.get_sd_vae_model()
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64))
@@ -697,7 +820,7 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_sd_image(self, seed=0, shape=(4, 3, 512, 512), fp16=False):
         dtype = torch.float16 if fp16 else torch.float32
@@ -718,9 +841,10 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
         return model
 
     def get_generator(self, seed=0):
-        if torch_device == "mps":
-            return torch.manual_seed(seed)
-        return torch.Generator(device=torch_device).manual_seed(seed)
+        generator_device = "cpu" if not torch_device.startswith("cuda") else "cuda"
+        if torch_device != "mps":
+            return torch.Generator(device=generator_device).manual_seed(seed)
+        return torch.manual_seed(seed)
 
     @parameterized.expand(
         [
@@ -791,7 +915,8 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
             # fmt: on
         ]
     )
-    @require_torch_gpu
+    @require_torch_accelerator
+    @skip_mps
     def test_stable_diffusion_decode(self, seed, expected_slice):
         model = self.get_sd_vae_model()
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64))
@@ -808,7 +933,10 @@ class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
 
     @parameterized.expand([(13,), (16,), (37,)])
     @require_torch_gpu
-    @unittest.skipIf(not is_xformers_available(), reason="xformers is not required when using PyTorch 2.0.")
+    @unittest.skipIf(
+        not is_xformers_available(),
+        reason="xformers is not required when using PyTorch 2.0.",
+    )
     def test_stable_diffusion_decode_xformers_vs_2_0(self, seed):
         model = self.get_sd_vae_model()
         encoding = self.get_sd_image(seed, shape=(3, 4, 64, 64))
@@ -886,7 +1014,10 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
         pipe.to(torch_device)
 
         out = pipe(
-            "horse", num_inference_steps=2, output_type="pt", generator=torch.Generator("cpu").manual_seed(0)
+            "horse",
+            num_inference_steps=2,
+            output_type="pt",
+            generator=torch.Generator("cpu").manual_seed(0),
         ).images[0]
 
         actual_output = out[:2, :2, :2].flatten().cpu()
@@ -916,7 +1047,8 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
 
         actual_output = sample[0, :2, :2, :2].flatten().cpu()
         expected_output = torch.tensor(
-            [-0.0111, -0.0125, -0.0017, -0.0007, 0.1257, 0.1465, 0.1450, 0.1471], dtype=torch.float16
+            [-0.0111, -0.0125, -0.0017, -0.0007, 0.1257, 0.1465, 0.1450, 0.1471],
+            dtype=torch.float16,
         )
 
         assert torch_all_close(actual_output, expected_output, atol=5e-3)
@@ -926,17 +1058,24 @@ class ConsistencyDecoderVAEIntegrationTests(unittest.TestCase):
             "openai/consistency-decoder", torch_dtype=torch.float16
         )  # TODO - update
         pipe = StableDiffusionPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, vae=vae, safety_checker=None
+            "runwayml/stable-diffusion-v1-5",
+            torch_dtype=torch.float16,
+            vae=vae,
+            safety_checker=None,
         )
         pipe.to(torch_device)
 
         out = pipe(
-            "horse", num_inference_steps=2, output_type="pt", generator=torch.Generator("cpu").manual_seed(0)
+            "horse",
+            num_inference_steps=2,
+            output_type="pt",
+            generator=torch.Generator("cpu").manual_seed(0),
         ).images[0]
 
         actual_output = out[:2, :2, :2].flatten().cpu()
         expected_output = torch.tensor(
-            [0.0000, 0.0249, 0.0000, 0.0000, 0.1709, 0.2773, 0.0471, 0.1035], dtype=torch.float16
+            [0.0000, 0.0249, 0.0000, 0.0000, 0.1709, 0.2773, 0.0471, 0.1035],
+            dtype=torch.float16,
         )
 
         assert torch_all_close(actual_output, expected_output, atol=5e-3)

@@ -5,3 +5,4 @@ datasets
 ftfy
 tensorboard
 Jinja2
+peft==0.7.0
