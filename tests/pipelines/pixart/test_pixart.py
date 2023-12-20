@@ -64,7 +64,9 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             norm_elementwise_affine=False,
             norm_eps=1e-6,
         )
+        torch.manual_seed(0)
         vae = AutoencoderKL()
+
         scheduler = DDIMScheduler()
         text_encoder = T5EncoderModel.from_pretrained("hf-internal-testing/tiny-random-t5")
 
@@ -186,7 +188,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (1, 8, 8, 3))
-        expected_slice = np.array([0.5303, 0.2658, 0.7979, 0.1182, 0.3304, 0.4608, 0.5195, 0.4261, 0.4675])
+        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.483, 0.2583, 0.5331, 0.4852])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
@@ -203,7 +205,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
         self.assertEqual(image.shape, (1, 32, 48, 3))
 
-        expected_slice = np.array([0.3859, 0.2987, 0.2333, 0.5243, 0.6721, 0.4436, 0.5292, 0.5373, 0.4416])
+        expected_slice = np.array([0.6493, 0.537, 0.4081, 0.4762, 0.3695, 0.4711, 0.3026, 0.5218, 0.5263])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
@@ -293,7 +295,7 @@ class PixArtAlphaPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         self.assertEqual(image.shape, (2, 8, 8, 3))
-        expected_slice = np.array([0.5303, 0.2658, 0.7979, 0.1182, 0.3304, 0.4608, 0.5195, 0.4261, 0.4675])
+        expected_slice = np.array([0.6319, 0.3526, 0.3806, 0.6327, 0.4639, 0.483, 0.2583, 0.5331, 0.4852])
         max_diff = np.abs(image_slice.flatten() - expected_slice).max()
         self.assertLessEqual(max_diff, 1e-3)
 
