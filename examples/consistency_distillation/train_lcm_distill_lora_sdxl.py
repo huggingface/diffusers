@@ -785,6 +785,13 @@ def main(args):
     )
     unet.add_adapter(lora_config)
 
+    # Make sure the trainable params are in float32.
+    if args.mixed_precision == "fp16":
+        for param in unet.parameters():
+            # only upcast trainable parameters (LoRA) into fp32
+            if param.requires_grad:
+                param.data = param.to(torch.float32)
+
     # Also move the alpha and sigma noise schedules to accelerator.device.
     alpha_schedule = alpha_schedule.to(accelerator.device)
     sigma_schedule = sigma_schedule.to(accelerator.device)
@@ -855,11 +862,7 @@ def main(args):
         optimizer_class = torch.optim.AdamW
 
     # 12. Optimizer creation
-    params_to_optimize = []
-    for param in unet.parameters():
-        if param.requires_grad:
-            param.data = param.to(torch.float32)
-            params_to_optimize.append(param)
+    params_to_optimize = filter(lambda p: p.requires_grad, unet.parameters())
     optimizer = optimizer_class(
         params_to_optimize,
         lr=args.learning_rate,
