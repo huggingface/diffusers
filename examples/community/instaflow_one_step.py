@@ -423,6 +423,42 @@ class InstaFlowPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoad
         image = image.cpu().permute(0, 2, 3, 1).float().numpy()
         return image
 
+    def merge_dW_to_unet(pipe, dW_dict, alpha=1.0):
+        _tmp_sd = pipe.unet.state_dict()
+        for key in dW_dict.keys():
+            _tmp_sd[key] += dW_dict[key] * alpha
+        pipe.unet.load_state_dict(_tmp_sd, strict=False)
+        return pipe
+
+    def do_lora(self, lora_path='Lykon/dreamshaper-7', base_sd='runwayml/stable-diffusion-v1-5', alpha=1.0):
+        _pipe = DiffusionPipeline.from_pretrained(
+            base_sd, 
+            torch_dtype=self.unet.dtype,
+            safety_checker = None,
+        )
+        sd_state_dict = _pipe.unet.state_dict()
+        
+        # get weights of the customized sd models, e.g., the aniverse downloaded from civitai.com    
+        _pipe = DiffusionPipeline.from_pretrained(
+            lora_path, 
+            torch_dtype=self.unet.dtype,
+            safety_checker = None,
+        )
+        lora_unet_checkpoint = _pipe.unet.state_dict()
+        
+        # get the dW
+        dW_dict = {}
+        for key in lora_unet_checkpoint.keys():
+            dW_dict[key] = lora_unet_checkpoint[key] - sd_state_dict[key]
+        
+        _tmp_sd = self.unet.state_dict()
+        for key in dW_dict.keys():
+            _tmp_sd[key] += dW_dict[key] * alpha
+
+        self.unet.load_state_dict(_tmp_sd, strict=False)    
+        self.vae = _pipe.vae
+        self.text_encoder = _pipe.text_encoder
+
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
