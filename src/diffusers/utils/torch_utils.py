@@ -77,7 +77,10 @@ def randn_tensor(
         ]
         latents = torch.cat(latents, dim=0).to(device)
     else:
-        latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
+        if generator is None:
+            latents = torch.randn_like(torch.empty(shape), device=rand_device, dtype=dtype, layout=layout).to(device)
+        else:
+            latents = torch.randn(shape, generator=generator, device=rand_device, dtype=dtype, layout=layout).to(device)
 
     return latents
 
