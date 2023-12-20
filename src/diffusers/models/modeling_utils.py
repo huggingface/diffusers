@@ -209,8 +209,9 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         https://pytorch.org/docs/stable/_modules/torch/nn/modules/module.html#Module
         """
 
-        is_in_config = "_internal_dict" in self.__dict__ and hasattr(self.__dict__["_internal_dict"], name)
-        is_attribute = name in self.__dict__
+        internal_keys = self.__dict__.keys()
+        is_in_config = "_internal_dict" in internal_keys and hasattr(self.__dict__["_internal_dict"], name)
+        is_attribute = name in internal_keys
 
         if is_in_config and not is_attribute:
             deprecation_message = f"Accessing config attribute `{name}` directly via '{type(self).__name__}' object attribute is deprecated. Please access '{name}' over '{type(self).__name__}'s config object instead, e.g. 'unet.config.{name}'."
