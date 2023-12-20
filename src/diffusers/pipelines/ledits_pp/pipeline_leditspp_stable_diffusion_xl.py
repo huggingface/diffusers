@@ -460,7 +460,7 @@ class LEditsPPPipelineStableDiffusionXL(
 
             negative_prompt_embeds = torch.concat(negative_prompt_embeds_list, dim=-1)
 
-            if negative_prompt_embeds is None and zero_out_negative_prompt:
+            if zero_out_negative_prompt:
                 negative_prompt_embeds = torch.zeros_like(negative_prompt_embeds)
                 negative_pooled_prompt_embeds = torch.zeros_like(negative_pooled_prompt_embeds)
 
@@ -1595,7 +1595,9 @@ class LEditsPPPipelineStableDiffusionXL(
 
         self.init_latents = xts[-1]
         zs = zs.flip(0)
-        zs[-num_zero_noise_steps:] = torch.zeros_like(zs[-num_zero_noise_steps:])
+
+        if num_zero_noise_steps > 0:
+            zs[-num_zero_noise_steps:] = torch.zeros_like(zs[-num_zero_noise_steps:])
         self.zs = zs
         return LEditsPPInversionPipelineOutput(images=resized, vae_reconstruction_images=image_rec)
 
