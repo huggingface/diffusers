@@ -403,6 +403,7 @@ class UnCLIPImageVariationPipeline(DiffusionPipeline):
         image = super_res_latents
 
         # done super res
+        self.maybe_free_model_hooks()
 
         # post processing
 
