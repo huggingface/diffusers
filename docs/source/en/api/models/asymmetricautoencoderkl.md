@@ -49,12 +49,12 @@ make_image_grid([original_image, mask_image, image], rows=1, cols=3)
 
 ## AsymmetricAutoencoderKL
 
-[[autodoc]] models.autoencoder_asym_kl.AsymmetricAutoencoderKL
+[[autodoc]] models.autoencoders.autoencoder_asym_kl.AsymmetricAutoencoderKL
 
 ## AutoencoderKLOutput
 
-[[autodoc]] models.autoencoder_kl.AutoencoderKLOutput
+[[autodoc]] models.autoencoders.autoencoder_kl.AutoencoderKLOutput
 
 ## DecoderOutput
 
-[[autodoc]] models.vae.DecoderOutput
+[[autodoc]] models.autoencoders.vae.DecoderOutput

@@ -804,8 +804,7 @@ class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
         pipe = StableDiffusionAdapterPipeline.from_pretrained(sd_model, adapter=adapter, safety_checker=None)
         pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        pipe.enable_attention_slicing()
-
+        pipe.enable_model_cpu_offload()
         generator = torch.Generator(device="cpu").manual_seed(0)
         out = pipe(prompt=prompt, image=image, generator=generator, num_inference_steps=2, output_type="np").images
 
