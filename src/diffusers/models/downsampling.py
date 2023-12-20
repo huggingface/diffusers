@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 from ..utils import USE_PEFT_BACKEND
 from .lora import LoRACompatibleConv
-from .upsamplers import upfirdn2d_native
+from .upsampling import upfirdn2d_native
 
 
 class Downsample1D(nn.Module):

@@ -23,7 +23,7 @@ import torch.nn.functional as F
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
 from .attention_processor import SpatialNorm
-from .downsamplers import (  # noqa
+from .downsampling import (  # noqa
     Downsample1D,
     Downsample2D,
     FirDownsample2D,
@@ -32,7 +32,7 @@ from .downsamplers import (  # noqa
 )
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .normalization import AdaGroupNorm
-from .upsamplers import (  # noqa
+from .upsampling import (  # noqa
     FirUpsample2D,
     KUpsample2D,
     Upsample1D,
