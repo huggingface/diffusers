@@ -32,10 +32,10 @@ from .attention_processor import (
 )
 from .embeddings import (
     GaussianFourierProjection,
+    GLIGENTextBoundingboxProjection,
     ImageHintTimeEmbedding,
     ImageProjection,
     ImageTimeEmbedding,
-    GLIGENTextBoundingboxProjection,
     TextImageProjection,
     TextImageTimeEmbedding,
     TextTimeEmbedding,

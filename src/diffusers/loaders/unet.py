@@ -22,7 +22,7 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from ..models.embeddings import ImageProjection, MLPProjection, IPAdapterPlusImageProjection
+from ..models.embeddings import ImageProjection, IPAdapterFullImageProjection, IPAdapterPlusImageProjection
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -689,7 +689,7 @@ class UNet2DConditionLoadersMixin:
             clip_embeddings_dim = state_dict["proj.0.weight"].shape[0]
             cross_attention_dim = state_dict["proj.3.weight"].shape[0]
 
-            image_projection = MLPProjection(
+            image_projection = IPAdapterFullImageProjection(
                 cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
             )
 
@@ -707,7 +707,7 @@ class UNet2DConditionLoadersMixin:
             hidden_dims = state_dict["latents"].shape[2]
             heads = state_dict["layers.0.0.to_q.weight"].shape[0] // 64
 
-            image_projection = Resampler(
+            image_projection = IPAdapterPlusImageProjection(
                 embed_dims=embed_dims,
                 output_dims=output_dims,
                 hidden_dims=hidden_dims,

@@ -461,7 +461,7 @@ class ImageProjection(nn.Module):
         return image_embeds
 
 
-class MLPProjection(nn.Module):
+class IPAdapterFullImageProjection(nn.Module):
     def __init__(self, image_embed_dim=1024, cross_attention_dim=1024):
         super().__init__()
         from .attention import FeedForward
@@ -639,6 +639,7 @@ def get_fourier_embeds_from_boundingbox(embed_dim, box):
     emb = emb.permute(0, 1, 3, 4, 2).reshape(batch_size, num_boxes, embed_dim * 2 * 4)
 
     return emb
+
 
 class GLIGENTextBoundingboxProjection(nn.Module):
     def __init__(self, positive_len, out_dim, feature_type="text-only", fourier_freqs=8):
