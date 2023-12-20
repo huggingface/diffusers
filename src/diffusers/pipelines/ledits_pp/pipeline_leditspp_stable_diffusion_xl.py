@@ -424,9 +424,7 @@ class LEditsPPPipelineStableDiffusionXL(
 
             uncond_tokens: List[str]
 
-            if isinstance(negative_prompt, str):
-                uncond_tokens = [negative_prompt, negative_prompt_2]
-            elif batch_size != len(negative_prompt):
+            if batch_size != len(negative_prompt):
                 raise ValueError(
                     f"`negative_prompt`: {negative_prompt} has batch size {len(negative_prompt)}, but image inversion "
                     f" has batch size {batch_size}. Please make sure that passed `negative_prompt` matches"
@@ -1474,18 +1472,18 @@ class LEditsPPPipelineStableDiffusionXL(
         else:
             do_classifier_free_guidance = source_guidance_scale > 1.0
 
-        # 2. get embeddings
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
-
-        # 4. prepare image
+        # 1. prepare image
         x0, resized = self.encode_image(image, dtype=self.text_encoder_2.dtype)
         width = x0.shape[2] * self.vae_scale_factor
         height = x0.shape[3] * self.vae_scale_factor
         self.size = (height, width)
 
         self.batch_size = x0.shape[0]
+
+        # 2. get embeddings
+        text_encoder_lora_scale = (
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+        )
 
         if isinstance(source_prompt, str):
             source_prompt = [source_prompt] * self.batch_size

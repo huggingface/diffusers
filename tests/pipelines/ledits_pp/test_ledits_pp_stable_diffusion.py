@@ -146,7 +146,7 @@ class LEditsPPPipelineStableDiffusionFastTests(
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = LEditsPPPipelineStableDiffusion(**components)
-        sd_pipe = sd_pipe.to(device)
+        sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inversion_inputs(device)
@@ -154,7 +154,7 @@ class LEditsPPPipelineStableDiffusionFastTests(
         sd_pipe.invert(**inputs)
         assert sd_pipe.init_latents.shape == (1, 4, 32, 32)
 
-        latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:]
+        latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].to(device)
         print(latent_slice.flatten())
         expected_slice = np.array([0.2591, -0.8992, 0.0135, 0.8945, 0.6812, -0.3078, -0.1397, 0.9919, 0.7559])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
@@ -163,19 +163,19 @@ class LEditsPPPipelineStableDiffusionFastTests(
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         sd_pipe = LEditsPPPipelineStableDiffusion(**components)
-        sd_pipe = sd_pipe.to(device)
+        sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inversion_inputs(device)
         sd_pipe.invert(**inputs)
         assert sd_pipe.init_latents.shape == (2, 4, 32, 32)
 
-        latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:]
+        latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].to(device)
         print(latent_slice.flatten())
         expected_slice = np.array([0.9312, 0.9823, 0.8902, 0.2546, -0.4952, -0.3061, -0.1626, -1.5873, -1.0343])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
 
-        latent_slice = sd_pipe.init_latents[1, -1, -3:, -3:]
+        latent_slice = sd_pipe.init_latents[1, -1, -3:, -3:].to(device)
         print(latent_slice.flatten())
         expected_slice = np.array([-1.4121, -1.8028, 1.3368, -0.4232, 0.1431, 0.5343, -0.2898, -0.0392, 0.5292])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
@@ -184,13 +184,13 @@ class LEditsPPPipelineStableDiffusionFastTests(
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         pipe = LEditsPPPipelineStableDiffusion(**components)
-        pipe = pipe.to(device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inversion_inputs = self.get_dummy_inversion_inputs(device)
         pipe.invert(**inversion_inputs)
 
-        inputs = self.get_dummy_inputs(torch_device)
+        inputs = self.get_dummy_inputs(device)
 
         inputs["edit_warmup_steps"] = [0, 5]
         pipe(**inputs).images
@@ -230,9 +230,8 @@ class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
 
         generator = torch.manual_seed(0)
         inversion_output = pipe.invert(image=self.raw_image, generator=generator)
-
+        image = pipe.image_processor.pil_to_numpy(inversion_output.vae_reconstruction_images[0])
         reconstruction = pipe(output_type="np", generator=generator).images[0]
-        image = np.array(inversion_output.vae_reconstruction_images[0]).astype(np.float32) / 255.0
 
         print(np.abs(image - reconstruction).max())
         assert np.abs(image - reconstruction).max() < 1e-2
