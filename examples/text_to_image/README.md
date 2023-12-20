@@ -101,8 +101,8 @@ accelerate launch --mixed_precision="fp16" train_text_to_image.py \
 
 Once the training is finished the model will be saved in the `output_dir` specified in the command. In this example it's `sd-pokemon-model`. To load the fine-tuned model for inference just pass that path to `StableDiffusionPipeline`
 
-
 ```python
+import torch
 from diffusers import StableDiffusionPipeline
 
 model_path = "path_to_saved_model"
@@ -114,12 +114,13 @@ image.save("yoda-pokemon.png")
 ```
 
 Checkpoints only save the unet, so to run inference from a checkpoint, just load the unet
+
 ```python
+import torch
 from diffusers import StableDiffusionPipeline, UNet2DConditionModel
 
 model_path = "path_to_saved_model"
-
-unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet")
+unet = UNet2DConditionModel.from_pretrained(model_path + "/checkpoint-<N>/unet", torch_dtype=torch.float16)
 
 pipe = StableDiffusionPipeline.from_pretrained("<initial model>", unet=unet, torch_dtype=torch.float16)
 pipe.to("cuda")
