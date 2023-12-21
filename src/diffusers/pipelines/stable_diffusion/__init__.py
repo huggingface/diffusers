@@ -67,20 +67,17 @@ try:
 except OptionalDependencyNotAvailable:
     from ...utils.dummy_torch_and_transformers_objects import (
         StableDiffusionDepth2ImgPipeline,
-        StableDiffusionDiffEditPipeline,
         StableDiffusionPix2PixZeroPipeline,
     )
 
     _dummy_objects.update(
         {
             "StableDiffusionDepth2ImgPipeline": StableDiffusionDepth2ImgPipeline,
-            "StableDiffusionDiffEditPipeline": StableDiffusionDiffEditPipeline,
             "StableDiffusionPix2PixZeroPipeline": StableDiffusionPix2PixZeroPipeline,
         }
     )
 else:
     _import_structure["pipeline_stable_diffusion_depth2img"] = ["StableDiffusionDepth2ImgPipeline"]
-    _import_structure["pipeline_stable_diffusion_diffedit"] = ["StableDiffusionDiffEditPipeline"]
     _import_structure["pipeline_stable_diffusion_pix2pix_zero"] = ["StableDiffusionPix2PixZeroPipeline"]
 try:
     if not (
@@ -181,14 +178,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import (
             StableDiffusionDepth2ImgPipeline,
-            StableDiffusionDiffEditPipeline,
             StableDiffusionPix2PixZeroPipeline,
         )
     else:
         from .pipeline_stable_diffusion_depth2img import (
             StableDiffusionDepth2ImgPipeline,
         )
-        from .pipeline_stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
 
     try:
         if not (
