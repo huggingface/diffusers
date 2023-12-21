@@ -669,6 +669,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guess_mode: bool = False,
+        control_mode: bool = False,
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple[Tuple[torch.FloatTensor, ...], torch.FloatTensor]]:
         """
@@ -700,6 +701,9 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             cross_attention_kwargs (`dict[str]`, *optional*, defaults to `None`):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
             guess_mode (`bool`, defaults to `False`):
+                In this mode, the ControlNet encoder tries its best to recognize the input content of the input even if
+                you remove all prompts. A `guidance_scale` between 3.0 and 5.0 is recommended.
+            control_mode (`bool`, defaults to `False`):
                 In this mode, the ControlNet encoder tries its best to recognize the input content of the input even if
                 you remove all prompts. A `guidance_scale` between 3.0 and 5.0 is recommended.
             return_dict (`bool`, defaults to `True`):
@@ -843,6 +847,11 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         else:
             down_block_res_samples = [sample * conditioning_scale for sample in down_block_res_samples]
             mid_block_res_sample = mid_block_res_sample * conditioning_scale
+
+        if control_mode and not self.config.global_pool_conditions:
+            scales = [conditioning_scale * (0.825**float(12-i)) for i in range(13)]
+            down_block_res_samples = [sample * scale for sample, scale in zip(down_block_res_samples, scales)]
+            mid_block_res_sample = mid_block_res_sample * scales[-1]  
 
         if self.config.global_pool_conditions:
             down_block_res_samples = [
