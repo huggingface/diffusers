@@ -769,7 +769,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                     num_frames=sample_num_frames,
                 )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, num_frames=sample_num_frames)
 
             down_block_res_samples += res_samples
 
