@@ -181,9 +181,6 @@ else:
             "CLIPImageProjection",
             "StableDiffusionAttendAndExcitePipeline",
             "StableDiffusionDepth2ImgPipeline",
-            "StableDiffusionGLIGENPipeline",
-            "StableDiffusionGLIGENPipeline",
-            "StableDiffusionGLIGENTextImagePipeline",
             "StableDiffusionImageVariationPipeline",
             "StableDiffusionImg2ImgPipeline",
             "StableDiffusionInpaintPipeline",
@@ -199,6 +196,10 @@ else:
         ]
     )
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
+    _import_structure["stable_diffusion_gligen"] = [
+        "StableDiffusionGLIGENPipeline",
+        "StableDiffusionGLIGENTextImagePipeline",
+    ]
     _import_structure["stable_video_diffusion"] = ["StableVideoDiffusionPipeline"]
     _import_structure["stable_diffusion_xl"].extend(
         [
@@ -422,8 +423,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             CLIPImageProjection,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionDepth2ImgPipeline,
-            StableDiffusionGLIGENPipeline,
-            StableDiffusionGLIGENTextImagePipeline,
             StableDiffusionImageVariationPipeline,
             StableDiffusionImg2ImgPipeline,
             StableDiffusionInpaintPipeline,
@@ -438,6 +437,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableUnCLIPPipeline,
         )
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
+        from .stable_diffusion_gligen import StableDiffusionGLIGENPipeline, StableDiffusionGLIGENTextImagePipeline
         from .stable_diffusion_safe import StableDiffusionPipelineSafe
         from .stable_diffusion_xl import (
             StableDiffusionXLImg2ImgPipeline,
