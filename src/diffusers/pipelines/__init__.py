@@ -185,12 +185,11 @@ else:
             "StableDiffusionInpaintPipeline",
             "StableDiffusionInstructPix2PixPipeline",
             "StableDiffusionLatentUpscalePipeline",
-            "StableDiffusionLDM3DPipeline",
-            "StableDiffusionPanoramaPipeline",
             "StableDiffusionPipeline",
             "StableDiffusionUpscalePipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
+            "StableDiffusionLDM3DPipeline",
         ]
     )
     _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
@@ -210,6 +209,7 @@ else:
         ]
     )
     _import_structure["stable_diffusion_diffedit"] = ["StableDiffusionDiffEditPipeline"]
+    _import_structure["stable_diffusion_panorama"] = ["StableDiffusionPanoramaPipeline"]
     _import_structure["t2i_adapter"] = [
         "StableDiffusionAdapterPipeline",
         "StableDiffusionXLAdapterPipeline",
@@ -428,7 +428,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionInstructPix2PixPipeline,
             StableDiffusionLatentUpscalePipeline,
             StableDiffusionLDM3DPipeline,
-            StableDiffusionPanoramaPipeline,
             StableDiffusionPipeline,
             StableDiffusionUpscalePipeline,
             StableUnCLIPImg2ImgPipeline,
@@ -437,6 +436,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
         from .stable_diffusion_gligen import StableDiffusionGLIGENPipeline, StableDiffusionGLIGENTextImagePipeline
+        from .stable_diffusion_panorama import StableDiffusionPanoramaPipeline
         from .stable_diffusion_safe import StableDiffusionPipelineSafe
         from .stable_diffusion_sag import StableDiffusionSAGPipeline
         from .stable_diffusion_xl import (
