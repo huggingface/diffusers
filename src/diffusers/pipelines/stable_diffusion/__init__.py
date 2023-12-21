@@ -79,22 +79,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["pipeline_stable_diffusion_depth2img"] = ["StableDiffusionDepth2ImgPipeline"]
     _import_structure["pipeline_stable_diffusion_pix2pix_zero"] = ["StableDiffusionPix2PixZeroPipeline"]
-try:
-    if not (
-        is_torch_available()
-        and is_transformers_available()
-        and is_k_diffusion_available()
-        and is_k_diffusion_version(">=", "0.0.12")
-    ):
-        raise OptionalDependencyNotAvailable()
-except OptionalDependencyNotAvailable:
-    from ...utils import (
-        dummy_torch_and_transformers_and_k_diffusion_objects,
-    )
 
-    _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
-else:
-    _import_structure["pipeline_stable_diffusion_k_diffusion"] = ["StableDiffusionKDiffusionPipeline"]
 try:
     if not (is_transformers_available() and is_onnx_available()):
         raise OptionalDependencyNotAvailable()
@@ -183,21 +168,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .pipeline_stable_diffusion_depth2img import (
             StableDiffusionDepth2ImgPipeline,
-        )
-
-    try:
-        if not (
-            is_torch_available()
-            and is_transformers_available()
-            and is_k_diffusion_available()
-            and is_k_diffusion_version(">=", "0.0.12")
-        ):
-            raise OptionalDependencyNotAvailable()
-    except OptionalDependencyNotAvailable:
-        from ...utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
-    else:
-        from .pipeline_stable_diffusion_k_diffusion import (
-            StableDiffusionKDiffusionPipeline,
         )
 
     try:
