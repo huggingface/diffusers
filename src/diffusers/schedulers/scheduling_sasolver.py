@@ -103,6 +103,10 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
             Video](https://imagen.research.google/video/paper.pdf) paper).
+        tau_func (`Callable`, *optional*):
+            Stochasticity during the sampling. Default in init is `lambda t: 1 if t >= 200 and t <= 800 else 0`. SA-Solver
+            will sample from vanilla diffusion ODE if tau_func is set to `lambda t: 0`. SA-Solver will sample from vanilla
+            diffusion SDE if tau_func is set to `lambda t: 1`. For more details, please check https://arxiv.org/abs/2309.05019
         thresholding (`bool`, defaults to `False`):
             Whether to use the "dynamic thresholding" method. This is unsuitable for latent-space diffusion models such
             as Stable Diffusion.
@@ -149,7 +153,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             corrector_order: int = 2,
             predictor_corrector_mode: str = 'PEC',
             prediction_type: str = "epsilon",
-            tau_func: Callable = lambda t: 1 if t >= 200 and t <= 800 else 0,
+            tau_func: Optional[Callable] = None,
             thresholding: bool = False,
             dynamic_thresholding_ratio: float = 0.995,
             sample_max_value: float = 1.0,
@@ -196,7 +200,10 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.timestep_list = [None] * max(predictor_order, corrector_order - 1)
         self.model_outputs = [None] * max(predictor_order, corrector_order - 1)
 
-        self.tau_func = tau_func
+        if tau_func is None:
+            self.tau_func = lambda t: 1 if t >= 200 and t <= 800 else 0
+        else:
+            self.tau_func = tau_func
         self.predict_x0 = algorithm_type == "data_prediction"
         self.lower_order_nums = 0
         self.last_sample = None
