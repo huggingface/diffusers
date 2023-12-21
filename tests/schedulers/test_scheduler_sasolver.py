@@ -61,21 +61,14 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        if torch_device in ["mps"]:
-            print('no_noise, mps, sum:', result_sum.item())
-            print('no_noise, mps, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 167.47821044921875) < 1e-2
-            # assert abs(result_mean.item() - 0.2178705964565277) < 1e-3
+        if torch_device in ["cpu"]:
+            assert abs(result_sum.item() - 339.0479736328125) < 1e-2
+            assert abs(result_mean.item() - 0.4414687156677246) < 1e-3
         elif torch_device in ["cuda"]:
-            print('no_noise, cuda, sum:', result_sum.item())
-            print('no_noise, cuda, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 171.59352111816406) < 1e-2
-            # assert abs(result_mean.item() - 0.22342906892299652) < 1e-3
+            assert abs(result_sum.item() - 329.20001220703125) < 1e-2
+            assert abs(result_mean.item() - 0.4286458492279053) < 1e-3
         else:
-            print('no_noise, cpu, sum:', result_sum.item())
-            print('no_noise, cpu, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 162.52383422851562) < 1e-2
-            # assert abs(result_mean.item() - 0.211619570851326) < 1e-3
+            print('None')
 
     def test_full_loop_with_v_prediction(self):
         scheduler_class = self.scheduler_classes[0]
@@ -87,9 +80,10 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
         sample = sample.to(torch_device)
+        generator = torch.manual_seed(0)
 
         for i, t in enumerate(scheduler.timesteps):
-            sample = scheduler.scale_model_input(sample, t)
+            sample = scheduler.scale_model_input(sample, t, generator=generator)
 
             model_output = model(sample, t)
 
@@ -99,21 +93,14 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        if torch_device in ["mps"]:
-            print('v_prediction, mps, sum:', result_sum.item())
-            print('v_prediction, mps, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 124.77149200439453) < 1e-2
-            # assert abs(result_mean.item() - 0.16226289014816284) < 1e-3
+        if torch_device in ["cpu"]:
+            assert abs(result_sum.item() - 193.1468048095703) < 1e-2
+            assert abs(result_mean.item() - 0.2514932453632355) < 1e-3
         elif torch_device in ["cuda"]:
-            print('v_prediction, cuda, sum:', result_sum.item())
-            print('v_prediction, cuda, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 128.1663360595703) < 1e-2
-            # assert abs(result_mean.item() - 0.16688326001167297) < 1e-3
+            assert abs(result_sum.item() - 193.41543579101562) < 1e-2
+            assert abs(result_mean.item() - 0.25184303522109985) < 1e-3
         else:
-            print('v_prediction, cpu, sum:', result_sum.item())
-            print('v_prediction, cpu, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 119.8487548828125) < 1e-2
-            # assert abs(result_mean.item() - 0.1560530662536621) < 1e-3
+            print("None")
 
     def test_full_loop_device(self):
         scheduler_class = self.scheduler_classes[0]
@@ -124,33 +111,27 @@ class SASolverSchedulerTest(SchedulerCommonTest):
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter.to(torch_device) * scheduler.init_noise_sigma
+        generator = torch.manual_seed(0)
 
         for t in scheduler.timesteps:
             sample = scheduler.scale_model_input(sample, t)
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, t, sample)
+            output = scheduler.step(model_output, t, sample, generator=generator)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        if torch_device in ["mps"]:
-            print('full_loop_device, mps, sum:', result_sum.item())
-            print('full_loop_device, mps, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 167.46957397460938) < 1e-2
-            # assert abs(result_mean.item() - 0.21805934607982635) < 1e-3
+        if torch_device in ["cpu"]:
+            assert abs(result_sum.item() - 337.394287109375) < 1e-2
+            assert abs(result_mean.item() - 0.43931546807289124) < 1e-3
         elif torch_device in ["cuda"]:
-            print('full_loop_device, cuda, sum:', result_sum.item())
-            print('full_loop_device, cuda, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 171.59353637695312) < 1e-2
-            # assert abs(result_mean.item() - 0.22342908382415771) < 1e-3
+            assert abs(result_sum.item() - 337.394287109375) < 1e-2
+            assert abs(result_mean.item() - 0.4393154978752136) < 1e-3
         else:
-            print('full_loop_device, cpu, sum:', result_sum.item())
-            print('full_loop_device, cpu, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 336.6853942871094) < 1e-2
-            # assert abs(result_mean.item() - 0.211619570851326) < 1e-3
+            print("None")
 
     def test_full_loop_device_karras_sigmas(self):
         scheduler_class = self.scheduler_classes[0]
@@ -162,30 +143,24 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         model = self.dummy_model()
         sample = self.dummy_sample_deter.to(torch_device) * scheduler.init_noise_sigma
         sample = sample.to(torch_device)
+        generator = torch.manual_seed(0)
 
         for t in scheduler.timesteps:
             sample = scheduler.scale_model_input(sample, t)
 
             model_output = model(sample, t)
 
-            output = scheduler.step(model_output, t, sample)
+            output = scheduler.step(model_output, t, sample, generator=generator)
             sample = output.prev_sample
 
         result_sum = torch.sum(torch.abs(sample))
         result_mean = torch.mean(torch.abs(sample))
 
-        if torch_device in ["mps"]:
-            print('karras_sigmas, mps, sum:', result_sum.item())
-            print('karras_sigmas, mps, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 176.66974135742188) < 1e-2
-            # assert abs(result_mean.item() - 0.23003872730981811) < 1e-2
+        if torch_device in ["cpu"]:
+            assert abs(result_sum.item() - 840.1239013671875) < 1e-2
+            assert abs(result_mean.item() - 1.0939112901687622) < 1e-2
         elif torch_device in ["cuda"]:
-            print('karras_sigmas, cuda, sum:', result_sum.item())
-            print('karras_sigmas, cuda, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 177.63653564453125) < 1e-2
-            # assert abs(result_mean.item() - 0.23003872730981811) < 1e-2
+            assert abs(result_sum.item() - 840.1239624023438) < 1e-2
+            assert abs(result_mean.item() - 1.0939114093780518) < 1e-2
         else:
-            print('karras_sigmas, cpu, sum:', result_sum.item())
-            print('karras_sigmas, cpu, mean:', result_mean.item())
-            # assert abs(result_sum.item() - 170.3135223388672) < 1e-2
-            # assert abs(result_mean.item() - 0.23003872730981811) < 1e-2
+            print('None')
