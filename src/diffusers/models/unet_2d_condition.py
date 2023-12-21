@@ -273,6 +273,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             raise ValueError(
                 f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
             )
+
         if isinstance(transformer_layers_per_block, list) and reverse_transformer_layers_per_block is None:
             for layer_number_per_block in transformer_layers_per_block:
                 if isinstance(layer_number_per_block, list):

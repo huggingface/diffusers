@@ -296,7 +296,6 @@ class SinusoidalPositionalEmbedding(nn.Module):
     """
 
     def __init__(self, embed_dim: int, max_seq_length: int = 32):
-        print(embed_dim)
         super().__init__()
         position = torch.arange(max_seq_length).unsqueeze(1)
         div_term = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / embed_dim))
