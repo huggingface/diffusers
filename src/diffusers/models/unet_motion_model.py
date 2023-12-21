@@ -220,6 +220,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         encoder_hid_dim_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,
         addition_time_embed_dim: Optional[int] = None,
+        conv_in_kernel: int = 3,
+        conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
         addition_embed_type_num_heads: int = 64,
     ):
@@ -259,8 +261,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
 
         # input
-        conv_in_kernel = 3
-        conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
             in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
@@ -487,7 +487,16 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 model.up_blocks[i].upsamplers.load_state_dict(up_block.upsamplers.state_dict())
 
         model.mid_block.resnets.load_state_dict(unet.mid_block.resnets.state_dict())
-        model.mid_block.attentions.load_state_dict(unet.mid_block.attentions.state_dict())
+        # model.mid_block.attentions.load_state_dict(unet.mid_block.attentions.state_dict())
+
+        # TODO(aryan): Fix size mismatch
+        have = {}
+        for x in model.mid_block.attentions.state_dict().keys():
+            if x in unet.mid_block.attentions.state_dict().keys():
+                have[x] = unet.mid_block.attentions.state_dict()[x].reshape(
+                    model.mid_block.attentions.state_dict()[x].shape
+                )
+        model.mid_block.attentions.load_state_dict(have)
 
         if unet.conv_norm_out is not None:
             model.conv_norm_out.load_state_dict(unet.conv_norm_out.state_dict())
