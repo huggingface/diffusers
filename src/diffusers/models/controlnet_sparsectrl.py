@@ -641,10 +641,8 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: torch.FloatTensor,
         conditioning_scale: float = 1.0,
-        class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         conditioning_mask: Optional[torch.FloatTensor] = None,
         guess_mode: bool = False,
@@ -690,6 +688,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                 returned where the first element is the sample tensor.
         """
         sample_batch_size, sample_channels, sample_num_frames, sample_height, sample_width = sample.shape
+        sample = torch.zeros_like(sample).to(sample.device)
 
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
@@ -723,58 +722,21 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
-
         t_emb = self.time_proj(timesteps)
-
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=sample.dtype)
-
         emb = self.time_embedding(t_emb, timestep_cond)
-        aug_emb = None
-
-        if self.class_embedding is not None:
-            if class_labels is None:
-                raise ValueError("class_labels should be provided when num_class_embeds > 0")
-
-            if self.config.class_embed_type == "timestep":
-                class_labels = self.time_proj(class_labels)
-
-            class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
-            emb = emb + class_emb
-
-        if self.config.addition_embed_type is not None:
-            if self.config.addition_embed_type == "text":
-                aug_emb = self.add_embedding(encoder_hidden_states)
-
-            elif self.config.addition_embed_type == "text_time":
-                if "text_embeds" not in added_cond_kwargs:
-                    raise ValueError(
-                        f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
-                    )
-                text_embeds = added_cond_kwargs.get("text_embeds")
-                if "time_ids" not in added_cond_kwargs:
-                    raise ValueError(
-                        f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
-                    )
-                time_ids = added_cond_kwargs.get("time_ids")
-                time_embeds = self.add_time_proj(time_ids.flatten())
-                time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
-
-                add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
-                add_embeds = add_embeds.to(emb.dtype)
-                aug_emb = self.add_embedding(add_embeds)
-
-        emb = emb + aug_emb if aug_emb is not None else emb
 
         # 2. pre-process
         batch_size, channels, num_frames, height, width = sample.shape
-        emb = emb.repeat_interleave(repeats=sample_num_frames, dim=0)
-        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=sample_num_frames, dim=0)
-        sample = sample.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
+        encoder_hidden_states = encoder_hidden_states.repeat_interleave(sample_num_frames, dim=0)
+        emb = emb.repeat_interleave(sample_num_frames, dim=0)
 
+        sample = sample.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
         sample = self.conv_in(sample)
+
         batch_frames, channels, height, width = sample.shape
         sample = sample[:, None].reshape(sample_batch_size, sample_num_frames, channels, height, width)
 
