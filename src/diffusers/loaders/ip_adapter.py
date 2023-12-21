@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -34,6 +34,8 @@ if is_transformers_available():
     from ..models.attention_processor import (
         IPAdapterAttnProcessor,
         IPAdapterAttnProcessor2_0,
+        LoRAIPAdapterAttnProcessor,
+        LoRAIPAdapterAttnProcessor2_0,
     )
 
 logger = logging.get_logger(__name__)
@@ -46,8 +48,8 @@ class IPAdapterMixin:
     def load_ip_adapter(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        subfolder: str,
         weight_name: str,
+        subfolder: Optional[str] = None,
         **kwargs,
     ):
         """
@@ -135,14 +137,15 @@ class IPAdapterMixin:
         # load CLIP image encoer here if it has not been registered to the pipeline yet
         if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
             if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-                logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
-                image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-                    pretrained_model_name_or_path_or_dict,
-                    subfolder=os.path.join(subfolder, "image_encoder"),
-                ).to(self.device, dtype=self.dtype)
-                self.image_encoder = image_encoder
-            else:
-                raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
+                try:
+                    logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
+                    image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+                        pretrained_model_name_or_path_or_dict,
+                        subfolder=os.path.join(subfolder, "image_encoder"),
+                    ).to(self.device, dtype=self.dtype)
+                    self.image_encoder = image_encoder
+                except TypeError:
+                    print("IPAdapter: `subfolder` not found, `image_encoder` is None, use image_embeds.")
 
         # create feature extractor if it has not been registered to the pipeline yet
         if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
@@ -153,5 +156,13 @@ class IPAdapterMixin:
 
     def set_ip_adapter_scale(self, scale):
         for attn_processor in self.unet.attn_processors.values():
-            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+            if isinstance(
+                attn_processor,
+                (
+                    IPAdapterAttnProcessor,
+                    IPAdapterAttnProcessor2_0,
+                    LoRAIPAdapterAttnProcessor,
+                    LoRAIPAdapterAttnProcessor2_0,
+                ),
+            ):
                 attn_processor.scale = scale

@@ -684,13 +684,20 @@ class UNet2DConditionLoadersMixin:
                 diffusers_name = key.replace("proj", "image_embeds")
                 updated_state_dict[diffusers_name] = value
 
-        elif "proj.3.weight" in state_dict:
+        elif "proj.0.weight" in state_dict:
             # IP-Adapter Full
-            clip_embeddings_dim = state_dict["proj.0.weight"].shape[0]
-            cross_attention_dim = state_dict["proj.3.weight"].shape[0]
+            clip_embeddings_dim_in = state_dict["proj.0.weight"].shape[1]
+            clip_embeddings_dim_out = state_dict["proj.0.weight"].shape[0]
+            multiplier = clip_embeddings_dim_out // clip_embeddings_dim_in
+            norm_layer = "proj.3.weight" if "proj.3.weight" in state_dict else "norm.weight"
+            cross_attention_dim = state_dict[norm_layer].shape[0]
+            num_tokens = state_dict["proj.2.weight"].shape[0] // cross_attention_dim
 
             image_projection = MLPProjection(
-                cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+                cross_attention_dim=cross_attention_dim,
+                image_embed_dim=clip_embeddings_dim_in,
+                mult=multiplier,
+                num_tokens=num_tokens,
             )
 
             for key, value in state_dict.items():
@@ -744,14 +751,24 @@ class UNet2DConditionLoadersMixin:
             AttnProcessor2_0,
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
+            LoRAAttnProcessor,
+            LoRAAttnProcessor2_0,
+            LoRAIPAdapterAttnProcessor,
+            LoRAIPAdapterAttnProcessor2_0,
         )
 
+        use_lora = False
         if "proj.weight" in state_dict["image_proj"]:
             # IP-Adapter
             num_image_text_embeds = 4
-        elif "proj.3.weight" in state_dict["image_proj"]:
+        elif "proj.0.weight" in state_dict["image_proj"]:
             # IP-Adapter Full Face
             num_image_text_embeds = 257  # 256 CLIP tokens + 1 CLS token
+            for k in state_dict["ip_adapter"].keys():
+                if "lora" in k:
+                    num_image_text_embeds = 4
+                    use_lora = True
+                    break
         else:
             # IP-Adapter Plus
             num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
@@ -774,20 +791,47 @@ class UNet2DConditionLoadersMixin:
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = self.config.block_out_channels[block_id]
             if cross_attention_dim is None or "motion_modules" in name:
-                attn_processor_class = (
-                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
-                )
-                attn_procs[name] = attn_processor_class()
+                if use_lora:
+                    attn_processor_class = (
+                        LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                    )
+                    attn_procs[name] = attn_processor_class(
+                        hidden_size=hidden_size,
+                        cross_attention_dim=cross_attention_dim,
+                        rank=128,
+                    ).to(self.device, dtype=self.dtype)
+                else:
+                    attn_processor_class = (
+                        AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                    )
+                    attn_procs[name] = attn_processor_class()
             else:
-                attn_processor_class = (
-                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
-                )
-                attn_procs[name] = attn_processor_class(
-                    hidden_size=hidden_size,
-                    cross_attention_dim=cross_attention_dim,
-                    scale=1.0,
-                    num_tokens=num_image_text_embeds,
-                ).to(dtype=self.dtype, device=self.device)
+                if use_lora:
+                    attn_processor_class = (
+                        LoRAIPAdapterAttnProcessor2_0
+                        if hasattr(F, "scaled_dot_product_attention")
+                        else LoRAIPAdapterAttnProcessor
+                    )
+                    attn_procs[name] = attn_processor_class(
+                        hidden_size=hidden_size,
+                        cross_attention_dim=cross_attention_dim,
+                        scale=1.0,
+                        rank=128,
+                        num_tokens=num_image_text_embeds,
+                    ).to(dtype=self.dtype, device=self.device)
+
+                else:
+                    attn_processor_class = (
+                        IPAdapterAttnProcessor2_0
+                        if hasattr(F, "scaled_dot_product_attention")
+                        else IPAdapterAttnProcessor
+                    )
+                    attn_procs[name] = attn_processor_class(
+                        hidden_size=hidden_size,
+                        cross_attention_dim=cross_attention_dim,
+                        scale=1.0,
+                        num_tokens=num_image_text_embeds,
+                    ).to(dtype=self.dtype, device=self.device)
 
                 value_dict = {}
                 for k, w in attn_procs[name].state_dict().items():

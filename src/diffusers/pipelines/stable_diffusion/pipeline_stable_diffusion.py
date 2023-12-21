@@ -785,6 +785,7 @@ class StableDiffusionPipeline(
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        image_embeds: Optional[torch.FloatTensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -836,6 +837,8 @@ class StableDiffusionPipeline(
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+            image_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated image embeddings.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
@@ -943,7 +946,14 @@ class StableDiffusionPipeline(
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        if ip_adapter_image is not None:
+        if image_embeds is not None:
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0).to(
+                device=device, dtype=prompt_embeds.dtype
+            )
+            negative_image_embeds = torch.zeros_like(image_embeds)
+            if self.do_classifier_free_guidance:
+                image_embeds = torch.cat([negative_image_embeds, image_embeds])
+        elif ip_adapter_image is not None:
             output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
             image_embeds, negative_image_embeds = self.encode_image(
                 ip_adapter_image, device, num_images_per_prompt, output_hidden_state
@@ -971,7 +981,9 @@ class StableDiffusionPipeline(
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+        added_cond_kwargs = (
+            {"image_embeds": image_embeds} if ip_adapter_image is not None or image_embeds is not None else None
+        )
 
         # 6.2 Optionally get Guidance Scale Embedding
         timestep_cond = None
