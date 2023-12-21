@@ -20,6 +20,7 @@ import torch.nn.functional as F
 
 from ..utils import USE_PEFT_BACKEND
 from .lora import LoRACompatibleConv
+from .normalization import RMSNorm
 from .upsampling import upfirdn2d_native
 
 
@@ -89,6 +90,11 @@ class Downsample2D(nn.Module):
         out_channels: Optional[int] = None,
         padding: int = 1,
         name: str = "conv",
+        kernel_size=3,
+        norm_type=None,
+        eps=None,
+        elementwise_affine=None,
+        bias=True,
     ):
         super().__init__()
         self.channels = channels
@@ -99,8 +105,19 @@ class Downsample2D(nn.Module):
         self.name = name
         conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
 
+        if norm_type == "ln_norm":
+            self.norm = nn.LayerNorm(channels, eps, elementwise_affine)
+        elif norm_type == "rms_norm":
+            self.norm = RMSNorm(channels, eps, elementwise_affine)
+        elif norm_type is None:
+            self.norm = None
+        else:
+            raise ValueError(f"unknown norm_type: {norm_type}")
+
         if use_conv:
-            conv = conv_cls(self.channels, self.out_channels, 3, stride=stride, padding=padding)
+            conv = conv_cls(
+                self.channels, self.out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=bias
+            )
         else:
             assert self.channels == self.out_channels
             conv = nn.AvgPool2d(kernel_size=stride, stride=stride)
@@ -116,6 +133,9 @@ class Downsample2D(nn.Module):
 
     def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
         assert hidden_states.shape[1] == self.channels
+
+        if self.norm is not None:
+            hidden_states = self.norm(hidden_states.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 
         if self.use_conv and self.padding == 0:
             pad = (0, 1, 0, 1)

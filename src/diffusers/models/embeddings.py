@@ -197,11 +197,12 @@ class TimestepEmbedding(nn.Module):
         out_dim: int = None,
         post_act_fn: Optional[str] = None,
         cond_proj_dim=None,
+        sample_proj_bias=True,
     ):
         super().__init__()
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
-        self.linear_1 = linear_cls(in_channels, time_embed_dim)
+        self.linear_1 = linear_cls(in_channels, time_embed_dim, sample_proj_bias)
 
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
@@ -214,7 +215,7 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = out_dim
         else:
             time_embed_dim_out = time_embed_dim
-        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out)
+        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out, sample_proj_bias)
 
         if post_act_fn is None:
             self.post_act = None

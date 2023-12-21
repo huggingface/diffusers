@@ -108,6 +108,7 @@ else:
             "VersatileDiffusionTextToImagePipeline",
         ]
     )
+    _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
     _import_structure["animatediff"] = ["AnimateDiffPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
@@ -342,6 +343,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
+        from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
         from .animatediff import AnimateDiffPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import (

@@ -437,7 +437,7 @@ class PipelineTesterMixin:
         self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
-        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"]
+        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"], batch_generator=True
     ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -472,7 +472,7 @@ class PipelineTesterMixin:
                 else:
                     batched_input[name] = batch_size * [value]
 
-            if "generator" in inputs:
+            if batch_generator and "generator" in inputs:
                 batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
 
             if "batch_size" in inputs:

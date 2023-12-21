@@ -47,6 +47,7 @@ if is_torch_available():
     _import_structure["unet_kandinsky3"] = ["Kandinsky3UNet"]
     _import_structure["unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
     _import_structure["unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
+    _import_structure["uvit_2d"] = ["UVit2DModel"]
     _import_structure["vq_model"] = ["VQModel"]
 
 if is_flax_available():
@@ -81,6 +82,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .unet_kandinsky3 import Kandinsky3UNet
         from .unet_motion_model import MotionAdapter, UNetMotionModel
         from .unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel
+        from .uvit_2d import UVit2DModel
         from .vq_model import VQModel
 
     if is_flax_available():
