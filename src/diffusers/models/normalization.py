@@ -20,7 +20,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from .activations import get_activation
-from .embeddings import CombinedTimestepLabelEmbeddings, CombinedTimestepSizeEmbeddings
+from .embeddings import CombinedTimestepLabelEmbeddings, PixArtAlphaCombinedTimestepSizeEmbeddings
 
 
 class AdaLayerNorm(nn.Module):
@@ -91,7 +91,7 @@ class AdaLayerNormSingle(nn.Module):
     def __init__(self, embedding_dim: int, use_additional_conditions: bool = False):
         super().__init__()
 
-        self.emb = CombinedTimestepSizeEmbeddings(
+        self.emb = PixArtAlphaCombinedTimestepSizeEmbeddings(
             embedding_dim, size_emb_dim=embedding_dim // 3, use_additional_conditions=use_additional_conditions
         )
 
