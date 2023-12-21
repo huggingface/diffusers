@@ -460,7 +460,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             config["use_motion_mid_block"] = motion_adapter.config["use_motion_mid_block"]
 
         # Need this for backwards compatibility with UNet2DConditionModel checkpoints
-        if not config.get("num_attention_heads"):
+        if config.get("attention_head_dim", None):
             config["num_attention_heads"] = config["attention_head_dim"]
 
         model = cls.from_config(config)
