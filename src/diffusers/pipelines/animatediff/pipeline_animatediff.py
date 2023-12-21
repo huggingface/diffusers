@@ -106,7 +106,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
 
-    model_cpu_offload_seq = "text_encoder->unet->vae"
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
     _optional_components = ["feature_extractor", "image_encoder"]
 
     def __init__(

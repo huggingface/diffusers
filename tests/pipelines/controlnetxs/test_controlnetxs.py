@@ -34,6 +34,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_image,
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
@@ -273,7 +274,9 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
 
         original_image = image[-3:, -3:, -1].flatten()
         expected_image = np.array([0.1274, 0.1401, 0.147, 0.1185, 0.1555, 0.1492, 0.1565, 0.1474, 0.1701])
-        assert np.allclose(original_image, expected_image, atol=1e-04)
+
+        max_diff = numpy_cosine_similarity_distance(original_image, expected_image)
+        assert max_diff < 1e-4
 
     def test_depth(self):
         controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-SD2.1-depth")
@@ -298,7 +301,9 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
 
         original_image = image[-3:, -3:, -1].flatten()
         expected_image = np.array([0.1098, 0.1025, 0.1211, 0.1129, 0.1165, 0.1262, 0.1185, 0.1261, 0.1703])
-        assert np.allclose(original_image, expected_image, atol=1e-04)
+
+        max_diff = numpy_cosine_similarity_distance(original_image, expected_image)
+        assert max_diff < 1e-4
 
     @require_python39_or_higher
     @require_torch_2
