@@ -179,7 +179,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_lora.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$DATASET_NAME \
   --dataloader_num_workers=8 \
-  --resolution=512 
+  --resolution=512 \
   --center_crop \
   --random_flip \
   --train_batch_size=1 \

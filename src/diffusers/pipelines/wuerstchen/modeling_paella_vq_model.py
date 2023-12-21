@@ -19,8 +19,8 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...models.autoencoders.vae import DecoderOutput, VectorQuantizer
 from ...models.modeling_utils import ModelMixin
-from ...models.vae import DecoderOutput, VectorQuantizer
 from ...models.vq_model import VQEncoderOutput
 from ...utils.accelerate_utils import apply_forward_hook
 
