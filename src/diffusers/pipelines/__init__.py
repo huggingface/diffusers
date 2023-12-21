@@ -189,6 +189,7 @@ else:
             "StableDiffusionUpscalePipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
+            "StableDiffusionLDM3DPipeline",
         ]
     )
     _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
@@ -426,6 +427,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionInpaintPipeline,
             StableDiffusionInstructPix2PixPipeline,
             StableDiffusionLatentUpscalePipeline,
+            StableDiffusionLDM3DPipeline,
             StableDiffusionPipeline,
             StableDiffusionUpscalePipeline,
             StableUnCLIPImg2ImgPipeline,

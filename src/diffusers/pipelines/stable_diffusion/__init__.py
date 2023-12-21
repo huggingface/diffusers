@@ -127,6 +127,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_stable_diffusion_latent_upscale import (
             StableDiffusionLatentUpscalePipeline,
         )
+        from .pipeline_stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
         from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
         from .pipeline_stable_unclip import StableUnCLIPPipeline
         from .pipeline_stable_unclip_img2img import StableUnCLIPImg2ImgPipeline
