@@ -32,6 +32,7 @@ else:
     _import_structure["clip_image_project_model"] = ["CLIPImageProjection"]
     _import_structure["pipeline_cycle_diffusion"] = ["CycleDiffusionPipeline"]
     _import_structure["pipeline_stable_diffusion"] = ["StableDiffusionPipeline"]
+    _import_structure["pipeline_stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
     _import_structure["pipeline_stable_diffusion_gligen"] = ["StableDiffusionGLIGENPipeline"]
     _import_structure["pipeline_stable_diffusion_gligen_text_image"] = ["StableDiffusionGLIGENTextImagePipeline"]
     _import_structure["pipeline_stable_diffusion_img2img"] = ["StableDiffusionImg2ImgPipeline"]
@@ -134,6 +135,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionPipeline,
             StableDiffusionPipelineOutput,
             StableDiffusionSafetyChecker,
+        )
+        from .pipeline_stable_diffusion_attend_and_excite import (
+            StableDiffusionAttendAndExcitePipeline,
         )
         from .pipeline_stable_diffusion_gligen import StableDiffusionGLIGENPipeline
         from .pipeline_stable_diffusion_gligen_text_image import (
