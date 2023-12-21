@@ -485,14 +485,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 model.up_blocks[i].upsamplers.load_state_dict(up_block.upsamplers.state_dict())
 
         model.mid_block.resnets.load_state_dict(unet.mid_block.resnets.state_dict())
-
-        have = {}
-        for x in model.mid_block.attentions.state_dict().keys():
-            if x in unet.mid_block.attentions.state_dict().keys():
-                have[x] = unet.mid_block.attentions.state_dict()[x].reshape(
-                    model.mid_block.attentions.state_dict()[x].shape
-                )
-        model.mid_block.attentions.load_state_dict(have)
+        model.mid_block.attentions.load_state_dict(unet.mid_block.attentions.state_dict())
 
         if unet.conv_norm_out is not None:
             model.conv_norm_out.load_state_dict(unet.conv_norm_out.state_dict())
