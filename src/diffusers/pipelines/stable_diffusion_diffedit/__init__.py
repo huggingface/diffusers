@@ -32,7 +32,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *
     else:
-        from .pipeline_pixart_alpha import PixArtAlphaPipeline
+        from .pipeline_stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
 
 else:
     import sys
