@@ -40,7 +40,6 @@ else:
     _import_structure["pipeline_stable_diffusion_inpaint_legacy"] = ["StableDiffusionInpaintPipelineLegacy"]
     _import_structure["pipeline_stable_diffusion_instruct_pix2pix"] = ["StableDiffusionInstructPix2PixPipeline"]
     _import_structure["pipeline_stable_diffusion_latent_upscale"] = ["StableDiffusionLatentUpscalePipeline"]
-    _import_structure["pipeline_stable_diffusion_ldm3d"] = ["StableDiffusionLDM3DPipeline"]
     _import_structure["pipeline_stable_diffusion_model_editing"] = ["StableDiffusionModelEditingPipeline"]
     _import_structure["pipeline_stable_diffusion_paradigms"] = ["StableDiffusionParadigmsPipeline"]
     _import_structure["pipeline_stable_diffusion_upscale"] = ["StableDiffusionUpscalePipeline"]
@@ -124,7 +123,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_stable_diffusion_latent_upscale import (
             StableDiffusionLatentUpscalePipeline,
         )
-        from .pipeline_stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
         from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
         from .pipeline_stable_unclip import StableUnCLIPPipeline
         from .pipeline_stable_unclip_img2img import StableUnCLIPImg2ImgPipeline
