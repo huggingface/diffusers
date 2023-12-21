@@ -180,9 +180,6 @@ else:
         [
             "CLIPImageProjection",
             "StableDiffusionDepth2ImgPipeline",
-            "StableDiffusionGLIGENPipeline",
-            "StableDiffusionGLIGENPipeline",
-            "StableDiffusionGLIGENTextImagePipeline",
             "StableDiffusionImageVariationPipeline",
             "StableDiffusionImg2ImgPipeline",
             "StableDiffusionInpaintPipeline",
@@ -199,6 +196,10 @@ else:
     )
     _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
+    _import_structure["stable_diffusion_gligen"] = [
+        "StableDiffusionGLIGENPipeline",
+        "StableDiffusionGLIGENTextImagePipeline",
+    ]
     _import_structure["stable_video_diffusion"] = ["StableVideoDiffusionPipeline"]
     _import_structure["stable_diffusion_xl"].extend(
         [
@@ -268,7 +269,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
 else:
-    _import_structure["stable_diffusion"].extend(["StableDiffusionKDiffusionPipeline"])
+    _import_structure["stable_diffusion_k_diffusion"] = ["StableDiffusionKDiffusionPipeline"]
 try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
@@ -421,8 +422,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .stable_diffusion import (
             CLIPImageProjection,
             StableDiffusionDepth2ImgPipeline,
-            StableDiffusionGLIGENPipeline,
-            StableDiffusionGLIGENTextImagePipeline,
             StableDiffusionImageVariationPipeline,
             StableDiffusionImg2ImgPipeline,
             StableDiffusionInpaintPipeline,
@@ -438,6 +437,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
+        from .stable_diffusion_gligen import StableDiffusionGLIGENPipeline, StableDiffusionGLIGENTextImagePipeline
         from .stable_diffusion_safe import StableDiffusionPipelineSafe
         from .stable_diffusion_xl import (
             StableDiffusionXLImg2ImgPipeline,
@@ -498,7 +498,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         except OptionalDependencyNotAvailable:
             from ..utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
         else:
-            from .stable_diffusion import StableDiffusionKDiffusionPipeline
+            from .stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
 
         try:
             if not is_flax_available():
