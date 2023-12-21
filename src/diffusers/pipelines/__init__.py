@@ -196,8 +196,10 @@ else:
         ]
     )
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
-    _import_structure["stable_diffusion_gligen"] = ["StableDiffusionGLIGENPipeline"]
-    _import_structure["stable_diffusion_gligen_text_image"] = ["StableDiffusionGLIGENTextImagePipeline"]
+    _import_structure["stable_diffusion_gligen"] = [
+        "StableDiffusionGLIGENPipeline",
+        "StableDiffusionGLIGENTextImagePipeline",
+    ]
     _import_structure["stable_video_diffusion"] = ["StableVideoDiffusionPipeline"]
     _import_structure["stable_diffusion_xl"].extend(
         [
