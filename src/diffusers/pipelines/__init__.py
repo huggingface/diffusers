@@ -179,7 +179,6 @@ else:
     _import_structure["stable_diffusion"].extend(
         [
             "CLIPImageProjection",
-            "StableDiffusionAttendAndExcitePipeline",
             "StableDiffusionDepth2ImgPipeline",
             "StableDiffusionGLIGENPipeline",
             "StableDiffusionGLIGENPipeline",
@@ -198,6 +197,7 @@ else:
             "StableUnCLIPPipeline",
         ]
     )
+    _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
     _import_structure["stable_video_diffusion"] = ["StableVideoDiffusionPipeline"]
     _import_structure["stable_diffusion_xl"].extend(
@@ -420,7 +420,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
         from .stable_diffusion import (
             CLIPImageProjection,
-            StableDiffusionAttendAndExcitePipeline,
             StableDiffusionDepth2ImgPipeline,
             StableDiffusionGLIGENPipeline,
             StableDiffusionGLIGENTextImagePipeline,
@@ -437,6 +436,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
         )
+        from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
         from .stable_diffusion_safe import StableDiffusionPipelineSafe
         from .stable_diffusion_xl import (
