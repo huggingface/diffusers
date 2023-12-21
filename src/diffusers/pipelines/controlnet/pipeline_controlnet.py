@@ -745,6 +745,7 @@ class StableDiffusionControlNetPipeline(
         dtype,
         do_classifier_free_guidance=False,
         guess_mode=False,
+        control_mode=False,
     ):
         image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
@@ -759,7 +760,7 @@ class StableDiffusionControlNetPipeline(
 
         image = image.to(device=device, dtype=dtype)
 
-        if do_classifier_free_guidance and not guess_mode:
+        if do_classifier_free_guidance and (not guess_mode or not control_mode):
             image = torch.cat([image] * 2)
 
         return image
@@ -886,6 +887,7 @@ class StableDiffusionControlNetPipeline(
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         guess_mode: bool = False,
+        control_mode: bool = False,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
         clip_skip: Optional[int] = None,
@@ -962,6 +964,9 @@ class StableDiffusionControlNetPipeline(
                 to the residual in the original `unet`. If multiple ControlNets are specified in `init`, you can set
                 the corresponding scale as a list.
             guess_mode (`bool`, *optional*, defaults to `False`):
+                The ControlNet encoder tries to recognize the content of the input image even if you remove all
+                prompts. A `guidance_scale` value between 3.0 and 5.0 is recommended.
+            control_mode (`bool`, *optional*, defaults to `False`):
                 The ControlNet encoder tries to recognize the content of the input image even if you remove all
                 prompts. A `guidance_scale` value between 3.0 and 5.0 is recommended.
             control_guidance_start (`float` or `List[float]`, *optional*, defaults to 0.0):
@@ -1058,6 +1063,7 @@ class StableDiffusionControlNetPipeline(
             else controlnet.nets[0].config.global_pool_conditions
         )
         guess_mode = guess_mode or global_pool_conditions
+        control_mode = control_mode or global_pool_conditions
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
@@ -1100,6 +1106,7 @@ class StableDiffusionControlNetPipeline(
                 dtype=controlnet.dtype,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
+                control_mode=control_mode,
             )
             height, width = image.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
@@ -1116,6 +1123,7 @@ class StableDiffusionControlNetPipeline(
                     dtype=controlnet.dtype,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
+                    control_mode=control_mode,
                 )
 
                 images.append(image_)
@@ -1181,7 +1189,7 @@ class StableDiffusionControlNetPipeline(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # controlnet(s) inference
-                if guess_mode and self.do_classifier_free_guidance:
+                if (guess_mode or control_mode) and self.do_classifier_free_guidance:
                     # Infer ControlNet only for the conditional batch.
                     control_model_input = latents
                     control_model_input = self.scheduler.scale_model_input(control_model_input, t)
@@ -1205,10 +1213,11 @@ class StableDiffusionControlNetPipeline(
                     controlnet_cond=image,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
+                    control_mode=control_mode,
                     return_dict=False,
                 )
 
-                if guess_mode and self.do_classifier_free_guidance:
+                if (guess_mode or control_mode) and self.do_classifier_free_guidance:
                     # Infered ControlNet only for the conditional batch.
                     # To apply the output of ControlNet to both the unconditional and conditional batches,
                     # add 0 to the unconditional batch to keep it unchanged.
