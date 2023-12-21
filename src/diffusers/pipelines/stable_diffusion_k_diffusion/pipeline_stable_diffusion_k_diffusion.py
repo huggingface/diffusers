@@ -27,7 +27,7 @@ from ...schedulers import LMSDiscreteScheduler
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
+from ..stable_diffusion import StableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
