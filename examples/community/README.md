@@ -74,6 +74,7 @@ This depth estimation pipeline processes a single input image through multiple d
 import numpy as np
 from PIL import Image
 from diffusers import DiffusionPipeline
+from diffusers.utils import load_image
 
 pipe = DiffusionPipeline.from_pretrained(
     "Bingxin/Marigold",
@@ -83,7 +84,8 @@ pipe = DiffusionPipeline.from_pretrained(
 
 pipe.to("cuda")
 
-image = Image.open("./input_image.jpg")
+img_path_or_url = "https://share.phys.ethz.ch/~pf/bingkedata/marigold/pipeline_example.jpg"
+image: Image.Image = load_image(img_path_or_url)
 
 pipeline_output = pipe(
     image,                  # Input image.
