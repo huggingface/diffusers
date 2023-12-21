@@ -1,4 +1,4 @@
-# Copyright 2023 Susung Hong and The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,15 +13,18 @@
 # limitations under the License.
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Union
+import math
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
-import torch.nn.functional as F
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from torch.nn import functional as F
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
+from ...image_processor import VaeImageProcessor
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.attention_processor import Attention
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -34,50 +37,115 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
+from ..stable_diffusion import StableDiffusionPipelineOutput
+from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
-logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+logger = logging.get_logger(__name__)
 
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionSAGPipeline
+        >>> from diffusers import StableDiffusionAttendAndExcitePipeline
 
-        >>> pipe = StableDiffusionSAGPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
-        ... )
-        >>> pipe = pipe.to("cuda")
+        >>> pipe = StableDiffusionAttendAndExcitePipeline.from_pretrained(
+        ...     "CompVis/stable-diffusion-v1-4", torch_dtype=torch.float16
+        ... ).to("cuda")
 
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt, sag_scale=0.75).images[0]
+
+        >>> prompt = "a cat and a frog"
+
+        >>> # use get_indices function to find out indices of the tokens you want to alter
+        >>> pipe.get_indices(prompt)
+        {0: '<|startoftext|>', 1: 'a</w>', 2: 'cat</w>', 3: 'and</w>', 4: 'a</w>', 5: 'frog</w>', 6: '<|endoftext|>'}
+
+        >>> token_indices = [2, 5]
+        >>> seed = 6141
+        >>> generator = torch.Generator("cuda").manual_seed(seed)
+
+        >>> images = pipe(
+        ...     prompt=prompt,
+        ...     token_indices=token_indices,
+        ...     guidance_scale=7.5,
+        ...     generator=generator,
+        ...     num_inference_steps=50,
+        ...     max_iter_to_alter=25,
+        ... ).images
+
+        >>> image = images[0]
+        >>> image.save(f"../images/{prompt}_{seed}.png")
         ```
 """
 
 
-# processes and stores attention probabilities
-class CrossAttnStoreProcessor:
-    def __init__(self):
-        self.attention_probs = None
+class AttentionStore:
+    @staticmethod
+    def get_empty_store():
+        return {"down": [], "mid": [], "up": []}
 
-    def __call__(
-        self,
-        attn,
-        hidden_states,
-        encoder_hidden_states=None,
-        attention_mask=None,
-    ):
+    def __call__(self, attn, is_cross: bool, place_in_unet: str):
+        if self.cur_att_layer >= 0 and is_cross:
+            if attn.shape[1] == np.prod(self.attn_res):
+                self.step_store[place_in_unet].append(attn)
+
+        self.cur_att_layer += 1
+        if self.cur_att_layer == self.num_att_layers:
+            self.cur_att_layer = 0
+            self.between_steps()
+
+    def between_steps(self):
+        self.attention_store = self.step_store
+        self.step_store = self.get_empty_store()
+
+    def get_average_attention(self):
+        average_attention = self.attention_store
+        return average_attention
+
+    def aggregate_attention(self, from_where: List[str]) -> torch.Tensor:
+        """Aggregates the attention across the different layers and heads at the specified resolution."""
+        out = []
+        attention_maps = self.get_average_attention()
+        for location in from_where:
+            for item in attention_maps[location]:
+                cross_maps = item.reshape(-1, self.attn_res[0], self.attn_res[1], item.shape[-1])
+                out.append(cross_maps)
+        out = torch.cat(out, dim=0)
+        out = out.sum(0) / out.shape[0]
+        return out
+
+    def reset(self):
+        self.cur_att_layer = 0
+        self.step_store = self.get_empty_store()
+        self.attention_store = {}
+
+    def __init__(self, attn_res):
+        """
+        Initialize an empty AttentionStore :param step_index: used to visualize only a specific step in the diffusion
+        process
+        """
+        self.num_att_layers = -1
+        self.cur_att_layer = 0
+        self.step_store = self.get_empty_store()
+        self.attention_store = {}
+        self.curr_step_index = 0
+        self.attn_res = attn_res
+
+
+class AttendExciteAttnProcessor:
+    def __init__(self, attnstore, place_in_unet):
+        super().__init__()
+        self.attnstore = attnstore
+        self.place_in_unet = place_in_unet
+
+    def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None):
         batch_size, sequence_length, _ = hidden_states.shape
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
         query = attn.to_q(hidden_states)
 
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
+        is_cross = encoder_hidden_states is not None
+        encoder_hidden_states = encoder_hidden_states if encoder_hidden_states is not None else hidden_states
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -85,8 +153,13 @@ class CrossAttnStoreProcessor:
         key = attn.head_to_batch_dim(key)
         value = attn.head_to_batch_dim(value)
 
-        self.attention_probs = attn.get_attention_scores(query, key, attention_mask)
-        hidden_states = torch.bmm(self.attention_probs, value)
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+
+        # only need to store attention maps during the Attend and Excite process
+        if attention_probs.requires_grad:
+            self.attnstore(attention_probs, is_cross, self.place_in_unet)
+
+        hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
@@ -97,17 +170,15 @@ class CrossAttnStoreProcessor:
         return hidden_states
 
 
-# Modified to get self-attention guidance scale in this paper (https://arxiv.org/pdf/2210.00939.pdf) as an input
-class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin):
+class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, TextualInversionLoaderMixin):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion.
+    Pipeline for text-to-image generation using Stable Diffusion and Attend-and-Excite.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -130,7 +201,7 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
     """
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
-    _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
+    _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
@@ -142,10 +213,25 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
+
+        if safety_checker is None and requires_safety_checker:
+            logger.warning(
+                f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
+                " that you abide to the conditions of the Stable Diffusion license and do not expose unfiltered"
+                " results in services or applications open to the public. Both the diffusers team and Hugging Face"
+                " strongly recommend to keep the safety filter enabled in all public facing circumstances, disabling"
+                " it only for use-cases that involve analyzing network behavior or auditing its results. For more"
+                " information, please have a look at https://github.com/huggingface/diffusers/pull/254 ."
+            )
+
+        if safety_checker is not None and feature_extractor is None:
+            raise ValueError(
+                "Make sure to define a feature extractor when loading {self.__class__} if you want to use the safety"
+                " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
+            )
 
         self.register_modules(
             vae=vae,
@@ -155,7 +241,6 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
-            image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -392,31 +477,6 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(image, return_tensors="pt").pixel_values
-
-        image = image.to(device=device, dtype=dtype)
-        if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_enc_hidden_states = self.image_encoder(
-                torch.zeros_like(image), output_hidden_states=True
-            ).hidden_states[-2]
-            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
-            return image_enc_hidden_states, uncond_image_enc_hidden_states
-        else:
-            image_embeds = self.image_encoder(image).image_embeds
-            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_embeds = torch.zeros_like(image_embeds)
-
-            return image_embeds, uncond_image_embeds
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -462,31 +522,26 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
+        indices,
         height,
         width,
         callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
-        callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
-            )
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -515,6 +570,31 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
                     f" {negative_prompt_embeds.shape}."
                 )
 
+        indices_is_list_ints = isinstance(indices, list) and isinstance(indices[0], int)
+        indices_is_list_list_ints = (
+            isinstance(indices, list) and isinstance(indices[0], list) and isinstance(indices[0][0], int)
+        )
+
+        if not indices_is_list_ints and not indices_is_list_list_ints:
+            raise TypeError("`indices` must be a list of ints or a list of a list of ints")
+
+        if indices_is_list_ints:
+            indices_batch_size = 1
+        elif indices_is_list_list_ints:
+            indices_batch_size = len(indices)
+
+        if prompt is not None and isinstance(prompt, str):
+            prompt_batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            prompt_batch_size = len(prompt)
+        elif prompt_embeds is not None:
+            prompt_batch_size = prompt_embeds.shape[0]
+
+        if indices_batch_size != prompt_batch_size:
+            raise ValueError(
+                f"indices batch size must be same as prompt batch size. indices batch size: {indices_batch_size}, prompt batch size: {prompt_batch_size}"
+            )
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
@@ -533,29 +613,162 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    @staticmethod
+    def _compute_max_attention_per_index(
+        attention_maps: torch.Tensor,
+        indices: List[int],
+    ) -> List[torch.Tensor]:
+        """Computes the maximum attention value for each of the tokens we wish to alter."""
+        attention_for_text = attention_maps[:, :, 1:-1]
+        attention_for_text *= 100
+        attention_for_text = torch.nn.functional.softmax(attention_for_text, dim=-1)
+
+        # Shift indices since we removed the first token
+        indices = [index - 1 for index in indices]
+
+        # Extract the maximum values
+        max_indices_list = []
+        for i in indices:
+            image = attention_for_text[:, :, i]
+            smoothing = GaussianSmoothing().to(attention_maps.device)
+            input = F.pad(image.unsqueeze(0).unsqueeze(0), (1, 1, 1, 1), mode="reflect")
+            image = smoothing(input).squeeze(0).squeeze(0)
+            max_indices_list.append(image.max())
+        return max_indices_list
+
+    def _aggregate_and_get_max_attention_per_token(
+        self,
+        indices: List[int],
+    ):
+        """Aggregates the attention for each token and computes the max activation value for each token to alter."""
+        attention_maps = self.attention_store.aggregate_attention(
+            from_where=("up", "down", "mid"),
+        )
+        max_attention_per_index = self._compute_max_attention_per_index(
+            attention_maps=attention_maps,
+            indices=indices,
+        )
+        return max_attention_per_index
+
+    @staticmethod
+    def _compute_loss(max_attention_per_index: List[torch.Tensor]) -> torch.Tensor:
+        """Computes the attend-and-excite loss using the maximum attention value for each token."""
+        losses = [max(0, 1.0 - curr_max) for curr_max in max_attention_per_index]
+        loss = max(losses)
+        return loss
+
+    @staticmethod
+    def _update_latent(latents: torch.Tensor, loss: torch.Tensor, step_size: float) -> torch.Tensor:
+        """Update the latent according to the computed loss."""
+        grad_cond = torch.autograd.grad(loss.requires_grad_(True), [latents], retain_graph=True)[0]
+        latents = latents - step_size * grad_cond
+        return latents
+
+    def _perform_iterative_refinement_step(
+        self,
+        latents: torch.Tensor,
+        indices: List[int],
+        loss: torch.Tensor,
+        threshold: float,
+        text_embeddings: torch.Tensor,
+        step_size: float,
+        t: int,
+        max_refinement_steps: int = 20,
+    ):
+        """
+        Performs the iterative latent refinement introduced in the paper. Here, we continuously update the latent code
+        according to our loss objective until the given threshold is reached for all tokens.
+        """
+        iteration = 0
+        target_loss = max(0, 1.0 - threshold)
+        while loss > target_loss:
+            iteration += 1
+
+            latents = latents.clone().detach().requires_grad_(True)
+            self.unet(latents, t, encoder_hidden_states=text_embeddings).sample
+            self.unet.zero_grad()
+
+            # Get max activation value for each subject token
+            max_attention_per_index = self._aggregate_and_get_max_attention_per_token(
+                indices=indices,
+            )
+
+            loss = self._compute_loss(max_attention_per_index)
+
+            if loss != 0:
+                latents = self._update_latent(latents, loss, step_size)
+
+            logger.info(f"\t Try {iteration}. loss: {loss}")
+
+            if iteration >= max_refinement_steps:
+                logger.info(f"\t Exceeded max number of iterations ({max_refinement_steps})! ")
+                break
+
+        # Run one more time but don't compute gradients and update the latents.
+        # We just need to compute the new loss - the grad update will occur below
+        latents = latents.clone().detach().requires_grad_(True)
+        _ = self.unet(latents, t, encoder_hidden_states=text_embeddings).sample
+        self.unet.zero_grad()
+
+        # Get max activation value for each subject token
+        max_attention_per_index = self._aggregate_and_get_max_attention_per_token(
+            indices=indices,
+        )
+        loss = self._compute_loss(max_attention_per_index)
+        logger.info(f"\t Finished with loss of: {loss}")
+        return loss, latents, max_attention_per_index
+
+    def register_attention_control(self):
+        attn_procs = {}
+        cross_att_count = 0
+        for name in self.unet.attn_processors.keys():
+            if name.startswith("mid_block"):
+                place_in_unet = "mid"
+            elif name.startswith("up_blocks"):
+                place_in_unet = "up"
+            elif name.startswith("down_blocks"):
+                place_in_unet = "down"
+            else:
+                continue
+
+            cross_att_count += 1
+            attn_procs[name] = AttendExciteAttnProcessor(attnstore=self.attention_store, place_in_unet=place_in_unet)
+
+        self.unet.set_attn_processor(attn_procs)
+        self.attention_store.num_att_layers = cross_att_count
+
+    def get_indices(self, prompt: str) -> Dict[str, int]:
+        """Utility function to list the indices of the tokens you wish to alte"""
+        ids = self.tokenizer(prompt).input_ids
+        indices = {i: tok for tok, i in zip(self.tokenizer.convert_ids_to_tokens(ids), range(len(ids)))}
+        return indices
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Union[str, List[str]] = None,
+        prompt: Union[str, List[str]],
+        token_indices: Union[List[int], List[List[int]]],
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        sag_scale: float = 0.75,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        num_images_per_prompt: int = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        max_iter_to_alter: int = 25,
+        thresholds: dict = {0: 0.05, 10: 0.5, 20: 0.8},
+        scale_factor: int = 20,
+        attn_res: Optional[Tuple[int]] = (16, 16),
         clip_skip: Optional[int] = None,
     ):
         r"""
@@ -564,6 +777,8 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
+            token_indices (`List[int]`):
+                The token indices to alter with attend-and-excite.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -574,8 +789,6 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            sag_scale (`float`, *optional*, defaults to 0.75):
-                Chosen between [0, 1.0] for better quality.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
@@ -597,8 +810,6 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            ip_adapter_image: (`PipelineImageInput`, *optional*):
-                Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -613,9 +824,20 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            max_iter_to_alter (`int`, *optional*, defaults to `25`):
+                Number of denoising steps to apply attend-and-excite. The `max_iter_to_alter` denoising steps are when
+                attend-and-excite is applied. For example, if `max_iter_to_alter` is `25` and there are a total of `30`
+                denoising steps, the first `25` denoising steps applies attend-and-excite and the last `5` will not.
+            thresholds (`dict`, *optional*, defaults to `{0: 0.05, 10: 0.5, 20: 0.8}`):
+                Dictionary defining the iterations and desired thresholds to apply iterative latent refinement in.
+            scale_factor (`int`, *optional*, default to 20):
+                Scale factor to control the step size of each attend-and-excite update.
+            attn_res (`tuple`, *optional*, default computed from width and height):
+                The 2D resolution of the semantic attention map.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+
         Examples:
 
         Returns:
@@ -625,13 +847,21 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
+
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            token_indices,
+            height,
+            width,
+            callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters
@@ -647,18 +877,6 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        # and `sag_scale` is` `s` of equation (16)
-        # of the self-attentnion guidance paper: https://arxiv.org/pdf/2210.00939.pdf
-        # `sag_scale = 0` means no self-attention guidance
-        do_self_attention_guidance = sag_scale > 0.0
-
-        if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
-            )
-            if do_classifier_free_guidance:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 3. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
@@ -697,94 +915,109 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 6.1 Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
-        added_uncond_kwargs = {"image_embeds": negative_image_embeds} if ip_adapter_image is not None else None
+        if attn_res is None:
+            attn_res = int(np.ceil(width / 32)), int(np.ceil(height / 32))
+        self.attention_store = AttentionStore(attn_res)
+        self.register_attention_control()
+
+        # default config for step size from original repo
+        scale_range = np.linspace(1.0, 0.5, len(self.scheduler.timesteps))
+        step_size = scale_factor * np.sqrt(scale_range)
+
+        text_embeddings = (
+            prompt_embeds[batch_size * num_images_per_prompt :] if do_classifier_free_guidance else prompt_embeds
+        )
+
+        if isinstance(token_indices[0], int):
+            token_indices = [token_indices]
+
+        indices = []
+
+        for ind in token_indices:
+            indices = indices + [ind] * num_images_per_prompt
 
         # 7. Denoising loop
-        store_processor = CrossAttnStoreProcessor()
-        self.unet.mid_block.attentions[0].transformer_blocks[0].attn1.processor = store_processor
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # Attend and excite process
+                with torch.enable_grad():
+                    latents = latents.clone().detach().requires_grad_(True)
+                    updated_latents = []
+                    for latent, index, text_embedding in zip(latents, indices, text_embeddings):
+                        # Forward pass of denoising with text conditioning
+                        latent = latent.unsqueeze(0)
+                        text_embedding = text_embedding.unsqueeze(0)
 
-        map_size = None
+                        self.unet(
+                            latent,
+                            t,
+                            encoder_hidden_states=text_embedding,
+                            cross_attention_kwargs=cross_attention_kwargs,
+                        ).sample
+                        self.unet.zero_grad()
 
-        def get_map_size(module, input, output):
-            nonlocal map_size
-            map_size = output[0].shape[-2:]
+                        # Get max activation value for each subject token
+                        max_attention_per_index = self._aggregate_and_get_max_attention_per_token(
+                            indices=index,
+                        )
 
-        with self.unet.mid_block.attentions[0].register_forward_hook(get_map_size):
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
-                for i, t in enumerate(timesteps):
-                    # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                        loss = self._compute_loss(max_attention_per_index=max_attention_per_index)
 
-                    # predict the noise residual
-
-                    noise_pred = self.unet(
-                        latent_model_input,
-                        t,
-                        encoder_hidden_states=prompt_embeds,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        added_cond_kwargs=added_cond_kwargs,
-                    ).sample
-
-                    # perform guidance
-                    if do_classifier_free_guidance:
-                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                    # perform self-attention guidance with the stored self-attentnion map
-                    if do_self_attention_guidance:
-                        # classifier-free guidance produces two chunks of attention map
-                        # and we only use unconditional one according to equation (25)
-                        # in https://arxiv.org/pdf/2210.00939.pdf
-                        if do_classifier_free_guidance:
-                            # DDIM-like prediction of x0
-                            pred_x0 = self.pred_x0(latents, noise_pred_uncond, t)
-                            # get the stored attention maps
-                            uncond_attn, cond_attn = store_processor.attention_probs.chunk(2)
-                            # self-attention-based degrading of latents
-                            degraded_latents = self.sag_masking(
-                                pred_x0, uncond_attn, map_size, t, self.pred_epsilon(latents, noise_pred_uncond, t)
+                        # If this is an iterative refinement step, verify we have reached the desired threshold for all
+                        if i in thresholds.keys() and loss > 1.0 - thresholds[i]:
+                            loss, latent, max_attention_per_index = self._perform_iterative_refinement_step(
+                                latents=latent,
+                                indices=index,
+                                loss=loss,
+                                threshold=thresholds[i],
+                                text_embeddings=text_embedding,
+                                step_size=step_size[i],
+                                t=t,
                             )
-                            uncond_emb, _ = prompt_embeds.chunk(2)
-                            # forward and give guidance
-                            degraded_pred = self.unet(
-                                degraded_latents,
-                                t,
-                                encoder_hidden_states=uncond_emb,
-                                added_cond_kwargs=added_uncond_kwargs,
-                            ).sample
-                            noise_pred += sag_scale * (noise_pred_uncond - degraded_pred)
-                        else:
-                            # DDIM-like prediction of x0
-                            pred_x0 = self.pred_x0(latents, noise_pred, t)
-                            # get the stored attention maps
-                            cond_attn = store_processor.attention_probs
-                            # self-attention-based degrading of latents
-                            degraded_latents = self.sag_masking(
-                                pred_x0, cond_attn, map_size, t, self.pred_epsilon(latents, noise_pred, t)
-                            )
-                            # forward and give guidance
-                            degraded_pred = self.unet(
-                                degraded_latents,
-                                t,
-                                encoder_hidden_states=prompt_embeds,
-                                added_cond_kwargs=added_cond_kwargs,
-                            ).sample
-                            noise_pred += sag_scale * (noise_pred - degraded_pred)
 
-                    # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+                        # Perform gradient update
+                        if i < max_iter_to_alter:
+                            if loss != 0:
+                                latent = self._update_latent(
+                                    latents=latent,
+                                    loss=loss,
+                                    step_size=step_size[i],
+                                )
+                            logger.info(f"Iteration {i} | Loss: {loss:0.4f}")
 
-                    # call the callback, if provided
-                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                        progress_bar.update()
-                        if callback is not None and i % callback_steps == 0:
-                            step_idx = i // getattr(self.scheduler, "order", 1)
-                            callback(step_idx, t, latents)
+                        updated_latents.append(latent)
 
+                    latents = torch.cat(updated_latents, dim=0)
+
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                # predict the noise residual
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
+
+                # perform guidance
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
+
+        # 8. Post-processing
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
@@ -798,7 +1031,6 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
-
         self.maybe_free_model_hooks()
 
         if not return_dict:
@@ -806,92 +1038,67 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
 
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
-    def sag_masking(self, original_latents, attn_map, map_size, t, eps):
-        # Same masking process as in SAG paper: https://arxiv.org/pdf/2210.00939.pdf
-        bh, hw1, hw2 = attn_map.shape
-        b, latent_channel, latent_h, latent_w = original_latents.shape
-        h = self.unet.config.attention_head_dim
-        if isinstance(h, list):
-            h = h[-1]
 
-        # Produce attention mask
-        attn_map = attn_map.reshape(b, h, hw1, hw2)
-        attn_mask = attn_map.mean(1, keepdim=False).sum(1, keepdim=False) > 1.0
-        attn_mask = (
-            attn_mask.reshape(b, map_size[0], map_size[1])
-            .unsqueeze(1)
-            .repeat(1, latent_channel, 1, 1)
-            .type(attn_map.dtype)
-        )
-        attn_mask = F.interpolate(attn_mask, (latent_h, latent_w))
+class GaussianSmoothing(torch.nn.Module):
+    """
+    Arguments:
+    Apply gaussian smoothing on a 1d, 2d or 3d tensor. Filtering is performed seperately for each channel in the input
+    using a depthwise convolution.
+        channels (int, sequence): Number of channels of the input tensors. Output will
+            have this number of channels as well.
+        kernel_size (int, sequence): Size of the gaussian kernel. sigma (float, sequence): Standard deviation of the
+        gaussian kernel. dim (int, optional): The number of dimensions of the data.
+            Default value is 2 (spatial).
+    """
 
-        # Blur according to the self-attention mask
-        degraded_latents = gaussian_blur_2d(original_latents, kernel_size=9, sigma=1.0)
-        degraded_latents = degraded_latents * attn_mask + original_latents * (1 - attn_mask)
+    # channels=1, kernel_size=kernel_size, sigma=sigma, dim=2
+    def __init__(
+        self,
+        channels: int = 1,
+        kernel_size: int = 3,
+        sigma: float = 0.5,
+        dim: int = 2,
+    ):
+        super().__init__()
 
-        # Noise it again to match the noise level
-        degraded_latents = self.scheduler.add_noise(degraded_latents, noise=eps, timesteps=t)
+        if isinstance(kernel_size, int):
+            kernel_size = [kernel_size] * dim
+        if isinstance(sigma, float):
+            sigma = [sigma] * dim
 
-        return degraded_latents
+        # The gaussian kernel is the product of the
+        # gaussian function of each dimension.
+        kernel = 1
+        meshgrids = torch.meshgrid([torch.arange(size, dtype=torch.float32) for size in kernel_size])
+        for size, std, mgrid in zip(kernel_size, sigma, meshgrids):
+            mean = (size - 1) / 2
+            kernel *= 1 / (std * math.sqrt(2 * math.pi)) * torch.exp(-(((mgrid - mean) / (2 * std)) ** 2))
 
-    # Modified from diffusers.schedulers.scheduling_ddim.DDIMScheduler.step
-    # Note: there are some schedulers that clip or do not return x_0 (PNDMScheduler, DDIMScheduler, etc.)
-    def pred_x0(self, sample, model_output, timestep):
-        alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
+        # Make sure sum of values in gaussian kernel equals 1.
+        kernel = kernel / torch.sum(kernel)
 
-        beta_prod_t = 1 - alpha_prod_t
-        if self.scheduler.config.prediction_type == "epsilon":
-            pred_original_sample = (sample - beta_prod_t ** (0.5) * model_output) / alpha_prod_t ** (0.5)
-        elif self.scheduler.config.prediction_type == "sample":
-            pred_original_sample = model_output
-        elif self.scheduler.config.prediction_type == "v_prediction":
-            pred_original_sample = (alpha_prod_t**0.5) * sample - (beta_prod_t**0.5) * model_output
-            # predict V
-            model_output = (alpha_prod_t**0.5) * model_output + (beta_prod_t**0.5) * sample
+        # Reshape to depthwise convolutional weight
+        kernel = kernel.view(1, 1, *kernel.size())
+        kernel = kernel.repeat(channels, *[1] * (kernel.dim() - 1))
+
+        self.register_buffer("weight", kernel)
+        self.groups = channels
+
+        if dim == 1:
+            self.conv = F.conv1d
+        elif dim == 2:
+            self.conv = F.conv2d
+        elif dim == 3:
+            self.conv = F.conv3d
         else:
-            raise ValueError(
-                f"prediction_type given as {self.scheduler.config.prediction_type} must be one of `epsilon`, `sample`,"
-                " or `v_prediction`"
-            )
+            raise RuntimeError("Only 1, 2 and 3 dimensions are supported. Received {}.".format(dim))
 
-        return pred_original_sample
-
-    def pred_epsilon(self, sample, model_output, timestep):
-        alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
-
-        beta_prod_t = 1 - alpha_prod_t
-        if self.scheduler.config.prediction_type == "epsilon":
-            pred_eps = model_output
-        elif self.scheduler.config.prediction_type == "sample":
-            pred_eps = (sample - (alpha_prod_t**0.5) * model_output) / (beta_prod_t**0.5)
-        elif self.scheduler.config.prediction_type == "v_prediction":
-            pred_eps = (beta_prod_t**0.5) * sample + (alpha_prod_t**0.5) * model_output
-        else:
-            raise ValueError(
-                f"prediction_type given as {self.scheduler.config.prediction_type} must be one of `epsilon`, `sample`,"
-                " or `v_prediction`"
-            )
-
-        return pred_eps
-
-
-# Gaussian blur
-def gaussian_blur_2d(img, kernel_size, sigma):
-    ksize_half = (kernel_size - 1) * 0.5
-
-    x = torch.linspace(-ksize_half, ksize_half, steps=kernel_size)
-
-    pdf = torch.exp(-0.5 * (x / sigma).pow(2))
-
-    x_kernel = pdf / pdf.sum()
-    x_kernel = x_kernel.to(device=img.device, dtype=img.dtype)
-
-    kernel2d = torch.mm(x_kernel[:, None], x_kernel[None, :])
-    kernel2d = kernel2d.expand(img.shape[-3], 1, kernel2d.shape[0], kernel2d.shape[1])
-
-    padding = [kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2]
-
-    img = F.pad(img, padding, mode="reflect")
-    img = F.conv2d(img, kernel2d, groups=img.shape[-3])
-
-    return img
+    def forward(self, input):
+        """
+        Arguments:
+        Apply gaussian filter to input.
+            input (torch.Tensor): Input to apply gaussian filter on.
+        Returns:
+            filtered (torch.Tensor): Filtered output.
+        """
+        return self.conv(input, weight=self.weight.to(input.dtype), groups=self.groups)

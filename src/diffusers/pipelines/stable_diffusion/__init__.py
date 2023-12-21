@@ -33,6 +33,8 @@ else:
     _import_structure["pipeline_cycle_diffusion"] = ["CycleDiffusionPipeline"]
     _import_structure["pipeline_stable_diffusion"] = ["StableDiffusionPipeline"]
     _import_structure["pipeline_stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
+    _import_structure["pipeline_stable_diffusion_gligen"] = ["StableDiffusionGLIGENPipeline"]
+    _import_structure["pipeline_stable_diffusion_gligen_text_image"] = ["StableDiffusionGLIGENTextImagePipeline"]
     _import_structure["pipeline_stable_diffusion_img2img"] = ["StableDiffusionImg2ImgPipeline"]
     _import_structure["pipeline_stable_diffusion_inpaint"] = ["StableDiffusionInpaintPipeline"]
     _import_structure["pipeline_stable_diffusion_inpaint_legacy"] = ["StableDiffusionInpaintPipelineLegacy"]
@@ -42,7 +44,6 @@ else:
     _import_structure["pipeline_stable_diffusion_model_editing"] = ["StableDiffusionModelEditingPipeline"]
     _import_structure["pipeline_stable_diffusion_panorama"] = ["StableDiffusionPanoramaPipeline"]
     _import_structure["pipeline_stable_diffusion_paradigms"] = ["StableDiffusionParadigmsPipeline"]
-    _import_structure["pipeline_stable_diffusion_sag"] = ["StableDiffusionSAGPipeline"]
     _import_structure["pipeline_stable_diffusion_upscale"] = ["StableDiffusionUpscalePipeline"]
     _import_structure["pipeline_stable_unclip"] = ["StableUnCLIPPipeline"]
     _import_structure["pipeline_stable_unclip_img2img"] = ["StableUnCLIPImg2ImgPipeline"]
@@ -116,9 +117,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionPipelineOutput,
             StableDiffusionSafetyChecker,
         )
-        from .pipeline_stable_diffusion_attend_and_excite import (
-            StableDiffusionAttendAndExcitePipeline,
-        )
         from .pipeline_stable_diffusion_img2img import StableDiffusionImg2ImgPipeline
         from .pipeline_stable_diffusion_inpaint import StableDiffusionInpaintPipeline
         from .pipeline_stable_diffusion_instruct_pix2pix import (
@@ -129,7 +127,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         )
         from .pipeline_stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
         from .pipeline_stable_diffusion_panorama import StableDiffusionPanoramaPipeline
-        from .pipeline_stable_diffusion_sag import StableDiffusionSAGPipeline
         from .pipeline_stable_diffusion_upscale import StableDiffusionUpscalePipeline
         from .pipeline_stable_unclip import StableUnCLIPPipeline
         from .pipeline_stable_unclip_img2img import StableUnCLIPImg2ImgPipeline
