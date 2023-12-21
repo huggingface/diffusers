@@ -192,13 +192,13 @@ else:
             "StableDiffusionLDM3DPipeline",
             "StableDiffusionPanoramaPipeline",
             "StableDiffusionPipeline",
-            "StableDiffusionSAGPipeline",
             "StableDiffusionUpscalePipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
         ]
     )
     _import_structure["stable_diffusion_safe"] = ["StableDiffusionPipelineSafe"]
+    _import_structure["stable_diffusion_sag"] = ["StableDiffusionSAGPipeline"]
     _import_structure["stable_video_diffusion"] = ["StableVideoDiffusionPipeline"]
     _import_structure["stable_diffusion_xl"].extend(
         [
@@ -432,13 +432,13 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionLDM3DPipeline,
             StableDiffusionPanoramaPipeline,
             StableDiffusionPipeline,
-            StableDiffusionSAGPipeline,
             StableDiffusionUpscalePipeline,
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
         )
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
         from .stable_diffusion_safe import StableDiffusionPipelineSafe
+        from .stable_diffusion_sag import StableDiffusionSAGPipeline
         from .stable_diffusion_xl import (
             StableDiffusionXLImg2ImgPipeline,
             StableDiffusionXLInpaintPipeline,
