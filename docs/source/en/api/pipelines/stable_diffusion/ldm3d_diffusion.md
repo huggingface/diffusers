@@ -31,14 +31,14 @@ Make sure to check out the Stable Diffusion [Tips](overview#tips) section to lea
 
 ## StableDiffusionLDM3DPipeline
 
-[[autodoc]] pipelines.stable_diffusion.pipeline_stable_diffusion_ldm3d.StableDiffusionLDM3DPipeline
+[[autodoc]] pipelines.stable_diffusion_ldm3d.pipeline_stable_diffusion_ldm3d.StableDiffusionLDM3DPipeline
 	- all
 	- __call__
 
 
 ## LDM3DPipelineOutput
 
-[[autodoc]] pipelines.stable_diffusion.pipeline_stable_diffusion_ldm3d.LDM3DPipelineOutput
+[[autodoc]] pipelines.stable_diffusion_ldm3d.pipeline_stable_diffusion_ldm3d.LDM3DPipelineOutput
 	- all
 	- __call__
 
