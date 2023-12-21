@@ -112,7 +112,9 @@ class AnimateDiffControlNetPipelineOutput(BaseOutput):
     frames: Union[torch.Tensor, np.ndarray]
 
 
-class AnimateDiffSparseControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):
+class AnimateDiffSparseControlNetPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin
+):
     r"""
     Pipeline for text-to-video generation.
 
@@ -1052,7 +1054,7 @@ class AnimateDiffSparseControlNetPipeline(DiffusionPipeline, TextualInversionLoa
             guess_mode=guess_mode,
         )
         controlnet_cond, controlnet_cond_mask = self.prepare_sparse_control_conditioning(
-            conditioning_frames, batch_size, controlnet_image_index, dtype=controlnet.dtype, device=device
+            conditioning_frames, num_frames, controlnet_image_index, dtype=controlnet.dtype, device=device
         )
 
         # 4. Prepare timesteps

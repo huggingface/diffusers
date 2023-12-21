@@ -689,7 +689,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                 If `return_dict` is `True`, a [`~models.controlnet.ControlNetOutput`] is returned, otherwise a tuple is
                 returned where the first element is the sample tensor.
         """
-        batch_size, channels, num_generated_frames, height, width = sample.shape
+        sample_batch_size, sample_channels, sample_num_frames, sample_height, sample_width = sample.shape
 
         # check channel order
         channel_order = self.config.controlnet_conditioning_channel_order
@@ -770,11 +770,14 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
 
         # 2. pre-process
         batch_size, channels, num_frames, height, width = sample.shape
-        emb = emb.repeat_interleave(repeats=num_generated_frames, dim=0)
-        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_generated_frames, dim=0)
+        emb = emb.repeat_interleave(repeats=sample_num_frames, dim=0)
+        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=sample_num_frames, dim=0)
         sample = sample.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         sample = self.conv_in(sample)
+        batch_frames, channels, height, width = sample.shape
+        sample = sample[:, None].reshape(sample_batch_size, sample_num_frames, channels, height, width)
+
         if self.concate_conditioning_mask:
             controlnet_cond = torch.cat([controlnet_cond, conditioning_mask], dim=1)
 
@@ -782,11 +785,14 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         controlnet_cond = controlnet_cond.permute(0, 2, 1, 3, 4).reshape(
             batch_size * num_frames, channels, height, width
         )
-
         controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
+        batch_frames, channels, height, width = controlnet_cond.shape
+        controlnet_cond = controlnet_cond[:, None].reshape(batch_size, num_frames, channels, height, width)
+
         sample = sample + controlnet_cond
 
-        batch_size, channels, num_frames, height, width
+        batch_size, num_frames, channels, height, width = sample.shape
+        sample = sample.reshape(sample_batch_size * sample_num_frames, channels, height, width)
 
         # 3. down
         down_block_res_samples = (sample,)
@@ -798,7 +804,7 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                     encoder_hidden_states=encoder_hidden_states,
                     attention_mask=attention_mask,
                     cross_attention_kwargs=cross_attention_kwargs,
-                    num_frames=num_generated_frames,
+                    num_frames=sample_num_frames,
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
