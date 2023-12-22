@@ -1242,7 +1242,7 @@ def main(args):
         )
         text_encoder_one.add_adapter(text_lora_config)
         text_encoder_two.add_adapter(text_lora_config)
-    
+
     # Make sure the trainable params are in float32.
     if args.mixed_precision == "fp16":
         models = [unet]
