@@ -1397,7 +1397,7 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraIntegrationTests(unittest.TestCase):
+class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def tearDown(self):
         import gc
 
@@ -1650,7 +1650,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraSDXLIntegrationTests(unittest.TestCase):
+class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def tearDown(self):
         import gc
 
