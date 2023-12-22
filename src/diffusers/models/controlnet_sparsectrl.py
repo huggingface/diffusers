@@ -277,52 +277,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         else:
             self.encoder_hid_proj = None
 
-        # class embedding
-        if class_embed_type is None and num_class_embeds is not None:
-            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
-        elif class_embed_type == "timestep":
-            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
-        elif class_embed_type == "identity":
-            self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
-        elif class_embed_type == "projection":
-            if projection_class_embeddings_input_dim is None:
-                raise ValueError(
-                    "`class_embed_type`: 'projection' requires `projection_class_embeddings_input_dim` be set"
-                )
-            # The projection `class_embed_type` is the same as the timestep `class_embed_type` except
-            # 1. the `class_labels` inputs are not first converted to sinusoidal embeddings
-            # 2. it projects from an arbitrary input dimension.
-            #
-            # Note that `TimestepEmbedding` is quite general, being mainly linear layers and activations.
-            # When used for embedding actual timesteps, the timesteps are first converted to sinusoidal embeddings.
-            # As a result, `TimestepEmbedding` can be passed arbitrary vectors.
-            self.class_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
-        else:
-            self.class_embedding = None
-
-        if addition_embed_type == "text":
-            if encoder_hid_dim is not None:
-                text_time_embedding_from_dim = encoder_hid_dim
-            else:
-                text_time_embedding_from_dim = cross_attention_dim
-
-            self.add_embedding = TextTimeEmbedding(
-                text_time_embedding_from_dim, time_embed_dim, num_heads=addition_embed_type_num_heads
-            )
-        elif addition_embed_type == "text_image":
-            # text_embed_dim and image_embed_dim DON'T have to be `cross_attention_dim`. To not clutter the __init__ too much
-            # they are set to `cross_attention_dim` here as this is exactly the required dimension for the currently only use
-            # case when `addition_embed_type == "text_image"` (Kadinsky 2.1)`
-            self.add_embedding = TextImageTimeEmbedding(
-                text_embed_dim=cross_attention_dim, image_embed_dim=cross_attention_dim, time_embed_dim=time_embed_dim
-            )
-        elif addition_embed_type == "text_time":
-            self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos, freq_shift)
-            self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
-
-        elif addition_embed_type is not None:
-            raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
-
         if concate_conditioning_mask:
             conditioning_channels = conditioning_channels + 1
 
@@ -470,9 +424,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
             controlnet.time_proj.load_state_dict(unet.time_proj.state_dict())
             controlnet.time_embedding.load_state_dict(unet.time_embedding.state_dict())
 
-            if controlnet.class_embedding:
-                controlnet.class_embedding.load_state_dict(unet.class_embedding.state_dict())
-
             controlnet.down_blocks.load_state_dict(unet.down_blocks.state_dict())
             controlnet.mid_block.load_state_dict(unet.mid_block.state_dict())
 
@@ -555,72 +506,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
             )
 
         self.set_attn_processor(processor, _remove_lora=True)
-
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attention_slice
-    def set_attention_slice(self, slice_size: Union[str, int, List[int]]) -> None:
-        r"""
-        Enable sliced attention computation.
-
-        When this option is enabled, the attention module splits the input tensor in slices to compute attention in
-        several steps. This is useful for saving some memory in exchange for a small decrease in speed.
-
-        Args:
-            slice_size (`str` or `int` or `list(int)`, *optional*, defaults to `"auto"`):
-                When `"auto"`, input to the attention heads is halved, so attention is computed in two steps. If
-                `"max"`, maximum amount of memory is saved by running only one slice at a time. If a number is
-                provided, uses as many slices as `attention_head_dim // slice_size`. In this case, `attention_head_dim`
-                must be a multiple of `slice_size`.
-        """
-        sliceable_head_dims = []
-
-        def fn_recursive_retrieve_sliceable_dims(module: torch.nn.Module):
-            if hasattr(module, "set_attention_slice"):
-                sliceable_head_dims.append(module.sliceable_head_dim)
-
-            for child in module.children():
-                fn_recursive_retrieve_sliceable_dims(child)
-
-        # retrieve number of attention layers
-        for module in self.children():
-            fn_recursive_retrieve_sliceable_dims(module)
-
-        num_sliceable_layers = len(sliceable_head_dims)
-
-        if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = [dim // 2 for dim in sliceable_head_dims]
-        elif slice_size == "max":
-            # make smallest slice possible
-            slice_size = num_sliceable_layers * [1]
-
-        slice_size = num_sliceable_layers * [slice_size] if not isinstance(slice_size, list) else slice_size
-
-        if len(slice_size) != len(sliceable_head_dims):
-            raise ValueError(
-                f"You have provided {len(slice_size)}, but {self.config} has {len(sliceable_head_dims)} different"
-                f" attention layers. Make sure to match `len(slice_size)` to be {len(sliceable_head_dims)}."
-            )
-
-        for i in range(len(slice_size)):
-            size = slice_size[i]
-            dim = sliceable_head_dims[i]
-            if size is not None and size > dim:
-                raise ValueError(f"size {size} has to be smaller or equal to {dim}.")
-
-        # Recursively walk through all the children.
-        # Any children which exposes the set_attention_slice method
-        # gets the message
-        def fn_recursive_set_attention_slice(module: torch.nn.Module, slice_size: List[int]):
-            if hasattr(module, "set_attention_slice"):
-                module.set_attention_slice(slice_size.pop())
-
-            for child in module.children():
-                fn_recursive_set_attention_slice(child, slice_size)
-
-        reversed_slice_size = list(reversed(slice_size))
-        for module in self.children():
-            fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
         if isinstance(module, (CrossAttnDownBlockMotion, DownBlockMotion)):
@@ -779,7 +664,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
                 sample = self.mid_block(sample, emb)
 
         # 5. Control net blocks
-
         controlnet_down_block_res_samples = ()
 
         for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):

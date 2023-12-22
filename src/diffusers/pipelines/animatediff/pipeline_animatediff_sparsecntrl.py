@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
@@ -22,15 +21,14 @@ import torch.nn.functional as F
 from PIL import Image
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel, UNetMotionModel
-from diffusers.models.controlnet_sparsectrl import SparseControlNetModel
-from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.models.unet_motion_model import MotionAdapter
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.schedulers import (
+from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, UNet2DConditionModel, UNetMotionModel
+from ...models.controlnet_sparsectrl import SparseControlNetModel
+from ...models.lora import adjust_lora_scale_text_encoder
+from ...models.unet_motion_model import MotionAdapter
+from ...pipelines.pipeline_utils import DiffusionPipeline
+from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
     EulerAncestralDiscreteScheduler,
@@ -38,8 +36,9 @@ from diffusers.schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
-from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils.torch_utils import is_compiled_module, randn_tensor
+from .pipeline_animatediff import AnimateDiffPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -107,11 +106,6 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
     return outputs
 
 
-@dataclass
-class AnimateDiffControlNetPipelineOutput(BaseOutput):
-    frames: Union[torch.Tensor, np.ndarray]
-
-
 class AnimateDiffSparseControlNetPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin
 ):
@@ -154,7 +148,7 @@ class AnimateDiffSparseControlNetPipeline(
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
         motion_adapter: MotionAdapter,
-        controlnet: Union[ControlNetModel, MultiControlNetModel],
+        controlnet: SparseControlNetModel,
         scheduler: Union[
             DDIMScheduler,
             PNDMScheduler,
@@ -498,8 +492,6 @@ class AnimateDiffSparseControlNetPipeline(
         callback_on_step_end_tensor_inputs=None,
         image=None,
         controlnet_conditioning_scale=1.0,
-        control_guidance_start=0.0,
-        control_guidance_end=1.0,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -542,15 +534,6 @@ class AnimateDiffSparseControlNetPipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
 
-        # `prompt` needs more sophisticated handling when there are multiple
-        # conditionings.
-        if isinstance(self.controlnet, MultiControlNetModel):
-            if isinstance(prompt, list):
-                logger.warning(
-                    f"You have {len(self.controlnet.nets)} ControlNets and you have passed {len(prompt)}"
-                    " prompts. The conditionings will be fixed across the prompts."
-                )
-
         # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
@@ -565,26 +548,6 @@ class AnimateDiffSparseControlNetPipeline(
                     self.check_image(image_, prompt, prompt_embeds)
             else:
                 self.check_image(image, prompt, prompt_embeds)
-        elif (
-            isinstance(self.controlnet, MultiControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
-        ):
-            if not isinstance(image, list):
-                raise TypeError("For multiple controlnets: `image` must be type `list`")
-
-            # When `image` is a nested list:
-            # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
-            elif any(isinstance(i, list) for i in image):
-                raise ValueError("A single batch of multiple conditionings are supported at the moment.")
-            elif len(image) != len(self.controlnet.nets):
-                raise ValueError(
-                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
-                )
-
-            for control_ in image:
-                for image_ in control_:
-                    self.check_image(image_, prompt, prompt_embeds)
         else:
             assert False
 
@@ -596,50 +559,8 @@ class AnimateDiffSparseControlNetPipeline(
         ):
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
-        elif (
-            isinstance(self.controlnet, MultiControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
-        ):
-            if isinstance(controlnet_conditioning_scale, list):
-                if any(isinstance(i, list) for i in controlnet_conditioning_scale):
-                    raise ValueError("A single batch of multiple conditionings are supported at the moment.")
-            elif isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
-                self.controlnet.nets
-            ):
-                raise ValueError(
-                    "For multiple controlnets: When `controlnet_conditioning_scale` is specified as `list`, it must have"
-                    " the same length as the number of controlnets"
-                )
         else:
             assert False
-
-        if not isinstance(control_guidance_start, (tuple, list)):
-            control_guidance_start = [control_guidance_start]
-
-        if not isinstance(control_guidance_end, (tuple, list)):
-            control_guidance_end = [control_guidance_end]
-
-        if len(control_guidance_start) != len(control_guidance_end):
-            raise ValueError(
-                f"`control_guidance_start` has {len(control_guidance_start)} elements, but `control_guidance_end` has {len(control_guidance_end)} elements. Make sure to provide the same number of elements to each list."
-            )
-
-        if isinstance(self.controlnet, MultiControlNetModel):
-            if len(control_guidance_start) != len(self.controlnet.nets):
-                raise ValueError(
-                    f"`control_guidance_start`: {control_guidance_start} has {len(control_guidance_start)} elements but there are {len(self.controlnet.nets)} controlnets available. Make sure to provide {len(self.controlnet.nets)}."
-                )
-
-        for start, end in zip(control_guidance_start, control_guidance_end):
-            if start >= end:
-                raise ValueError(
-                    f"control guidance start: {start} cannot be larger or equal to control guidance end: {end}."
-                )
-            if start < 0.0:
-                raise ValueError(f"control guidance start: {start} can't be smaller than 0.")
-            if end > 1.0:
-                raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
 
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
@@ -795,8 +716,6 @@ class AnimateDiffSparseControlNetPipeline(
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         controlnet_image_index: list = [0],
         guess_mode: bool = False,
-        control_guidance_start: Union[float, List[float]] = 0.0,
-        control_guidance_end: Union[float, List[float]] = 1.0,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -870,7 +789,7 @@ class AnimateDiffSparseControlNetPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
-            allback_on_step_end (`Callable`, *optional*):
+            callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
                 callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
@@ -906,18 +825,6 @@ class AnimateDiffSparseControlNetPipeline(
 
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
-        # align format for control guidance
-        if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
-            control_guidance_start = len(control_guidance_end) * [control_guidance_start]
-        elif not isinstance(control_guidance_end, list) and isinstance(control_guidance_start, list):
-            control_guidance_end = len(control_guidance_start) * [control_guidance_end]
-        elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
-            mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
-            control_guidance_start, control_guidance_end = (
-                mult * [control_guidance_start],
-                mult * [control_guidance_end],
-            )
-
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -936,8 +843,6 @@ class AnimateDiffSparseControlNetPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             image=conditioning_frames,
             controlnet_conditioning_scale=controlnet_conditioning_scale,
-            control_guidance_start=control_guidance_start,
-            control_guidance_end=control_guidance_end,
         )
 
         self._guidance_scale = guidance_scale
@@ -953,9 +858,6 @@ class AnimateDiffSparseControlNetPipeline(
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
-
-        if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
-            controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
 
         global_pool_conditions = (
             controlnet.config.global_pool_conditions
@@ -1026,15 +928,6 @@ class AnimateDiffSparseControlNetPipeline(
         # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
-        # 7.1 Create tensor stating which controlnets to keep
-        controlnet_keep = []
-        for i in range(len(timesteps)):
-            keeps = [
-                1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
-                for s, e in zip(control_guidance_start, control_guidance_end)
-            ]
-            controlnet_keep.append(keeps[0] if isinstance(controlnet, SparseControlNetModel) else keeps)
-
         # Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1044,23 +937,14 @@ class AnimateDiffSparseControlNetPipeline(
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 control_model_input = latent_model_input
-                controlnet_prompt_embeds = prompt_embeds
-
-                if isinstance(controlnet_keep[i], list):
-                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
-                else:
-                    controlnet_cond_scale = controlnet_conditioning_scale
-                    if isinstance(controlnet_cond_scale, list):
-                        controlnet_cond_scale = controlnet_cond_scale[0]
-                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
                     t,
-                    encoder_hidden_states=controlnet_prompt_embeds,
+                    encoder_hidden_states=prompt_embeds,
                     controlnet_cond=controlnet_cond,
                     conditioning_mask=controlnet_cond_mask,
-                    conditioning_scale=cond_scale,
+                    conditioning_scale=controlnet_conditioning_scale,
                     guess_mode=guess_mode,
                     return_dict=False,
                 )
@@ -1101,7 +985,7 @@ class AnimateDiffSparseControlNetPipeline(
                         callback(i, t, latents)
 
         if output_type == "latent":
-            return AnimateDiffControlNetPipelineOutput(frames=latents)
+            return AnimateDiffPipelineOutput(frames=latents)
 
         # Post-processing
         video_tensor = self.decode_latents(latents)
@@ -1117,4 +1001,4 @@ class AnimateDiffSparseControlNetPipeline(
         if not return_dict:
             return (video,)
 
-        return AnimateDiffControlNetPipelineOutput(frames=video)
+        return AnimateDiffPipelineOutput(frames=video)
