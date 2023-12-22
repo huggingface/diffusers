@@ -1253,7 +1253,7 @@ def main(args):
                 # only upcast trainable parameters (LoRA) into fp32
                 if param.requires_grad:
                     param.data = param.to(torch.float32)
-                    
+
     # if we use textual inversion, we freeze all parameters except for the token embeddings
     # in text encoder
     elif args.train_text_encoder_ti:
