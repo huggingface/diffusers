@@ -67,6 +67,7 @@ check_min_version("0.25.0.dev0")
 
 logger = get_logger(__name__)
 
+
 def save_model_card(
     repo_id: str,
     images=None,
@@ -1354,7 +1355,7 @@ def main(args):
         text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
         text_lora_parameters_two = list(filter(lambda p: p.requires_grad, text_encoder_two.parameters()))
 
-     # If neither --train_text_encoder nor --train_text_encoder_ti, text_encoders remain frozen during training
+    # If neither --train_text_encoder nor --train_text_encoder_ti, text_encoders remain frozen during training
     freeze_text_encoder = not (args.train_text_encoder or args.train_text_encoder_ti)
 
     # Optimization parameters
