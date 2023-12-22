@@ -40,6 +40,62 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)
 
 
+DIFFUSER_PIPELINE_CONFIGS = {
+    "StableDiffusionPipeline": None,
+    "StableDiffusionImg2ImgPipeline": None,
+    "StableDiffusionInpaintPipeline": None,
+    "StableDiffusionControlNetPipeline": None,
+}
+
+VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
+MODEL_TYPE_FROM_PIPELINE_CLASS = {
+    "StableUnCLIPPipeline": "FrozenOpenCLIPEmbedder",
+    "StableUnCLIPImg2ImgPipeline": "FrozenOpenCLIPEmbedder",
+}
+
+
+
+def check_valid_url(pretrained_model_link_or_path):
+    # remove huggingface url
+    has_valid_url_prefix = False
+    for prefix in VALID_URL_PREFIXES:
+        if pretrained_model_link_or_path.startswith(prefix):
+            pretrained_model_link_or_path = pretrained_model_link_or_path[len(prefix) :]
+            has_valid_url_prefix = True
+
+    return has_valid_url_prefix
+
+
+def fetch_model_checkpoint(ckpt_path, cache_dir=None, resume_download=False, force_download=False, proxies=None, local_files_only=None, token=None, revision=None):
+    # get repo_id and (potentially nested) file path of ckpt in repo
+    repo_id = "/".join(ckpt_path.parts[:2])
+    file_path = "/".join(ckpt_path.parts[2:])
+
+    if file_path.startswith("blob/"):
+        file_path = file_path[len("blob/") :]
+
+    if file_path.startswith("main/"):
+        file_path = file_path[len("main/") :]
+
+    path = hf_hub_download(
+        repo_id,
+        filename=file_path,
+        cache_dir=cache_dir,
+        resume_download=resume_download,
+        proxies=proxies,
+        local_files_only=local_files_only,
+        token=token,
+        revision=revision,
+        force_download=force_download,
+    )
+
+    return path
+
+
+def infer_model_type(pipeline_class_name):
+    return MODEL_TYPE_FROM_PIPELINE_CLASS.get(pipeline_class_name, None)
+
+
 class FromSingleFileMixin:
     """
     Load model weights saved in the `.ckpt` format into a [`DiffusionPipeline`].
@@ -150,12 +206,10 @@ class FromSingleFileMixin:
         >>> pipeline.to("cuda")
         ```
         """
-
         original_config_file = kwargs.pop("original_config_file", None)
         config_files = kwargs.pop("config_files", None)
         cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
-        force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
@@ -221,43 +275,15 @@ class FromSingleFileMixin:
         else:
             raise ValueError(f"Unhandled pipeline class: {pipeline_name}")
 
-        # remove huggingface url
-        has_valid_url_prefix = False
-        valid_url_prefixes = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
-        for prefix in valid_url_prefixes:
-            if pretrained_model_link_or_path.startswith(prefix):
-                pretrained_model_link_or_path = pretrained_model_link_or_path[len(prefix) :]
-                has_valid_url_prefix = True
+        has_valid_url_prefix =  check_valid_url(pretrained_model_link_or_path)
 
         # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
         ckpt_path = Path(pretrained_model_link_or_path)
-        if not ckpt_path.is_file():
-            if not has_valid_url_prefix:
-                raise ValueError(
-                    f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(valid_url_prefixes)}"
-                )
-
-            # get repo_id and (potentially nested) file path of ckpt in repo
-            repo_id = "/".join(ckpt_path.parts[:2])
-            file_path = "/".join(ckpt_path.parts[2:])
-
-            if file_path.startswith("blob/"):
-                file_path = file_path[len("blob/") :]
-
-            if file_path.startswith("main/"):
-                file_path = file_path[len("main/") :]
-
-            pretrained_model_link_or_path = hf_hub_download(
-                repo_id,
-                filename=file_path,
-                cache_dir=cache_dir,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                force_download=force_download,
+        if (not ckpt_path.is_file()) and (not has_valid_url_prefix):
+            raise ValueError(
+                f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(VALID_URL_PREFIXES)}"
             )
+        pretrained_model_link_or_path = fetch_model_checkpoint(ckpt_path, cache_dir=cache_dir, resume_download=resume_download, proxies=proxies, local_files_only=local_files_only, token=token, revision=revision)
 
         pipe = download_from_original_stable_diffusion_ckpt(
             pretrained_model_link_or_path,
