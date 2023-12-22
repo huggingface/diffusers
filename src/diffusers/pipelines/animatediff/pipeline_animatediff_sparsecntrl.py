@@ -48,14 +48,14 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
+        >>> from diffusers import AutoencoderKL, SparseControlNetModel, MotionAdapter
         >>> from diffusers.pipelines import DiffusionPipeline
         >>> from diffusers.schedulers import DPMSolverMultistepScheduler
         >>> from PIL import Image
 
         >>> motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
         >>> adapter = MotionAdapter.from_pretrained(motion_id)
-        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
+        >>> controlnet = SparseControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
         >>> vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
 
         >>> model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
@@ -183,7 +183,7 @@ class AnimateDiffSparseControlNetPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.control_image_processor = VaeImageProcessor(
-            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
+            vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=True
         )
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
@@ -705,18 +705,13 @@ class AnimateDiffSparseControlNetPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_image(
         self,
         image,
         width,
         height,
-        batch_size,
-        num_images_per_prompt,
         device,
         dtype,
-        do_classifier_free_guidance=False,
-        guess_mode=False,
     ):
         image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
         controlnet_images = image.unsqueeze(0)
@@ -726,7 +721,7 @@ class AnimateDiffSparseControlNetPipeline(
         controlnet_images = controlnet_images.to(device, dtype)
 
         with torch.no_grad():
-            conditioning_frames = self.vae.encode(controlnet_images).latent_dist.sample()
+            conditioning_frames = self.vae.encode(controlnet_images).latent_dist.sample() * 0.18215
 
         batch_frames, channels, height, width = conditioning_frames.shape
         conditioning_frames = (
@@ -734,51 +729,6 @@ class AnimateDiffSparseControlNetPipeline(
             .reshape(batch_size, num_frames, channels, height, width)
             .permute(0, 2, 1, 3, 4)
         )
-
-        """
-        batch_size, channels, _, height, width = conditioning_frames.shape
-
-        controlnet_cond = torch.zeros((batch_size, channels, num_frames, height, width))
-
-
-                    controlnet_cond_shape    = list(controlnet_images.shape)
-                    controlnet_cond_shape[2] = video_length
-                    controlnet_cond = torch.zeros(controlnet_cond_shape).to(latents.device)
-
-                    controlnet_conditioning_mask_shape    = list(controlnet_cond.shape)
-                    controlnet_conditioning_mask_shape[1] = 1
-                    controlnet_conditioning_mask          = torch.zeros(controlnet_conditioning_mask_shape).to(latents.device)
-
-                    assert controlnet_images.shape[2] >= len(controlnet_image_index)
-                    controlnet_cond[:,:,controlnet_image_index] = controlnet_images[:,:,:len(controlnet_image_index)]
-                    controlnet_conditioning_mask[:,:,controlnet_image_index] = 1
-        """
-
-        """
-
-        rearrange(controlnet_images, "b f c h w -> b c f h w")
-
-
-
-
-            if controlnet.use_simplified_condition_embedding:
-                num_controlnet_images = controlnet_images.shape[2]
-                controlnet_images = rearrange(controlnet_images, "b c f h w -> (b f) c h w")
-                controlnet_images = vae.encode(controlnet_images * 2. - 1.).latent_dist.sample() * 0.18215
-                controlnet_images = rearrange(controlnet_images, "(b f) c h w -> b c f h w", f=num_controlnet_images)
-        if image_batch_size == 1:
-            repeat_by = batch_size
-        else:
-            # image batch size is the same as prompt batch size
-            repeat_by = num_images_per_prompt
-
-        image = image.repeat_interleave(repeat_by, dim=0)
-
-        image = image.to(device=device, dtype=dtype)
-
-        if do_classifier_free_guidance and not guess_mode:
-            image = torch.cat([image] * 2)
-        """
 
         return conditioning_frames
 
@@ -789,10 +739,8 @@ class AnimateDiffSparseControlNetPipeline(
 
         batch_size, channels, _, height, width = conditioning_frames.shape
         controlnet_cond = torch.zeros((batch_size, channels, num_frames, height, width), dtype=dtype, device=device)
-        controlnet_cond[:, :, controlnet_image_index] = conditioning_frames[:, :, : len(controlnet_image_index)]
-
-        batch_size, _, num_frames, height, width = controlnet_cond.shape
         controlnet_cond_mask = torch.zeros((batch_size, 1, num_frames, height, width), dtype=dtype, device=device)
+        controlnet_cond[:, :, controlnet_image_index] = conditioning_frames[:, :, : len(controlnet_image_index)]
         controlnet_cond_mask[:, :, controlnet_image_index] = 1
 
         controlnet_cond = controlnet_cond.to(device, dtype)
@@ -1046,12 +994,8 @@ class AnimateDiffSparseControlNetPipeline(
             image=conditioning_frames,
             width=width,
             height=height,
-            batch_size=batch_size * num_videos_per_prompt * num_frames,
-            num_images_per_prompt=num_videos_per_prompt,
             device=device,
             dtype=controlnet.dtype,
-            do_classifier_free_guidance=self.do_classifier_free_guidance,
-            guess_mode=guess_mode,
         )
         controlnet_cond, controlnet_cond_mask = self.prepare_sparse_control_conditioning(
             conditioning_frames, num_frames, controlnet_image_index, dtype=controlnet.dtype, device=device
@@ -1102,29 +1046,6 @@ class AnimateDiffSparseControlNetPipeline(
                 control_model_input = latent_model_input
                 controlnet_prompt_embeds = prompt_embeds
 
-                """
-                controlnet_images = conditioning_frames.to(latents.device)
-                controlnet_cond_shape    = list(controlnet_images.shape)
-                controlnet_cond_shape[2] = num_frames
-                controlnet_cond = torch.zeros(controlnet_cond_shape).to(latents.device)
-                controlnet_conditioning_mask_shape    = list(controlnet_cond.shape)
-                controlnet_conditioning_mask_shape[1] = 1
-                controlnet_conditioning_mask          = torch.zeros(controlnet_conditioning_mask_shape).to(latents.device)
-                assert controlnet_images.shape[2] >= len(controlnet_image_index)
-                controlnet_cond[:,:,controlnet_image_index] = controlnet_images[:,:,:len(controlnet_image_index)]
-                controlnet_conditioning_mask[:,:,controlnet_image_index] = 1
-
-                if guess_mode and self.do_classifier_free_guidance:
-                    # Infer ControlNet only for the conditional batch.
-                    control_model_input = latents
-                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
-                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
-                else:
-                    control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
-                controlnet_prompt_embeds = controlnet_prompt_embeds.repeat_interleave(num_frames, dim=0)
-
-                """
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:

@@ -323,14 +323,6 @@ class SparseControlNetModel(ModelMixin, ConfigMixin):
         elif addition_embed_type is not None:
             raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
 
-        # control net conditioning embedding
-        # TODO: Use simple embeddings
-
-        # self.controlnet_cond_embedding = SparseControlNetConditioningEmbedding(
-        #    conditioning_embedding_channels=block_out_channels[0],
-        #    block_out_channels=conditioning_embedding_out_channels,
-        #    conditioning_channels=conditioning_channels,
-        # )
         if concate_conditioning_mask:
             conditioning_channels = conditioning_channels + 1
 
