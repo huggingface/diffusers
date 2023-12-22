@@ -1141,7 +1141,7 @@ def main(args):
             import prodigyopt
         except ImportError:
             raise ImportError("To use Prodigy, please install the prodigyopt library: `pip install prodigyopt`")
-        
+
         optimizer_class = prodigyopt.Prodigy
 
         if args.learning_rate <= 0.1:
