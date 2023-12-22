@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 from contextlib import nullcontext
 from io import BytesIO
 from pathlib import Path
@@ -53,6 +54,10 @@ MODEL_TYPE_FROM_PIPELINE_CLASS = {
     "StableUnCLIPImg2ImgPipeline": "FrozenOpenCLIPEmbedder",
 }
 
+
+def extract_pipeline_compoments(pipeline_class):
+    components = inspect.signature(pipeline_class).parameters.keys()
+    return components
 
 
 def check_valid_url(pretrained_model_link_or_path):
@@ -284,6 +289,7 @@ class FromSingleFileMixin:
                 f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(VALID_URL_PREFIXES)}"
             )
         pretrained_model_link_or_path = fetch_model_checkpoint(ckpt_path, cache_dir=cache_dir, resume_download=resume_download, proxies=proxies, local_files_only=local_files_only, token=token, revision=revision)
+        components = extract_pipeline_compoments(cls)
 
         pipe = download_from_original_stable_diffusion_ckpt(
             pretrained_model_link_or_path,
