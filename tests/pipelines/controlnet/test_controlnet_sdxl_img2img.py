@@ -136,6 +136,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
             "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "image_encoder": None,
         }
         return components
 
