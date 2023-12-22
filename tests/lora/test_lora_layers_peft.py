@@ -1877,7 +1877,9 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
         ).images
         images_without_fusion = images.flatten()
 
-        self.assertTrue(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
+        max_diff = numpy_cosine_similarity_distance(images_with_fusion, images_without_fusion)
+        assert max_diff < 1e-4
+
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion_effectivity(self):
