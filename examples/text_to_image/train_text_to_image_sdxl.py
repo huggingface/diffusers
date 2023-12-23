@@ -35,7 +35,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed, InitProcessGroupKwargs
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk, DatasetDict
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
@@ -172,7 +172,7 @@ def parse_args(input_args=None):
         help="The config of the Dataset, leave as None if there's only one config.",
     )
     parser.add_argument(
-        "--train_data_dir",
+        "--train_image_data_dir",
         type=str,
         default=None,
         help=(
@@ -181,6 +181,12 @@ def parse_args(input_args=None):
             " must exist to provide the captions for the images. Ignored if `dataset_name` is specified."
         ),
     )
+    parser.add_argument(
+        "--train_precomputed_data_dir",
+        type=str,
+        default=None,
+    )
+    parser.add_argument("--save_precomputed_data_dir", type=str, default=None)
     parser.add_argument(
         "--image_column", type=str, default="image", help="The column of the dataset containing an image."
     )
@@ -472,8 +478,8 @@ def parse_args(input_args=None):
         args.local_rank = env_local_rank
 
     # Sanity checks
-    if args.dataset_name is None and args.train_data_dir is None:
-        raise ValueError("Need either a dataset name or a training folder.")
+    if args.dataset_name is None and args.train_image_data_dir is None and args.train_precomputed_data_dir is None:
+        raise ValueError("Need either a dataset name or a training folder or a precomputed training folder.")
 
     if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
@@ -795,10 +801,12 @@ def main(args):
             args.dataset_config_name,
             cache_dir=args.cache_dir,
         )
+    elif args.train_precomputed_data_dir is not None:
+        dataset = load_from_disk(args.train_precomputed_data_dir)
     else:
         data_files = {}
-        if args.train_data_dir is not None:
-            data_files["train"] = os.path.join(args.train_data_dir, "**")
+        if args.train_image_data_dir is not None:
+            data_files["train"] = os.path.join(args.train_image_data_dir, "**")
         dataset = load_dataset(
             "imagefolder",
             data_files=data_files,
@@ -911,6 +919,18 @@ def main(args):
                 batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
                 new_fingerprint=new_fingerprint_for_vae,
             )
+
+            if args.save_precomputed_data_dir is not None:
+                DatasetDict({
+                    'train': train_dataset.with_format(None)
+                }).save_to_disk(args.save_precomputed_data_dir)
+                accelerator.print(
+                    (
+                        f"Saved precomputed dataset to {args.save_precomputed_data_dir}. "
+                        f"Use `--train_precomputed_data_dir {args.save_precomputed_data_dir}` to load it next time "
+                        "instead of `--dataset_name`"
+                    )
+                )
 
         del text_encoders, tokenizers, vae
         gc.collect()
