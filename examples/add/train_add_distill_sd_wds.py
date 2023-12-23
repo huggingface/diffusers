@@ -29,11 +29,11 @@ from typing import Callable, List, Union
 
 import accelerate
 import numpy as np
+import timm
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import torchvision.transforms.functional as TF
-import timm
 import transformers
 import webdataset as wds
 from accelerate import Accelerator
@@ -221,12 +221,12 @@ class Denoiser:
         self.alphas = alphas
         self.sigmas = sigmas
         self.prediction_type = prediction_type
-    
+
     def to(self, device):
         self.alphas = self.alphas.to(device)
         self.sigmas = self.sigmas.to(device)
         return self
-    
+
     def __call__(self, model_output, timesteps, sample):
         alphas = extract_into_tensor(self.alphas, timesteps, sample.shape)
         sigmas = extract_into_tensor(self.sigmas, timesteps, sample.shape)
@@ -250,7 +250,7 @@ class Denoiser:
 class SpectralConv1d(torch.nn.Conv1d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        torch.nn.utils.SpectralNorm.apply(self, name='weight', n_power_iterations=1, dim=0, eps=1e-12)
+        torch.nn.utils.SpectralNorm.apply(self, name="weight", n_power_iterations=1, dim=0, eps=1e-12)
 
 
 # Based on ResidualBlock from the official StyleGAN-T code
@@ -270,6 +270,7 @@ class DiscHeadBlock(torch.nn.Module):
     """
     StyleGAN-T block: SpectralConv1d => BatchNormLocal => LeakyReLU
     """
+
     def __init__(
         self,
         channels: int,
@@ -289,7 +290,7 @@ class DiscHeadBlock(torch.nn.Module):
         )
         self.batch_norm = torch.nn.GroupNorm(num_groups, channels)
         self.act_fn = torch.nn.LeakyReLU(leaky_relu_neg_slope, inplace=True)
-    
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv(x)
         x = self.batch_norm(x)
@@ -304,6 +305,7 @@ class DiscriminatorHead(torch.nn.Module):
     """
     Implements a StyleGAN-T-style discriminator head.
     """
+
     def __init__(
         self,
         channels: int,
@@ -323,7 +325,7 @@ class DiscriminatorHead(torch.nn.Module):
             self.cls = SpectralConv1d(channels, cond_map_dim, kernel_size=1, padding=0)
         else:
             self.cls = SpectralConv1d(channels, 1, kernel_size=1, padding=0)
-    
+
     def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
         hidden_states = self.input_block(x)
         hidden_states = self.resblock(hidden_states)
@@ -332,7 +334,7 @@ class DiscriminatorHead(torch.nn.Module):
         if self.cond_embedding_dim > 0:
             c = self.conditioning_map(c).squeeze(-1)
             out = (out * c).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
-        
+
         return out
 
 
@@ -344,6 +346,7 @@ activations = {}
 def get_activation(name: str) -> Callable:
     def hook(model, input, output):
         activations[name] = output
+
     return hook
 
 
@@ -372,14 +375,10 @@ def forward_flex(self, x: torch.Tensor) -> torch.Tensor:
     # patch proj and dynamically resize
     B, C, H, W = x.size()
     x = self.patch_embed.proj(x).flatten(2).transpose(1, 2)
-    pos_embed = self._resize_pos_embed(
-        self.pos_embed, H // self.patch_size[1], W // self.patch_size[0]
-    )
+    pos_embed = self._resize_pos_embed(self.pos_embed, H // self.patch_size[1], W // self.patch_size[0])
 
     # add cls token
-    cls_tokens = self.cls_token.expand(
-        x.size(0), -1, -1
-    )
+    cls_tokens = self.cls_token.expand(x.size(0), -1, -1)
     x = torch.cat((cls_tokens, x), dim=1)
 
     # forward pass
@@ -412,7 +411,7 @@ class AddReadout(torch.nn.Module):
             readout = (x[:, 0] + x[:, 1]) / 2
         else:
             readout = x[:, 0]
-        return x[:, self.start_index:] + readout.unsqueeze(1)
+        return x[:, self.start_index :] + readout.unsqueeze(1)
 
 
 # Based on Transpose from the official StyleGAN-T code
@@ -434,16 +433,17 @@ class FeatureNetwork(torch.nn.Module):
     """
     DINO ViT model to act as feature extractor for the discriminator.
     """
+
     def __init__(
         self,
         pretrained_feature_network: str = "vit_small_patch16_224_dino",
         patch_size: List[int] = [16, 16],
-        hooks: List[int] = [2,5,8,11],
+        hooks: List[int] = [2, 5, 8, 11],
         start_index: int = 1,
     ):
         super().__init__()
         self.num_hooks = len(hooks) + 1
-        
+
         pretrained_model = timm.create_model(pretrained_feature_network, pretrained=True)
 
         # Based on make_vit_backbone from the official StyleGAN-T code
@@ -453,11 +453,11 @@ class FeatureNetwork(torch.nn.Module):
         model_with_hooks.model = pretrained_model
 
         # Add hooks
-        model_with_hooks.model.blocks[hooks[0]].register_forward_hook(get_activation('0'))
-        model_with_hooks.model.blocks[hooks[1]].register_forward_hook(get_activation('1'))
-        model_with_hooks.model.blocks[hooks[2]].register_forward_hook(get_activation('2'))
-        model_with_hooks.model.blocks[hooks[3]].register_forward_hook(get_activation('3'))
-        model_with_hooks.model.pos_drop.register_forward_hook(get_activation('4'))
+        model_with_hooks.model.blocks[hooks[0]].register_forward_hook(get_activation("0"))
+        model_with_hooks.model.blocks[hooks[1]].register_forward_hook(get_activation("1"))
+        model_with_hooks.model.blocks[hooks[2]].register_forward_hook(get_activation("2"))
+        model_with_hooks.model.blocks[hooks[3]].register_forward_hook(get_activation("3"))
+        model_with_hooks.model.pos_drop.register_forward_hook(get_activation("4"))
 
         # Configure readout
         model_with_hooks.rearrange = torch.nn.Sequential(AddReadout(start_index), Transpose(1, 2))
@@ -476,7 +476,7 @@ class FeatureNetwork(torch.nn.Module):
         self.img_resolution = self.model.model.patch_embed.img_size[0]
         self.embed_dim = self.model.model.embed_dim
         self.norm = transforms.Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
-    
+
     def forward(self, x: torch.Tensor):
         """
         Forward pass consisting of interpolation, ImageNet normalization, and a forward pass of self.model.
@@ -484,13 +484,13 @@ class FeatureNetwork(torch.nn.Module):
         Args:
             x (`torch.Tensor`):
                 Image with pixel values in [0, 1].
-        
+
         Returns:
             `Dict[Any]`: dict of activations
         """
         x = F.interpolate(x, self.img_resolution, mode="area")
         x = self.norm(x)
-        
+
         activation_dict = forward_vit(self.model, x)
         return activation_dict
 
@@ -499,6 +499,7 @@ class DiscriminatorOutput(BaseOutput):
     """
     Output class for the Discriminator module.
     """
+
     logits: torch.FloatTensor
 
 
@@ -509,17 +510,18 @@ class Discriminator(torch.nn.Module):
     """
     StyleGAN-T-style discriminator for adversarial diffusion distillation (ADD).
     """
+
     def __init__(
         self,
         pretrained_feature_network: str = "vit_small_patch16_224_dino",
         cond_embedding_dim: int = 512,
         patch_size: List[int] = [16, 16],
-        hooks: List[int] = [2,5,8,11],
+        hooks: List[int] = [2, 5, 8, 11],
         start_index: int = 1,
     ):
         super().__init__()
         self.cond_embedding_dim = cond_embedding_dim
-        
+
         # Frozen feature network, e.g. DINO
         self.feature_network = FeatureNetwork(
             pretrained_feature_network=pretrained_feature_network,
@@ -531,9 +533,9 @@ class Discriminator(torch.nn.Module):
         # Trainable discriminator heads
         heads = []
         for i in range(self.feature_network.num_hooks):
-            heads += [str(i), DiscriminatorHead(self.feature_network.embed_dim, cond_embedding_dim)],
+            heads += [str(i), DiscriminatorHead(self.feature_network.embed_dim, cond_embedding_dim)]
         self.heads = torch.nn.ModuleDict(heads)
-    
+
     def train(self, mode: bool = True):
         self.feature_network = self.feature_network.train(False)
         self.heads = self.heads.train(mode)
@@ -541,12 +543,12 @@ class Discriminator(torch.nn.Module):
 
     def eval(self):
         return self.train(False)
-    
+
     def forward(
         self,
         x: torch.Tensor,
         c: torch.Tensor,
-        transform_positive = True,
+        transform_positive=True,
         return_dict: bool = True,
     ):
         # TODO: do we need the augmentations from the original StyleGAN-T code?
@@ -1121,7 +1123,7 @@ def main(args):
     teacher_scheduler = DDIMScheduler.from_pretrained(
         args.pretrained_teacher_model, subfolder="scheduler", revision=args.teacher_revision
     )
-    if teacher_scheduler.config.rescale_betas_zero_snr == False:
+    if not teacher_scheduler.config.rescale_betas_zero_snr:
         teacher_scheduler.config["rescale_betas_zero_snr"] = True
     noise_scheduler = DDIMScheduler(**teacher_scheduler.config)
 
@@ -1150,11 +1152,11 @@ def main(args):
             f"Weight schedule {args.weight_schedule} is not currently supported. Supported schedules are `uniform`,"
             f" `exponential`, `sds`, and `nfsd`."
         )
-    
+
     # Create student timestep schedule tau_1, ..., tau_N.
     if args.student_custom_timesteps is not None:
         student_timestep_schedule = np.asarray(
-            sorted([int(timestep.strip()) for timestep in args.student_custom_timesteps.split(',')])
+            sorted([int(timestep.strip()) for timestep in args.student_custom_timesteps.split(",")])
         )
     elif args.student_timestep_schedule == "uniform":
         student_timestep_schedule = np.linspace(
