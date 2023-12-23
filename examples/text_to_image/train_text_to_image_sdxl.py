@@ -35,7 +35,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed, InitProcessGroupKwargs
-from datasets import load_dataset, load_from_disk
+from datasets import load_dataset, load_from_disk, DatasetDict
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
@@ -186,6 +186,7 @@ def parse_args(input_args=None):
         type=str,
         default=None,
     )
+    parser.add_argument("--save_precomputed_data_dir", type=str, default=None)
     parser.add_argument(
         "--image_column", type=str, default="image", help="The column of the dataset containing an image."
     )
@@ -918,6 +919,18 @@ def main(args):
                 batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
                 new_fingerprint=new_fingerprint_for_vae,
             )
+
+            if args.save_precomputed_data_dir is not None:
+                DatasetDict({
+                    'train': train_dataset.with_format(None)
+                }).save_to_disk(args.save_precomputed_data_dir)
+                accelerator.print(
+                    (
+                        f"Saved precomputed dataset to {args.save_precomputed_data_dir}. "
+                        f"Use `--train_precomputed_data_dir {args.save_precomputed_data_dir}` to load it next time "
+                        "instead of `--dataset_name`"
+                    )
+                )
 
         del text_encoders, tokenizers, vae
         gc.collect()
