@@ -34,7 +34,7 @@ import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.utils import ProjectConfiguration, set_seed
+from accelerate.utils import ProjectConfiguration, set_seed, InitProcessGroupKwargs
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
@@ -54,6 +54,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
+from datetime import timedelta
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -579,12 +580,14 @@ def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
+    kwargs_handlers = [InitProcessGroupKwargs(timeout=timedelta(days=10))]
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         log_with=args.report_to,
         project_config=accelerator_project_config,
+        kwargs_handlers=kwargs_handlers,
     )
 
     if args.report_to == "wandb":
@@ -871,34 +874,47 @@ def main(args):
 
     # Let's first compute all the embeddings so that we can free up the text encoders
     # from memory. We will pre-compute the VAE encodings too.
-    text_encoders = [text_encoder_one, text_encoder_two]
-    tokenizers = [tokenizer_one, tokenizer_two]
-    compute_embeddings_fn = functools.partial(
-        encode_prompt,
-        text_encoders=text_encoders,
-        tokenizers=tokenizers,
-        proportion_empty_prompts=args.proportion_empty_prompts,
-        caption_column=args.caption_column,
-    )
-    compute_vae_encodings_fn = functools.partial(compute_vae_encodings, vae=vae)
-    with accelerator.main_process_first():
-        from datasets.fingerprint import Hasher
-
-        # fingerprint used by the cache for the other processes to load the result
-        # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
-        new_fingerprint = Hasher.hash(args)
-        new_fingerprint_for_vae = Hasher.hash("vae")
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
-        train_dataset = train_dataset.map(
-            compute_vae_encodings_fn,
-            batched=True,
-            batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
-            new_fingerprint=new_fingerprint_for_vae,
+    def is_dataset_pre_computed(dataset):
+        precomputed_features = [
+            "prompt_embeds",
+            "pooled_prompt_embeds",
+            "model_input"
+        ]
+        assertions = [
+            feature in dataset.features
+            for feature in precomputed_features
+        ]
+        return all(assertions)
+    
+    if not is_dataset_pre_computed(train_dataset):
+        text_encoders = [text_encoder_one, text_encoder_two]
+        tokenizers = [tokenizer_one, tokenizer_two]
+        compute_embeddings_fn = functools.partial(
+            encode_prompt,
+            text_encoders=text_encoders,
+            tokenizers=tokenizers,
+            proportion_empty_prompts=args.proportion_empty_prompts,
+            caption_column=args.caption_column,
         )
+        compute_vae_encodings_fn = functools.partial(compute_vae_encodings, vae=vae)
+        with accelerator.main_process_first():
+            from datasets.fingerprint import Hasher
 
-    del text_encoders, tokenizers, vae
-    gc.collect()
-    torch.cuda.empty_cache()
+            # fingerprint used by the cache for the other processes to load the result
+            # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
+            new_fingerprint = Hasher.hash(args)
+            new_fingerprint_for_vae = Hasher.hash("vae")
+            train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
+            train_dataset = train_dataset.map(
+                compute_vae_encodings_fn,
+                batched=True,
+                batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
+                new_fingerprint=new_fingerprint_for_vae,
+            )
+
+        del text_encoders, tokenizers, vae
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def collate_fn(examples):
         model_input = torch.stack([torch.tensor(example["model_input"]) for example in examples])
