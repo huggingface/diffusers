@@ -1231,7 +1231,10 @@ def main(args):
 
     # now we will add new LoRA weights to the attention layers
     unet_lora_config = LoraConfig(
-        r=args.rank, init_lora_weights="gaussian", target_modules=["to_k", "to_q", "to_v", "to_out.0"]
+        r=args.rank,
+        lora_alpha=args.rank,
+        init_lora_weights="gaussian",
+        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
     unet.add_adapter(unet_lora_config)
 
@@ -1239,7 +1242,10 @@ def main(args):
     # So, instead, we monkey-patch the forward calls of its attention-blocks.
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
-            r=args.rank, init_lora_weights="gaussian", target_modules=["q_proj", "k_proj", "v_proj", "out_proj"]
+            r=args.rank,
+            lora_alpha=args.rank,
+            init_lora_weights="gaussian",
+            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
         text_encoder_one.add_adapter(text_lora_config)
         text_encoder_two.add_adapter(text_lora_config)
@@ -1265,7 +1271,7 @@ def main(args):
                 text_lora_parameters_two.append(param)
             else:
                 param.requires_grad = False
-    
+
     # Make sure the trainable params are in float32.
     if args.mixed_precision == "fp16":
         models = [unet]
