@@ -861,6 +861,7 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
             lora_scale=text_encoder_lora_scale,
             clip_skip=clip_skip,
         )
+
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
@@ -897,22 +898,22 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else {}
 
         # 8. Prepare added time ids & embeddings
-        # add_text_embeds = pooled_prompt_embeds
-        # add_time_ids = self._get_add_time_ids(
-        #     original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
-        # )
+        add_text_embeds = pooled_prompt_embeds
+        add_time_ids = self._get_add_time_ids(
+            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+        )
 
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            # add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            # add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
+            add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
+            add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
-        # add_text_embeds = add_text_embeds.to(device)
-        # add_time_ids = add_time_ids.to(device)
+        add_text_embeds = add_text_embeds.to(device)
+        add_time_ids = add_time_ids.to(device)
 
         # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -935,7 +936,7 @@ class AnimateDiffXLPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAd
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # predict the noise residual
-                # added_cond_kwargs.update({"text_embeds": add_text_embeds, "time_ids": add_time_ids})
+                added_cond_kwargs.update({"text_embeds": add_text_embeds, "time_ids": add_time_ids})
                 ts = torch.tensor([t], dtype=latent_model_input.dtype, device=latent_model_input.device)
                 if do_classifier_free_guidance:
                     ts = ts.repeat(2)
