@@ -113,11 +113,14 @@ class PeftLoraLoaderMixinTests:
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
         rank = 4
 
-        torch.manual_seed(0)
-        unet = UNet2DConditionModel(**self.unet_kwargs)
-        scheduler = scheduler_cls(**self.scheduler_kwargs)
-        torch.manual_seed(0)
-        vae = AutoencoderKL(**self.vae_kwargs)
+        if self.unet_kwargs is not None:
+            torch.manual_seed(0)
+            unet = UNet2DConditionModel(**self.unet_kwargs)
+        if self.scheduler_kwargs is not None:
+            scheduler = scheduler_cls(**self.scheduler_kwargs)
+        if self.vae_kwargs is not None:
+            torch.manual_seed(0)
+            vae = AutoencoderKL(**self.vae_kwargs)
         text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
         tokenizer = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
