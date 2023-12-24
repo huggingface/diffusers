@@ -938,18 +938,12 @@ def main():
                     snr = compute_snr(noise_scheduler, timesteps)
                     if noise_scheduler.config.prediction_type == "epsilon":
                         mse_loss_weights = (
-                            torch.stack(
-                                [snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1
-                            ).min(dim=1)[0]
-                            / snr
+                            torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
                         )
                     elif noise_scheduler.config.prediction_type == "v_prediction":
-                        mse_loss_weights = (
-                            torch.stack(
-                                [snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1
-                            ).min(dim=1)[0]
-                            / (snr + 1)
-                        )
+                        mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                            dim=1
+                        )[0] / (snr + 1)
                     else:
                         raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 

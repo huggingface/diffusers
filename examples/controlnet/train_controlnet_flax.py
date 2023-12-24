@@ -910,7 +910,9 @@ def main():
                 if noise_scheduler.config.prediction_type == "epsilon":
                     snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
                 elif noise_scheduler.config.prediction_type == "v_prediction":
-                    snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / (snr + 1)
+                    snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / (
+                        snr + 1
+                    )
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
