@@ -854,6 +854,12 @@ def parse_args():
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument(
+        "--discriminator_learning_rate",
+        type=float,
+        default=1e-4,
+        help="Initial learning rate (after the potential warmup period) to use.",
+    )
+    parser.add_argument(
         "--scale_lr",
         action="store_true",
         default=False,
@@ -1253,7 +1259,7 @@ def main(args):
                     weights.pop()
 
         def load_model_hook(models, input_dir):
-            load_model = UNet2DConditionModel.from_pretrained(os.path.join(input_dir, "unet_target"))
+            # load_model = UNet2DConditionModel.from_pretrained(os.path.join(input_dir, "unet_target"))
             # target_unet.load_state_dict(load_model.state_dict())
             # target_unet.to(accelerator.device)
             del load_model
@@ -1283,6 +1289,7 @@ def main(args):
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
+            teacher_unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
 
