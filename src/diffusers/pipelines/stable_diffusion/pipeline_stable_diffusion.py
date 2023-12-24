@@ -791,6 +791,7 @@ class StableDiffusionPipeline(
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guidance_rescale: float = 0.0,
         clip_skip: Optional[int] = None,
+        save_img_path: Optional[str] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         **kwargs,
@@ -852,6 +853,8 @@ class StableDiffusionPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            save_img_path (`str`, *optional*): Pass in a path (as a string) if you want to save the image, 
+                otherwise it will only be displayed on screen.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -1048,6 +1051,9 @@ class StableDiffusionPipeline(
 
         # Offload all models
         self.maybe_free_model_hooks()
+
+        if save_img_path is not None:
+            image[0].save(save_img_path)
 
         if not return_dict:
             return (image, has_nsfw_concept)
