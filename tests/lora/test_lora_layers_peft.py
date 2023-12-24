@@ -111,6 +111,7 @@ class PeftLoraLoaderMixinTests:
 
     def get_dummy_components(self, scheduler_cls=None):
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
+        rank = 4
 
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**self.unet_kwargs)
@@ -125,11 +126,14 @@ class PeftLoraLoaderMixinTests:
             tokenizer_2 = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
         text_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"], init_lora_weights=False
+            r=rank,
+            lora_alpha=rank,
+            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+            init_lora_weights=False,
         )
 
         unet_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+            r=rank, lora_alpha=rank, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
         )
 
         unet_lora_attn_procs, unet_lora_layers = create_unet_lora_layers(unet)
@@ -1397,7 +1401,7 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraIntegrationTests(unittest.TestCase):
+class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def tearDown(self):
         import gc
 
@@ -1650,7 +1654,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraSDXLIntegrationTests(unittest.TestCase):
+class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def tearDown(self):
         import gc
 
@@ -1877,7 +1881,9 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         ).images
         images_without_fusion = images.flatten()
 
-        self.assertTrue(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
+        max_diff = numpy_cosine_similarity_distance(images_with_fusion, images_without_fusion)
+        assert max_diff < 1e-4
+
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion_effectivity(self):
