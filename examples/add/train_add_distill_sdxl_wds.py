@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import copy
 import functools
 import gc
 import itertools
@@ -1322,7 +1321,7 @@ def main(args):
             # load_model = UNet2DConditionModel.from_pretrained(os.path.join(input_dir, "unet_target"))
             # target_unet.load_state_dict(load_model.state_dict())
             # target_unet.to(accelerator.device)
-            del load_model
+            # del load_model
 
             for i in range(len(models)):
                 # pop models so that they are not loaded again
@@ -1622,7 +1621,7 @@ def main(args):
                             added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
                         ).sample
                         teacher_x_0 = denoiser(teacher_noise_pred, teacher_timesteps, noisy_teacher_input)
-                
+
                 ############################
                 # 8. Discriminator Loss
                 ############################

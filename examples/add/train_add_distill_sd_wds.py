@@ -1262,7 +1262,7 @@ def main(args):
             # load_model = UNet2DConditionModel.from_pretrained(os.path.join(input_dir, "unet_target"))
             # target_unet.load_state_dict(load_model.state_dict())
             # target_unet.to(accelerator.device)
-            del load_model
+            # del load_model
 
             for i in range(len(models)):
                 # pop models so that they are not loaded again
