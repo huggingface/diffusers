@@ -68,6 +68,10 @@ class DDPMSchedulerTest(SchedulerCommonTest):
         assert torch.sum(torch.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
 
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
+
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
