@@ -30,7 +30,7 @@ from .attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .embeddings import CaptionProjection, PatchEmbed
+from .embeddings import PatchEmbed, PixArtAlphaTextProjection
 from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .modeling_utils import ModelMixin
 from .normalization import AdaLayerNormSingle
@@ -243,7 +243,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         self.caption_projection = None
         if caption_channels is not None:
-            self.caption_projection = CaptionProjection(in_features=caption_channels, hidden_size=inner_dim)
+            self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
 
         self.gradient_checkpointing = False
 

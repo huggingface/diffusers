@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import importlib
 import os
 import tempfile
 import time
@@ -24,6 +25,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from huggingface_hub.repocard import RepoCard
+from packaging import version
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
@@ -109,6 +111,7 @@ class PeftLoraLoaderMixinTests:
 
     def get_dummy_components(self, scheduler_cls=None):
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
+        rank = 4
 
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**self.unet_kwargs)
@@ -123,11 +126,14 @@ class PeftLoraLoaderMixinTests:
             tokenizer_2 = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
         text_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"], init_lora_weights=False
+            r=rank,
+            lora_alpha=rank,
+            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+            init_lora_weights=False,
         )
 
         unet_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+            r=rank, lora_alpha=rank, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
         )
 
         unet_lora_attn_procs, unet_lora_layers = create_unet_lora_layers(unet)
@@ -1395,7 +1401,7 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraIntegrationTests(unittest.TestCase):
+class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def tearDown(self):
         import gc
 
@@ -1648,7 +1654,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraSDXLIntegrationTests(unittest.TestCase):
+class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     def tearDown(self):
         import gc
 
@@ -1875,7 +1881,9 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         ).images
         images_without_fusion = images.flatten()
 
-        self.assertTrue(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
+        max_diff = numpy_cosine_similarity_distance(images_with_fusion, images_without_fusion)
+        assert max_diff < 1e-4
+
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion_effectivity(self):
@@ -1983,10 +1991,26 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         fused_te_2_state_dict = pipe.text_encoder_2.state_dict()
         unet_state_dict = pipe.unet.state_dict()
 
+        peft_ge_070 = version.parse(importlib.metadata.version("peft")) >= version.parse("0.7.0")
+
+        def remap_key(key, sd):
+            # some keys have moved around for PEFT >= 0.7.0, but they should still be loaded correctly
+            if (key in sd) or (not peft_ge_070):
+                return key
+
+            # instead of linear.weight, we now have linear.base_layer.weight, etc.
+            if key.endswith(".weight"):
+                key = key[:-7] + ".base_layer.weight"
+            elif key.endswith(".bias"):
+                key = key[:-5] + ".base_layer.bias"
+            return key
+
         for key, value in text_encoder_1_sd.items():
+            key = remap_key(key, fused_te_state_dict)
             self.assertTrue(torch.allclose(fused_te_state_dict[key], value))
 
         for key, value in text_encoder_2_sd.items():
+            key = remap_key(key, fused_te_2_state_dict)
             self.assertTrue(torch.allclose(fused_te_2_state_dict[key], value))
 
         for key, value in unet_state_dict.items():

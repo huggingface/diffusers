@@ -244,14 +244,12 @@
   - sections:
     - local: api/pipelines/overview
       title: Overview
-    - local: api/pipelines/alt_diffusion
-      title: AltDiffusion
+    - local: api/pipelines/amused
+      title: aMUSEd
     - local: api/pipelines/animatediff
       title: AnimateDiff
     - local: api/pipelines/attend_and_excite
       title: Attend-and-Excite
-    - local: api/pipelines/audio_diffusion
-      title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
     - local: api/pipelines/audioldm2
@@ -270,8 +268,6 @@
       title: ControlNet-XS
     - local: api/pipelines/controlnetxs_sdxl
       title: ControlNet-XS with Stable Diffusion XL
-    - local: api/pipelines/cycle_diffusion
-      title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -302,26 +298,14 @@
       title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: Paint by Example
-    - local: api/pipelines/paradigms
-      title: Parallel Sampling of Diffusion Models
-    - local: api/pipelines/pix2pix_zero
-      title: Pix2Pix Zero
     - local: api/pipelines/pixart
       title: PixArt-α
-    - local: api/pipelines/pndm
-      title: PNDM
-    - local: api/pipelines/repaint
-      title: RePaint
-    - local: api/pipelines/score_sde_ve
-      title: Score SDE VE
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
-    - local: api/pipelines/spectrogram_diffusion
-      title: Spectrogram Diffusion
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -356,26 +340,16 @@
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP
-    - local: api/pipelines/stochastic_karras_ve
-      title: Stochastic Karras VE
-    - local: api/pipelines/model_editing
-      title: Text-to-image model editing
     - local: api/pipelines/text_to_video
       title: Text-to-video
     - local: api/pipelines/text_to_video_zero
       title: Text2Video-Zero
     - local: api/pipelines/unclip
       title: unCLIP
-    - local: api/pipelines/latent_diffusion_uncond
-      title: Unconditional Latent Diffusion
     - local: api/pipelines/unidiffuser
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
-    - local: api/pipelines/versatile_diffusion
-      title: Versatile Diffusion
-    - local: api/pipelines/vq_diffusion
-      title: VQ Diffusion
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines
