@@ -1104,10 +1104,10 @@ def main(args):
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
+        model_id = args.hub_model_id or Path(args.output_dir).name
+        repo_id = None
         if args.push_to_hub:
-            repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-            ).repo_id
+            repo_id = create_repo(repo_id=model_id, exist_ok=True, token=args.hub_token).repo_id
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
