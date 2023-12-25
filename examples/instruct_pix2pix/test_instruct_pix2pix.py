@@ -89,7 +89,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
                 --output_dir {tmpdir}
                 --seed=0
                 --resume_from_checkpoint=checkpoint-4
-                --checkpoints_total_limit=3
+                --checkpoints_total_limit=2
                 """.split()
 
             run_command(self._launch_args + resume_run_args)
