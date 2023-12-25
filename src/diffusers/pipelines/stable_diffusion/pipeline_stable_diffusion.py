@@ -853,7 +853,7 @@ class StableDiffusionPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
-            save_img_path (`str`, *optional*): Pass in a path (as a string) if you want to save the image, 
+            save_img_path (`str`, *optional*): Pass in a path (as a string) if you want to save the image,
                 otherwise it will only be displayed on screen.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
