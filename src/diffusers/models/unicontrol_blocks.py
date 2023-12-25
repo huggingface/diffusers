@@ -45,24 +45,46 @@ class UniControlTaskMOEEmbedding(nn.Module):
 
         ## MOE with multiple task specific layers. So num of layers = num of tasks
         ## where each layer is UniControlNetTaskConditioningEmbedding
+        in_channels = conditioning_embedding_out_channels[0]
+        out_channels = conditioning_embedding_out_channels[1]
         self.input_hint_block_list_moe = nn.ModuleList([])
         for _ in range(all_tasks_num):
             self.input_hint_block_list_moe.append(
                 UniControlTaskConditioningEmbedding(
                     hint_channels=hint_channels,
-                    in_channels = conditioning_embedding_out_channels[0],
-                    out_channels = conditioning_embedding_out_channels[1]
+                    in_channels = in_channels,
+                    out_channels = out_channels
                     )
                 )
 
-        self.input_hint_block_share = nn.ModuleList([
-            nn.Conv2d(conditioning_embedding_out_channels[1], conditioning_embedding_out_channels[1], 3, padding=1),
-            nn.Conv2d(conditioning_embedding_out_channels[1], conditioning_embedding_out_channels[2], 3, padding=1, stride=2),
-            nn.Conv2d(conditioning_embedding_out_channels[2], conditioning_embedding_out_channels[2], 3, padding=1),
-            nn.Conv2d(conditioning_embedding_out_channels[2],  conditioning_embedding_out_channels[3], 3, padding=1, stride=2),
-        ])
+        # self.input_hint_block_share = nn.ModuleList([
+        #     nn.Conv2d(conditioning_embedding_out_channels[1], conditioning_embedding_out_channels[1], 3, padding=1),
+        #     nn.Conv2d(conditioning_embedding_out_channels[1], conditioning_embedding_out_channels[2], 3, padding=1, stride=2),
+        #     nn.Conv2d(conditioning_embedding_out_channels[2], conditioning_embedding_out_channels[2], 3, padding=1),
+        #     nn.Conv2d(conditioning_embedding_out_channels[2],  conditioning_embedding_out_channels[3], 3, padding=1, stride=2),
+        # ])
+        
+        blocks = []
+        for i in range(1, len(conditioning_embedding_out_channels) - 1):
+            channel_in = conditioning_embedding_out_channels[i]
+            channel_out = conditioning_embedding_out_channels[i + 1]
+            conv1 = nn.Conv2d(
+                channel_in,
+                channel_in,
+                kernel_size=3,
+                padding=1,
+            )
+            blocks.append(conv1)
+            conv2 = nn.Conv2d(
+                channel_in,
+                channel_out,
+                kernel_size=3,
+                padding=1,
+            )
+            blocks.append(conv2)
+        self.input_hint_block_share = nn.ModuleList(blocks)
 
-        self.task_id_layernet_zeroconv_0 = nn.Linear(time_embed_dim, 32)
+        self.task_id_layernet_zeroconv_0 = nn.Linear(time_embed_dim, conditioning_embedding_out_channels[1])
 
         #The second zero conv is redundant
         self.input_hint_block_zeroconv_0 = nn.ModuleList([
