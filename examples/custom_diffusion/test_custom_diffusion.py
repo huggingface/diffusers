@@ -93,7 +93,7 @@ class CustomDiffusion(ExamplesTestsAccelerate):
             --train_batch_size=1
             --modifier_token=<new1>
             --dataloader_num_workers=0
-            --max_train_steps=9
+            --max_train_steps=4
             --checkpointing_steps=2
             --no_safe_serialization
             """.split()
@@ -102,7 +102,7 @@ class CustomDiffusion(ExamplesTestsAccelerate):
 
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6", "checkpoint-8"},
+                {"checkpoint-2", "checkpoint-4"},
             )
 
             resume_run_args = f"""
@@ -115,16 +115,13 @@ class CustomDiffusion(ExamplesTestsAccelerate):
             --train_batch_size=1
             --modifier_token=<new1>
             --dataloader_num_workers=0
-            --max_train_steps=11
+            --max_train_steps=8
             --checkpointing_steps=2
-            --resume_from_checkpoint=checkpoint-8
-            --checkpoints_total_limit=3
+            --resume_from_checkpoint=checkpoint-4
+            --checkpoints_total_limit=2
             --no_safe_serialization
             """.split()
 
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
-            )
+            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})
