@@ -272,7 +272,7 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Run training script with checkpointing
-            # max_train_steps == 7, checkpointing_steps == 2, checkpoints_total_limit == 2
+            # max_train_steps == 6, checkpointing_steps == 2, checkpoints_total_limit == 2
             # Should create checkpoints at steps 2, 4, 6
             # with checkpoint at step 2 deleted
 
@@ -283,7 +283,7 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 7
+                --max_train_steps 6
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -298,11 +298,8 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
 
             pipe = DiffusionPipeline.from_pretrained(pipeline_path)
             pipe.load_lora_weights(tmpdir)
-            pipe(prompt, num_inference_steps=2)
+            pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                # checkpoint-2 should have been deleted
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            # checkpoint-2 should have been deleted
+            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
