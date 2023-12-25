@@ -40,8 +40,6 @@ class TextualInversion(ExamplesTestsAccelerate):
                 --learnable_property object
                 --placeholder_token <cat-toy>
                 --initializer_token a
-                --validation_prompt <cat-toy>
-                --validation_steps 1
                 --save_steps 1
                 --num_vectors 2
                 --resolution 64
@@ -68,8 +66,6 @@ class TextualInversion(ExamplesTestsAccelerate):
                 --learnable_property object
                 --placeholder_token <cat-toy>
                 --initializer_token a
-                --validation_prompt <cat-toy>
-                --validation_steps 1
                 --save_steps 1
                 --num_vectors 2
                 --resolution 64
@@ -131,8 +127,6 @@ class TextualInversion(ExamplesTestsAccelerate):
                 --learnable_property object
                 --placeholder_token <cat-toy>
                 --initializer_token a
-                --validation_prompt <cat-toy>
-                --validation_steps 1
                 --save_steps 1
                 --num_vectors 2
                 --resolution 64
