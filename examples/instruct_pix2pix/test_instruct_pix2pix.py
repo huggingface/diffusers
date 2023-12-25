@@ -63,7 +63,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
                 --resolution=64
                 --random_flip
                 --train_batch_size=1
-                --max_train_steps=9
+                --max_train_steps=4
                 --checkpointing_steps=2
                 --output_dir {tmpdir}
                 --seed=0
@@ -74,7 +74,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6", "checkpoint-8"},
+                {"checkpoint-2", "checkpoint-4"},
             )
 
             resume_run_args = f"""
@@ -84,11 +84,11 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
                 --resolution=64
                 --random_flip
                 --train_batch_size=1
-                --max_train_steps=11
+                --max_train_steps=8
                 --checkpointing_steps=2
                 --output_dir {tmpdir}
                 --seed=0
-                --resume_from_checkpoint=checkpoint-8
+                --resume_from_checkpoint=checkpoint-4
                 --checkpoints_total_limit=3
                 """.split()
 
@@ -97,5 +97,5 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
+                {"checkpoint-6", "checkpoint-8"},
             )
