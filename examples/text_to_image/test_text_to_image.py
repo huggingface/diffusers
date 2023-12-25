@@ -261,10 +261,7 @@ class TextToImage(ExamplesTestsAccelerate):
 
             # check checkpoint directories exist
             # checkpoint-2 should have been deleted
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"}
-            )
+            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
 
     def test_text_to_image_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"

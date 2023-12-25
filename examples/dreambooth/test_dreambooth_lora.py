@@ -340,10 +340,7 @@ class DreamBoothLoRASDXL(ExamplesTestsAccelerate):
 
             # check checkpoint directories exist
             # checkpoint-2 should have been deleted
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"}
-            )
+            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
 
     def test_dreambooth_lora_sdxl_text_encoder_checkpointing_checkpoints_total_limit(self):
         pipeline_path = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
