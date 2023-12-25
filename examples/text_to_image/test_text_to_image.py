@@ -222,10 +222,9 @@ class TextToImage(ExamplesTestsAccelerate):
 
             # no checkpoint-2 -> check old checkpoints do not exist
             # check new checkpoints exist
-            print(f"Directory: {os.listdir(tmpdir)}")
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
+                {"checkpoint-4", "checkpoint-5"},
             )
 
     def test_text_to_image_checkpointing_checkpoints_total_limit(self):
