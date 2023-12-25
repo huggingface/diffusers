@@ -111,12 +111,16 @@ class PeftLoraLoaderMixinTests:
 
     def get_dummy_components(self, scheduler_cls=None):
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
+        rank = 4
 
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**self.unet_kwargs)
+
         scheduler = scheduler_cls(**self.scheduler_kwargs)
+
         torch.manual_seed(0)
         vae = AutoencoderKL(**self.vae_kwargs)
+
         text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
         tokenizer = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
@@ -125,11 +129,14 @@ class PeftLoraLoaderMixinTests:
             tokenizer_2 = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
         text_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"], init_lora_weights=False
+            r=rank,
+            lora_alpha=rank,
+            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+            init_lora_weights=False,
         )
 
         unet_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+            r=rank, lora_alpha=rank, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
         )
 
         unet_lora_attn_procs, unet_lora_layers = create_unet_lora_layers(unet)
@@ -1397,7 +1404,36 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraIntegrationTests(unittest.TestCase):
+class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
+    pipeline_class = StableDiffusionPipeline
+    scheduler_cls = DDIMScheduler
+    scheduler_kwargs = {
+        "beta_start": 0.00085,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "clip_sample": False,
+        "set_alpha_to_one": False,
+        "steps_offset": 1,
+    }
+    unet_kwargs = {
+        "block_out_channels": (32, 64),
+        "layers_per_block": 2,
+        "sample_size": 32,
+        "in_channels": 4,
+        "out_channels": 4,
+        "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
+        "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
+        "cross_attention_dim": 32,
+    }
+    vae_kwargs = {
+        "block_out_channels": [32, 64],
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+        "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
+        "latent_channels": 4,
+    }
+
     def tearDown(self):
         import gc
 
@@ -1650,7 +1686,43 @@ class LoraIntegrationTests(unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraSDXLIntegrationTests(unittest.TestCase):
+class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
+    has_two_text_encoders = True
+    pipeline_class = StableDiffusionXLPipeline
+    scheduler_cls = EulerDiscreteScheduler
+    scheduler_kwargs = {
+        "beta_start": 0.00085,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "timestep_spacing": "leading",
+        "steps_offset": 1,
+    }
+    unet_kwargs = {
+        "block_out_channels": (32, 64),
+        "layers_per_block": 2,
+        "sample_size": 32,
+        "in_channels": 4,
+        "out_channels": 4,
+        "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
+        "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
+        "attention_head_dim": (2, 4),
+        "use_linear_projection": True,
+        "addition_embed_type": "text_time",
+        "addition_time_embed_dim": 8,
+        "transformer_layers_per_block": (1, 2),
+        "projection_class_embeddings_input_dim": 80,  # 6 * 8 + 32
+        "cross_attention_dim": 64,
+    }
+    vae_kwargs = {
+        "block_out_channels": [32, 64],
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+        "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
+        "latent_channels": 4,
+        "sample_size": 128,
+    }
+
     def tearDown(self):
         import gc
 
@@ -1877,7 +1949,9 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         ).images
         images_without_fusion = images.flatten()
 
-        self.assertTrue(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
+        max_diff = numpy_cosine_similarity_distance(images_with_fusion, images_without_fusion)
+        assert max_diff < 1e-4
+
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion_effectivity(self):
