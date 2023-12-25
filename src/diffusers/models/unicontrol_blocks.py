@@ -84,6 +84,8 @@ class UniControlTaskMOEEmbedding(nn.Module):
             blocks.append(conv2)
         self.input_hint_block_share = nn.ModuleList(blocks)
 
+        if len(conditioning_embedding_out_channels) < 2:
+            raise ValueError("`conditioning_embedding_out_channels` must have atleast two channels in the list")
         self.task_id_layernet_zeroconv_0 = nn.Linear(time_embed_dim, conditioning_embedding_out_channels[1])
 
         #The second zero conv is redundant
@@ -94,10 +96,10 @@ class UniControlTaskMOEEmbedding(nn.Module):
 
         #The second zero conv is redundant.
         self.input_hint_block_zeroconv_1 = nn.ModuleList([
-            zero_module(nn.Conv2d(conditioning_embedding_out_channels[3], model_channels, 3, padding=1)),
-            zero_module(nn.Conv2d(conditioning_embedding_out_channels[3], model_channels, 3, padding=1))]
+            zero_module(nn.Conv2d(conditioning_embedding_out_channels[-1], model_channels, 3, padding=1)),
+            zero_module(nn.Conv2d(conditioning_embedding_out_channels[-1], model_channels, 3, padding=1))]
         )
-        self.task_id_layernet_zeroconv_1 = nn.Linear(time_embed_dim, conditioning_embedding_out_channels[3])
+        self.task_id_layernet_zeroconv_1 = nn.Linear(time_embed_dim, conditioning_embedding_out_channels[-1])
 
     def forward(self, x, hint, context, task_id_emb, task_id):
 
