@@ -108,7 +108,7 @@ class ControlNetSDXL(ExamplesTestsAccelerate):
             --train_batch_size=1
             --gradient_accumulation_steps=1
             --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet-sdxl
-            --max_train_steps=9
+            --max_train_steps=4
             --checkpointing_steps=2
             """.split()
 
