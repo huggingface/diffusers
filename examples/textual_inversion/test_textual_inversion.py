@@ -154,5 +154,5 @@ class TextualInversion(ExamplesTestsAccelerate):
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-3", "checkpoint-4"},
+                {"checkpoint-4"},
             )
