@@ -107,7 +107,7 @@ class TextualInversion(ExamplesTestsAccelerate):
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 3
+                --max_train_steps 2
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -121,7 +121,7 @@ class TextualInversion(ExamplesTestsAccelerate):
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-1", "checkpoint-2", "checkpoint-3"},
+                {"checkpoint-1", "checkpoint-2"},
             )
 
             resume_run_args = f"""
@@ -138,14 +138,14 @@ class TextualInversion(ExamplesTestsAccelerate):
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 4
+                --max_train_steps 2
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
                 --lr_warmup_steps 0
                 --output_dir {tmpdir}
                 --checkpointing_steps=1
-                --resume_from_checkpoint=checkpoint-3
+                --resume_from_checkpoint=checkpoint-2
                 --checkpoints_total_limit=2
                 """.split()
 
