@@ -80,6 +80,7 @@ class UniControlTaskMOEEmbedding(nn.Module):
                 channel_out,
                 kernel_size=3,
                 padding=1,
+                stride=2
             )
             blocks.append(conv2)
         self.input_hint_block_share = nn.ModuleList(blocks)
