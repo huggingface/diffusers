@@ -40,7 +40,7 @@ class InstructPix2Pix(ExamplesTestsAccelerate):
                 --resolution=64
                 --random_flip
                 --train_batch_size=1
-                --max_train_steps=7
+                --max_train_steps=6
                 --checkpointing_steps=2
                 --checkpoints_total_limit=2
                 --output_dir {tmpdir}
