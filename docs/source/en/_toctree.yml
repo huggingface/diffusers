@@ -20,7 +20,7 @@
   - local: tutorials/using_peft_for_inference
     title: Inference with PEFT
   - local: tutorials/fast_diffusion
-  - title: Accelerate inference of text-to-image diffusion models
+    title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
   - sections:
