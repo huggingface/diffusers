@@ -15,7 +15,6 @@
 
 import argparse
 import gc
-import hashlib
 import itertools
 import logging
 import math
@@ -1261,7 +1260,6 @@ def main(args):
                 # only upcast trainable parameters (LoRA) into fp32
                 if param.requires_grad:
                     param.data = param.to(torch.float32)
-
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
