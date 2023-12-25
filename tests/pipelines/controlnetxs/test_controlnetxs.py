@@ -106,6 +106,7 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     out_queue.join()
 
 
+@unittest.skip("Move to Community Pipelines")
 class ControlNetXSPipelineFastTests(
     PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
@@ -243,6 +244,7 @@ class ControlNetXSPipelineFastTests(
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
 
+@unittest.skip("Move to Community Pipelines")
 @slow
 @require_torch_gpu
 class ControlNetXSPipelineSlowTests(unittest.TestCase):

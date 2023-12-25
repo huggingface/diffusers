@@ -48,6 +48,7 @@ from ..test_pipelines_common import (
 enable_full_determinism()
 
 
+@unittest.skip("Move to Community Pipelines")
 class StableDiffusionXLControlNetXSPipelineFastTests(
     PipelineLatentTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
@@ -307,6 +308,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1.1e-4
 
 
+@unittest.skip("Move to Community Pipelines")
 @slow
 @require_torch_gpu
 class ControlNetSDXLPipelineXSSlowTests(unittest.TestCase):
