@@ -154,6 +154,7 @@ class SDXLText2ImageDataset:
         global_batch_size: int,
         num_workers: int,
         resolution: int = 1024,
+        interpolation_type: str = "bilinear",
         shuffle_buffer_size: int = 1000,
         pin_memory: bool = False,
         persistent_workers: bool = False,
@@ -170,10 +171,24 @@ class SDXLText2ImageDataset:
             else:
                 return (int(json.get(WDS_JSON_WIDTH, 0.0)), int(json.get(WDS_JSON_HEIGHT, 0.0)))
 
+        if interpolation_type == "bilinear":
+            self.interpolation_mode = TF.InterpolationMode.BILINEAR
+        elif interpolation_type == "bicubic":
+            self.interpolation_mode = TF.InterpolationMode.BICUBIC
+        elif interpolation_type == "nearest":
+            self.interpolation_mode = TF.InterpolationMode.NEAREST
+        elif interpolation_type == "lanczos":
+            self.interpolation_mode = TF.InterpolationMode.LANCZOS
+        else:
+            raise ValueError(
+                f"The given interpolation mode {interpolation_type} is not supported. Currently supported interpolation"
+                f" modes are `bilinear`, `bicubic`, `lanczos`, and `nearest`."
+            )
+
         def transform(example):
             # resize image
             image = example["image"]
-            image = TF.resize(image, resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+            image = TF.resize(image, resolution, interpolation=self.interpolation_mode)
 
             # get crop coordinates and crop image
             c_top, c_left, _, _ = transforms.RandomCrop.get_params(image, output_size=(resolution, resolution))
@@ -285,7 +300,7 @@ class ResidualBlock(torch.nn.Module):
 # https://github.com/autonomousvision/stylegan-t/blob/36ab80ce76237fefe03e65e9b3161c040ae888e3/networks/discriminator.py#L64
 class DiscHeadBlock(torch.nn.Module):
     """
-    StyleGAN-T block: SpectralConv1d => BatchNormLocal => LeakyReLU
+    StyleGAN-T block: SpectralConv1d => GroupNorm => LeakyReLU
     """
 
     def __init__(
@@ -305,12 +320,12 @@ class DiscHeadBlock(torch.nn.Module):
             padding=kernel_size // 2,
             padding_mode="circular",
         )
-        self.batch_norm = torch.nn.GroupNorm(num_groups, channels)
+        self.norm = torch.nn.GroupNorm(num_groups, channels)
         self.act_fn = torch.nn.LeakyReLU(leaky_relu_neg_slope, inplace=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = self.conv(x)
-        x = self.batch_norm(x)
+        x = self.norm(x)
         x = self.act_fn(x)
         return x
 
@@ -624,7 +639,7 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step, name="stude
         with torch.autocast("cuda"):
             images = pipeline(
                 prompt=prompt,
-                num_inference_steps=4,
+                num_inference_steps=1,
                 num_images_per_prompt=4,
                 generator=generator,
             ).images
@@ -818,6 +833,15 @@ def parse_args():
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
+        ),
+    )
+    parser.add_argument(
+        "--interpolation_type",
+        type=str,
+        default="bilinear",
+        help=(
+            "The interpolation function used when resizing images to the desired resolution. Choose between `bilinear`,"
+            " `bicubic`, `lanczos`, and `nearest`."
         ),
     )
     parser.add_argument(
@@ -1153,7 +1177,6 @@ def main(args):
 
     # 1. Create the noise scheduler and the desired noise schedule.
     # Enforce zero terminal SNR (see section 3.1 of ADD paper)
-    # TODO: is there a better way to implement this?
     teacher_scheduler = DDIMScheduler.from_pretrained(
         args.pretrained_teacher_model, subfolder="scheduler", revision=args.teacher_revision
     )
@@ -1285,18 +1308,14 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    # Move vae, text_encoders, and teacher_unet to device and cast to weight_dtype
     # The VAE is in float32 to avoid NaN losses.
     vae.to(accelerator.device)
     if args.pretrained_vae_model_name_or_path is not None:
         vae.to(dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
-
-    # Move teacher_unet to device, optionally cast to weight_dtype
-    teacher_unet.to(accelerator.device)
-    if args.cast_teacher_unet:
-        teacher_unet.to(dtype=weight_dtype)
+    teacher_unet.to(accelerator.device, dtype=weight_dtype)
 
     # Also move the denoiser and schedules to accelerator.device
     denoiser.to(accelerator.device)
@@ -1355,6 +1374,7 @@ def main(args):
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
+        torch.backends.cudnn.allow_tf32 = True
         torch.backends.cuda.matmul.allow_tf32 = True
 
     if args.gradient_checkpointing:
@@ -1612,13 +1632,12 @@ def main(args):
                 noisy_teacher_input = noise_scheduler.add_noise(student_x_0, teacher_noise, teacher_timesteps)
 
                 # 7. Get teacher model predicted original sample `teacher_x_0`.
-                with torch.no_grad():
-                    with torch.autocast("cuda"):
+                with torch.no_grad(), torch.autocast("cuda", dtype=weight_dtype):
                         teacher_noise_pred = teacher_unet(
                             noisy_teacher_input.detach(),
                             teacher_timesteps,
-                            encoder_hidden_states=prompt_embeds.float(),
-                            added_cond_kwargs={k: v.to(weight_dtype) for k, v in encoded_text.items()},
+                            encoder_hidden_states=prompt_embeds,
+                            added_cond_kwargs=encoded_text,
                         ).sample
                         teacher_x_0 = denoiser(teacher_noise_pred, teacher_timesteps, noisy_teacher_input)
 
@@ -1630,8 +1649,10 @@ def main(args):
                 # 1. Decode real and fake (generated) latents back to pixel space.
                 # NOTE: the paper doesn't mention this explicitly AFAIK but I think this makes sense since the
                 # pretrained feature network for the discriminator operates in pixel space rather than latent space.
-                real_image = vae.decode(latents).sample
-                student_gen_image = vae.decode(student_x_0).sample
+                unscaled_latents = (1 / vae.config.scaling_factor) * latents
+                unscaled_student_x_0 = (1 / vae.config.scaling_factor) * student_x_0
+                real_image = vae.decode(unscaled_latents).sample
+                student_gen_image = vae.decode(unscaled_student_x_0).sample
 
                 # 2. Get discriminator real/fake outputs on the real and fake (generated) images respectively.
                 disc_output_real = discriminator(real_image, prompt_embeds)
@@ -1686,7 +1707,8 @@ def main(args):
                 # 10. Distillation Loss
                 ############################
                 # Calculate distillation loss in pixel space rather than latent space (see section 3.1)
-                teacher_gen_image = vae.decode(teacher_x_0).sample
+                unscaled_teacher_x_0 = (1 / vae.config.scaling_factor) * teacher_x_0
+                teacher_gen_image = vae.decode(unscaled_teacher_x_0).sample
                 per_instance_distillation_loss = F.mse_loss(
                     student_gen_image.float(), teacher_gen_image.float(), reduction="none"
                 )
