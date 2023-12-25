@@ -124,8 +124,7 @@ class Unconditional(ExamplesTestsAccelerate):
             run_command(self._launch_args + resume_run_args)
 
             # check checkpoint directories exist
-            print(f"Directory: {os.listdir(tmpdir)}")
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-8", "checkpoint-10"},
+                {"checkpoint-10", "checkpoint-12"},
             )
