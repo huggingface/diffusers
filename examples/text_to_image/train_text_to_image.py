@@ -510,10 +510,6 @@ def parse_args():
         "--running_as_docker",
         action="store_true",
     )
-    parser.add_argument(
-        "--train_attention_only",
-        action="store_true",
-    )
 
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
@@ -633,14 +629,6 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
-    def freeze_all_unet_layers_except_attention(model):
-        for name, param in model.named_parameters():
-            if "attention" not in name:
-                param.requires_grad_(False)
-
-    if args.train_attention_only:
-        freeze_all_unet_layers_except_attention(unet)
-
     # Freeze vae and text_encoder and set unet to trainable
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
@@ -727,13 +715,8 @@ def main():
     else:
         optimizer_cls = torch.optim.AdamW
 
-    if args.train_attention_only:
-        params = filter(lambda p: p.requires_grad, unet.parameters())
-    else:
-        params = unet.parameters()
-
     optimizer = optimizer_cls(
-        params,
+        unet.parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
