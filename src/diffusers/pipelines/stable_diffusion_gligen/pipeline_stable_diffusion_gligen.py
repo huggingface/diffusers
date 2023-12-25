@@ -1,4 +1,5 @@
-# Copyright 2023 MultiDiffusion Authors and The HuggingFace Team. All rights reserved."
+# Copyright 2023 The GLIGEN Authors and HuggingFace Team. All rights reserved.
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -11,18 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import inspect
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Union
 
+import PIL.Image
 import torch
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
+from ...image_processor import VaeImageProcessor
+from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, UNet2DConditionModel
+from ...models.attention import GatedSelfAttentionDense
 from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import DDIMScheduler
+from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
     USE_PEFT_BACKEND,
     deprecate,
@@ -33,8 +36,8 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from . import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
+from ..stable_diffusion import StableDiffusionPipelineOutput
+from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -43,34 +46,65 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionPanoramaPipeline, DDIMScheduler
+        >>> from diffusers import StableDiffusionGLIGENPipeline
+        >>> from diffusers.utils import load_image
 
-        >>> model_ckpt = "stabilityai/stable-diffusion-2-base"
-        >>> scheduler = DDIMScheduler.from_pretrained(model_ckpt, subfolder="scheduler")
-        >>> pipe = StableDiffusionPanoramaPipeline.from_pretrained(
-        ...     model_ckpt, scheduler=scheduler, torch_dtype=torch.float16
+        >>> # Insert objects described by text at the region defined by bounding boxes
+        >>> pipe = StableDiffusionGLIGENPipeline.from_pretrained(
+        ...     "masterful/gligen-1-4-inpainting-text-box", variant="fp16", torch_dtype=torch.float16
         ... )
-
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "a photo of the dolomites"
-        >>> image = pipe(prompt).images[0]
+        >>> input_image = load_image(
+        ...     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gligen/livingroom_modern.png"
+        ... )
+        >>> prompt = "a birthday cake"
+        >>> boxes = [[0.2676, 0.6088, 0.4773, 0.7183]]
+        >>> phrases = ["a birthday cake"]
+
+        >>> images = pipe(
+        ...     prompt=prompt,
+        ...     gligen_phrases=phrases,
+        ...     gligen_inpaint_image=input_image,
+        ...     gligen_boxes=boxes,
+        ...     gligen_scheduled_sampling_beta=1,
+        ...     output_type="pil",
+        ...     num_inference_steps=50,
+        ... ).images
+
+        >>> images[0].save("./gligen-1-4-inpainting-text-box.jpg")
+
+        >>> # Generate an image described by the prompt and
+        >>> # insert objects described by text at the region defined by bounding boxes
+        >>> pipe = StableDiffusionGLIGENPipeline.from_pretrained(
+        ...     "masterful/gligen-1-4-generation-text-box", variant="fp16", torch_dtype=torch.float16
+        ... )
+        >>> pipe = pipe.to("cuda")
+
+        >>> prompt = "a waterfall and a modern high speed train running through the tunnel in a beautiful forest with fall foliage"
+        >>> boxes = [[0.1387, 0.2051, 0.4277, 0.7090], [0.4980, 0.4355, 0.8516, 0.7266]]
+        >>> phrases = ["a waterfall", "a modern high speed train running through the tunnel"]
+
+        >>> images = pipe(
+        ...     prompt=prompt,
+        ...     gligen_phrases=phrases,
+        ...     gligen_boxes=boxes,
+        ...     gligen_scheduled_sampling_beta=1,
+        ...     output_type="pil",
+        ...     num_inference_steps=50,
+        ... ).images
+
+        >>> images[0].save("./gligen-1-4-generation-text-box.jpg")
         ```
 """
 
 
-class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin):
+class StableDiffusionGLIGENPipeline(DiffusionPipeline):
     r"""
-    Pipeline for text-to-image generation using MultiDiffusion.
+    Pipeline for text-to-image generation using Stable Diffusion with Grounded-Language-to-Image Generation (GLIGEN).
 
-    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
-    implemented for all pipelines (downloading, saving, running on a particular device, etc.).
-
-    The pipeline also inherits the following loading methods:
-        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
-        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
+    This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
+    library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.).
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -92,8 +126,8 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
+    _optional_components = ["safety_checker", "feature_extractor"]
     model_cpu_offload_seq = "text_encoder->unet->vae"
-    _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
     _exclude_from_cpu_offload = ["safety_checker"]
 
     def __init__(
@@ -102,10 +136,9 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: DDIMScheduler,
+        scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPImageProcessor,
-        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
+        feature_extractor: CLIPFeatureExtractor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -134,13 +167,11 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
-            image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
-        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -148,13 +179,27 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         """
         self.vae.enable_slicing()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
         computing decoding in one step.
         """
         self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -371,31 +416,6 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(image, return_tensors="pt").pixel_values
-
-        image = image.to(device=device, dtype=dtype)
-        if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_enc_hidden_states = self.image_encoder(
-                torch.zeros_like(image), output_hidden_states=True
-            ).hidden_states[-2]
-            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
-            return image_enc_hidden_states, uncond_image_enc_hidden_states
-        else:
-            image_embeds = self.image_encoder(image).image_embeds
-            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_embeds = torch.zeros_like(image_embeds)
-
-            return image_embeds, uncond_image_embeds
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -411,32 +431,6 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
             )
         return image, has_nsfw_concept
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.decode_latents
-    def decode_latents(self, latents):
-        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
-        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
-
-        latents = 1 / self.vae.config.scaling_factor * latents
-        image = self.vae.decode(latents, return_dict=False)[0]
-        image = (image / 2 + 0.5).clamp(0, 1)
-        # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
-        image = image.cpu().permute(0, 2, 3, 1).float().numpy()
-        return image
-
-    def decode_latents_with_padding(self, latents, padding=8):
-        # Add padding to latents for circular inference
-        # padding is the number of latents to add on each side
-        # it would slightly increase the memory usage, but remove the boundary artifacts
-        latents = 1 / self.vae.config.scaling_factor * latents
-        latents_left = latents[..., :padding]
-        latents_right = latents[..., -padding:]
-        latents = torch.cat((latents_right, latents, latents_left), axis=-1)
-        image = self.vae.decode(latents, return_dict=False)[0]
-        padding_pix = self.vae_scale_factor * padding
-        image = image[..., padding_pix:-padding_pix]
-        return image
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
         # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
@@ -454,31 +448,27 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
         height,
         width,
         callback_steps,
+        gligen_phrases,
+        gligen_boxes,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
-        callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
-            )
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -507,6 +497,12 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                     f" {negative_prompt_embeds.shape}."
                 )
 
+        if len(gligen_phrases) != len(gligen_boxes):
+            ValueError(
+                "length of `gligen_phrases` and `gligen_boxes` has to be same, but"
+                f" got: `gligen_phrases` {len(gligen_phrases)} != `gligen_boxes` {len(gligen_boxes)}"
+            )
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
@@ -525,36 +521,46 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def get_views(self, panorama_height, panorama_width, window_size=64, stride=8, circular_padding=False):
-        # Here, we define the mappings F_i (see Eq. 7 in the MultiDiffusion paper https://arxiv.org/abs/2302.08113)
-        # if panorama's height/width < window_size, num_blocks of height/width should return 1
-        panorama_height /= 8
-        panorama_width /= 8
-        num_blocks_height = (panorama_height - window_size) // stride + 1 if panorama_height > window_size else 1
-        if circular_padding:
-            num_blocks_width = panorama_width // stride if panorama_width > window_size else 1
-        else:
-            num_blocks_width = (panorama_width - window_size) // stride + 1 if panorama_width > window_size else 1
-        total_num_blocks = int(num_blocks_height * num_blocks_width)
-        views = []
-        for i in range(total_num_blocks):
-            h_start = int((i // num_blocks_width) * stride)
-            h_end = h_start + window_size
-            w_start = int((i % num_blocks_width) * stride)
-            w_end = w_start + window_size
-            views.append((h_start, h_end, w_start, w_end))
-        return views
+    def enable_fuser(self, enabled=True):
+        for module in self.unet.modules():
+            if type(module) is GatedSelfAttentionDense:
+                module.enabled = enabled
+
+    def draw_inpaint_mask_from_boxes(self, boxes, size):
+        inpaint_mask = torch.ones(size[0], size[1])
+        for box in boxes:
+            x0, x1 = box[0] * size[0], box[2] * size[0]
+            y0, y1 = box[1] * size[1], box[3] * size[1]
+            inpaint_mask[int(y0) : int(y1), int(x0) : int(x1)] = 0
+        return inpaint_mask
+
+    def crop(self, im, new_width, new_height):
+        width, height = im.size
+        left = (width - new_width) / 2
+        top = (height - new_height) / 2
+        right = (width + new_width) / 2
+        bottom = (height + new_height) / 2
+        return im.crop((left, top, right, bottom))
+
+    def target_size_center_crop(self, im, new_hw):
+        width, height = im.size
+        if width != height:
+            im = self.crop(im, min(height, width), min(height, width))
+        return im.resize((new_hw, new_hw), PIL.Image.LANCZOS)
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        height: Optional[int] = 512,
-        width: Optional[int] = 2048,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
-        view_batch_size: int = 1,
+        gligen_scheduled_sampling_beta: float = 0.3,
+        gligen_phrases: List[str] = None,
+        gligen_boxes: List[List[float]] = None,
+        gligen_inpaint_image: Optional[PIL.Image.Image] = None,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -562,13 +568,11 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
+        callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        circular_padding: bool = False,
         clip_skip: Optional[int] = None,
     ):
         r"""
@@ -577,20 +581,30 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         Args:
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            height (`int`, *optional*, defaults to 512):
+            height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to 2048):
-                The width in pixels of the generated image. The width is kept high because the pipeline is supposed
-                generate panorama-like images.
+            width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
+                The width in pixels of the generated image.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
-            view_batch_size (`int`, *optional*, defaults to 1):
-                The batch size to denoise split views. For some GPUs with high performance, higher view batch size can
-                speedup the generation and increase the VRAM usage.
+            gligen_phrases (`List[str]`):
+                The phrases to guide what to include in each of the regions defined by the corresponding
+                `gligen_boxes`. There should only be one phrase per bounding box.
+            gligen_boxes (`List[List[float]]`):
+                The bounding boxes that identify rectangular regions of the image that are going to be filled with the
+                content described by the corresponding `gligen_phrases`. Each rectangular box is defined as a
+                `List[float]` of 4 elements `[xmin, ymin, xmax, ymax]` where each value is between [0,1].
+            gligen_inpaint_image (`PIL.Image.Image`, *optional*):
+                The input image, if provided, is inpainted with objects described by the `gligen_boxes` and
+                `gligen_phrases`. Otherwise, it is treated as a generation task on a blank input image.
+            gligen_scheduled_sampling_beta (`float`, defaults to 0.3):
+                Scheduled Sampling factor from [GLIGEN: Open-Set Grounded Text-to-Image
+                Generation](https://arxiv.org/pdf/2301.07093.pdf). Scheduled Sampling factor is only varied for
+                scheduled sampling during inference for improved quality and controllability.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide what to not include in image generation. If not defined, you need to
                 pass `negative_prompt_embeds` instead. Ignored when not using guidance (`guidance_scale < 1`).
@@ -612,8 +626,6 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            ip_adapter_image: (`PipelineImageInput`, *optional*):
-                Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -626,13 +638,12 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                 The frequency at which the `callback` function is called. If not specified, the callback is called at
                 every step.
             cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            circular_padding (`bool`, *optional*, defaults to `False`):
-                If set to `True`, circular padding is applied to ensure there are no stitching artifacts. Circular
-                padding allows the model to seamlessly generate a transition from the rightmost part of the image to
-                the leftmost part, maintaining consistency in a 360-degree sense.
+                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
+                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            guidance_rescale (`float`, *optional*, defaults to 0.0):
+                Guidance rescale factor from [Common Diffusion Noise Schedules and Sample Steps are
+                Flawed](https://arxiv.org/pdf/2305.08891.pdf). Guidance rescale factor should fix overexposure when
+                using zero terminal SNR.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
@@ -651,7 +662,15 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            callback_steps,
+            gligen_phrases,
+            gligen_boxes,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
         )
 
         # 2. Define call parameters
@@ -668,18 +687,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
 
-        if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
-            )
-            if do_classifier_free_guidance:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
-
         # 3. Encode input prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
@@ -688,7 +696,6 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
             clip_skip=clip_skip,
         )
         # For classifier free guidance, we need to do two forward passes.
@@ -702,7 +709,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
+        num_channels_latents = self.unet.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -714,118 +721,128 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
             latents,
         )
 
-        # 6. Define panorama grid and initialize views for synthesis.
-        # prepare batch grid
-        views = self.get_views(height, width, circular_padding=circular_padding)
-        views_batch = [views[i : i + view_batch_size] for i in range(0, len(views), view_batch_size)]
-        views_scheduler_status = [copy.deepcopy(self.scheduler.__dict__)] * len(views_batch)
-        count = torch.zeros_like(latents)
-        value = torch.zeros_like(latents)
+        # 5.1 Prepare GLIGEN variables
+        max_objs = 30
+        if len(gligen_boxes) > max_objs:
+            warnings.warn(
+                f"More that {max_objs} objects found. Only first {max_objs} objects will be processed.",
+                FutureWarning,
+            )
+            gligen_phrases = gligen_phrases[:max_objs]
+            gligen_boxes = gligen_boxes[:max_objs]
+        # prepare batched input to the PositionNet (boxes, phrases, mask)
+        # Get tokens for phrases from pre-trained CLIPTokenizer
+        tokenizer_inputs = self.tokenizer(gligen_phrases, padding=True, return_tensors="pt").to(device)
+        # For the token, we use the same pre-trained text encoder
+        # to obtain its text feature
+        _text_embeddings = self.text_encoder(**tokenizer_inputs).pooler_output
+        n_objs = len(gligen_boxes)
+        # For each entity, described in phrases, is denoted with a bounding box,
+        # we represent the location information as (xmin,ymin,xmax,ymax)
+        boxes = torch.zeros(max_objs, 4, device=device, dtype=self.text_encoder.dtype)
+        boxes[:n_objs] = torch.tensor(gligen_boxes)
+        text_embeddings = torch.zeros(
+            max_objs, self.unet.cross_attention_dim, device=device, dtype=self.text_encoder.dtype
+        )
+        text_embeddings[:n_objs] = _text_embeddings
+        # Generate a mask for each object that is entity described by phrases
+        masks = torch.zeros(max_objs, device=device, dtype=self.text_encoder.dtype)
+        masks[:n_objs] = 1
 
-        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        repeat_batch = batch_size * num_images_per_prompt
+        boxes = boxes.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
+        text_embeddings = text_embeddings.unsqueeze(0).expand(repeat_batch, -1, -1).clone()
+        masks = masks.unsqueeze(0).expand(repeat_batch, -1).clone()
+        if do_classifier_free_guidance:
+            repeat_batch = repeat_batch * 2
+            boxes = torch.cat([boxes] * 2)
+            text_embeddings = torch.cat([text_embeddings] * 2)
+            masks = torch.cat([masks] * 2)
+            masks[: repeat_batch // 2] = 0
+        if cross_attention_kwargs is None:
+            cross_attention_kwargs = {}
+        cross_attention_kwargs["gligen"] = {"boxes": boxes, "positive_embeddings": text_embeddings, "masks": masks}
+
+        # Prepare latent variables for GLIGEN inpainting
+        if gligen_inpaint_image is not None:
+            # if the given input image is not of the same size as expected by VAE
+            # center crop and resize the input image to expected shape
+            if gligen_inpaint_image.size != (self.vae.sample_size, self.vae.sample_size):
+                gligen_inpaint_image = self.target_size_center_crop(gligen_inpaint_image, self.vae.sample_size)
+            # Convert a single image into a batch of images with a batch size of 1
+            # The resulting shape becomes (1, C, H, W), where C is the number of channels,
+            # and H and W are the height and width of the image.
+            # scales the pixel values to a range [-1, 1]
+            gligen_inpaint_image = self.image_processor.preprocess(gligen_inpaint_image)
+            gligen_inpaint_image = gligen_inpaint_image.to(dtype=self.vae.dtype, device=self.vae.device)
+            # Run AutoEncoder to get corresponding latents
+            gligen_inpaint_latent = self.vae.encode(gligen_inpaint_image).latent_dist.sample()
+            gligen_inpaint_latent = self.vae.config.scaling_factor * gligen_inpaint_latent
+            # Generate an inpainting mask
+            # pixel value = 0, where the object is present (defined by bounding boxes above)
+            #               1, everywhere else
+            gligen_inpaint_mask = self.draw_inpaint_mask_from_boxes(gligen_boxes, gligen_inpaint_latent.shape[2:])
+            gligen_inpaint_mask = gligen_inpaint_mask.to(
+                dtype=gligen_inpaint_latent.dtype, device=gligen_inpaint_latent.device
+            )
+            gligen_inpaint_mask = gligen_inpaint_mask[None, None]
+            gligen_inpaint_mask_addition = torch.cat(
+                (gligen_inpaint_latent * gligen_inpaint_mask, gligen_inpaint_mask), dim=1
+            )
+            # Convert a single mask into a batch of masks with a batch size of 1
+            gligen_inpaint_mask_addition = gligen_inpaint_mask_addition.expand(repeat_batch, -1, -1, -1).clone()
+
+        num_grounding_steps = int(gligen_scheduled_sampling_beta * len(timesteps))
+        self.enable_fuser(True)
+
+        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7.1 Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
-
-        # 8. Denoising loop
-        # Each denoising step also includes refinement of the latents with respect to the
-        # views.
+        # 7. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
-                count.zero_()
-                value.zero_()
+                # Scheduled sampling
+                if i == num_grounding_steps:
+                    self.enable_fuser(False)
 
-                # generate views
-                # Here, we iterate through different spatial crops of the latents and denoise them. These
-                # denoised (latent) crops are then averaged to produce the final latent
-                # for the current timestep via MultiDiffusion. Please see Sec. 4.1 in the
-                # MultiDiffusion paper for more details: https://arxiv.org/abs/2302.08113
-                # Batch views denoise
-                for j, batch_view in enumerate(views_batch):
-                    vb_size = len(batch_view)
-                    # get the latents corresponding to the current view coordinates
-                    if circular_padding:
-                        latents_for_view = []
-                        for h_start, h_end, w_start, w_end in batch_view:
-                            if w_end > latents.shape[3]:
-                                # Add circular horizontal padding
-                                latent_view = torch.cat(
-                                    (
-                                        latents[:, :, h_start:h_end, w_start:],
-                                        latents[:, :, h_start:h_end, : w_end - latents.shape[3]],
-                                    ),
-                                    axis=-1,
-                                )
-                            else:
-                                latent_view = latents[:, :, h_start:h_end, w_start:w_end]
-                            latents_for_view.append(latent_view)
-                        latents_for_view = torch.cat(latents_for_view)
-                    else:
-                        latents_for_view = torch.cat(
-                            [
-                                latents[:, :, h_start:h_end, w_start:w_end]
-                                for h_start, h_end, w_start, w_end in batch_view
-                            ]
+                if latents.shape[1] != 4:
+                    latents = torch.randn_like(latents[:, :4])
+
+                if gligen_inpaint_image is not None:
+                    gligen_inpaint_latent_with_noise = (
+                        self.scheduler.add_noise(
+                            gligen_inpaint_latent, torch.randn_like(gligen_inpaint_latent), torch.tensor([t])
                         )
-
-                    # rematch block's scheduler status
-                    self.scheduler.__dict__.update(views_scheduler_status[j])
-
-                    # expand the latents if we are doing classifier free guidance
-                    latent_model_input = (
-                        latents_for_view.repeat_interleave(2, dim=0)
-                        if do_classifier_free_guidance
-                        else latents_for_view
+                        .expand(latents.shape[0], -1, -1, -1)
+                        .clone()
                     )
-                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                    latents = gligen_inpaint_latent_with_noise * gligen_inpaint_mask + latents * (
+                        1 - gligen_inpaint_mask
+                    )
 
-                    # repeat prompt_embeds for batch
-                    prompt_embeds_input = torch.cat([prompt_embeds] * vb_size)
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                    # predict the noise residual
-                    noise_pred = self.unet(
-                        latent_model_input,
-                        t,
-                        encoder_hidden_states=prompt_embeds_input,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        added_cond_kwargs=added_cond_kwargs,
-                    ).sample
+                if gligen_inpaint_image is not None:
+                    latent_model_input = torch.cat((latent_model_input, gligen_inpaint_mask_addition), dim=1)
 
-                    # perform guidance
-                    if do_classifier_free_guidance:
-                        noise_pred_uncond, noise_pred_text = noise_pred[::2], noise_pred[1::2]
-                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+                # predict the noise residual
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                ).sample
 
-                    # compute the previous noisy sample x_t -> x_t-1
-                    latents_denoised_batch = self.scheduler.step(
-                        noise_pred, t, latents_for_view, **extra_step_kwargs
-                    ).prev_sample
+                # perform guidance
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                    # save views scheduler status after sample
-                    views_scheduler_status[j] = copy.deepcopy(self.scheduler.__dict__)
-
-                    # extract value from batch
-                    for latents_view_denoised, (h_start, h_end, w_start, w_end) in zip(
-                        latents_denoised_batch.chunk(vb_size), batch_view
-                    ):
-                        if circular_padding and w_end > latents.shape[3]:
-                            # Case for circular padding
-                            value[:, :, h_start:h_end, w_start:] += latents_view_denoised[
-                                :, :, h_start:h_end, : latents.shape[3] - w_start
-                            ]
-                            value[:, :, h_start:h_end, : w_end - latents.shape[3]] += latents_view_denoised[
-                                :, :, h_start:h_end, latents.shape[3] - w_start :
-                            ]
-                            count[:, :, h_start:h_end, w_start:] += 1
-                            count[:, :, h_start:h_end, : w_end - latents.shape[3]] += 1
-                        else:
-                            value[:, :, h_start:h_end, w_start:w_end] += latents_view_denoised
-                            count[:, :, h_start:h_end, w_start:w_end] += 1
-
-                # take the MultiDiffusion step. Eq. 5 in MultiDiffusion paper: https://arxiv.org/abs/2302.08113
-                latents = torch.where(count > 0, value / count, value)
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -835,10 +852,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            if circular_padding:
-                image = self.decode_latents_with_padding(latents)
-            else:
-                image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
@@ -851,6 +865,7 @@ class StableDiffusionPanoramaPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
 
+        # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
