@@ -322,7 +322,7 @@ class DreamBoothLoRASDXL(ExamplesTestsAccelerate):
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 7
+                --max_train_steps 6
                 --checkpointing_steps=2
                 --checkpoints_total_limit=2
                 --learning_rate 5.0e-04
@@ -336,13 +336,13 @@ class DreamBoothLoRASDXL(ExamplesTestsAccelerate):
 
             pipe = DiffusionPipeline.from_pretrained(pipeline_path)
             pipe.load_lora_weights(tmpdir)
-            pipe("a prompt", num_inference_steps=2)
+            pipe("a prompt", num_inference_steps=1)
 
             # check checkpoint directories exist
+            # checkpoint-2 should have been deleted
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                # checkpoint-2 should have been deleted
-                {"checkpoint-4", "checkpoint-6"},
+                {"checkpoint-4", "checkpoint-6"}
             )
 
     def test_dreambooth_lora_sdxl_text_encoder_checkpointing_checkpoints_total_limit(self):

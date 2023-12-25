@@ -78,7 +78,7 @@ class CustomDiffusion(ExamplesTestsAccelerate):
 
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-4", "checkpoint-6"},
+                {"checkpoint-4", "checkpoint-6"}
             )
 
     def test_custom_diffusion_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
