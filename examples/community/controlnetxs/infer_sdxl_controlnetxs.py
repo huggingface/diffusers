@@ -50,4 +50,4 @@ image = pipe(
     image=canny_image,
     num_inference_steps=num_inference_steps
 ).images[0]
-image.save("cnxs_sd.canny.png")
+image.save("cnxs_sdxl.canny.png")
