@@ -511,6 +511,11 @@ def parse_args():
         action="store_true",
     )
 
+    parser.add_argument(
+        "--train_attention_only",
+        action="store_true",
+    )
+
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -629,10 +634,24 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
+    def freeze_all_unet_layers_except_attention(model):
+        for name, param in model.named_parameters():
+            if "attention" not in name:
+                param.requires_grad_(False)
+
+    if args.train_attention_only:
+        freeze_all_unet_layers_except_attention(unet)
+
     # Freeze vae and text_encoder and set unet to trainable
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
     unet.train()
+
+    def get_parameters(model=unet):
+        if args.train_attention_only:
+            return filter(lambda p: p.requires_grad, model.parameters())
+        else:
+            return model.parameters()
 
     # Create EMA for the unet.
     if args.use_ema:
@@ -716,7 +735,7 @@ def main():
         optimizer_cls = torch.optim.AdamW
 
     optimizer = optimizer_cls(
-        unet.parameters(),
+        get_parameters(),
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -999,7 +1018,7 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    accelerator.clip_grad_norm_(get_parameters(), args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -1074,8 +1093,8 @@ def main():
             if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
-                    ema_unet.store(unet.parameters())
-                    ema_unet.copy_to(unet.parameters())
+                    ema_unet.store(get_parameters())
+                    ema_unet.copy_to(get_parameters())
                 log_validation(
                     vae,
                     text_encoder,
@@ -1088,14 +1107,14 @@ def main():
                 )
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
-                    ema_unet.restore(unet.parameters())
+                    ema_unet.restore(get_parameters())
 
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
         if args.use_ema:
-            ema_unet.copy_to(unet.parameters())
+            ema_unet.copy_to(get_parameters())
 
         pipeline = StableDiffusionPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
