@@ -212,7 +212,7 @@ First, configure all the compiler tags:
 from diffusers import StableDiffusionXLPipeline
 import torch 
 
-
+# Notice the two new flags at the end.
 torch._inductor.config.conv_1x1_as_mm = True
 torch._inductor.config.coordinate_descent_tuning = True
 torch._inductor.config.epilogue_fusion = False
