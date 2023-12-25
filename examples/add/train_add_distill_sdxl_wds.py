@@ -1633,13 +1633,13 @@ def main(args):
 
                 # 7. Get teacher model predicted original sample `teacher_x_0`.
                 with torch.no_grad(), torch.autocast("cuda", dtype=weight_dtype):
-                        teacher_noise_pred = teacher_unet(
-                            noisy_teacher_input.detach(),
-                            teacher_timesteps,
-                            encoder_hidden_states=prompt_embeds,
-                            added_cond_kwargs=encoded_text,
-                        ).sample
-                        teacher_x_0 = denoiser(teacher_noise_pred, teacher_timesteps, noisy_teacher_input)
+                    teacher_noise_pred = teacher_unet(
+                        noisy_teacher_input.detach(),
+                        teacher_timesteps,
+                        encoder_hidden_states=prompt_embeds,
+                        added_cond_kwargs=encoded_text,
+                    ).sample
+                    teacher_x_0 = denoiser(teacher_noise_pred, teacher_timesteps, noisy_teacher_input)
 
                 ############################
                 # 8. Discriminator Loss

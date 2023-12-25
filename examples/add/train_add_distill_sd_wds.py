@@ -46,7 +46,7 @@ from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from torch.utils.data import default_collate
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, CLIPTextModel, PretrainedConfig
+from transformers import AutoTokenizer, CLIPTextModel
 from webdataset.tariterators import (
     base_plus_ext,
     tar_file_expander,
@@ -1514,12 +1514,12 @@ def main(args):
 
                 # 7. Get teacher model predicted original sample `teacher_x_0`.
                 with torch.no_grad(), torch.autocast("cuda", dtype=weight_dtype):
-                        teacher_noise_pred = teacher_unet(
-                            noisy_teacher_input.detach(),
-                            teacher_timesteps,
-                            encoder_hidden_states=prompt_embeds,
-                        ).sample
-                        teacher_x_0 = denoiser(teacher_noise_pred, teacher_timesteps, noisy_teacher_input)
+                    teacher_noise_pred = teacher_unet(
+                        noisy_teacher_input.detach(),
+                        teacher_timesteps,
+                        encoder_hidden_states=prompt_embeds,
+                    ).sample
+                    teacher_x_0 = denoiser(teacher_noise_pred, teacher_timesteps, noisy_teacher_input)
 
                 ############################
                 # 8. Discriminator Loss
