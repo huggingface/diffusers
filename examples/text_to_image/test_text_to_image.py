@@ -273,7 +273,7 @@ class TextToImage(ExamplesTestsAccelerate):
         with tempfile.TemporaryDirectory() as tmpdir:
             # Run training script with checkpointing
             # max_train_steps == 4, checkpointing_steps == 2
-            # Should create checkpoints at steps 2, 4, 6
+            # Should create checkpoints at steps 2, 4
 
             initial_run_args = f"""
                 examples/text_to_image/train_text_to_image.py
@@ -302,7 +302,7 @@ class TextToImage(ExamplesTestsAccelerate):
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6", "checkpoint-8"},
+                {"checkpoint-2", "checkpoint-4"},
             )
 
             # resume and we should try to checkpoint at 6, where we'll have to remove
@@ -317,7 +317,7 @@ class TextToImage(ExamplesTestsAccelerate):
                 --random_flip
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 6
+                --max_train_steps 8
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
