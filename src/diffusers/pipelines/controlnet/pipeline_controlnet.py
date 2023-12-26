@@ -563,6 +563,7 @@ class StableDiffusionControlNetPipeline(
         control_guidance_start=0.0,
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
+        num_images_per_prompt=1,
     ):
         if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
@@ -621,7 +622,36 @@ class StableDiffusionControlNetPipeline(
             or is_compiled
             and isinstance(self.controlnet._orig_mod, ControlNetModel)
         ):
-            self.check_image(image, prompt, prompt_embeds)
+            # When `image` is a nested list:
+            # (e.g. [[canny_image_1], [canny_image_2]])
+            if any(isinstance(i, list) for i in image):
+                # Warn about nested lists for single controlnet
+                logger.warning(
+                    "You have passed a nested list for `image` with a single controlnet. This will be interpreted as multiple image conditioning."
+                )
+                if isinstance(prompt, list):
+                    logger.warning(
+                        f"You have passed {len(prompt)} prompts. The conditionings will be fixed across the prompts."
+                    )
+                if len(image) != num_images_per_prompt:
+                    raise ValueError(
+                        f"Number of images per prompt: {num_images_per_prompt} must be the same as the number of images per batch: {len(image)}."
+                    )
+                # Check image, this does not apply to the check_image logic
+                for i, image_ in enumerate(image):
+                    if len(image_) != 1:
+                        raise ValueError(
+                            f"For single controlnet: `image` must have the same length as the number of controlnets, but image[{i}] got {len(image_)} images and {len(self.controlnet.nets)} ControlNets."
+                        )
+                    image_is_pil_list = isinstance(image_, list) and isinstance(image_[0], PIL.Image.Image)
+                    image_is_tensor_list = isinstance(image_, list) and isinstance(image_[0], torch.Tensor)
+                    image_is_np_list = isinstance(image_, list) and isinstance(image_[0], np.ndarray)
+                    if not image_is_pil_list and not image_is_tensor_list and not image_is_np_list:
+                        raise TypeError(
+                            f"image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors, but is {type(image_)}"
+                        )
+            else:
+                self.check_image(image, prompt, prompt_embeds)
         elif (
             isinstance(self.controlnet, MultiControlNetModel)
             or is_compiled
@@ -632,15 +662,31 @@ class StableDiffusionControlNetPipeline(
 
             # When `image` is a nested list:
             # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
-            elif any(isinstance(i, list) for i in image):
-                raise ValueError("A single batch of multiple conditionings is not supported at the moment.")
-            elif len(image) != len(self.controlnet.nets):
-                raise ValueError(
-                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
-                )
-
-            for image_ in image:
-                self.check_image(image_, prompt, prompt_embeds)
+            if any(isinstance(i, list) for i in image):
+                if len(image) != num_images_per_prompt:
+                    raise ValueError(
+                        f"Number of images per prompt: {num_images_per_prompt} must be the same as the number of images per batch: {len(image)}."
+                    )
+                # Check image, this does not apply to the check_image logic
+                for i, image_ in enumerate(image):
+                    if len(image_) != len(self.controlnet.nets):
+                        raise ValueError(
+                            f"For multiple controlnets: `image` must have the same length as the number of controlnets, but image[{i}] got {len(image_)} images and {len(self.controlnet.nets)} ControlNets."
+                        )
+                    image_is_pil_list = isinstance(image_, list) and isinstance(image_[0], PIL.Image.Image)
+                    image_is_tensor_list = isinstance(image_, list) and isinstance(image_[0], torch.Tensor)
+                    image_is_np_list = isinstance(image_, list) and isinstance(image_[0], np.ndarray)
+                    if not image_is_pil_list and not image_is_tensor_list and not image_is_np_list:
+                        raise TypeError(
+                            f"image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors, but is {type(image_)}"
+                        )
+            else:
+                if len(image) != len(self.controlnet.nets):
+                    raise ValueError(
+                        f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
+                    )
+                for image_ in image:
+                    self.check_image(image_, prompt, prompt_embeds)
         else:
             assert False
 
@@ -659,7 +705,9 @@ class StableDiffusionControlNetPipeline(
         ):
             if isinstance(controlnet_conditioning_scale, list):
                 if any(isinstance(i, list) for i in controlnet_conditioning_scale):
-                    raise ValueError("A single batch of multiple conditionings is not supported at the moment.")
+                    raise ValueError(
+                        "A single batch of varied conditioning scale settings is not supported at the moment."
+                    )
             elif isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
                 self.controlnet.nets
             ):
@@ -736,33 +784,65 @@ class StableDiffusionControlNetPipeline(
 
     def prepare_image(
         self,
-        image,
-        width,
-        height,
-        batch_size,
-        num_images_per_prompt,
-        device,
-        dtype,
-        do_classifier_free_guidance=False,
-        guess_mode=False,
-    ):
-        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
-        image_batch_size = image.shape[0]
+        image: PipelineImageInput,
+        width: Optional[int],
+        height: Optional[int],
+        batch_size: int,
+        num_images_per_prompt: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        do_classifier_free_guidance: bool = False,
+        guess_mode: bool = False,
+    ) -> torch.Tensor:
+        # Using the same image condition for a single batch
+        if not isinstance(image, list):
+            image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+            image_batch_size = image.shape[0]
 
-        if image_batch_size == 1:
-            repeat_by = batch_size
+            if image_batch_size == 1:
+                repeat_by = batch_size
+            else:
+                # image batch size is the same as prompt batch size
+                repeat_by = num_images_per_prompt
+
+            image = image.repeat_interleave(repeat_by, dim=0)
+
+            image = image.to(device=device, dtype=dtype)
+
+            if do_classifier_free_guidance and not guess_mode:
+                image = torch.cat([image] * 2)
+
+            return image
+        # Using different image conditions for a single batch
         else:
-            # image batch size is the same as prompt batch size
-            repeat_by = num_images_per_prompt
+            # This should have been checked in `check_inputs`
+            assert len(image) == num_images_per_prompt
 
-        image = image.repeat_interleave(repeat_by, dim=0)
+            images = []
+            for image_ in image:
+                image_ = self.control_image_processor.preprocess(image_, height=height, width=width).to(
+                    dtype=torch.float32
+                )
+                images.append(image_)
 
-        image = image.to(device=device, dtype=dtype)
+            image_batch_size = images[0].shape[0]
+            if image_batch_size == 1:
+                repeat_by = batch_size
+            else:
+                # image batch size is the same as prompt batch size
+                repeat_by = num_images_per_prompt
 
-        if do_classifier_free_guidance and not guess_mode:
-            image = torch.cat([image] * 2)
+            images *= repeat_by // num_images_per_prompt
 
-        return image
+            image = torch.stack(images, dim=0)
+            image = torch.transpose(image, 0, 1)
+            image = torch.reshape(image, image.shape[1:])
+            image = image.to(device=device, dtype=dtype)
+
+            if do_classifier_free_guidance and not guess_mode:
+                image = torch.cat([image] * 2)
+
+            return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -1033,6 +1113,7 @@ class StableDiffusionControlNetPipeline(
             control_guidance_start,
             control_guidance_end,
             callback_on_step_end_tensor_inputs,
+            num_images_per_prompt,
         )
 
         self._guidance_scale = guidance_scale
@@ -1105,9 +1186,14 @@ class StableDiffusionControlNetPipeline(
         elif isinstance(controlnet, MultiControlNetModel):
             images = []
 
+            # Nested lists as ControlNet condition
+            if isinstance(image[0], list):
+                # Transpose the nested image list
+                image = [list(t) for t in zip(*image)]
+
             for image_ in image:
                 image_ = self.prepare_image(
-                    image=image_,
+                    image=image_,  # image_ can also be a list of images
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
