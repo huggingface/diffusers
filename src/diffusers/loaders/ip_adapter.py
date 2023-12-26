@@ -149,9 +149,11 @@ class IPAdapterMixin:
             self.feature_extractor = CLIPImageProcessor()
 
         # load ip-adapter into unet
-        self.unet._load_ip_adapter_weights(state_dict)
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        unet._load_ip_adapter_weights(state_dict)
 
     def set_ip_adapter_scale(self, scale):
-        for attn_processor in self.unet.attn_processors.values():
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        for attn_processor in unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = scale
