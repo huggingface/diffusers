@@ -242,18 +242,6 @@ def extract_into_tensor(a, t, x_shape):
     return out.reshape(b, *((1,) * (len(x_shape) - 1)))
 
 
-def tokenize_prompt(tokenizer, prompt):
-    text_inputs = tokenizer(
-        prompt,
-        padding="max_length",
-        max_length=tokenizer.model_max_length,
-        truncation=True,
-        return_tensors="pt",
-    )
-    text_input_ids = text_inputs.input_ids
-    return text_input_ids
-
-
 def import_model_class_from_model_name_or_path(
     pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
 ):
