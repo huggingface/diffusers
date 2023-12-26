@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import os
 from contextlib import nullcontext
 from typing import Callable, Dict, List, Optional, Union
@@ -1001,6 +1002,7 @@ class LoraLoaderMixin:
         fuse_text_encoder: bool = True,
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
+        adapter_names: Optional[List[str]] = None,
     ):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
@@ -1020,6 +1022,21 @@ class LoraLoaderMixin:
                 Controls how much to influence the outputs with the LoRA parameters.
             safe_fusing (`bool`, defaults to `False`):
                 Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
+            adapter_names (`List[str]`, *optional*):
+                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.fuse_lora(lora_scale=0.7)
+        ```
         """
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
@@ -1030,24 +1047,43 @@ class LoraLoaderMixin:
 
         if fuse_unet:
             unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            unet.fuse_lora(lora_scale, safe_fusing=safe_fusing)
+            unet.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
 
         if USE_PEFT_BACKEND:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
-            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
-                # TODO(Patrick, Younes): enable "safe" fusing
+            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
+                merge_kwargs = {"safe_merge": safe_fusing}
+
                 for module in text_encoder.modules():
                     if isinstance(module, BaseTunerLayer):
                         if lora_scale != 1.0:
                             module.scale_layer(lora_scale)
 
-                        module.merge()
+                        # For BC with previous PEFT versions, we need to check the signature
+                        # of the `merge` method to see if it supports the `adapter_names` argument.
+                        supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+                        if "adapter_names" in supported_merge_kwargs:
+                            merge_kwargs["adapter_names"] = adapter_names
+                        elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                            raise ValueError(
+                                "The `adapter_names` argument is not supported with your PEFT version. "
+                                "Please upgrade to the latest version of PEFT. `pip install -U peft`"
+                            )
+
+                        module.merge(**merge_kwargs)
 
         else:
             deprecate("fuse_text_encoder_lora", "0.27", LORA_DEPRECATION_MESSAGE)
 
-            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
+            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, **kwargs):
+                if "adapter_names" in kwargs and kwargs["adapter_names"] is not None:
+                    raise ValueError(
+                        "The `adapter_names` argument is not supported in your environment. Please switch to PEFT "
+                        "backend to use this argument by installing latest PEFT and transformers."
+                        " `pip install -U peft transformers`"
+                    )
+
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
                     if isinstance(attn_module.q_proj, PatchedLoraProjection):
                         attn_module.q_proj._fuse_lora(lora_scale, safe_fusing)
@@ -1062,9 +1098,9 @@ class LoraLoaderMixin:
 
         if fuse_text_encoder:
             if hasattr(self, "text_encoder"):
-                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing)
+                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing, adapter_names=adapter_names)
             if hasattr(self, "text_encoder_2"):
-                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing)
+                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing, adapter_names=adapter_names)
 
     def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
         r"""
