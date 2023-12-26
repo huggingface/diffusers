@@ -91,6 +91,43 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
+# Copied from diffusers.schedulers.scheduling_ddim.rescale_zero_terminal_snr
+def rescale_zero_terminal_snr(betas):
+    """
+    Rescales betas to have zero terminal SNR Based on https://arxiv.org/pdf/2305.08891.pdf (Algorithm 1)
+
+
+    Args:
+        betas (`torch.FloatTensor`):
+            the betas that the scheduler is being initialized with.
+
+    Returns:
+        `torch.FloatTensor`: rescaled betas with zero terminal SNR
+    """
+    # Convert betas to alphas_bar_sqrt
+    alphas = 1.0 - betas
+    alphas_cumprod = torch.cumprod(alphas, dim=0)
+    alphas_bar_sqrt = alphas_cumprod.sqrt()
+
+    # Store old values.
+    alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
+    alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
+
+    # Shift so the last timestep is zero.
+    alphas_bar_sqrt -= alphas_bar_sqrt_T
+
+    # Scale so the first timestep is back to the old value.
+    alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
+
+    # Convert alphas_bar_sqrt to betas
+    alphas_bar = alphas_bar_sqrt**2  # Revert sqrt
+    alphas = alphas_bar[1:] / alphas_bar[:-1]  # Revert cumprod
+    alphas = torch.cat([alphas_bar[0:1], alphas])
+    betas = 1 - alphas
+
+    return betas
+
+
 class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
     """
     Denoising diffusion probabilistic models (DDPMs) explores the connections between denoising score matching and
@@ -139,6 +176,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             an offset added to the inference steps. You can use a combination of `offset=1` and
             `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
             stable diffusion.
+        rescale_betas_zero_snr (`bool`, defaults to `False`):
+            Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
+            dark samples instead of limiting it to samples with medium brightness. Loosely related to
+            [`--offset_noise`](https://github.com/huggingface/diffusers/blob/74fd735eb073eb1d774b1ab4154a0876eb82f055/examples/dreambooth/train_dreambooth.py#L506).
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -163,6 +204,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         sample_max_value: float = 1.0,
         timestep_spacing: str = "leading",
         steps_offset: int = 0,
+        rescale_betas_zero_snr: int = False,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -180,6 +222,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.sigmoid(betas) * (beta_end - beta_start) + beta_start
         else:
             raise NotImplementedError(f"{beta_schedule} does is not implemented for {self.__class__}")
+
+        # Rescale for zero SNR
+        if rescale_betas_zero_snr:
+            self.betas = rescale_zero_terminal_snr(self.betas)
 
         self.alphas = 1.0 - self.betas
         self.alphas_cumprod = torch.cumprod(self.alphas, dim=0)
