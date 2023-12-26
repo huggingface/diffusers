@@ -912,10 +912,10 @@ class LoraLoaderMixin:
             )
 
         if unet_lora_layers:
-            state_dict.update(pack_weights(unet_lora_layers, cls.unet_name))
+            state_dict.update(pack_weights(unet_lora_layers, "unet"))
 
         if text_encoder_lora_layers:
-            state_dict.update(pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
+            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
 
         if transformer_lora_layers:
             state_dict.update(pack_weights(transformer_lora_layers, "transformer"))
@@ -975,8 +975,6 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-
         if not USE_PEFT_BACKEND:
             if version.parse(__version__) > version.parse("0.23"):
                 logger.warn(
@@ -984,13 +982,13 @@ class LoraLoaderMixin:
                     "you can use `pipe.enable_lora()` or `pipe.disable_lora()`. After installing the latest version of PEFT."
                 )
 
-            for _, module in unet.named_modules():
+            for _, module in self.unet.named_modules():
                 if hasattr(module, "set_lora_layer"):
                     module.set_lora_layer(None)
         else:
-            recurse_remove_peft_layers(unet)
-            if hasattr(unet, "peft_config"):
-                del unet.peft_config
+            recurse_remove_peft_layers(self.unet)
+            if hasattr(self.unet, "peft_config"):
+                del self.unet.peft_config
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
@@ -1029,8 +1027,7 @@ class LoraLoaderMixin:
                 )
 
         if fuse_unet:
-            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            unet.fuse_lora(lora_scale, safe_fusing=safe_fusing)
+            self.unet.fuse_lora(lora_scale, safe_fusing=safe_fusing)
 
         if USE_PEFT_BACKEND:
             from peft.tuners.tuners_utils import BaseTunerLayer
@@ -1083,14 +1080,13 @@ class LoraLoaderMixin:
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         if unfuse_unet:
             if not USE_PEFT_BACKEND:
-                unet.unfuse_lora()
+                self.unet.unfuse_lora()
             else:
                 from peft.tuners.tuners_utils import BaseTunerLayer
 
-                for module in unet.modules():
+                for module in self.unet.modules():
                     if isinstance(module, BaseTunerLayer):
                         module.unmerge()
 
@@ -1206,9 +1202,8 @@ class LoraLoaderMixin:
         adapter_names: Union[List[str], str],
         adapter_weights: Optional[List[float]] = None,
     ):
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         # Handle the UNET
-        unet.set_adapters(adapter_names, adapter_weights)
+        self.unet.set_adapters(adapter_names, adapter_weights)
 
         # Handle the Text Encoder
         if hasattr(self, "text_encoder"):
@@ -1221,8 +1216,7 @@ class LoraLoaderMixin:
             raise ValueError("PEFT backend is required for this method.")
 
         # Disable unet adapters
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet.disable_lora()
+        self.unet.disable_lora()
 
         # Disable text encoder adapters
         if hasattr(self, "text_encoder"):
@@ -1235,8 +1229,7 @@ class LoraLoaderMixin:
             raise ValueError("PEFT backend is required for this method.")
 
         # Enable unet adapters
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet.enable_lora()
+        self.unet.enable_lora()
 
         # Enable text encoder adapters
         if hasattr(self, "text_encoder"):
@@ -1258,8 +1251,7 @@ class LoraLoaderMixin:
             adapter_names = [adapter_names]
 
         # Delete unet adapters
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet.delete_adapters(adapter_names)
+        self.unet.delete_adapters(adapter_names)
 
         for adapter_name in adapter_names:
             # Delete text encoder adapters
@@ -1292,8 +1284,8 @@ class LoraLoaderMixin:
         from peft.tuners.tuners_utils import BaseTunerLayer
 
         active_adapters = []
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        for module in unet.modules():
+
+        for module in self.unet.modules():
             if isinstance(module, BaseTunerLayer):
                 active_adapters = module.active_adapters
                 break
@@ -1317,9 +1309,8 @@ class LoraLoaderMixin:
         if hasattr(self, "text_encoder_2") and hasattr(self.text_encoder_2, "peft_config"):
             set_adapters["text_encoder_2"] = list(self.text_encoder_2.peft_config.keys())
 
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        if hasattr(self, self.unet_name) and hasattr(unet, "peft_config"):
-            set_adapters[self.unet_name] = list(self.unet.peft_config.keys())
+        if hasattr(self, "unet") and hasattr(self.unet, "peft_config"):
+            set_adapters["unet"] = list(self.unet.peft_config.keys())
 
         return set_adapters
 
@@ -1340,8 +1331,7 @@ class LoraLoaderMixin:
         from peft.tuners.tuners_utils import BaseTunerLayer
 
         # Handle the UNET
-        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        for unet_module in unet.modules():
+        for unet_module in self.unet.modules():
             if isinstance(unet_module, BaseTunerLayer):
                 for adapter_name in adapter_names:
                     unet_module.lora_A[adapter_name].to(device)
