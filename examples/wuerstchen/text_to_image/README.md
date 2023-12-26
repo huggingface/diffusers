@@ -6,7 +6,7 @@ Before running the scripts, make sure to install the library's training dependen
 
 **Important**
 
-To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date. To do this, execute the following steps in a new virtual environment:
+To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the installation up to date. To do this, execute the following steps in a new virtual environment:
 ```bash
 git clone https://github.com/huggingface/diffusers
 cd diffusers
@@ -31,7 +31,7 @@ huggingface-cli login
 
 ## Prior training
 
-You can fine-tune the Würstchen prior model with the `train_text_to_image_prior.py` script. Note that we currently support `--gradient_checkpointing` for prior model fine-tuning so you can use it for more GPU memory constrained setups.
+You can fine-tune the Würstchen prior model with the `train_text_to_image_prior.py` script. Note that we currently support `--gradient_checkpointing` for prior model fine-tuning so you can use it for more GPU memory-constrained setups.
 
 <br>
 
@@ -66,7 +66,7 @@ Low-Rank Adaption of Large Language Models (or LoRA) was first introduced by Mic
 In a nutshell, LoRA allows adapting pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights. This has a couple of advantages:
 
 - Previous pretrained weights are kept frozen so that the model is not prone to [catastrophic forgetting](https://www.pnas.org/doi/10.1073/pnas.1611835114).
-- Rank-decomposition matrices have significantly fewer parameters than original model, which means that trained LoRA weights are easily portable.
+- Rank-decomposition matrices have significantly fewer parameters than the original model, which means that trained LoRA weights are easily portable.
 - LoRA attention layers allow to control to which extent the model is adapted toward new training images via a `scale` parameter.
 
 
