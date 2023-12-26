@@ -50,6 +50,7 @@ from diffusers.pipelines.stable_diffusion import (
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
 )
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img import retrieve_latents
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import logging
 
@@ -608,7 +609,7 @@ class TorchVAEEncoder(torch.nn.Module):
         self.vae_encoder = model
 
     def forward(self, x):
-        return self.vae_encoder.encode(x).latent_dist.sample()
+        return retrieve_latents(self.vae_encoder.encode(x))
 
 
 class VAEEncoder(BaseModel):
