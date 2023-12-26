@@ -133,7 +133,7 @@ class AmusedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @require_torch_gpu
 class AmusedPipelineSlowTests(unittest.TestCase):
     def test_amused_256(self):
-        pipe = AmusedPipeline.from_pretrained("huggingface/amused-256")
+        pipe = AmusedPipeline.from_pretrained("amused/amused-256")
         pipe.to(torch_device)
 
         image = pipe("dog", generator=torch.Generator().manual_seed(0), num_inference_steps=2, output_type="np").images
@@ -145,7 +145,7 @@ class AmusedPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 3e-3
 
     def test_amused_256_fp16(self):
-        pipe = AmusedPipeline.from_pretrained("huggingface/amused-256", variant="fp16", torch_dtype=torch.float16)
+        pipe = AmusedPipeline.from_pretrained("amused/amused-256", variant="fp16", torch_dtype=torch.float16)
         pipe.to(torch_device)
 
         image = pipe("dog", generator=torch.Generator().manual_seed(0), num_inference_steps=2, output_type="np").images
@@ -157,7 +157,7 @@ class AmusedPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 7e-3
 
     def test_amused_512(self):
-        pipe = AmusedPipeline.from_pretrained("huggingface/amused-512")
+        pipe = AmusedPipeline.from_pretrained("amused/amused-512")
         pipe.to(torch_device)
 
         image = pipe("dog", generator=torch.Generator().manual_seed(0), num_inference_steps=2, output_type="np").images
@@ -169,7 +169,7 @@ class AmusedPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 3e-3
 
     def test_amused_512_fp16(self):
-        pipe = AmusedPipeline.from_pretrained("huggingface/amused-512", variant="fp16", torch_dtype=torch.float16)
+        pipe = AmusedPipeline.from_pretrained("amused/amused-512", variant="fp16", torch_dtype=torch.float16)
         pipe.to(torch_device)
 
         image = pipe("dog", generator=torch.Generator().manual_seed(0), num_inference_steps=2, output_type="np").images
