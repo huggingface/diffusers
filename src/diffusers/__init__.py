@@ -459,7 +459,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             ControlNetModel,
-            ControlNetXSModel,
             Kandinsky3UNet,
             ModelMixin,
             MotionAdapter,
