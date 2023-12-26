@@ -18,7 +18,7 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps
 
 from .configuration_utils import ConfigMixin, register_to_config
 from .utils import CONFIG_NAME, PIL_INTERPOLATION, deprecate
@@ -166,6 +166,244 @@ class VaeImageProcessor(ConfigMixin):
 
         return image
 
+    @staticmethod
+    def blur(image: PIL.Image.Image, blur_factor: int = 4) -> PIL.Image.Image:
+        """
+        Blurs an image.
+        """
+        image = image.filter(ImageFilter.GaussianBlur(blur_factor))
+
+        return image
+
+    @staticmethod
+    def get_crop_region(mask_image: PIL.Image.Image, width: int, height: int, pad=0):
+        """
+        Finds a rectangular region that contains all masked ares in an image, and expands region to match the aspect ratio of the original image;
+        for example, if user drew mask in a 128x32 region, and the dimensions for processing are 512x512, the region will be expanded to 128x128.
+
+        Args:
+            mask_image (PIL.Image.Image): Mask image.
+            width (int): Width of the image to be processed.
+            height (int): Height of the image to be processed.
+            pad (int, optional): Padding to be added to the crop region. Defaults to 0.
+
+        Returns:
+            tuple: (x1, y1, x2, y2) represent a rectangular region that contains all masked ares in an image and matches the original aspect ratio.
+        """
+
+        mask_image = mask_image.convert("L")
+        mask = np.array(mask_image)
+
+        # 1. find a rectangular region that contains all masked ares in an image
+        h, w = mask.shape
+        crop_left = 0
+        for i in range(w):
+            if not (mask[:, i] == 0).all():
+                break
+            crop_left += 1
+
+        crop_right = 0
+        for i in reversed(range(w)):
+            if not (mask[:, i] == 0).all():
+                break
+            crop_right += 1
+
+        crop_top = 0
+        for i in range(h):
+            if not (mask[i] == 0).all():
+                break
+            crop_top += 1
+
+        crop_bottom = 0
+        for i in reversed(range(h)):
+            if not (mask[i] == 0).all():
+                break
+            crop_bottom += 1
+
+        # 2. add padding to the crop region
+        x1, y1, x2, y2 = (
+            int(max(crop_left - pad, 0)),
+            int(max(crop_top - pad, 0)),
+            int(min(w - crop_right + pad, w)),
+            int(min(h - crop_bottom + pad, h)),
+        )
+
+        # 3. expands crop region to match the aspect ratio of the image to be processed
+        ratio_crop_region = (x2 - x1) / (y2 - y1)
+        ratio_processing = width / height
+
+        if ratio_crop_region > ratio_processing:
+            desired_height = (x2 - x1) / ratio_processing
+            desired_height_diff = int(desired_height - (y2 - y1))
+            y1 -= desired_height_diff // 2
+            y2 += desired_height_diff - desired_height_diff // 2
+            if y2 >= mask_image.height:
+                diff = y2 - mask_image.height
+                y2 -= diff
+                y1 -= diff
+            if y1 < 0:
+                y2 -= y1
+                y1 -= y1
+            if y2 >= mask_image.height:
+                y2 = mask_image.height
+        else:
+            desired_width = (y2 - y1) * ratio_processing
+            desired_width_diff = int(desired_width - (x2 - x1))
+            x1 -= desired_width_diff // 2
+            x2 += desired_width_diff - desired_width_diff // 2
+            if x2 >= mask_image.width:
+                diff = x2 - mask_image.width
+                x2 -= diff
+                x1 -= diff
+            if x1 < 0:
+                x2 -= x1
+                x1 -= x1
+            if x2 >= mask_image.width:
+                x2 = mask_image.width
+
+        return x1, y1, x2, y2
+
+    def _resize_and_fill(
+        self,
+        image: PIL.Image.Image,
+        width: int,
+        height: int,
+    ) -> PIL.Image.Image:
+        """
+        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image within the dimensions, filling empty with data from image.
+
+        Args:
+            image: The image to resize.
+            width: The width to resize the image to.
+            height: The height to resize the image to.
+        """
+
+        ratio = width / height
+        src_ratio = image.width / image.height
+
+        src_w = width if ratio < src_ratio else image.width * height // image.height
+        src_h = height if ratio >= src_ratio else image.height * width // image.width
+
+        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION["lanczos"])
+        res = Image.new("RGB", (width, height))
+        res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
+
+        if ratio < src_ratio:
+            fill_height = height // 2 - src_h // 2
+            if fill_height > 0:
+                res.paste(resized.resize((width, fill_height), box=(0, 0, width, 0)), box=(0, 0))
+                res.paste(
+                    resized.resize((width, fill_height), box=(0, resized.height, width, resized.height)),
+                    box=(0, fill_height + src_h),
+                )
+        elif ratio > src_ratio:
+            fill_width = width // 2 - src_w // 2
+            if fill_width > 0:
+                res.paste(resized.resize((fill_width, height), box=(0, 0, 0, height)), box=(0, 0))
+                res.paste(
+                    resized.resize((fill_width, height), box=(resized.width, 0, resized.width, height)),
+                    box=(fill_width + src_w, 0),
+                )
+
+        return res
+
+    def _resize_and_crop(
+        self,
+        image: PIL.Image.Image,
+        width: int,
+        height: int,
+    ) -> PIL.Image.Image:
+        """
+        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image within the dimensions, cropping the excess.
+
+        Args:
+            image: The image to resize.
+            width: The width to resize the image to.
+            height: The height to resize the image to.
+        """
+        ratio = width / height
+        src_ratio = image.width / image.height
+
+        src_w = width if ratio > src_ratio else image.width * height // image.height
+        src_h = height if ratio <= src_ratio else image.height * width // image.width
+
+        resized = image.resize((src_w, src_h), resample=PIL_INTERPOLATION["lanczos"])
+        res = Image.new("RGB", (width, height))
+        res.paste(resized, box=(width // 2 - src_w // 2, height // 2 - src_h // 2))
+        return res
+
+    def resize(
+        self,
+        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
+        height: int,
+        width: int,
+        resize_mode: str = "default",  # "defalt", "fill", "crop"
+    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
+        """
+        Resize image.
+
+        Args:
+            image (`PIL.Image.Image`, `np.ndarray` or `torch.Tensor`):
+                The image input, can be a PIL image, numpy array or pytorch tensor.
+            height (`int`):
+                The height to resize to.
+            width (`int`):
+                The width to resize to.
+            resize_mode (`str`, *optional*, defaults to `default`):
+                The resize mode to use, can be one of `default` or `fill`. If `default`, will resize the image to fit
+                within the specified width and height, and it may not maintaining the original aspect ratio.
+                If `fill`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
+                within the dimensions, filling empty with data from image.
+                If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
+                within the dimensions, cropping the excess.
+                Note that resize_mode `fill` and `crop` are only supported for PIL image input.
+
+        Returns:
+            `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
+                The resized image.
+        """
+        if resize_mode != "default" and not isinstance(image, PIL.Image.Image):
+            raise ValueError(f"Only PIL image input is supported for resize_mode {resize_mode}")
+        if isinstance(image, PIL.Image.Image):
+            if resize_mode == "default":
+                image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
+            elif resize_mode == "fill":
+                image = self._resize_and_fill(image, width, height)
+            elif resize_mode == "crop":
+                image = self._resize_and_crop(image, width, height)
+            else:
+                raise ValueError(f"resize_mode {resize_mode} is not supported")
+
+        elif isinstance(image, torch.Tensor):
+            image = torch.nn.functional.interpolate(
+                image,
+                size=(height, width),
+            )
+        elif isinstance(image, np.ndarray):
+            image = self.numpy_to_pt(image)
+            image = torch.nn.functional.interpolate(
+                image,
+                size=(height, width),
+            )
+            image = self.pt_to_numpy(image)
+        return image
+
+    def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
+        """
+        Create a mask.
+
+        Args:
+            image (`PIL.Image.Image`):
+                The image input, should be a PIL image.
+
+        Returns:
+            `PIL.Image.Image`:
+                The binarized image. Values less than 0.5 are set to 0, values greater than 0.5 are set to 1.
+        """
+        image[image < 0.5] = 0
+        image[image >= 0.5] = 1
+        return image
+
     def get_default_height_width(
         self,
         image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
@@ -209,67 +447,34 @@ class VaeImageProcessor(ConfigMixin):
 
         return height, width
 
-    def resize(
-        self,
-        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
-        """
-        Resize image.
-
-        Args:
-            image (`PIL.Image.Image`, `np.ndarray` or `torch.Tensor`):
-                The image input, can be a PIL image, numpy array or pytorch tensor.
-            height (`int`, *optional*, defaults to `None`):
-                The height to resize to.
-            width (`int`, *optional*`, defaults to `None`):
-                The width to resize to.
-
-        Returns:
-            `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
-                The resized image.
-        """
-        if isinstance(image, PIL.Image.Image):
-            image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
-        elif isinstance(image, torch.Tensor):
-            image = torch.nn.functional.interpolate(
-                image,
-                size=(height, width),
-            )
-        elif isinstance(image, np.ndarray):
-            image = self.numpy_to_pt(image)
-            image = torch.nn.functional.interpolate(
-                image,
-                size=(height, width),
-            )
-            image = self.pt_to_numpy(image)
-        return image
-
-    def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
-        """
-        Create a mask.
-
-        Args:
-            image (`PIL.Image.Image`):
-                The image input, should be a PIL image.
-
-        Returns:
-            `PIL.Image.Image`:
-                The binarized image. Values less than 0.5 are set to 0, values greater than 0.5 are set to 1.
-        """
-        image[image < 0.5] = 0
-        image[image >= 0.5] = 1
-        return image
-
     def preprocess(
         self,
-        image: Union[torch.FloatTensor, PIL.Image.Image, np.ndarray],
+        image: PipelineImageInput,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        resize_mode: str = "default",  # "defalt", "fill", "crop"
+        crops_coords: Optional[Tuple[int, int, int, int]] = None,
     ) -> torch.Tensor:
         """
-        Preprocess the image input. Accepted formats are PIL images, NumPy arrays or PyTorch tensors.
+        Preprocess the image input.
+
+        Args:
+            image (`pipeline_image_input`):
+                The image input, accepted formats are PIL images, NumPy arrays, PyTorch tensors; Also accept list of supported formats.
+            height (`int`, *optional*, defaults to `None`):
+                The height in preprocessed image. If `None`, will use the `get_default_height_width()` to get default height.
+            width (`int`, *optional*`, defaults to `None`):
+                The width in preprocessed. If `None`, will use  get_default_height_width()` to get the default width.
+            resize_mode (`str`, *optional*, defaults to `default`):
+                The resize mode, can be one of `default` or `fill`. If `default`, will resize the image to fit
+                within the specified width and height, and it may not maintaining the original aspect ratio.
+                If `fill`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
+                within the dimensions, filling empty with data from image.
+                If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
+                within the dimensions, cropping the excess.
+                Note that resize_mode `fill` and `crop` are only supported for PIL image input.
+            crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
+                The crop coordinates for each image in the batch. If `None`, will not crop the image.
         """
         supported_formats = (PIL.Image.Image, np.ndarray, torch.Tensor)
 
@@ -299,13 +504,15 @@ class VaeImageProcessor(ConfigMixin):
             )
 
         if isinstance(image[0], PIL.Image.Image):
+            if crops_coords is not None:
+                image = [i.crop(crops_coords) for i in image]
+            if self.config.do_resize:
+                height, width = self.get_default_height_width(image[0], height, width)
+                image = [self.resize(i, height, width, resize_mode=resize_mode) for i in image]
             if self.config.do_convert_rgb:
                 image = [self.convert_to_rgb(i) for i in image]
             elif self.config.do_convert_grayscale:
                 image = [self.convert_to_grayscale(i) for i in image]
-            if self.config.do_resize:
-                height, width = self.get_default_height_width(image[0], height, width)
-                image = [self.resize(i, height, width) for i in image]
             image = self.pil_to_numpy(image)  # to np
             image = self.numpy_to_pt(image)  # to pt
 
@@ -405,6 +612,39 @@ class VaeImageProcessor(ConfigMixin):
 
         if output_type == "pil":
             return self.numpy_to_pil(image)
+
+    def apply_overlay(
+        self,
+        mask: PIL.Image.Image,
+        init_image: PIL.Image.Image,
+        image: PIL.Image.Image,
+        crop_coords: Optional[Tuple[int, int, int, int]] = None,
+    ) -> PIL.Image.Image:
+        """
+        overlay the inpaint output to the original image
+        """
+
+        width, height = image.width, image.height
+
+        init_image = self.resize(init_image, width=width, height=height)
+        mask = self.resize(mask, width=width, height=height)
+
+        init_image_masked = PIL.Image.new("RGBa", (width, height))
+        init_image_masked.paste(init_image.convert("RGBA").convert("RGBa"), mask=ImageOps.invert(mask.convert("L")))
+        init_image_masked = init_image_masked.convert("RGBA")
+
+        if crop_coords is not None:
+            x, y, w, h = crop_coords
+            base_image = PIL.Image.new("RGBA", (width, height))
+            image = self.resize(image, height=h, width=w, resize_mode="crop")
+            base_image.paste(image, (x, y))
+            image = base_image.convert("RGB")
+
+        image = image.convert("RGBA")
+        image.alpha_composite(init_image_masked)
+        image = image.convert("RGB")
+
+        return image
 
 
 class VaeImageProcessorLDM3D(VaeImageProcessor):

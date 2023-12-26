@@ -28,3 +28,15 @@ Amused is a vqvae token based transformer that can generate an image in fewer fo
 	- all
 	- enable_xformers_memory_efficient_attention
 	- disable_xformers_memory_efficient_attention
+
+[[autodoc]] AmusedImg2ImgPipeline
+	- __call__
+	- all
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention
+
+[[autodoc]] AmusedInpaintPipeline
+	- __call__
+	- all
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention

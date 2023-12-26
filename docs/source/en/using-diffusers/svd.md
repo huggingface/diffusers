@@ -44,7 +44,7 @@ pipe = StableVideoDiffusionPipeline.from_pretrained(
 pipe.enable_model_cpu_offload()
 
 # Load the conditioning image
-image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png?download=true")
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
 image = image.resize((1024, 576))
 
 generator = torch.manual_seed(42)
@@ -57,6 +57,11 @@ export_to_video(frames, "generated.mp4", fps=7)
   <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.webm" type="video/webm" />
   <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.mp4" type="video/mp4" />
 </video>
+
+| **Source Image** | **Video** |
+|:------------:|:-----:|
+|     ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png)      |  ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/output_rocket.gif)  |
+
 
 <Tip>
 Since generating videos is more memory intensive we can use the `decode_chunk_size` argument to control how many frames are decoded at once. This will reduce the memory usage. It's recommended to tweak this value based on your GPU memory.
@@ -120,7 +125,7 @@ pipe = StableVideoDiffusionPipeline.from_pretrained(
 pipe.enable_model_cpu_offload()
 
 # Load the conditioning image
-image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png?download=true")
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
 image = image.resize((1024, 576))
 
 generator = torch.manual_seed(42)
@@ -128,7 +133,5 @@ frames = pipe(image, decode_chunk_size=8, generator=generator, motion_bucket_id=
 export_to_video(frames, "generated.mp4", fps=7)
 ```
 
-<video width="1024" height="576" controls>
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated_motion.mp4" type="video/mp4">
-</video>
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/output_rocket_with_conditions.gif)
 
