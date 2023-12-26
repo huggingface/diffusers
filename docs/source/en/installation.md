@@ -48,6 +48,7 @@ pip install diffusers["torch"] transformers
 pip install diffusers["flax"] transformers
 ```
 </jax>
+Note - Pytorch doesn't support Python 3.12 on Windows. Please use Python 3.11 instead.
 </frameworkcontent>
 
 ## Install with conda
