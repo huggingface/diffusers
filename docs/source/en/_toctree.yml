@@ -244,6 +244,8 @@
   - sections:
     - local: api/pipelines/overview
       title: Overview
+    - local: api/pipelines/amused
+      title: aMUSEd
     - local: api/pipelines/animatediff
       title: AnimateDiff
     - local: api/pipelines/attend_and_excite
