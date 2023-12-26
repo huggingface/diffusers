@@ -33,7 +33,14 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    BaseOutput,
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
@@ -47,7 +54,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
         >>> from diffusers.utils import export_to_gif
 
-        >>> adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter")
+        >>> adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
         >>> pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
         >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False)
         >>> output = pipe(prompt="A corgi walking in the park")
@@ -55,134 +62,6 @@ EXAMPLE_DOC_STRING = """
         >>> export_to_gif(frames, "animation.gif")
         ```
 """
-
-
-def lerp(
-    v0: Union[torch.Tensor, np.ndarray],
-    v1: Union[torch.Tensor, np.ndarray],
-    t: Union[float, torch.Tensor, np.ndarray],
-) -> Union[torch.Tensor, np.ndarray]:
-    """
-    Linearly interpolate between two vectors/tensors.
-
-    Parameters
-    ----------
-    v0: Union[torch.Tensor, np.ndarray]
-        First vector/tensor.
-    v1: Union[torch.Tensor, np.ndarray]
-        Second vector/tensor.
-    t: Union[float, torch.Tensor, np.ndarray]
-        Interpolation factor. If float, must be between 0 and 1. If np.ndarray or
-        torch.Tensor, must be one dimensional with values between 0 and 1.
-
-    Returns
-    -------
-    Union[torch.Tensor, np.ndarray]
-        Interpolated vector/tensor between v0 and v1.
-    """
-    inputs_are_torch = False
-    t_is_float = False
-
-    if isinstance(v0, torch.Tensor):
-        inputs_are_torch = True
-        input_device = v0.device
-        v0 = v0.cpu().numpy()
-    if isinstance(v1, torch.Tensor):
-        inputs_are_torch = True
-        input_device = v1.device
-        v1 = v1.cpu().numpy()
-    if isinstance(t, torch.Tensor):
-        inputs_are_torch = True
-        input_device = t.device
-        t = t.cpu().numpy()
-    elif isinstance(t, float):
-        t_is_float = True
-        t = np.array([t])
-
-    t = t[..., None]
-    v0 = v0[None, ...]
-    v1 = v1[None, ...]
-    v2 = (1 - t) * v0 + t * v1
-
-    if t_is_float and v0.ndim > 1:
-        assert v2.shape[0] == 1
-        v2 = np.squeeze(v2, axis=0)
-    if inputs_are_torch:
-        v2 = torch.from_numpy(v2).to(input_device)
-
-    return v2
-
-
-def slerp(
-    v0: Union[torch.Tensor, np.ndarray],
-    v1: Union[torch.Tensor, np.ndarray],
-    t: Union[float, torch.Tensor, np.ndarray],
-    DOT_THRESHOLD=0.9995,
-) -> Union[torch.Tensor, np.ndarray]:
-    """
-    Spherical linear interpolation between two vectors/tensors.
-
-    Parameters
-    ----------
-    v0: Union[torch.Tensor, np.ndarray]
-        First vector/tensor.
-    v1: Union[torch.Tensor, np.ndarray]
-        Second vector/tensor.
-    t: Union[float, np.ndarray]
-        Interpolation factor. If float, must be between 0 and 1. If np.ndarray, must be one
-        dimensional with values between 0 and 1.
-    DOT_THRESHOLD: float
-        Threshold for when to use linear interpolation instead of spherical interpolation.
-
-    Returns
-    -------
-    Union[torch.Tensor, np.ndarray]
-        Interpolated vector/tensor between v0 and v1.
-    """
-    inputs_are_torch = False
-    t_is_float = False
-
-    if isinstance(v0, torch.Tensor):
-        inputs_are_torch = True
-        input_device = v0.device
-        v0 = v0.cpu().numpy()
-    if isinstance(v1, torch.Tensor):
-        inputs_are_torch = True
-        input_device = v1.device
-        v1 = v1.cpu().numpy()
-    if isinstance(t, torch.Tensor):
-        inputs_are_torch = True
-        input_device = t.device
-        t = t.cpu().numpy()
-    elif isinstance(t, float):
-        t_is_float = True
-        t = np.array([t], dtype=v0.dtype)
-
-    dot = np.sum(v0 * v1 / (np.linalg.norm(v0) * np.linalg.norm(v1)))
-    if np.abs(dot) > DOT_THRESHOLD:
-        # v1 and v2 are close to parallel
-        # Use linear interpolation instead
-        v2 = lerp(v0, v1, t)
-    else:
-        theta_0 = np.arccos(dot)
-        sin_theta_0 = np.sin(theta_0)
-        theta_t = theta_0 * t
-        sin_theta_t = np.sin(theta_t)
-        s0 = np.sin(theta_0 - theta_t) / sin_theta_0
-        s1 = sin_theta_t / sin_theta_0
-        s0 = s0[..., None]
-        s1 = s1[..., None]
-        v0 = v0[None, ...]
-        v1 = v1[None, ...]
-        v2 = s0 * v0 + s1 * v1
-
-    if t_is_float and v0.ndim > 1:
-        assert v2.shape[0] == 1
-        v2 = np.squeeze(v2, axis=0)
-    if inputs_are_torch:
-        v2 = torch.from_numpy(v2).to(input_device)
-
-    return v2
 
 
 def tensor2vid(video: torch.Tensor, processor, output_type="np"):
@@ -198,65 +77,6 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         outputs.append(batch_output)
 
     return outputs
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
-def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    **kwargs,
-):
-    """
-    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
-    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
-
-    Args:
-        scheduler (`SchedulerMixin`):
-            The scheduler to get timesteps from.
-        num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used,
-            `timesteps` must be `None`.
-        device (`str` or `torch.device`, *optional*):
-            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
-                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
-                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
-                must be `None`.
-
-    Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
-        second element is the number of inference steps.
-    """
-    if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accepts_timesteps:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
 
 
 @dataclass
@@ -693,30 +513,9 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
-    def get_timesteps(self, num_inference_steps, strength, device):
-        # get the original timestep using init_timestep
-        init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
-
-        t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-
-        return timesteps, num_inference_steps - t_start
-
     # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
     def prepare_latents(
-        self,
-        image,
-        batch_size,
-        num_channels_latents,
-        num_frames,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        latents=None,
-        interpolation_method="slerp",
+        self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):
         shape = (
             batch_size,
@@ -725,80 +524,30 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
 
-        if image is None:
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
-
-            if latents is None:
-                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-            else:
-                latents = latents.to(device)
-
-            # scale the initial noise by the standard deviation required by the scheduler
-            latents = latents * self.scheduler.init_noise_sigma
-            return latents
-
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
-            image = image.to(device=device, dtype=dtype)
+            latents = latents.to(device)
 
-            if image.shape[1] == 4:
-                init_latents = image
-            else:
-                # make sure the VAE is in float32 mode, as it overflows in float16
-                if self.vae.config.force_upcast:
-                    image = image.float()
-                    self.vae.to(dtype=torch.float32)
-
-                if isinstance(generator, list):
-                    if len(generator) != batch_size:
-                        raise ValueError(
-                            f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                            f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                        )
-
-                    init_latents = [
-                        retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
-                        for i in range(batch_size)
-                    ]
-                    init_latents = torch.cat(init_latents, dim=0)
-                else:
-                    init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
-
-                if self.vae.config.force_upcast:
-                    self.vae.to(dtype)
-
-                init_latents = init_latents.to(dtype)
-                init_latents = self.vae.config.scaling_factor * init_latents
-                latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
-
-                for i in range(num_frames):
-                    alpha = i / num_frames
-
-                    if interpolation_method == "repeat":
-                        latents[:, :, i, :, :] = init_latents.detach().clone()
-                    elif interpolation_method == "lerp":
-                        latents[:, :, i, :, :] = lerp(latents[:, :, i, :, :], init_latents, alpha)
-                    elif interpolation_method == "slerp":
-                        latents[:, :, i, :, :] = slerp(latents[:, :, i, :, :], init_latents, alpha)
-                    else:
-                        raise NotImplementedError
-
-            return latents
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
+        return latents
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
-        prompt: Optional[Union[str, List[str]]] = None,
-        image: Optional[PipelineImageInput] = None,
+        prompt: Union[str, List[str]] = None,
         num_frames: Optional[int] = 16,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
-        timesteps: Optional[List[int]] = None,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_videos_per_prompt: Optional[int] = 1,
@@ -814,7 +563,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
-        interpolation_method: str = "slerp",
     ):
         r"""
         The call function to the pipeline for generation.
@@ -921,7 +669,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             lora_scale=text_encoder_lora_scale,
             clip_skip=clip_skip,
         )
-
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
@@ -936,26 +683,22 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             if do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
-        if image is not None:
-            image = self.image_processor.preprocess(image)
-
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
-            image=image,
-            batch_size=batch_size * num_videos_per_prompt,
-            num_channels_latents=num_channels_latents,
-            num_frames=num_frames,
-            height=height,
-            width=width,
-            dtype=prompt_embeds.dtype,
-            device=device,
-            generator=generator,
-            latents=latents,
-            interpolation_method=interpolation_method,
+            batch_size * num_videos_per_prompt,
+            num_channels_latents,
+            num_frames,
+            height,
+            width,
+            prompt_embeds.dtype,
+            device,
+            generator,
+            latents,
         )
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
@@ -1012,111 +755,3 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             return (video,)
 
         return AnimateDiffPipelineOutput(frames=video)
-
-    @torch.no_grad()
-    def text_to_video(
-        self,
-        prompt: Union[str, List[str]],
-        num_frames: Optional[int] = 16,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        num_inference_steps: int = 50,
-        timesteps: Optional[List[int]] = None,
-        guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_videos_per_prompt: Optional[int] = 1,
-        eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        clip_skip: Optional[int] = None,
-    ):
-        r"""
-        Refer to the documentation of AnimateDiffPipeline.__call__.
-        """
-        return self.__call__(
-            prompt=prompt,
-            num_frames=num_frames,
-            height=height,
-            width=width,
-            num_inference_steps=num_inference_steps,
-            timesteps=timesteps,
-            guidance_scale=guidance_scale,
-            negative_prompt=negative_prompt,
-            num_videos_per_prompt=num_videos_per_prompt,
-            eta=eta,
-            generator=generator,
-            latents=latents,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            ip_adapter_image=ip_adapter_image,
-            output_type=output_type,
-            return_dict=return_dict,
-            callback=callback,
-            callback_steps=callback_steps,
-            cross_attention_kwargs=cross_attention_kwargs,
-            clip_skip=clip_skip,
-        )
-
-    @torch.no_grad()
-    def image_to_video(
-        self,
-        image: PipelineImageInput,
-        prompt: Optional[Union[str, List[str]]] = None,
-        num_frames: Optional[int] = 16,
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-        num_inference_steps: int = 50,
-        timesteps: Optional[List[int]] = None,
-        guidance_scale: float = 7.5,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        num_videos_per_prompt: Optional[int] = 1,
-        eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: Optional[int] = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        clip_skip: Optional[int] = None,
-        interpolation_method: str = "slerp",
-    ):
-        r"""
-        Refer to the documentation of AnimateDiffPipeline.__call__.
-        """
-        return self.__call__(
-            image=image,
-            prompt=prompt,
-            num_frames=num_frames,
-            height=height,
-            width=width,
-            num_inference_steps=num_inference_steps,
-            timesteps=timesteps,
-            guidance_scale=guidance_scale,
-            negative_prompt=negative_prompt,
-            num_videos_per_prompt=num_videos_per_prompt,
-            eta=eta,
-            generator=generator,
-            latents=latents,
-            prompt_embeds=prompt_embeds,
-            negative_prompt_embeds=negative_prompt_embeds,
-            ip_adapter_image=ip_adapter_image,
-            output_type=output_type,
-            return_dict=return_dict,
-            callback=callback,
-            callback_steps=callback_steps,
-            cross_attention_kwargs=cross_attention_kwargs,
-            clip_skip=clip_skip,
-            interpolation_method=interpolation_method,
-        )
