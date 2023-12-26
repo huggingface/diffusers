@@ -1,13 +1,17 @@
-from diffusers import StableDiffusionPipeline
-from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 import inspect
-import numpy as np
 import os
-from PIL import Image
+
+import numpy as np
 import torch
 import torch.nn.functional as nnf
+from PIL import Image
 from torch.optim.adam import Adam
 from tqdm import tqdm
+
+from diffusers import StableDiffusionPipeline
+from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
+
+
 def retrieve_timesteps(
     scheduler,
     num_inference_steps = None,
@@ -135,7 +139,6 @@ class NullTextPipeline(StableDiffusionPipeline):
         latent = latent.clone().detach()
         with torch.no_grad():
             for i in range(0, self.num_inference_steps):
-                
                 t = self.scheduler.timesteps[len(self.scheduler.timesteps) - i - 1]
                 noise_pred = self.unet(latent, t, encoder_hidden_states=cond_embeddings)["sample"]
                 latent = self.next_step(noise_pred, t, latent)
