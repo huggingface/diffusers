@@ -215,8 +215,8 @@ class CrossFrameAttnProcessor(AttnProcessor):
     def __init__(self, attn_state: AttnState):
         super().__init__()
         self.attn_state = attn_state
-        self.first_maps = dict()
-        self.prev_maps = dict()
+        self.first_maps = {}
+        self.prev_maps = {}
 
     def __call__(self, attn: Attention, hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None):
         # Is self attention
@@ -636,7 +636,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            frames (`List[np.ndarray]` or `torch.FloatTensor`): The input images to be used as the starting point for the image generation process. 
+            frames (`List[np.ndarray]` or `torch.FloatTensor`): The input images to be used as the starting point for the image generation process.
             control_frames (`List[np.ndarray]` or `torch.FloatTensor`): The ControlNet input images condition to provide guidance to the `unet` for generation.
             strength ('float'): SDEdit strength.
             num_inference_steps (`int`, *optional*, defaults to 50):
