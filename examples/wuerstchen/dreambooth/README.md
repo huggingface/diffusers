@@ -70,7 +70,7 @@ accelerate launch train_dreambooth_lora.py \
   --push_to_hub
 ```
 
-**___Note: When using LoRA we can use a much higher learning rate compared to vanilla Dreambooth. Here we use *1e-4*.**
+**___Note: When using LoRA we can use a much higher learning rate compared to vanilla Dreambooth. Here we use *1e-4*.___**
 
 ### Training with prior-preservation loss
 
