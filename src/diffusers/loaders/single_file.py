@@ -55,6 +55,15 @@ MODEL_TYPE_FROM_PIPELINE_CLASS = {
     "StableUnCLIPPipeline": "FrozenOpenCLIPEmbedder",
     "StableUnCLIPImg2ImgPipeline": "FrozenOpenCLIPEmbedder",
 }
+PIPELINE_COMPONENTS = {
+    "unet": ,
+    "vae": "AutoencoderKL",
+    "text_encoder": "CLIPTextModel",
+    "text_encoder_2": "CLIPTextModel",
+    "tokenizer": "CLIPTokenizer",
+    "tokenizer_2": "CLIPTokenizer",
+    "scheduler": "DiffusionScheduler",
+}
 
 
 def extract_pipeline_component_names(pipeline_class):
@@ -120,12 +129,41 @@ def infer_model_type(pipeline_class_name):
     return MODEL_TYPE_FROM_PIPELINE_CLASS.get(pipeline_class_name, None)
 
 
-def build_component(component_name, original_config, checkpoint, **kwargs):
+def build_component(pipeline_class_name, component_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
     if component_name in kwargs:
         return kwargs.pop(component_name, None)
 
-    component_class = getattr(importlib.import_module("diffusers"), component_name)
+    if component_name == "unet":
+        unet = create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
+        return unet
 
+    if component_name == "controlnet":
+        controlnet = create_controlnet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
+        return controlnet
+
+    if component_name == "vae":
+        vae = create_vae_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, model_type, image_size, **kwargs)
+        return vae
+
+    if component_name in ["text_encoder", "text_encoder_2"]:
+        text_encoder = create_text_encoder_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
+        return text_encoder
+
+    if component_name in ["tokenizer", "tokenizer_2"]:
+        tokenizer = create_tokenizer(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
+        return tokenizer
+
+    if component_name == "scheduler":
+        scheduler = create_scheduler(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
+        return scheduler
+
+    if component_name == "image_normalizer":
+        image_normalizer = create_image_normalizer(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
+        return image_normalizer
+
+    if component_name == "image_normalizer":
+        image_normalizer = create_image_normalizer(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
+        return image_normalizer
 
 
     return
@@ -332,7 +370,7 @@ class FromSingleFileMixin:
 
         pipeline_components = {}
         for component in component_names:
-            pipeline_components[component] = build_component(component, checkpoint, original_config, **kwargs)
+            pipeline_components[component] = build_component(pipeline_class_name, component, checkpoint, original_config, **kwargs)
 
         pipe = download_from_original_stable_diffusion_ckpt(
             pretrained_model_link_or_path,
@@ -359,7 +397,7 @@ class FromSingleFileMixin:
             local_files_only=local_files_only,
         )
 
-        pipe = cls(**pipeline_components, **kwargs)
+        pipe = cls(**pipeline_components)
 
         if torch_dtype is not None:
             pipe.to(dtype=torch_dtype)

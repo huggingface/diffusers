@@ -156,7 +156,7 @@ def set_model_type(original_config, model_type=None):
     else:
         raise ValueError("Unable to infer model type from config")
 
-    logger.debug(f"no `model_type` given, `model_type` inferred as: {model_type}")
+    logger.debug(f"No `model_type` given, `model_type` inferred as: {model_type}")
 
     return model_type
 
@@ -897,10 +897,78 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder
     return text_model
 
 
-def create_unet_model(original_config, checkpoint, checkpoint_path_or_dict, model_type, image_size, **kwargs):
+def convert_controlnet_checkpoint(
+    checkpoint,
+    original_config,
+    checkpoint_path,
+    image_size,
+    upcast_attention,
+    extract_ema,
+    use_linear_projection=None,
+    cross_attention_dim=None,
+):
+    ctrlnet_config = create_unet_diffusers_config(original_config, image_size=image_size, controlnet=True)
+    ctrlnet_config["upcast_attention"] = upcast_attention
+
+    ctrlnet_config.pop("sample_size")
+
+    if use_linear_projection is not None:
+        ctrlnet_config["use_linear_projection"] = use_linear_projection
+
+    if cross_attention_dim is not None:
+        ctrlnet_config["cross_attention_dim"] = cross_attention_dim
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        controlnet = ControlNetModel(**ctrlnet_config)
+
+    # Some controlnet ckpt files are distributed independently from the rest of the
+    # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
+    if "time_embed.0.weight" in checkpoint:
+        skip_extract_state_dict = True
+    else:
+        skip_extract_state_dict = False
+
+    converted_ctrl_checkpoint = convert_ldm_unet_checkpoint(
+        checkpoint,
+        ctrlnet_config,
+        path=checkpoint_path,
+        extract_ema=extract_ema,
+        controlnet=True,
+        skip_extract_state_dict=skip_extract_state_dict,
+    )
+
+    if is_accelerate_available():
+        for param_name, param in converted_ctrl_checkpoint.items():
+            set_module_tensor_to_device(controlnet, param_name, "cpu", value=param)
+    else:
+        controlnet.load_state_dict(converted_ctrl_checkpoint)
+
+    return controlnet
+
+
+def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, image_size, **kwargs):
+    if "num_in_channels" in kwargs:
+        num_in_channels = kwargs.pop("num_in_channels")
+    elif pipeline_class_name in [
+        "StableDiffusionInpaintPipeline",
+        "StableDiffusionXLInpaintPipeline",
+        "StableDiffusionXLControlNetInpaintPipeline"]:
+        num_in_channels = 9
+    elif pipeline_class_name == "StableDiffusionUpscalePipeline":
+        num_in_channels = 7
+    else:
+        num_in_channels = 4
+
+    if "upcast_attention" in kwargs:
+        upcast_attention = kwargs.pop("upcast_attention")
+
     extract_ema = kwargs.get("extract_ema", False)
 
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
+    unet_config["num_in_channels"] = num_in_channels
+    unet_config["upcast_attention"] = upcast_attention
+
     path = checkpoint_path_or_dict if isinstance(checkpoint_path_or_dict, str) else ""
     diffusers_format_unet_checkpoint = convert_ldm_unet_checkpoint(
         checkpoint, unet_config, path=path, extract_ema=extract_ema
