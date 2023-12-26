@@ -38,7 +38,7 @@ The following example demonstrates how to use a *MotionAdapter* checkpoint with 
 
 ```python
 import torch
-from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
 from diffusers.utils import export_to_gif
 
 # Load the motion adapter
@@ -47,7 +47,49 @@ adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter)
 scheduler = DDIMScheduler.from_pretrained(
-    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    import torch
+from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
+from diffusers.utils import export_to_gif
+
+# Load the motion adapter
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
+# load SD 1.5 based finetuned model
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter)
+scheduler = DDIMScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    beta_schedule="linear",
+    steps_offset=1,
+)
+pipe.scheduler = scheduler
+
+# enable memory savings
+pipe.enable_vae_slicing()
+pipe.enable_model_cpu_offload()
+
+output = pipe(
+    prompt=(
+        "masterpiece, bestquality, highlydetailed, ultradetailed, sunset, "
+        "orange sky, warm lighting, fishing boats, ocean waves seagulls, "
+        "rippling water, wharf, silhouette, serene atmosphere, dusk, evening glow, "
+        "golden hour, coastal landscape, seaside scenery"
+    ),
+    negative_prompt="bad quality, worse quality",
+    num_frames=16,
+    guidance_scale=7.5,
+    num_inference_steps=25,
+    generator=torch.Generator("cpu").manual_seed(42),
+)
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
+    steps_offset=1,
 )
 pipe.scheduler = scheduler
 
@@ -88,7 +130,7 @@ Here are some sample outputs:
 
 <Tip>
 
-AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples.
+AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples. Additionally, the AnimateDiff checkpoints can be sensitive to the scheduler beta scheduler. We recommend setting this to `linear`.
 
 </Tip>
 
@@ -98,7 +140,7 @@ Motion LoRAs are a collection of LoRAs that work with the `guoyww/animatediff-mo
 
 ```python
 import torch
-from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
 from diffusers.utils import export_to_gif
 
 # Load the motion adapter
@@ -106,10 +148,17 @@ adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-
 # load SD 1.5 based finetuned model
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter)
-pipe.load_lora_weights("guoyww/animatediff-motion-lora-zoom-out", adapter_name="zoom-out")
+pipe.load_lora_weights(
+    "guoyww/animatediff-motion-lora-zoom-out", adapter_name="zoom-out"
+)
 
 scheduler = DDIMScheduler.from_pretrained(
-    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    beta_schedule="linear",
+    timestep_spacing="linspace",
+    steps_offset=1,
 )
 pipe.scheduler = scheduler
 
@@ -132,6 +181,7 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
+
 ```
 
 <table>
@@ -160,7 +210,7 @@ Then you can use the following code to combine Motion LoRAs.
 
 ```python
 import torch
-from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
 from diffusers.utils import export_to_gif
 
 # Load the motion adapter
@@ -169,12 +219,20 @@ adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter)
 
-pipe.load_lora_weights("diffusers/animatediff-motion-lora-zoom-out", adapter_name="zoom-out")
-pipe.load_lora_weights("diffusers/animatediff-motion-lora-pan-left", adapter_name="pan-left")
+pipe.load_lora_weights(
+    "diffusers/animatediff-motion-lora-zoom-out", adapter_name="zoom-out"
+)
+pipe.load_lora_weights(
+    "diffusers/animatediff-motion-lora-pan-left", adapter_name="pan-left"
+)
 pipe.set_adapters(["zoom-out", "pan-left"], adapter_weights=[1.0, 1.0])
 
 scheduler = DDIMScheduler.from_pretrained(
-    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    steps_offset=1,
 )
 pipe.scheduler = scheduler
 
@@ -197,6 +255,7 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
+
 ```
 
 <table>
