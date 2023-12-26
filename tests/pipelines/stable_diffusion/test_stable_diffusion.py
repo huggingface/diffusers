@@ -661,6 +661,37 @@ class StableDiffusionPipelineFastTests(
             output[0, -3:, -3:, -1], output_no_freeu[0, -3:, -3:, -1]
         ), "Disabling of FreeU should lead to results similar to the default pipeline results."
 
+    def test_fused_qkv_projections(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        original_image_slice = image[0, -3:, -3:, -1]
+
+        sd_pipe.fuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice_fused = image[0, -3:, -3:, -1]
+
+        sd_pipe.unfuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        image = sd_pipe(**inputs).images
+        image_slice_disabled = image[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
+        ), "Fusion of QKV projections shouldn't affect the outputs."
+        assert np.allclose(
+            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert np.allclose(
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Original outputs should match when fused QKV projections are disabled."
+
     def test_pipeline_interrupt(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
