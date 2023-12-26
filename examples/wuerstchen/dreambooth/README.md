@@ -35,7 +35,7 @@ huggingface-cli login
 The `train_dreambooth_lora.py` script shows how to implement the training procedure and adapt it for the Würstchen model.
 
 
-For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example.
+For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example together with LoRA. In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights.
 
 Let's first download it locally:
 
@@ -61,14 +61,16 @@ accelerate launch train_dreambooth_lora.py \
   --output_dir=$OUTPUT_DIR \
   --instance_prompt="a photo of sks dog" \
   --resolution=512 \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=2 --gradient_checkpointing \
-  --learning_rate=5e-6 \
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=4 --gradient_checkpointing \
+  --learning_rate=1e-4 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --max_train_steps=400 \
   --push_to_hub
 ```
+
+**___Note: When using LoRA we can use a much higher learning rate compared to vanilla dreambooth. Here we use *1e-4*.
 
 ### Training with prior-preservation loss
 
@@ -88,12 +90,36 @@ accelerate launch train_dreambooth_lora.py \
   --instance_prompt="a photo of sks dog" \
   --class_prompt="a photo of dog" \
   --resolution=512 \
-  --train_batch_size=1 \
-  --gradient_accumulation_steps=2 --gradient_checkpointing \
-  --learning_rate=5e-6 \
+  --train_batch_size=4 \
+  --gradient_accumulation_steps=4 --gradient_checkpointing \
+  --learning_rate=1e-4 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
   --num_class_images=200 \
   --max_train_steps=800 \
+  --push_to_hub
+```
+
+### Fine-tune text encoder with the UNet.
+
+The script also allows to fine-tune the `text_encoder` along with the `prior`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces.  Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
+
+```bash
+export INSTANCE_DIR="dog"
+export OUTPUT_DIR="dreambooth-model"
+
+accelerate launch train_dreambooth_lora.py \
+  --instance_data_dir=$INSTANCE_DIR \
+  --output_dir=$OUTPUT_DIR \
+  --instance_prompt="a photo of sks dog" \
+  --train_text_encoder \
+  --resolution=512 \
+  --train_batch_size=4 \
+  --use_8bit_adam \
+  --gradient_accumulation_steps=4 --gradient_checkpointing \
+  --learning_rate=1e-4 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=400 \
   --push_to_hub
 ```
