@@ -2,9 +2,19 @@
   - local: index
     title: 🧨 Diffusers
   - local: quicktour
-    title: 簡単な案内
+    title: クイックツアー
   - local: stable_diffusion
-    title: 効果的で効率的な拡散モデル
+    title: 効率的な拡散モデル
   - local: installation
     title: インストール
   title: はじめに
+- sections:
+  - local: tutorials/tutorial_overview
+    title: 概要
+  - local: tutorials/autopipeline
+    title: AutoPipeline
+  - local: tutorials/basic_training
+    title: diffusionモデルのトレーニング
+  - local: tutorials/using_peft_for_inference
+    title: PEFTによる推論
+  title: チュートリアル
