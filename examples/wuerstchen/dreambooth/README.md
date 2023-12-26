@@ -6,7 +6,7 @@ Before running the scripts, make sure to install the library's training dependen
 
 **Important**
 
-To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the install up to date. To do this, execute the following steps in a new virtual environment:
+To make sure you can successfully run the latest versions of the example scripts, we highly recommend **installing from source** and keeping the installation up to date. To do this, execute the following steps in a new virtual environment:
 ```bash
 git clone https://github.com/huggingface/diffusers
 cd diffusers
@@ -35,7 +35,7 @@ huggingface-cli login
 The `train_dreambooth_lora.py` script shows how to implement the training procedure and adapt it for the Würstchen model.
 
 
-For this example we will use some dog images: https://huggingface.co/datasets/diffusers/dog-example together with LoRA. In a nutshell, LoRA allows to adapt pretrained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights.
+We will use some dog images for this example: https://huggingface.co/datasets/diffusers/dog-example together with LoRA. In a nutshell, LoRA allows adapting pre-trained models by adding pairs of rank-decomposition matrices to existing weights and **only** training those newly added weights.
 
 Let's first download it locally:
 
@@ -70,12 +70,12 @@ accelerate launch train_dreambooth_lora.py \
   --push_to_hub
 ```
 
-**___Note: When using LoRA we can use a much higher learning rate compared to vanilla dreambooth. Here we use *1e-4*.
+**___Note: When using LoRA we can use a much higher learning rate compared to vanilla Dreambooth. Here we use *1e-4*.**
 
 ### Training with prior-preservation loss
 
-Prior-preservation is used to avoid overfitting and language-drift. Refer to the paper to learn more about it. For prior-preservation we first generate images using the model with a class prompt and then use those during training along with our data.
-According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases. The `num_class_images` flag sets the number of images to generate with the class prompt. You can place existing images in `class_data_dir`, and the training script will generate any additional images so that `num_class_images` are present in `class_data_dir` during training time.
+Prior preservation is used to avoid overfitting and language drift. Please take a look at the paper to learn more about it. For prior preservation, we first generate images using the model with a class prompt and then use those during training along with our data.
+According to the paper, it's recommended to generate `num_epochs * num_samples` images for prior-preservation. 200-300 works well for most cases. The `num_class_images` flag sets the number of images to generate with the class prompt. You can place existing images in `class_data_dir`, and the training script will generate additional images so that `num_class_images` are present in `class_data_dir` during training time.
 
 ```bash
 export INSTANCE_DIR="dog"
@@ -102,7 +102,7 @@ accelerate launch train_dreambooth_lora.py \
 
 ### Fine-tune text encoder with the UNet.
 
-The script also allows to fine-tune the `text_encoder` along with the `prior`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces.  Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
+The script also allows fine-tuning the `text_encoder` along with the `prior`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results, especially on faces.  Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
 
 ```bash
 export INSTANCE_DIR="dog"
