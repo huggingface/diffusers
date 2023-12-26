@@ -57,7 +57,7 @@ from webdataset.tariterators import (
 import diffusers
 from diffusers import (
     AutoencoderKL,
-    DDIMScheduler,
+    DDPMScheduler,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
@@ -1177,12 +1177,12 @@ def main(args):
 
     # 1. Create the noise scheduler and the desired noise schedule.
     # Enforce zero terminal SNR (see section 3.1 of ADD paper)
-    teacher_scheduler = DDIMScheduler.from_pretrained(
+    teacher_scheduler = DDPMScheduler.from_pretrained(
         args.pretrained_teacher_model, subfolder="scheduler", revision=args.teacher_revision
     )
     if not teacher_scheduler.config.rescale_betas_zero_snr:
         teacher_scheduler.config["rescale_betas_zero_snr"] = True
-    noise_scheduler = DDIMScheduler(**teacher_scheduler.config)
+    noise_scheduler = DDPMScheduler(**teacher_scheduler.config)
 
     # DDPMScheduler calculates the alpha and sigma noise schedules (based on the alpha bars) for us
     alpha_schedule = torch.sqrt(noise_scheduler.alphas_cumprod)
