@@ -1004,7 +1004,7 @@ class TensorRTStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
         """
         self.generator = generator
         self.denoising_steps = num_inference_steps
-        self.guidance_scale = guidance_scale
+        self._guidance_scale = guidance_scale
 
         # Pre-compute latent input scales and linear multistep coefficients
         self.scheduler.set_timesteps(self.denoising_steps, device=self.torch_device)
