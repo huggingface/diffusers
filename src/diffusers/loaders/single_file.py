@@ -370,7 +370,7 @@ class FromSingleFileMixin:
 
         pipeline_components = {}
         for component in component_names:
-            pipeline_components[component] = build_component(pipeline_class_name, component, checkpoint, original_config, **kwargs)
+            pipeline_components[component] = build_component(pipeline_name, component, checkpoint, original_config, **kwargs)
 
         pipe = download_from_original_stable_diffusion_ckpt(
             pretrained_model_link_or_path,
