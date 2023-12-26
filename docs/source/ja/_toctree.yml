@@ -4,7 +4,7 @@
   - local: quicktour
     title: クイックツアー
   - local: stable_diffusion
-    title: 効率的な拡散モデル
+    title: 有効で効率の良い拡散モデル
   - local: installation
     title: インストール
   title: はじめに
