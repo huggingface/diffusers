@@ -1185,6 +1185,7 @@ def main(args):
     noise_scheduler = DDPMScheduler(**teacher_scheduler.config)
 
     # DDPMScheduler calculates the alpha and sigma noise schedules (based on the alpha bars) for us
+    # Note that the ADD paper parameterizes alpha and sigma as x_t = alpha_t * x_0 + sigma_t * eps
     alpha_schedule = torch.sqrt(noise_scheduler.alphas_cumprod)
     sigma_schedule = torch.sqrt(1 - noise_scheduler.alphas_cumprod)
     # denoiser gets predicted original sample x_0 from prediction_type using alpha and sigma noise schedules
@@ -1194,12 +1195,13 @@ def main(args):
     if args.weight_schedule == "uniform":
         train_weight_schedule = torch.ones_like(noise_scheduler.alphas_cumprod)
     elif args.weight_schedule == "exponential":
-        # Set gamma schedule equal to alpha_bar (`alphas_cumprod`) schedule. Higher timesteps have less weight.
-        train_weight_schedule = noise_scheduler.alphas_cumprod
+        # Set weight schedule equal to alpha_schedule. Higher timesteps have less weight.
+        train_weight_schedule = alpha_schedule
     elif args.weight_schedule == "sds":
-        # Score distillation sampling weighting
+        # Score distillation sampling weighting: alpha_t / (2 * sigma_t) * w(t)
+        # NOTE: choose w(t) = 1
         # Introduced in the DreamFusion paper: https://arxiv.org/pdf/2209.14988.pdf.
-        raise NotImplementedError("SDS distillation weighting is not yet implemented.")
+        train_weight_schedule = alpha_schedule / (2 * sigma_schedule)
     elif args.weight_schedule == "nfsd":
         # Noise-free score distillation weighting
         # Introduced in "Noise-Free Score Distillation": https://arxiv.org/pdf/2310.17590.pdf.
