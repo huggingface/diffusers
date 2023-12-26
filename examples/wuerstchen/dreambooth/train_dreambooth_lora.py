@@ -1171,8 +1171,8 @@ def main(args):
                 # create pipeline
                 pipeline = AutoPipelineForText2Image.from_pretrained(
                     args.pretrained_model_name_or_path,
-                    prior=accelerator.unwrap_model(prior),
-                    text_encoder=None if args.pre_compute_text_embeddings else accelerator.unwrap_model(text_encoder),
+                    prior_prior=accelerator.unwrap_model(prior),
+                    prior_text_encoder=None if args.pre_compute_text_embeddings else accelerator.unwrap_model(text_encoder),
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,
