@@ -1058,7 +1058,7 @@ def main(args):
         prior.train()
         if args.train_text_encoder:
             text_encoder.train()
-        
+
         train_loss = 0.0
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(prior):
@@ -1110,7 +1110,7 @@ def main(args):
                     loss = loss + args.prior_loss_weight * prior_loss
                 else:
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
-                
+
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
@@ -1172,7 +1172,9 @@ def main(args):
                 pipeline = AutoPipelineForText2Image.from_pretrained(
                     args.pretrained_model_name_or_path,
                     prior_prior=accelerator.unwrap_model(prior),
-                    prior_text_encoder=None if args.pre_compute_text_embeddings else accelerator.unwrap_model(text_encoder),
+                    prior_text_encoder=None
+                    if args.pre_compute_text_embeddings
+                    else accelerator.unwrap_model(text_encoder),
                     revision=args.revision,
                     variant=args.variant,
                     torch_dtype=weight_dtype,
