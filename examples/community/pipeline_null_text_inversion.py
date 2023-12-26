@@ -1,13 +1,13 @@
 from diffusers import StableDiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
-from tqdm import tqdm
-from PIL import Image
 import inspect
 import numpy as np
 import os
-import torch.nn.functional as nnf
+from PIL import Image
 import torch
+import torch.nn.functional as nnf
 from torch.optim.adam import Adam
+from tqdm import tqdm
 def retrieve_timesteps(
     scheduler,
     num_inference_steps = None,
@@ -91,7 +91,7 @@ class NullTextPipeline(StableDiffusionPipeline):
         alpha_prod_t_next = self.scheduler.alphas_cumprod[next_timestep]
         beta_prod_t = 1 - alpha_prod_t
         next_original_sample = (sample - beta_prod_t ** 0.5 * model_output) / alpha_prod_t ** 0.5
-        next_sample_direction = (1 - alpha_prod_t_next) ** 0.5 * model_output  
+        next_sample_direction = (1 - alpha_prod_t_next) ** 0.5 * model_output
         next_sample =  alpha_prod_t_next ** 0.5 * next_original_sample + next_sample_direction
         return next_sample
     def null_optimization(self, latents, context, num_inner_steps, epsilon):
@@ -165,7 +165,7 @@ class NullTextPipeline(StableDiffusionPipeline):
             uncond_embeddings = self.null_optimization(ddim_latents, context, num_inner_steps, early_stop_epsilon)
             uncond_embeddings = torch.stack(uncond_embeddings, 0)
             torch.save(uncond_embeddings, image_path+".pt")
-        return ddim_latents[-1], uncond_embeddings         
+        return ddim_latents[-1], uncond_embeddings
     @torch.no_grad()
     def __call__(
         self,
