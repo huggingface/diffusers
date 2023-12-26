@@ -1182,6 +1182,8 @@ def main(args):
                 # predicted noise eps_0 and predicted original sample x_0, then run the ODE solver using these
                 # estimates to predict the data point in the augmented PF-ODE trajectory corresponding to the next ODE
                 # solver timestep.
+
+                # With the adapters disabled, the `unet` is the regular teacher model.
                 unet.disable_adapters()
                 with torch.no_grad():
                     # 1. Get teacher model prediction on noisy_model_input z_{t_{n + k}} and conditional embedding c
@@ -1245,7 +1247,7 @@ def main(args):
                     # Note that the DDIM step depends on both the predicted x_0 and source noise eps_0.
                     x_prev = solver.ddim_step(pred_x0, pred_noise, index).to(unet.dtype)
 
-                # re-enable unet adapters
+                # re-enable unet adapters to turn the `unet` into a student unet.
                 unet.enable_adapters()
 
                 # 9. Get target LCM prediction on x_prev, w, c, t_n (timesteps)
