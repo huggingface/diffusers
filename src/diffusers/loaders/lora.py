@@ -1024,8 +1024,6 @@ class LoraLoaderMixin:
                 Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
             adapter_names (`List[str]`, *optional*):
                 Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
-                Whether to check fused weights for `NaN` values before fusing and if values are `NaN`, then don't fuse
-                them.
 
         Example:
 
