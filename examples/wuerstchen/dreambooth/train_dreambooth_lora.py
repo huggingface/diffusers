@@ -797,7 +797,22 @@ def main(args):
     prior_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
-        target_modules=["to_k", "to_q", "to_v", "to_out.0", "add_k_proj", "add_v_proj"],
+        target_modules=[
+            "to_k",
+            "to_q",
+            "to_v",
+            "to_out.0",
+            "add_k_proj",
+            "add_v_proj",
+            "kv_mapper.1",
+            "depthwise",
+            "channelwise.0",
+            "channelwise.4",
+            "projection",
+            "cond_mapper.0",
+            "cond_mapper.2",
+            "out.1",
+        ],
     )
 
     # Add adapter and make sure the trainable params are in float32.
