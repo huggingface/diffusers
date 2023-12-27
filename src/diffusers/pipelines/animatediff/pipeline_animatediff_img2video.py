@@ -678,7 +678,7 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         image = image.to(device=device, dtype=dtype)
 
         if image.shape[1] == 4:
-            init_latents = image
+            latents = image
         else:
             # make sure the VAE is in float32 mode, as it overflows in float16
             if self.vae.config.force_upcast:
@@ -815,6 +815,9 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            latent_interpolation_method (`str` or `Callable[[torch.Tensor, torch.Tensor, int], torch.Tensor]]`, *optional*):
+                Must be one of "lerp", "slerp" or a callable that takes in a random noisy latent, image latent and a frame index
+                as input and returns an initial latent for sampling.
         Examples:
 
         Returns:
