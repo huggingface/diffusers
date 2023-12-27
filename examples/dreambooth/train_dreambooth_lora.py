@@ -54,7 +54,7 @@ from diffusers import (
 )
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, convert_state_dict_to_diffusers
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -853,9 +853,9 @@ def main(args):
 
             for model in models:
                 if isinstance(model, type(accelerator.unwrap_model(unet))):
-                    unet_lora_layers_to_save = get_peft_model_state_dict(model)
+                    unet_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder))):
-                    text_encoder_lora_layers_to_save = get_peft_model_state_dict(model)
+                    text_encoder_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1285,11 +1285,11 @@ def main(args):
         unet = accelerator.unwrap_model(unet)
         unet = unet.to(torch.float32)
 
-        unet_lora_state_dict = get_peft_model_state_dict(unet)
+        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
         if args.train_text_encoder:
             text_encoder = accelerator.unwrap_model(text_encoder)
-            text_encoder_state_dict = get_peft_model_state_dict(text_encoder)
+            text_encoder_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(text_encoder))
         else:
             text_encoder_state_dict = None
 
