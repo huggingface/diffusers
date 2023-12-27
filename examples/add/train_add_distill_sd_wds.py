@@ -989,9 +989,7 @@ def parse_args():
     )
     # ----Exponential Moving Average (EMA)----
     parser.add_argument(
-        "--use_ema",
-        action="store_true",
-        help="Whether to also maintain an EMA version of the student U-Net weights."
+        "--use_ema", action="store_true", help="Whether to also maintain an EMA version of the student U-Net weights."
     )
     parser.add_argument(
         "--ema_decay",
