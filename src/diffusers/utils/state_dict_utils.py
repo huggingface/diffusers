@@ -79,6 +79,14 @@ PEFT_TO_DIFFUSERS = {
     ".v_proj.lora_A": ".v_proj.lora_linear_layer.down",
     ".out_proj.lora_B": ".out_proj.lora_linear_layer.up",
     ".out_proj.lora_A": ".out_proj.lora_linear_layer.down",
+    "to_k.lora_A": "to_k.lora.down",
+    "to_k.lora_B": "to_k.lora.up",
+    "to_q.lora_A": "to_q.lora.down",
+    "to_q.lora_B": "to_q.lora.up",
+    "to_v.lora_A": "to_v.lora.down",
+    "to_v.lora_B": "to_v.lora.up",
+    "to_out.0.lora_A": "to_out.0.lora.down",
+    "to_out.0.lora_B": "to_out.0.lora.up",
 }
 
 DIFFUSERS_OLD_TO_DIFFUSERS = {
