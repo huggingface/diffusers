@@ -44,7 +44,7 @@ import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, is_wandb_available, convert_state_dict_to_diffusers
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -809,7 +809,7 @@ def main():
                         accelerator.save_state(save_path)
 
                         unwrapped_unet = accelerator.unwrap_model(unet)
-                        unet_lora_state_dict = get_peft_model_state_dict(unwrapped_unet)
+                        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
 
                         StableDiffusionPipeline.save_lora_weights(
                             save_directory=save_path,
@@ -876,7 +876,7 @@ def main():
         unet = unet.to(torch.float32)
 
         unwrapped_unet = accelerator.unwrap_model(unet)
-        unet_lora_state_dict = get_peft_model_state_dict(unwrapped_unet)
+        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
         StableDiffusionPipeline.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_state_dict,
