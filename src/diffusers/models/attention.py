@@ -149,7 +149,7 @@ class BasicTransformerBlock(nn.Module):
         attention_type: str = "default",
         positional_embeddings: Optional[str] = None,
         num_positional_embeddings: Optional[int] = None,
-        _explicitly_mark_as_cross_attention: Optional[bool] = False,
+        # _explicitly_mark_as_cross_attention: Optional[bool] = False,
         ada_norm_continous_conditioning_embedding_dim: Optional[int] = None,
         ada_norm_bias: Optional[int] = None,
         ff_inner_dim: Optional[int] = None,
@@ -237,7 +237,7 @@ class BasicTransformerBlock(nn.Module):
                 dropout=dropout,
                 bias=attention_bias,
                 upcast_attention=upcast_attention,
-                _explicitly_mark_as_cross_attention=cross_attention_dim is not None,
+                # _explicitly_mark_as_cross_attention=cross_attention_dim is not None,
                 out_bias=attention_out_bias,
             )  # is self-attn if encoder_hidden_states is none
         else:
