@@ -128,12 +128,6 @@ else:
             "StableDiffusionXLControlNetPipeline",
         ]
     )
-    _import_structure["controlnet_xs"].extend(
-        [
-            "StableDiffusionControlNetXSPipeline",
-            "StableDiffusionXLControlNetXSPipeline",
-        ]
-    )
     _import_structure["deepfloyd_if"] = [
         "IFImg2ImgPipeline",
         "IFImg2ImgSuperResolutionPipeline",
@@ -360,10 +354,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
-        )
-        from .controlnet_xs import (
-            StableDiffusionControlNetXSPipeline,
-            StableDiffusionXLControlNetXSPipeline,
         )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
