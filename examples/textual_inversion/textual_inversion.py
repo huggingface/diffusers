@@ -341,7 +341,15 @@ def parse_args():
         help=(
             "Whether to use mixed precision. Choose"
             "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
-            "and an Nvidia Ampere GPU."
+            "and an Intel Gen 4th Xeon (and later) or Nvidia Ampere GPU."
+        ),
+    )
+    parser.add_argument(
+        "--use_ipex",
+        action="store_true",
+        help=(
+            "Whether or not to use ipex to accelerate the training process,"
+            "requires Intel Gen 3rd Xeon (and later) or Intel XPU (PVC)"
         ),
     )
     parser.add_argument(
@@ -778,6 +786,11 @@ def main():
     # Move vae and unet to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
+
+    if args.use_ipex:
+        import intel_extension_for_pytorch as ipex
+        unet = ipex.optimize(unet, dtype=weight_dtype)
+        vae = ipex.optimize(vae, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
