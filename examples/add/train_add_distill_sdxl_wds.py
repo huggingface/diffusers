@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import copy
 import functools
 import gc
 import itertools
@@ -1008,6 +1009,27 @@ def parse_args():
         default=2.5,
         help="Multiplicative weight factor lambda for the distillation loss on the student generator U-Net.",
     )
+    parser.add_argument(
+        "--w_min",
+        type=float,
+        default=1.0,
+        required=False,
+        help=(
+            "The minimum guidance scale value for guidance scale sampling. Note that we are using the Imagen CFG"
+            " formulation."
+        ),
+    )
+    parser.add_argument(
+        "--w_max",
+        type=float,
+        default=8.0,
+        required=False,
+        help=(
+            "The maximum guidance scale value for guidance scale sampling. Note that we are using the Imagen CFG"
+            " formulation rather than the LCM formulation, which means all guidance scales have 1 added to them as"
+            " compared to the original paper."
+        ),
+    )
     # ----Exponential Moving Average (EMA)----
     parser.add_argument(
         "--ema_decay",
@@ -1527,6 +1549,12 @@ def main(args):
         tracker_config = dict(vars(args))
         accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
+    # Create uncond embeds for classifier free guidance
+    uncond_prompt_embeds = torch.zeros(args.train_batch_size, MAX_SEQ_LENGTH, 2048).to(accelerator.device)
+    uncond_pooled_prompt_embeds = torch.zeros(
+        args.train_batch_size, text_encoder_two.config.projection_dim
+    ).to(accelerator.device)
+
     # 16. Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1633,18 +1661,36 @@ def main(args):
                 teacher_noise = torch.randn_like(student_x_0)
                 noisy_teacher_input = noise_scheduler.add_noise(student_x_0, teacher_noise, teacher_timesteps)
 
-                # 7. Get teacher model predicted original sample `teacher_x_0`.
+                # 7. Sample random guidance scales w ~ U[w_min, w_max] for CFG.
+                w = (args.w_max - args.w_min) * torch.rand((bsz,)) + args.w_min
+                w = w.reshape(bsz, 1, 1, 1)
+                # Move to U-Net device and dtype
+                w = w.to(device=latents.device, dtype=latents.dtype)
+
+                # 8. Get teacher model predicted original sample `teacher_x_0`.
                 with torch.no_grad(), torch.autocast("cuda", dtype=weight_dtype):
-                    teacher_noise_pred = teacher_unet(
+                    teacher_cond_noise_pred = teacher_unet(
                         noisy_teacher_input.detach(),
                         teacher_timesteps,
                         encoder_hidden_states=prompt_embeds,
                         added_cond_kwargs=encoded_text,
                     ).sample
-                    teacher_x_0 = denoiser(teacher_noise_pred, teacher_timesteps, noisy_teacher_input)
+
+                    uncond_added_conditions = copy.deepcopy(encoded_text)
+                    uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
+                    teacher_uncond_noise_pred = teacher_unet(
+                        noisy_teacher_input.detach(),
+                        teacher_timesteps,
+                        encoder_hidden_states=uncond_prompt_embeds,
+                        added_cond_kwargs=uncond_added_conditions,
+                    ).sample
+
+                    # Get the teacher's CFG estimate of x_0.
+                    teacher_cfg_noise_pred = w * teacher_cond_noise_pred + (1 - w) * teacher_uncond_noise_pred
+                    teacher_x_0 = denoiser(teacher_cfg_noise_pred, teacher_timesteps, noisy_teacher_input)
 
                 ############################
-                # 8. Discriminator Loss
+                # 9. Discriminator Loss
                 ############################
                 discriminator_optimizer.zero_grad(set_to_none=True)
 
@@ -1694,7 +1740,7 @@ def main(args):
                 discriminator_lr_scheduler.step()
 
                 ############################
-                # 9. Generator Loss
+                # 10. Generator Loss
                 ############################
                 optimizer.zero_grad(set_to_none=True)
 
@@ -1706,7 +1752,7 @@ def main(args):
                 g_adv_loss = torch.mean(-g_logits_fake)
 
                 ############################
-                # 10. Distillation Loss
+                # 11. Distillation Loss
                 ############################
                 # Calculate distillation loss in pixel space rather than latent space (see section 3.1)
                 unscaled_teacher_x_0 = (1 / vae.config.scaling_factor) * teacher_x_0
