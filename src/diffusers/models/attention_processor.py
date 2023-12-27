@@ -110,10 +110,10 @@ class Attention(nn.Module):
         _from_deprecated_attn_block: bool = False,
         processor: Optional["AttnProcessor"] = None,
         out_dim: int = None,
-        _explicitly_mark_as_cross_attention=False,
     ):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
+        self.is_cross_attention = cross_attention_dim is not None
         self.query_dim = query_dim
         self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
