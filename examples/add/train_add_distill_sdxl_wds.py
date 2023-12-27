@@ -1551,9 +1551,9 @@ def main(args):
 
     # Create uncond embeds for classifier free guidance
     uncond_prompt_embeds = torch.zeros(args.train_batch_size, MAX_SEQ_LENGTH, 2048).to(accelerator.device)
-    uncond_pooled_prompt_embeds = torch.zeros(
-        args.train_batch_size, text_encoder_two.config.projection_dim
-    ).to(accelerator.device)
+    uncond_pooled_prompt_embeds = torch.zeros(args.train_batch_size, text_encoder_two.config.projection_dim).to(
+        accelerator.device
+    )
 
     # 16. Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
