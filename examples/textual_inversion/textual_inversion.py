@@ -348,8 +348,7 @@ def parse_args():
         "--use_ipex",
         action="store_true",
         help=(
-            "Whether or not to use ipex to accelerate the training process,"
-            "requires Intel Gen 3rd Xeon (and later)"
+            "Whether or not to use ipex to accelerate the training process," "requires Intel Gen 3rd Xeon (and later)"
         ),
     )
     parser.add_argument(
@@ -789,6 +788,7 @@ def main():
 
     if args.use_ipex:
         import intel_extension_for_pytorch as ipex
+
         unet = ipex.optimize(unet, dtype=weight_dtype)
         vae = ipex.optimize(vae, dtype=weight_dtype)
 

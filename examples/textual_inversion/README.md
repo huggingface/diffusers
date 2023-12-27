@@ -97,8 +97,7 @@ to a number larger than one, *e.g.*:
 **CPU**: If you run on Intel Gen 4th Xeon (and later), use ipex and bf16 will get a significant acceleration.
 You need to add `--mixed_precision="bf16"` and `--use_ipex` in the command and install the following package:
 ```
-pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cpu
-pip install intel-extension-for-pytorch==2.0.0
+pip install intel-extension-for-pytorch
 ```
 
 The saved textual inversion vectors will then be larger in size compared to the default case.
