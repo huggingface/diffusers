@@ -1335,24 +1335,27 @@ class FusedAttnProcessor2_0:
 
         if encoder_hidden_states is None:
             print(f"Cross attention: {encoder_hidden_states is not None}, under fusion.")
-            qkv = attn.to_qkv(hidden_states, *args)
-            split_size = qkv.shape[-1] // 3
-            query, key, value = torch.split(qkv, split_size, dim=-1)
-        # else:
-        #     if attn.norm_cross:
-        #         encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-        #     query = attn.to_q(hidden_states, *args)
-
-        #     kv = attn.to_kv(encoder_hidden_states, *args)
-        #     split_size = kv.shape[-1] // 2
-        #     key, value = torch.split(kv, split_size, dim=-1)
-
-        else:
+            # qkv = attn.to_qkv(hidden_states, *args)
+            # split_size = qkv.shape[-1] // 3
+            # query, key, value = torch.split(qkv, split_size, dim=-1)
             query = attn.to_q(hidden_states, *args)
+            key = attn.to_k(hidden_states, *args)
+            value = attn.to_v(hidden_states, *args)
+        else:
             if attn.norm_cross:
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-            key = attn.to_k(encoder_hidden_states, *args)
-            value = attn.to_v(encoder_hidden_states, *args)
+            query = attn.to_q(hidden_states, *args)
+
+            kv = attn.to_kv(encoder_hidden_states, *args)
+            split_size = kv.shape[-1] // 2
+            key, value = torch.split(kv, split_size, dim=-1)
+
+        # else:
+        #     query = attn.to_q(hidden_states, *args)
+        #     if attn.norm_cross:
+        #         encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+        #     key = attn.to_k(encoder_hidden_states, *args)
+        #     value = attn.to_v(encoder_hidden_states, *args)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
