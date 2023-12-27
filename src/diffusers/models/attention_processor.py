@@ -698,7 +698,6 @@ class Attention(nn.Module):
 
     @torch.no_grad()
     def fuse_projections(self, fuse=True):
-        print(f"Cross attention: {self.is_cross_attention}")
         is_cross_attention = self.is_cross_attention
         device = self.to_q.weight.data.device
         dtype = self.to_q.weight.data.dtype
@@ -1335,6 +1334,7 @@ class FusedAttnProcessor2_0:
         args = () if USE_PEFT_BACKEND else (scale,)
 
         if encoder_hidden_states is None:
+            print(f"Cross attention: {encoder_hidden_states is not None}, under fusion.")
             qkv = attn.to_qkv(hidden_states, *args)
             split_size = qkv.shape[-1] // 3
             query, key, value = torch.split(qkv, split_size, dim=-1)
@@ -1347,11 +1347,12 @@ class FusedAttnProcessor2_0:
         #     split_size = kv.shape[-1] // 2
         #     key, value = torch.split(kv, split_size, dim=-1)
 
-        elif attn.norm_cross:
-            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        key = attn.to_k(encoder_hidden_states, *args)
-        value = attn.to_v(encoder_hidden_states, *args)
+        else:
+            query = attn.to_q(hidden_states, *args)
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+            key = attn.to_k(encoder_hidden_states, *args)
+            value = attn.to_v(encoder_hidden_states, *args)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
