@@ -38,7 +38,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from braceexpand import braceexpand
-from huggingface_hub import create_repo
+from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torch.utils.data import default_collate
 from torchvision import transforms
@@ -835,7 +835,7 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
 
         if args.push_to_hub:
-            create_repo(
+            repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name,
                 exist_ok=True,
                 token=args.hub_token,
@@ -1353,6 +1353,14 @@ def main(args):
 
         target_unet = accelerator.unwrap_model(target_unet)
         target_unet.save_pretrained(os.path.join(args.output_dir, "unet_target"))
+
+        if args.push_to_hub:
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
     accelerator.end_training()
 
