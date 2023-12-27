@@ -129,6 +129,8 @@ tags:
 base_model: {base_model}
 instance_prompt: {instance_prompt}
 license: openrail++
+widget:
+    - text: '{validation_prompt if validation_prompt else instance_prompt}'
 ---
 """
 
