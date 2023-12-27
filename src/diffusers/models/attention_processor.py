@@ -1338,14 +1338,20 @@ class FusedAttnProcessor2_0:
             qkv = attn.to_qkv(hidden_states, *args)
             split_size = qkv.shape[-1] // 3
             query, key, value = torch.split(qkv, split_size, dim=-1)
-        else:
-            if attn.norm_cross:
-                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-            query = attn.to_q(hidden_states, *args)
+        # else:
+        #     if attn.norm_cross:
+        #         encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+        #     query = attn.to_q(hidden_states, *args)
 
-            kv = attn.to_kv(encoder_hidden_states, *args)
-            split_size = kv.shape[-1] // 2
-            key, value = torch.split(kv, split_size, dim=-1)
+        #     kv = attn.to_kv(encoder_hidden_states, *args)
+        #     split_size = kv.shape[-1] // 2
+        #     key, value = torch.split(kv, split_size, dim=-1)
+
+        elif attn.norm_cross:
+            encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states, *args)
+        value = attn.to_v(encoder_hidden_states, *args)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
