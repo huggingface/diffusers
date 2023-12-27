@@ -51,7 +51,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -113,7 +113,7 @@ def log_validation(vae, args, accelerator, weight_dtype, step, unet=None, is_fin
         if unet is None:
             raise ValueError("Must provide a `unet` when doing intermediate validation.")
         unet = accelerator.unwrap_model(unet)
-        state_dict = get_peft_model_state_dict(unet)
+        state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
         to_load = state_dict
     else:
         to_load = args.output_dir
@@ -819,7 +819,7 @@ def main(args):
                 unet_ = accelerator.unwrap_model(unet)
                 # also save the checkpoints in native `diffusers` format so that it can be easily
                 # be independently loaded via `load_lora_weights()`.
-                state_dict = get_peft_model_state_dict(unet_)
+                state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet_))
                 StableDiffusionXLPipeline.save_lora_weights(output_dir, unet_lora_layers=state_dict)
 
                 for _, model in enumerate(models):
@@ -1332,7 +1332,7 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
-        unet_lora_state_dict = get_peft_model_state_dict(unet)
+        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
         StableDiffusionXLPipeline.save_lora_weights(args.output_dir, unet_lora_layers=unet_lora_state_dict)
 
         if args.push_to_hub:
