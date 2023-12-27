@@ -284,7 +284,7 @@ class Denoiser:
 class SpectralConv1d(torch.nn.Conv1d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        torch.nn.utils.SpectralNorm.apply(self, name="weight", n_power_iterations=1, dim=0, eps=1e-12)
+        torch.nn.utils.parametrizations.spectral_norm(self, name="weight", n_power_iterations=1, eps=1e-12, dim=0)
 
 
 # Based on ResidualBlock from the official StyleGAN-T code
@@ -467,7 +467,7 @@ class FeatureNetwork(torch.nn.Module):
 
     def __init__(
         self,
-        pretrained_feature_network: str = "vit_small_patch16_224_dino",
+        pretrained_feature_network: str = "vit_small_patch16_224.dino",
         patch_size: List[int] = [16, 16],
         hooks: List[int] = [2, 5, 8, 11],
         start_index: int = 1,
@@ -564,7 +564,7 @@ class Discriminator(torch.nn.Module):
         # Trainable discriminator heads
         heads = []
         for i in range(self.feature_network.num_hooks):
-            heads += [str(i), DiscriminatorHead(self.feature_network.embed_dim, cond_embedding_dim)]
+            heads.append([str(i), DiscriminatorHead(self.feature_network.embed_dim, cond_embedding_dim)])
         self.heads = torch.nn.ModuleDict(heads)
 
     def train(self, mode: bool = True):
@@ -959,7 +959,7 @@ def parse_args():
     parser.add_argument(
         "--pretrained_feature_network",
         type=str,
-        default="vit_small_patch16_224_dino",
+        default="vit_small_patch16_224.dino",
         help=(
             "The pretrained feature network used in the discriminator, typically a vision transformer (ViT) trained"
             " the DINO objective. The given identifier should be compatible with `timm.create_model`."
@@ -1238,12 +1238,12 @@ def main(args):
     # Create student timestep schedule tau_1, ..., tau_N.
     if args.student_custom_timesteps is not None:
         student_timestep_schedule = np.asarray(
-            sorted([int(timestep.strip()) for timestep in args.student_custom_timesteps.split(",")])
+            sorted([int(timestep.strip()) for timestep in args.student_custom_timesteps.split(",")]), dtype=np.int64
         )
     elif args.student_timestep_schedule == "uniform":
         student_timestep_schedule = np.linspace(
             0, noise_scheduler.config.num_train_timesteps - 1, args.student_distillation_steps
-        ).round()
+        ).round().astype(np.int64)
     else:
         raise ValueError(
             f"Student timestep schedule {args.student_timestep_schedule} was not recognized and custom student"
@@ -1314,7 +1314,7 @@ def main(args):
     # TODO: Confirm that using text_encoder_one here is correct
     discriminator = Discriminator(
         pretrained_feature_network=args.pretrained_feature_network,
-        cond_embedding_dim=text_encoder_one.config.projection_dim,
+        cond_embedding_dim=text_encoder_one.config.hidden_size,
     )
 
     # 8. Freeze teacher vae, text_encoders, and teacher_unet
@@ -1716,14 +1716,12 @@ def main(args):
                 # 1. Decode real and fake (generated) latents back to pixel space.
                 # NOTE: the paper doesn't mention this explicitly AFAIK but I think this makes sense since the
                 # pretrained feature network for the discriminator operates in pixel space rather than latent space.
-                unscaled_latents = (1 / vae.config.scaling_factor) * latents
                 unscaled_student_x_0 = (1 / vae.config.scaling_factor) * student_x_0
-                real_image = vae.decode(unscaled_latents).sample
-                student_gen_image = vae.decode(unscaled_student_x_0).sample
+                student_gen_image = vae.decode(unscaled_student_x_0.to(dtype=weight_dtype)).sample
 
                 # 2. Get discriminator real/fake outputs on the real and fake (generated) images respectively.
-                disc_output_real = discriminator(real_image, prompt_embeds)
-                disc_output_fake = discriminator(student_gen_image.detach(), prompt_embeds)
+                disc_output_real = discriminator(pixel_values.float(), prompt_embeds)
+                disc_output_fake = discriminator(student_gen_image.detach().float(), prompt_embeds)
 
                 # 3. Calculate the discriminator real adversarial loss terms.
                 d_logits_real = disc_output_real.logits
@@ -1775,7 +1773,7 @@ def main(args):
                 ############################
                 # Calculate distillation loss in pixel space rather than latent space (see section 3.1)
                 unscaled_teacher_x_0 = (1 / vae.config.scaling_factor) * teacher_x_0
-                teacher_gen_image = vae.decode(unscaled_teacher_x_0).sample
+                teacher_gen_image = vae.decode(unscaled_teacher_x_0.to(dtype=weight_dtype)).sample
                 per_instance_distillation_loss = F.mse_loss(
                     student_gen_image.float(), teacher_gen_image.float(), reduction="none"
                 )
