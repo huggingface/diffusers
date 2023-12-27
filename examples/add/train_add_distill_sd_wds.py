@@ -336,20 +336,17 @@ class DiscriminatorHead(torch.nn.Module):
         self.input_block = DiscHeadBlock(channels, kernel_size=1)
         self.resblock = ResidualBlock(DiscHeadBlock(channels, kernel_size=9))
 
-        if self.cond_embedding_dim > 0:
-            self.conditioning_map = torch.nn.Linear(self.cond_embedding_dim, cond_map_dim)
-            self.cls = SpectralConv1d(channels, cond_map_dim, kernel_size=1, padding=0)
-        else:
-            self.cls = SpectralConv1d(channels, 1, kernel_size=1, padding=0)
+        # Map the feature network token embeddings and conditioning embedding to a common dimension cond_map_dim.
+        self.conditioning_map = torch.nn.Linear(self.cond_embedding_dim, cond_map_dim)
+        self.cls = SpectralConv1d(channels, cond_map_dim, kernel_size=1, padding=0)
 
     def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
         hidden_states = self.input_block(x)
         hidden_states = self.resblock(hidden_states)
         out = self.cls(hidden_states)
 
-        if self.cond_embedding_dim > 0:
-            c = self.conditioning_map(c).squeeze(-1)
-            out = (out * c).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
+        c = self.conditioning_map(c).squeeze(-1)
+        out = (out * c).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
 
         return out
 
@@ -1713,7 +1710,7 @@ def main(args):
                             ema_unet.store(unet.parameters())
                             ema_unet.copy_to(unet.parameters())
 
-                            log_validation(vae, ema_unet, args, accelerator, weight_dtype, global_step, "ema_student")
+                            log_validation(vae, unet, args, accelerator, weight_dtype, global_step, "ema_student")
 
                             # Restore student unet weights
                             ema_unet.restore(unet.parameters())
@@ -1751,8 +1748,6 @@ def main(args):
             ema_unet.copy_to(unet.parameters())
 
             unet.save_pretrained(os.path.join(args.output_dir, "ema_unet"))
-
-            ema_unet.restore(unet.parameters())
 
     accelerator.end_training()
 
