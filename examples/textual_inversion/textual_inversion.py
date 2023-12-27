@@ -349,7 +349,7 @@ def parse_args():
         action="store_true",
         help=(
             "Whether or not to use ipex to accelerate the training process,"
-            "requires Intel Gen 3rd Xeon (and later) or Intel XPU (PVC)"
+            "requires Intel Gen 3rd Xeon (and later)"
         ),
     )
     parser.add_argument(
