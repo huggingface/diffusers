@@ -948,6 +948,7 @@ def main(args):
     # Add `time_cond_proj_dim` to the student U-Net if `teacher_unet.config.time_cond_proj_dim` is None
     if teacher_unet.config.time_cond_proj_dim is None:
         teacher_unet.config["time_cond_proj_dim"] = args.unet_time_cond_proj_dim
+    time_cond_proj_dim = teacher_unet.config.time_cond_proj_dim
     unet = UNet2DConditionModel(**teacher_unet.config)
     # load teacher_unet weights into unet
     unet.load_state_dict(teacher_unet.state_dict(), strict=False)
@@ -1273,7 +1274,7 @@ def main(args):
 
                 # 5. Sample a random guidance scale w from U[w_min, w_max] and embed it
                 w = (args.w_max - args.w_min) * torch.rand((bsz,)) + args.w_min
-                w_embedding = guidance_scale_embedding(w, embedding_dim=unet.config.time_cond_proj_dim)
+                w_embedding = guidance_scale_embedding(w, embedding_dim=time_cond_proj_dim)
                 w = w.reshape(bsz, 1, 1, 1)
                 # Move to U-Net device and dtype
                 w = w.to(device=latents.device, dtype=latents.dtype)
