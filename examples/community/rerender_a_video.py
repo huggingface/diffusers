@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
-import sys
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
@@ -26,19 +26,19 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from diffusers.models.attention_processor import Attention, AttnProcessor
+from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
+from diffusers.pipelines.controlnet.pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate, logging
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
-from diffusers.pipelines.controlnet.pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
 
 
 gmflow_dir = "/path/to/gmflow"
 sys.path.insert(0, gmflow_dir)
-from utils.utils import InputPadder
-from gmflow.gmflow import GMFlow
+from gmflow.gmflow import GMFlow # noqa: E402
+from utils.utils import InputPadder # noqa: E402
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -199,7 +199,7 @@ class AttnState:
 
     def to_load(self):
         self.__state = AttnState.LOAD
-        
+
     def to_load_and_store_prev(self):
         self.__state = AttnState.LOAD_AND_STORE_PREV
 
@@ -861,7 +861,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                 controlnet, ControlNetModel) else keeps)
 
         first_x0_list = []
-        
+
         # 4.7 Denoising loop
         num_warmup_steps = len(timesteps) - \
             cur_num_inference_steps * self.scheduler.order
@@ -1237,7 +1237,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
                     num_inference_steps, device=device)
                 timesteps, cur_num_inference_steps = self.get_timesteps(
                     num_inference_steps, strength, device)
-                
+
                 self.attn_state.to_load_and_store_prev()
                 latents = denoising_loop(
                     init_latents, mask * mask_strength, xtrg, noise_rescale)
