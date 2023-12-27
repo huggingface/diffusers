@@ -63,6 +63,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import EMAModel
 from diffusers.utils import BaseOutput, check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -1032,6 +1033,11 @@ def parse_args():
     )
     # ----Exponential Moving Average (EMA)----
     parser.add_argument(
+        "--use_ema",
+        action="store_true",
+        help="Whether to also maintain an EMA version of the student U-Net weights."
+    )
+    parser.add_argument(
         "--ema_decay",
         type=float,
         default=0.95,
@@ -1297,6 +1303,18 @@ def main(args):
         args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
     )
 
+    # Make exponential moving average (EMA) version of the student unet weights, if using.
+    if args.use_ema:
+        ema_unet = UNet2DConditionModel.from_pretrained(
+            args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
+        )
+        ema_unet = EMAModel(
+            ema_unet.parameters(),
+            decay=args.ema_decay,
+            model_cls=UNet2DConditionModel,
+            model_config=ema_unet.config,
+        )
+
     # 7. Initialize GAN discriminator.
     # TODO: Confirm that using text_encoder_one here is correct
     discriminator = Discriminator(
@@ -1341,6 +1359,10 @@ def main(args):
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
     teacher_unet.to(accelerator.device, dtype=weight_dtype)
 
+    # Move target (EMA) unet to device but keep in full precision
+    if args.use_ema:
+        ema_unet.to(accelerator.device)
+
     # Also move the denoiser and schedules to accelerator.device
     denoiser.to(accelerator.device)
     train_weight_schedule = train_weight_schedule.to(accelerator.device)
@@ -1352,7 +1374,8 @@ def main(args):
         # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
         def save_model_hook(models, weights, output_dir):
             if accelerator.is_main_process:
-                # target_unet.save_pretrained(os.path.join(output_dir, "unet_target"))
+                if args.use_ema:
+                    ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
                 for i, model in enumerate(models):
                     model.save_pretrained(os.path.join(output_dir, "unet"))
@@ -1361,10 +1384,11 @@ def main(args):
                     weights.pop()
 
         def load_model_hook(models, input_dir):
-            # load_model = UNet2DConditionModel.from_pretrained(os.path.join(input_dir, "unet_target"))
-            # target_unet.load_state_dict(load_model.state_dict())
-            # target_unet.to(accelerator.device)
-            # del load_model
+            if args.use_ema:
+                load_model = EMAModel.from_pretrained(os.path.join(input_dir, "unet_ema"), UNet2DConditionModel)
+                ema_unet.load_state_dict(load_model.state_dict())
+                ema_unet.to(accelerator.device)
+                del load_model
 
             for i in range(len(models)):
                 # pop models so that they are not loaded again
@@ -1777,6 +1801,9 @@ def main(args):
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                # 12. Perform an EMA update on the EMA version of the student U-Net weights.
+                if args.use_ema:
+                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
 
@@ -1807,7 +1834,16 @@ def main(args):
                         logger.info(f"Saved state to {save_path}")
 
                     if global_step % args.validation_steps == 0:
-                        # log_validation(vae, target_unet, args, accelerator, weight_dtype, global_step, "target")
+                        if args.use_ema:
+                            # Store the student unet weights and load the EMA weights.
+                            ema_unet.store(unet.parameters())
+                            ema_unet.copy_to(unet.parameters())
+
+                            log_validation(vae, ema_unet, args, accelerator, weight_dtype, global_step, "ema_student")
+
+                            # Restore student unet weights
+                            ema_unet.restore(unet.parameters())
+
                         log_validation(vae, unet, args, accelerator, weight_dtype, global_step, "student")
 
             logs = {
@@ -1834,6 +1870,15 @@ def main(args):
     if accelerator.is_main_process:
         unet = accelerator.unwrap_model(unet)
         unet.save_pretrained(os.path.join(args.output_dir, "unet"))
+
+        # If using EMA, save EMA weights as well.
+        if args.use_ema:
+            ema_unet.store(unet.parameters())
+            ema_unet.copy_to(unet.parameters())
+
+            unet.save_pretrained(os.path.join(args.output_dir, "ema_unet"))
+
+            ema_unet.restore(unet.parameters())
 
     accelerator.end_training()
 
