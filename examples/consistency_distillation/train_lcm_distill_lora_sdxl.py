@@ -1248,7 +1248,7 @@ def main(args):
                     x_prev = solver.ddim_step(pred_x0, pred_noise, index).to(unet.dtype)
 
                 # re-enable unet adapters to turn the `unet` into a student unet.
-                accelerator.unwrap_model(unet).disable_adapters()
+                accelerator.unwrap_model(unet).enable_adapters()
 
                 # 9. Get target LCM prediction on x_prev, w, c, t_n (timesteps)
                 # Note that we do not use a separate target network for LCM-LoRA distillation.
