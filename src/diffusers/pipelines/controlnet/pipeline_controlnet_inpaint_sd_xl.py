@@ -633,7 +633,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-        
+
         if padding_mask_crop is not None:
             if self.unet.config.in_channels != 4:
                 raise ValueError(
