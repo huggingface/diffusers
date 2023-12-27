@@ -123,7 +123,6 @@ class Attention(nn.Module):
         self.dropout = dropout
         self.fused_projections = False
         self.out_dim = out_dim if out_dim is not None else query_dim
-        # self._explicitly_mark_as_cross_attention = _explicitly_mark_as_cross_attention
 
         # we make use of this private variable to know whether this class is loaded
         # with an deprecated state dict so that we can convert it on the fly
