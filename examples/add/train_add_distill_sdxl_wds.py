@@ -1241,9 +1241,11 @@ def main(args):
             sorted([int(timestep.strip()) for timestep in args.student_custom_timesteps.split(",")]), dtype=np.int64
         )
     elif args.student_timestep_schedule == "uniform":
-        student_timestep_schedule = np.linspace(
-            0, noise_scheduler.config.num_train_timesteps - 1, args.student_distillation_steps
-        ).round().astype(np.int64)
+        student_timestep_schedule = (
+            np.linspace(0, noise_scheduler.config.num_train_timesteps - 1, args.student_distillation_steps)
+            .round()
+            .astype(np.int64)
+        )
     else:
         raise ValueError(
             f"Student timestep schedule {args.student_timestep_schedule} was not recognized and custom student"
