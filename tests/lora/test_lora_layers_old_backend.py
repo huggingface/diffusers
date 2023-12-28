@@ -378,7 +378,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
-        sd_pipe.set_default_attn_processor()
+        sd_pipe.unet.set_default_attn_processor()
 
         # forward 1
         _, _, inputs = self.get_dummy_inputs()
