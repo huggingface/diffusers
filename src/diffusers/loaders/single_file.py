@@ -219,7 +219,7 @@ def build_additional_components(
         )
         return paint_by_example_components
 
-    if pipeline_class_name == "StableDiffusionXLImg2ImgPipeline":
+    if pipeline_class_name in ["StableDiffusionXLImg2ImgPipeline", "StableDiffusionXLInpaintPipeline"]:
         model_type = infer_model_type(pipeline_class_name, original_config)
         is_refiner = model_type == "SDXL-Refiner"
         return {
