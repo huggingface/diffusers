@@ -818,6 +818,7 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
         sd_pipe = StableDiffusionInpaintPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe.unet.set_default_attn_processor()
 
         # forward 1
         inputs = self.get_dummy_inputs(device)
@@ -826,14 +827,7 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
         image_slice = image[0, -3:, -3:, -1]
 
         # set lora layers
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            LoraLoaderMixin.save_lora_weights(
-                save_directory=tmpdirname,
-                unet_lora_layers=lora_components["unet_lora_params"],
-                text_encoder_lora_layers=lora_components["text_encoder_lora_params"],
-            )
-            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
-            sd_pipe.load_lora_weights(tmpdirname)
+        sd_pipe.unet.load_attn_procs(lora_components["unet_lora_params"])
 
         # forward 2
         inputs = self.get_dummy_inputs(device)
