@@ -1318,6 +1318,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe.unet.set_default_attn_processor()
 
         _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
         original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
