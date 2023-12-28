@@ -94,7 +94,7 @@ accelerate launch train_lcm_distill_lora_sd_wds.py \
     --mixed_precision=fp16 \
     --resolution=512 \
     --lora_rank=64 \
-    --learning_rate=1e-6 --loss_type="huber" --adam_weight_decay=0.0 \
+    --learning_rate=1e-4 --loss_type="huber" --adam_weight_decay=0.0 \
     --max_train_steps=1000 \
     --max_train_samples=4000000 \
     --dataloader_num_workers=8 \
