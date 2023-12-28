@@ -623,7 +623,7 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
         sem_guidance: Optional[List[torch.Tensor]] = None,
         use_cross_attn_mask: bool = False,
         use_intersect_mask: bool = True,
-        user_mask: Optional[torch.FloatTensor] = None,  # TODO: device?
+        user_mask: Optional[torch.FloatTensor] = None,
         attn_store_steps: Optional[List[int]] = [],
         store_averaged_over_steps: bool = True,
     ):
@@ -709,6 +709,9 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
         if use_cross_attn_mask:
             self.smoothing = GaussianSmoothing(device)
 
+        if user_mask is not None:
+            user_mask = user_mask.to(self.device)
+
         # 1. Check inputs. Raise error if not correct
         # TODO
         # self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
@@ -769,7 +772,7 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
             intermediate_images,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 6. Prepare extra step kwargs.
         extra_step_kwargs = self.prepare_extra_step_kwargs(eta)
 
         # HACK: see comment in `enable_model_cpu_offload`
@@ -1059,6 +1062,7 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
         skip: float = 0.15,
         generator: Optional[torch.Generator] = None,
         clean_caption: bool = True,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         The function to the pipeline for image inversion as described by the [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
@@ -1088,6 +1092,10 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
                 inversion deterministic.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided prompts before encoding.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
 
         Returns:
             [`~pipelines.ledits_pp.LEditsPPInversionPipelineOutput`]:
@@ -1173,7 +1181,7 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
                     model_input,
                     timestep=t,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=None,  # TODO
+                    cross_attention_kwargs=cross_attention_kwargs,
                     return_dict=False,
                 )[0]
 

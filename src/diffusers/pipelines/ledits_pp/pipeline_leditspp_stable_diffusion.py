@@ -333,6 +333,7 @@ class LEditsPPPipelineStableDiffusion(
         return extra_step_kwargs
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
+    # TODO
     def check_inputs(
         self,
         callback_steps,
@@ -723,7 +724,6 @@ class LEditsPPPipelineStableDiffusion(
         num_images_per_prompt = 1
         latents = self.init_latents
 
-        use_ddpm = True
         zs = self.zs
         reset_dpm(self.scheduler)
 
@@ -732,6 +732,9 @@ class LEditsPPPipelineStableDiffusion(
 
         if use_cross_attn_mask:
             self.smoothing = GaussianSmoothing(self.device)
+
+        if user_mask is not None:
+            user_mask = user_mask.to(self.device)
 
         org_prompt = ""
 
@@ -808,10 +811,7 @@ class LEditsPPPipelineStableDiffusion(
         # 4. Prepare timesteps
         # self.scheduler.set_timesteps(num_inference_steps, device=self.device)
         timesteps = self.scheduler.inversion_steps
-
-        if use_ddpm:
-            t_to_idx = {int(v): k for k, v in enumerate(timesteps[-zs.shape[0] :])}
-            assert len(timesteps) == zs.shape[0]
+        t_to_idx = {int(v): k for k, v in enumerate(timesteps[-zs.shape[0] :])}
 
         if use_cross_attn_mask:
             self.attention_store = AttentionStore(
@@ -1121,6 +1121,8 @@ class LEditsPPPipelineStableDiffusion(
         num_inversion_steps: int = 30,
         skip: float = 0.15,
         generator: Optional[torch.Generator] = None,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        clip_skip: Optional[int] = None,
     ):
         r"""
         The function to the pipeline for image inversion as described by the [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
@@ -1144,6 +1146,12 @@ class LEditsPPPipelineStableDiffusion(
             generator (`torch.Generator`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 inversion deterministic.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
+                [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Returns:
             [`~pipelines.ledits_pp.LEditsPPInversionPipelineOutput`]:
@@ -1171,13 +1179,16 @@ class LEditsPPPipelineStableDiffusion(
         # 2. get embeddings
         do_classifier_free_guidance = source_guidance_scale > 1.0
 
+        lora_scale = cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
+
         uncond_embedding, text_embeddings, _ = self.encode_prompt(
             num_images_per_prompt=1,
             device=self.device,
             negative_prompt=None,
             enable_edit_guidance=do_classifier_free_guidance,
             editing_prompt=source_prompt,
-            # TODO: lora and clip_skip
+            lora_scale=lora_scale,
+            clip_skip=clip_skip,
         )
 
         # 3. find zs and xts

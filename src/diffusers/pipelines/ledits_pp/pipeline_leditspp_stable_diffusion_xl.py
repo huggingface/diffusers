@@ -941,6 +941,9 @@ class LEditsPPPipelineStableDiffusionXL(
         if use_cross_attn_mask:
             self.smoothing = GaussianSmoothing(self.device)
 
+        if user_mask is not None:
+            user_mask = user_mask.to(self.device)
+
         # TODO: Check inputs
         # 1. Check inputs. Raise error if not correct
         # self.check_inputs(
@@ -1403,6 +1406,7 @@ class LEditsPPPipelineStableDiffusionXL(
         generator: Optional[torch.Generator] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         num_zero_noise_steps: int = 3,
+        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         The function to the pipeline for image inversion as described by the [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
@@ -1441,6 +1445,10 @@ class LEditsPPPipelineStableDiffusionXL(
             num_zero_noise_steps (`int`, defaults to `3`):
                 Number of final diffusion steps that will not renoise the current image. If no steps are set to zero
                 SD-XL in combination with [`DPMSolverMultistepScheduler`] will produce noise artifacts.
+            cross_attention_kwargs (`dict`, *optional*):
+                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
+                `self.processor` in
+                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
 
         Returns:
             [`~pipelines.ledits_pp.LEditsPPInversionPipelineOutput`]:
@@ -1457,8 +1465,6 @@ class LEditsPPPipelineStableDiffusionXL(
         self.scheduler.set_timesteps(int(num_inversion_steps * (1 + skip)))
         self.scheduler.inversion_steps = self.scheduler.timesteps[-num_inversion_steps:]
         timesteps = self.scheduler.inversion_steps
-
-        cross_attention_kwargs = None  # TODO
 
         num_images_per_prompt = 1
 
