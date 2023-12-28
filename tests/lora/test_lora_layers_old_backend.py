@@ -1128,11 +1128,9 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         # corrupt one LoRA weight with `inf` values
         with torch.no_grad():
-            print(sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight.data[0, :3])
             sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight += float(
                 "NaN"
             )
-            print(sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight.data[0, :3])
 
         # with `safe_fusing=True` we should see an Error
         with self.assertRaises(ValueError):

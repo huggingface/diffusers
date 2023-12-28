@@ -387,8 +387,6 @@ class LoRACompatibleLinear(nn.Linear):
         w_up = self.lora_layer.up.weight.data.float()
         w_down = self.lora_layer.down.weight.data.float()
 
-        print(w_down[0, :3], torch.isnan(w_down).any().item())
-
         if self.lora_layer.network_alpha is not None:
             w_up = w_up * self.lora_layer.network_alpha / self.lora_layer.rank
 
