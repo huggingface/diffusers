@@ -916,7 +916,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         _, unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
-        
+
         if modify_text_encoder:
             text_encoder_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
                 text_encoder, dtype=torch.float32, rank=self.lora_rank
@@ -931,7 +931,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
                 text_encoder_lora_state_dict(text_encoder_2), randn_weight=True, var=0.1
             )
         else:
-            text_encoder_lora_params = None 
+            text_encoder_lora_params = None
             text_encoder_two_lora_params = None
 
         pipeline_components = {
