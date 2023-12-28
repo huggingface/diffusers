@@ -122,7 +122,6 @@ def text_encoder_lora_state_dict(text_encoder):
 
 
 def create_unet_lora_layers(unet: nn.Module, rank=4, is_3d=False, mock_weights=True):
-    unet_lora_parameters = []
     in_features = None
 
     for attn_processor_name, attn_processor in unet.attn_processors.items():
@@ -171,12 +170,6 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, is_3d=False, mock_weights=T
                 attn_module.to_k.lora_layer.up.weight += 1
                 attn_module.to_v.lora_layer.up.weight += 1
                 attn_module.to_out[0].lora_layer.up.weight += 1
-
-        # Accumulate the LoRA params to optimize.
-        unet_lora_parameters.extend(attn_module.to_q.lora_layer.parameters())
-        unet_lora_parameters.extend(attn_module.to_k.lora_layer.parameters())
-        unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
-        unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
 
     return unet_lora_state_dict(unet)
 
@@ -385,6 +378,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = StableDiffusionPipeline(**components)
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
+        sd_pipe.set_default_attn_processor()
 
         # forward 1
         _, _, inputs = self.get_dummy_inputs()
@@ -395,14 +389,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
 
         # set lora layers
         sd_pipe.unet.load_attn_procs(lora_components["unet_lora_params"])
-        # with tempfile.TemporaryDirectory() as tmpdirname:
-        #     LoraLoaderMixin.save_lora_weights(
-        #         save_directory=tmpdirname,
-        #         unet_lora_layers=lora_components["unet_lora_params"],
-        #         text_encoder_lora_layers=None,
-        #     )
-        #     self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
-        #     sd_pipe.load_lora_weights(tmpdirname)
 
         # forward 2
         _, _, inputs = self.get_dummy_inputs()
