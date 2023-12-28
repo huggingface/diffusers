@@ -61,33 +61,6 @@ from diffusers.utils.testing_utils import (
 )
 
 
-# def create_lora_layers(model, mock_weights: bool = True):
-#     lora_attn_procs = {}
-#     for name in model.attn_processors.keys():
-#         cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-#         if name.startswith("mid_block"):
-#             hidden_size = model.config.block_out_channels[-1]
-#         elif name.startswith("up_blocks"):
-#             block_id = int(name[len("up_blocks.")])
-#             hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-#         elif name.startswith("down_blocks"):
-#             block_id = int(name[len("down_blocks.")])
-#             hidden_size = model.config.block_out_channels[block_id]
-
-#         lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-#         lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
-#         if mock_weights:
-#             # add 1 to weights to mock trained weights
-#             with torch.no_grad():
-#                 lora_attn_procs[name].to_q_lora.up.weight += 1
-#                 lora_attn_procs[name].to_k_lora.up.weight += 1
-#                 lora_attn_procs[name].to_v_lora.up.weight += 1
-#                 lora_attn_procs[name].to_out_lora.up.weight += 1
-
-#     return lora_attn_procs
-
-
 def text_encoder_attn_modules(text_encoder):
     attn_modules = []
 
@@ -192,12 +165,6 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         for n in attn_processor_name.split(".")[:-1]:
             attn_module = getattr(attn_module, n)
 
-        # Set the `lora_layer` attribute of the attention-related matrices.
-        # print(f"Hidden size != attn_module.to_q.in_features: {hidden_size != attn_module.to_q.in_features}")
-        # print(f"Hidden size != attn_module.to_k.in_features: {hidden_size != attn_module.to_k.in_features}")
-        # print(f"Hidden size != attn_module.to_v.in_features: {hidden_size != attn_module.to_v.in_features}")
-        # print(f"Hidden size != attn_module.to_out[0].in_features: {hidden_size != attn_module.to_out[0].in_features}")
-
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
                 in_features=min(attn_module.to_q.in_features, hidden_size),
@@ -243,62 +210,6 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
                 attn_module.to_out[0].lora_layer.up.weight += 1
 
     return unet_lora_state_dict(unet)
-
-
-# def create_text_encoder_lora_attn_procs(text_encoder: nn.Module):
-#     text_lora_attn_procs = {}
-#     lora_attn_processor_class = (
-#         LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
-#     )
-#     for name, module in text_encoder_attn_modules(text_encoder):
-#         if isinstance(module.out_proj, nn.Linear):
-#             out_features = module.out_proj.out_features
-#         elif isinstance(module.out_proj, PatchedLoraProjection):
-#             out_features = module.out_proj.regular_linear_layer.out_features
-#         else:
-#             assert False, module.out_proj.__class__
-
-#         text_lora_attn_procs[name] = lora_attn_processor_class(hidden_size=out_features, cross_attention_dim=None)
-#     return text_lora_attn_procs
-
-
-# def create_text_encoder_lora_layers(text_encoder: nn.Module):
-#     text_lora_attn_procs = create_text_encoder_lora_attn_procs(text_encoder)
-#     text_encoder_lora_layers = AttnProcsLayers(text_lora_attn_procs)
-#     return text_encoder_lora_layers
-
-
-# def create_lora_3d_layers(model, mock_weights: bool = True):
-#     lora_attn_procs = {}
-#     for name in model.attn_processors.keys():
-#         has_cross_attention = name.endswith("attn2.processor") and not (
-#             name.startswith("transformer_in") or "temp_attentions" in name.split(".")
-#         )
-#         cross_attention_dim = model.config.cross_attention_dim if has_cross_attention else None
-#         if name.startswith("mid_block"):
-#             hidden_size = model.config.block_out_channels[-1]
-#         elif name.startswith("up_blocks"):
-#             block_id = int(name[len("up_blocks.")])
-#             hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-#         elif name.startswith("down_blocks"):
-#             block_id = int(name[len("down_blocks.")])
-#             hidden_size = model.config.block_out_channels[block_id]
-#         elif name.startswith("transformer_in"):
-#             # Note that the `8 * ...` comes from: https://github.com/huggingface/diffusers/blob/7139f0e874f10b2463caa8cbd585762a309d12d6/src/diffusers/models/unet_3d_condition.py#L148
-#             hidden_size = 8 * model.config.attention_head_dim
-
-#         lora_attn_procs[name] = LoRAAttnProcessor(hidden_size=hidden_size, cross_attention_dim=cross_attention_dim)
-#         lora_attn_procs[name] = lora_attn_procs[name].to(model.device)
-
-#         if mock_weights:
-#             # add 1 to weights to mock trained weights
-#             with torch.no_grad():
-#                 lora_attn_procs[name].to_q_lora.up.weight += 1
-#                 lora_attn_procs[name].to_k_lora.up.weight += 1
-#                 lora_attn_procs[name].to_v_lora.up.weight += 1
-#                 lora_attn_procs[name].to_out_lora.up.weight += 1
-
-#     return lora_attn_procs
 
 
 def set_lora_weights(lora_attn_parameters, randn_weight=False, var=1.0):
