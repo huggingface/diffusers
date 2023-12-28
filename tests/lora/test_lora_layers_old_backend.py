@@ -202,22 +202,22 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         )
         attn_module.to_k.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_k.in_features,
+                in_features=hidden_size,
                 out_features=attn_module.to_k.out_features if cross_attention_dim is None else cross_attention_dim,
                 rank=rank,
             )
         )
         attn_module.to_v.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_v.in_features,
+                in_features=hidden_size,
                 out_features=attn_module.to_v.out_features if cross_attention_dim is None else cross_attention_dim,
                 rank=rank,
             )
         )
         attn_module.to_out[0].set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_out[0].in_features,
-                out_features=attn_module.to_out[0].out_features
+                in_features=hidden_size,
+                out_features=attn_module.to_out[0].out_features 
                 if cross_attention_dim is None
                 else cross_attention_dim,
                 rank=rank,
