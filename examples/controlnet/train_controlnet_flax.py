@@ -907,14 +907,11 @@ def main():
 
             if args.snr_gamma is not None:
                 snr = jnp.array(compute_snr(timesteps))
+                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma)
                 if noise_scheduler.config.prediction_type == "epsilon":
-                    snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
+                    snr_loss_weights = snr_loss_weights / snr
                 elif noise_scheduler.config.prediction_type == "v_prediction":
-                    snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / (
-                        snr + 1
-                    )
-                else:
-                    raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
+                    snr_loss_weights = snr_loss_weights / (snr + 1)
 
                 loss = loss * snr_loss_weights
 
