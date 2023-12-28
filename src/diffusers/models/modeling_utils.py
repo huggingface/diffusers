@@ -149,8 +149,8 @@ def load_model_dict_into_meta(
             unexpected_keys.append(param_name)
             continue
         
-        print(f"load_model_dict_into_meta param_name {param_name}")
         if empty_state_dict[param_name].shape != param.shape:
+            print(f"load_model_dict_into_meta param_name {param_name}")
             model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""
             raise ValueError(
                 f"Cannot load {model_name_or_path_str}because {param_name} expected shape {empty_state_dict[param_name]}, but got {param.shape}. If you want to instead overwrite randomly initialized weights, please make sure to pass both `low_cpu_mem_usage=False` and `ignore_mismatched_sizes=True`. For more information, see also: https://github.com/huggingface/diffusers/issues/1619#issuecomment-1345604389 as an example."
