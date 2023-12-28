@@ -31,8 +31,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from transformers import CLIPTextModel, CLIPTokenizer
 
-if is_wandb_available():
-    import wandb
+import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.13.0.dev0")
