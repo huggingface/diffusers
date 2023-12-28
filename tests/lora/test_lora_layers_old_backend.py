@@ -40,7 +40,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet3DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin
+from diffusers.loaders import LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin, text_encoder_lora_state_dict
 from diffusers.models.attention_processor import (
     Attention,
     AttnProcessor,
@@ -276,6 +276,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         text_encoder_lora_params = LoraLoaderMixin._modify_text_encoder(
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
+        text_encoder_lora_params = text_encoder_lora_state_dict(text_encoder_lora_params)
 
         pipeline_components = {
             "unet": unet,
@@ -775,6 +776,7 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
         text_encoder_lora_params = LoraLoaderMixin._modify_text_encoder(
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
+        text_encoder_lora_params = text_encoder_lora_state_dict(text_encoder_lora_params)
 
         components = {
             "unet": unet,
@@ -894,9 +896,11 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         text_encoder_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
+        text_encoder_lora_params = text_encoder_lora_state_dict(text_encoder_lora_params)
         text_encoder_two_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
             text_encoder_2, dtype=torch.float32, rank=self.lora_rank
         )
+        text_encoder_two_lora_params = text_encoder_lora_state_dict(text_encoder_two_lora_params)
 
         pipeline_components = {
             "unet": unet,
