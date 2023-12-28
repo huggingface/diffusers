@@ -90,6 +90,7 @@ from diffusers.utils.testing_utils import (
 
 def text_encoder_attn_modules(text_encoder):
     attn_modules = []
+    print(f"text encoder type: {type(text_encoder)}")
 
     if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
         for i, layer in enumerate(text_encoder.text_model.encoder.layers):
