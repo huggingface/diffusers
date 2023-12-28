@@ -197,11 +197,12 @@ class TimestepEmbedding(nn.Module):
         out_dim: int = None,
         post_act_fn: Optional[str] = None,
         cond_proj_dim=None,
+        sample_proj_bias=True,
     ):
         super().__init__()
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
-        self.linear_1 = linear_cls(in_channels, time_embed_dim)
+        self.linear_1 = linear_cls(in_channels, time_embed_dim, sample_proj_bias)
 
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
@@ -214,7 +215,7 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = out_dim
         else:
             time_embed_dim_out = time_embed_dim
-        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out)
+        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out, sample_proj_bias)
 
         if post_act_fn is None:
             self.post_act = None
@@ -459,6 +460,18 @@ class ImageProjection(nn.Module):
         image_embeds = image_embeds.reshape(batch_size, self.num_image_text_embeds, -1)
         image_embeds = self.norm(image_embeds)
         return image_embeds
+
+
+class MLPProjection(nn.Module):
+    def __init__(self, image_embed_dim=1024, cross_attention_dim=1024):
+        super().__init__()
+        from .attention import FeedForward
+
+        self.ff = FeedForward(image_embed_dim, cross_attention_dim, mult=1, activation_fn="gelu")
+        self.norm = nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds: torch.FloatTensor):
+        return self.norm(self.ff(image_embeds))
 
 
 class CombinedTimestepLabelEmbeddings(nn.Module):
@@ -717,7 +730,7 @@ class PositionNet(nn.Module):
         return objs
 
 
-class CombinedTimestepSizeEmbeddings(nn.Module):
+class PixArtAlphaCombinedTimestepSizeEmbeddings(nn.Module):
     """
     For PixArt-Alpha.
 
@@ -734,45 +747,27 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
 
         self.use_additional_conditions = use_additional_conditions
         if use_additional_conditions:
-            self.use_additional_conditions = True
             self.additional_condition_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
             self.resolution_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
             self.aspect_ratio_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
-
-    def apply_condition(self, size: torch.Tensor, batch_size: int, embedder: nn.Module):
-        if size.ndim == 1:
-            size = size[:, None]
-
-        if size.shape[0] != batch_size:
-            size = size.repeat(batch_size // size.shape[0], 1)
-            if size.shape[0] != batch_size:
-                raise ValueError(f"`batch_size` should be {size.shape[0]} but found {batch_size}.")
-
-        current_batch_size, dims = size.shape[0], size.shape[1]
-        size = size.reshape(-1)
-        size_freq = self.additional_condition_proj(size).to(size.dtype)
-
-        size_emb = embedder(size_freq)
-        size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
-        return size_emb
 
     def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
         if self.use_additional_conditions:
-            resolution = self.apply_condition(resolution, batch_size=batch_size, embedder=self.resolution_embedder)
-            aspect_ratio = self.apply_condition(
-                aspect_ratio, batch_size=batch_size, embedder=self.aspect_ratio_embedder
-            )
-            conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
+            resolution_emb = self.additional_condition_proj(resolution.flatten()).to(hidden_dtype)
+            resolution_emb = self.resolution_embedder(resolution_emb).reshape(batch_size, -1)
+            aspect_ratio_emb = self.additional_condition_proj(aspect_ratio.flatten()).to(hidden_dtype)
+            aspect_ratio_emb = self.aspect_ratio_embedder(aspect_ratio_emb).reshape(batch_size, -1)
+            conditioning = timesteps_emb + torch.cat([resolution_emb, aspect_ratio_emb], dim=1)
         else:
             conditioning = timesteps_emb
 
         return conditioning
 
 
-class CaptionProjection(nn.Module):
+class PixArtAlphaTextProjection(nn.Module):
     """
     Projects caption embeddings. Also handles dropout for classifier-free guidance.
 
@@ -784,9 +779,8 @@ class CaptionProjection(nn.Module):
         self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
         self.act_1 = nn.GELU(approximate="tanh")
         self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
-        self.register_buffer("y_embedding", nn.Parameter(torch.randn(num_tokens, in_features) / in_features**0.5))
 
-    def forward(self, caption, force_drop_ids=None):
+    def forward(self, caption):
         hidden_states = self.linear_1(caption)
         hidden_states = self.act_1(hidden_states)
         hidden_states = self.linear_2(hidden_states)
