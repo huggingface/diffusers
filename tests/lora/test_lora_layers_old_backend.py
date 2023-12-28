@@ -622,13 +622,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
 
-        # Emulate training.
-        lora_components["text_encoder_lora_layers"] = set_lora_weights(
-            lora_components["text_encoder_lora_layers"],
-            randn_weight=True,
-            var=0.1,
-        )
-
         with tempfile.TemporaryDirectory() as tmpdirname:
             LoraLoaderMixin.save_lora_weights(
                 save_directory=tmpdirname,
