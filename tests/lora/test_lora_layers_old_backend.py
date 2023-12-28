@@ -202,21 +202,21 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
                 in_features=hidden_size,
-                out_features=attn_module.to_q.out_features if cross_attention_dim is None else cross_attention_dim,
+                out_features=attn_module.to_q.out_features if cross_attention_dim is None else max(attn_module.to_q.out_features, cross_attention_dim),
                 rank=rank,
             )
         )
         attn_module.to_k.set_lora_layer(
             LoRALinearLayer(
                 in_features=hidden_size,
-                out_features=attn_module.to_k.out_features if cross_attention_dim is None else cross_attention_dim,
+                out_features=attn_module.to_k.out_features if cross_attention_dim is None else max(attn_module.to_k.out_features, cross_attention_dim),
                 rank=rank,
             )
         )
         attn_module.to_v.set_lora_layer(
             LoRALinearLayer(
                 in_features=hidden_size,
-                out_features=attn_module.to_v.out_features if cross_attention_dim is None else cross_attention_dim,
+                out_features=attn_module.to_v.out_features if cross_attention_dim is None else max(attn_module.to_v.out_features, cross_attention_dim),
                 rank=rank,
             )
         )
@@ -225,7 +225,7 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
                 in_features=hidden_size,
                 out_features=attn_module.to_out[0].out_features
                 if cross_attention_dim is None
-                else cross_attention_dim,
+                else max(attn_module.to_out[0].out_features, cross_attention_dim),
                 rank=rank,
             )
         )
