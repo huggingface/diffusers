@@ -48,6 +48,7 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.models.lora import LoRALinearLayer
+from diffusers.training_utils import unet_lora_state_dict
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     deprecate_after_peft_backend,
@@ -144,7 +145,7 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, is_3d=False, mock_weights=T
         unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
         unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
 
-    return unet_lora_parameters
+    return unet_lora_state_dict(unet)
 
 
 # def create_text_encoder_lora_attn_procs(text_encoder: nn.Module):
