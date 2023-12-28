@@ -31,7 +31,14 @@ from ..utils import (
     logging,
 )
 from ..utils.import_utils import BACKENDS_MAPPING
-from .single_file_utils import download_from_original_stable_diffusion_ckpt, fetch_original_config
+from .single_file_utils import (
+    create_scheduler_components,
+    create_stable_unclip_components,
+    create_unet_model,
+    create_vae_model,
+    download_from_original_stable_diffusion_ckpt,
+    fetch_original_config,
+)
 
 
 if is_transformers_available():
@@ -43,26 +50,13 @@ if is_accelerate_available():
 logger = logging.get_logger(__name__)
 
 
-DIFFUSER_PIPELINE_CONFIGS = {
-    "StableDiffusionPipeline": None,
-    "StableDiffusionImg2ImgPipeline": None,
-    "StableDiffusionInpaintPipeline": None,
-    "StableDiffusionControlNetPipeline": None,
-}
-
 VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
-MODEL_TYPE_FROM_PIPELINE_CLASS = {
+TEXT_ENCODER_FROM_PIPELINE_CLASS = {
     "StableUnCLIPPipeline": "FrozenOpenCLIPEmbedder",
     "StableUnCLIPImg2ImgPipeline": "FrozenOpenCLIPEmbedder",
-}
-PIPELINE_COMPONENTS = {
-    "unet": ,
-    "vae": "AutoencoderKL",
-    "text_encoder": "CLIPTextModel",
-    "text_encoder_2": "CLIPTextModel",
-    "tokenizer": "CLIPTokenizer",
-    "tokenizer_2": "CLIPTokenizer",
-    "scheduler": "DiffusionScheduler",
+    "LDMTextToImagePipeline": "LDMTextToImage",
+    "PaintByExamplePipeline": "PaintByExample",
+    "StableDiffusion": "stable-diffusion",
 }
 
 
@@ -82,7 +76,16 @@ def check_valid_url(pretrained_model_link_or_path):
     return has_valid_url_prefix
 
 
-def download_model_checkpoint(ckpt_path, cache_dir=None, resume_download=False, force_download=False, proxies=None, local_files_only=None, token=None, revision=None):
+def download_model_checkpoint(
+    ckpt_path,
+    cache_dir=None,
+    resume_download=False,
+    force_download=False,
+    proxies=None,
+    local_files_only=None,
+    token=None,
+    revision=None,
+):
     # get repo_id and (potentially nested) file path of ckpt in repo
     repo_id = "/".join(ckpt_path.parts[:2])
     file_path = "/".join(ckpt_path.parts[2:])
@@ -125,48 +128,94 @@ def load_checkpoint(checkpoint_path_or_dict, device=None, from_safetensors=True)
     return checkpoint
 
 
-def infer_model_type(pipeline_class_name):
-    return MODEL_TYPE_FROM_PIPELINE_CLASS.get(pipeline_class_name, None)
-
-
-def build_component(pipeline_class_name, component_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
+def build_component(
+    pipeline_components,
+    pipeline_class_name,
+    component_name,
+    original_config,
+    checkpoint,
+    checkpoint_path_or_dict,
+    **kwargs,
+):
     if component_name in kwargs:
         return kwargs.pop(component_name, None)
 
-    if component_name == "unet":
-        unet = create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
-        return unet
+    if component_name in pipeline_components:
+        return {}
 
-    if component_name == "controlnet":
-        controlnet = create_controlnet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
-        return controlnet
+    if component_name == "unet":
+        unet_components = create_unet_model(
+            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        )
+        return unet_components
 
     if component_name == "vae":
-        vae = create_vae_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, model_type, image_size, **kwargs)
-        return vae
+        vae_components = create_vae_model(
+            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        )
+        return vae_components
 
-    if component_name in ["text_encoder", "text_encoder_2"]:
-        text_encoder = create_text_encoder_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
-        return text_encoder
+    if component_name == "controlnet":
+        controlnet_components = create_controlnet_model(
+            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        )
+        return controlnet_components
 
-    if component_name in ["tokenizer", "tokenizer_2"]:
-        tokenizer = create_tokenizer(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
-        return tokenizer
+    if component_name == "adapter":
+        adapter_components = create_adapter_model(
+            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        )
+        return adapter_components
 
     if component_name == "scheduler":
-        scheduler = create_scheduler(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
-        return scheduler
+        scheduler_components = create_scheduler(
+            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        )
+        return scheduler_components
 
-    if component_name == "image_normalizer":
-        image_normalizer = create_image_normalizer(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
-        return image_normalizer
-
-    if component_name == "image_normalizer":
-        image_normalizer = create_image_normalizer(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs)
-        return image_normalizer
-
+    if component_name in ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]:
+        text_encoder_components = create_text_encoders_and_tokenizers(
+            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        )
+        return text_encoder_components
 
     return
+
+
+def build_additional_components(
+    pipeline_components,
+    pipeline_class_name,
+    component_name,
+    original_config,
+    checkpoint,
+    checkpoint_path_or_dict,
+    **kwargs,
+):
+    if component_name in kwargs:
+        return kwargs.pop(component_name, None)
+
+    if component_name in pipeline_components:
+        return {}
+
+    local_files_only = kwargs.pop("local_files_only", False)
+
+    if pipeline_class_name == ["StableUnCLIPPipeline", "StableUnCLIPImg2ImgPipeline"]:
+        stable_unclip_components = create_stable_unclip_components(
+            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        )
+        return stable_unclip_components
+
+    if pipeline_class_name == "LDMTextToImagePipeline":
+        ldm_text_to_image_components = create_ldm_text_to_image_components(
+            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        )
+        return ldm_text_to_image_components
+
+    if pipeline_class_name == "PaintByExamplePipeline":
+        paint_by_example_components = create_paint_by_example_components(
+            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        )
+        return paint_by_example_components
 
 
 class FromSingleFileMixin:
@@ -281,30 +330,22 @@ class FromSingleFileMixin:
         """
         original_config_file = kwargs.pop("original_config_file", None)
         config_files = kwargs.pop("config_files", None)
-        cache_dir = kwargs.pop("cache_dir", None)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
+        cache_dir = kwargs.pop("cache_dir", None)
+        local_files_only = kwargs.pop("local_files_only", None)
         revision = kwargs.pop("revision", None)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+        use_safetensors = kwargs.pop("use_safetensors", None)
+        load_safety_checker = kwargs.pop("load_safety_checker", True)
+
         extract_ema = kwargs.pop("extract_ema", False)
         image_size = kwargs.pop("image_size", None)
         scheduler_type = kwargs.pop("scheduler_type", "pndm")
         num_in_channels = kwargs.pop("num_in_channels", None)
         upcast_attention = kwargs.pop("upcast_attention", None)
-        load_safety_checker = kwargs.pop("load_safety_checker", True)
         prediction_type = kwargs.pop("prediction_type", None)
-        text_encoder = kwargs.pop("text_encoder", None)
-        text_encoder_2 = kwargs.pop("text_encoder_2", None)
-        vae = kwargs.pop("vae", None)
-        controlnet = kwargs.pop("controlnet", None)
-        adapter = kwargs.pop("adapter", None)
-        tokenizer = kwargs.pop("tokenizer", None)
-        tokenizer_2 = kwargs.pop("tokenizer_2", None)
-
-        torch_dtype = kwargs.pop("torch_dtype", None)
-
-        use_safetensors = kwargs.pop("use_safetensors", None)
 
         pipeline_name = cls.__name__
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
@@ -313,42 +354,7 @@ class FromSingleFileMixin:
         if from_safetensors and use_safetensors is False:
             raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
 
-        # TODO: For now we only support stable diffusion
-        stable_unclip = None
-        model_type = None
-
-        if pipeline_name in [
-            "StableDiffusionControlNetPipeline",
-            "StableDiffusionControlNetImg2ImgPipeline",
-            "StableDiffusionControlNetInpaintPipeline",
-        ]:
-            from ..models.controlnet import ControlNetModel
-            from ..pipelines.controlnet.multicontrolnet import MultiControlNetModel
-
-            #  list/tuple or a single instance of ControlNetModel or MultiControlNetModel
-            if not (
-                isinstance(controlnet, (ControlNetModel, MultiControlNetModel))
-                or isinstance(controlnet, (list, tuple))
-                and isinstance(controlnet[0], ControlNetModel)
-            ):
-                raise ValueError("ControlNet needs to be passed if loading from ControlNet pipeline.")
-        elif "StableDiffusion" in pipeline_name:
-            # Model type will be inferred from the checkpoint.
-            pass
-        elif pipeline_name == "StableUnCLIPPipeline":
-            model_type = "FrozenOpenCLIPEmbedder"
-            stable_unclip = "txt2img"
-        elif pipeline_name == "StableUnCLIPImg2ImgPipeline":
-            model_type = "FrozenOpenCLIPEmbedder"
-            stable_unclip = "img2img"
-        elif pipeline_name == "PaintByExamplePipeline":
-            model_type = "PaintByExample"
-        elif pipeline_name == "LDMTextToImagePipeline":
-            model_type = "LDMTextToImage"
-        else:
-            raise ValueError(f"Unhandled pipeline class: {pipeline_name}")
-
-        has_valid_url_prefix =  check_valid_url(pretrained_model_link_or_path)
+        has_valid_url_prefix = check_valid_url(pretrained_model_link_or_path)
 
         # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
         ckpt_path = Path(pretrained_model_link_or_path)
@@ -356,9 +362,16 @@ class FromSingleFileMixin:
             raise ValueError(
                 f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(VALID_URL_PREFIXES)}"
             )
-        pretrained_model_link_or_path = download_model_checkpoint(ckpt_path, cache_dir=cache_dir, resume_download=resume_download, proxies=proxies, local_files_only=local_files_only, token=token, revision=revision)
+        pretrained_model_link_or_path = download_model_checkpoint(
+            ckpt_path,
+            cache_dir=cache_dir,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+        )
         checkpoint = load_checkpoint(pretrained_model_link_or_path, from_safetensors=from_safetensors)
-        global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
 
         # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
         # "state_dict" key https://huggingface.co/thibaud/controlnet-canny-sd21
@@ -370,32 +383,15 @@ class FromSingleFileMixin:
 
         pipeline_components = {}
         for component in component_names:
-            pipeline_components[component] = build_component(pipeline_name, component, checkpoint, original_config, **kwargs)
+            components = build_component(
+                pipeline_components, pipeline_name, component, checkpoint, original_config, **kwargs
+            )
+            pipeline_components.update(components)
 
-        pipe = download_from_original_stable_diffusion_ckpt(
-            pretrained_model_link_or_path,
-            pipeline_class=cls,
-            model_type=model_type,
-            stable_unclip=stable_unclip,
-            controlnet=controlnet,
-            adapter=adapter,
-            from_safetensors=from_safetensors,
-            extract_ema=extract_ema,
-            image_size=image_size,
-            scheduler_type=scheduler_type,
-            num_in_channels=num_in_channels,
-            upcast_attention=upcast_attention,
-            load_safety_checker=load_safety_checker,
-            prediction_type=prediction_type,
-            text_encoder=text_encoder,
-            text_encoder_2=text_encoder_2,
-            vae=vae,
-            tokenizer=tokenizer,
-            tokenizer_2=tokenizer_2,
-            original_config_file=original_config_file,
-            config_files=config_files,
-            local_files_only=local_files_only,
-        )
+        additional_components = set(pipeline_components.keys() - component_names)
+        if additional_components:
+            components = build_additional_components(pipeline_name, component, checkpoint, original_config, **kwargs)
+            pipeline_components.update(components)
 
         pipe = cls(**pipeline_components)
 
