@@ -470,7 +470,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
     def free_init_enabled(self):
         return hasattr(self, "_free_init_num_iters") and self._free_init_num_iters is not None
 
-    def enable_freeinit(
+    def enable_free_init(
         self,
         num_iters: int = 3,
         use_fast_sampling: bool = False,
@@ -518,7 +518,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         self._free_init_generator = generator
         self._free_init_return_intermediate_results = return_intermediate_results
 
-    def disable_freeinit(self):
+    def disable_free_init(self):
         """Disables the FreeInit mechanism if enabled."""
         self._free_init_num_iters = None
 
@@ -920,15 +920,12 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
                         current_num_inference_steps = int(num_inference_steps / self._free_init_num_iters * (i + 1))
                         self.scheduler.set_timesteps(current_num_inference_steps, device=device)
                         timesteps = self.scheduler.timesteps
+                        denoise_args.update(
+                            {"timesteps": timesteps, "num_inference_steps": current_num_inference_steps}
+                        )
 
                     num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-                    denoise_args.update(
-                        {
-                            "timesteps": timesteps,
-                            "num_inference_steps": current_num_inference_steps,
-                            "latents": latents,
-                        }
-                    )
+                    denoise_args.update({"latents": latents, "num_warmup_steps": num_warmup_steps})
                     self._denoise_loop(**denoise_args)
 
                     # Whether or not to return intermediate generation results
