@@ -31,15 +31,15 @@ from transformers import (
     CLIPTextModel,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
-    CLIPVisionModel,
+    CLIPVisionConfig,
     CLIPVisionModelWithProjection,
-    CLIPVisionTextModel,
-    CLIPVisionTextModelWithProjection,
 )
 
 from ..models import AutoencoderKL, ControlNetModel, PriorTransformer, UNet2DConditionModel
+from ..pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
+from ..pipelines.paint_by_example import PaintByExampleImageEncoder
 from ..pipelines.pipeline_utils import DiffusionPipeline
-from ..pipelines.stable_unclip.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
+from ..pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from ..schedulers import (
     DDIMScheduler,
     DDPMScheduler,
@@ -1236,6 +1236,16 @@ def stable_unclip_image_noising_components(
     return image_normalizer, image_noising_scheduler
 
 
+def create_ldm_bert_config(original_config):
+    bert_params = original_config.model.params.cond_stage_config.params
+    config = LDMBertConfig(
+        d_model=bert_params.n_embed,
+        encoder_layers=bert_params.n_layer,
+        encoder_ffn_dim=bert_params.n_embed * 4,
+    )
+    return config
+
+
 def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, image_size, **kwargs):
     if "num_in_channels" in kwargs:
         num_in_channels = kwargs.get("num_in_channels")
@@ -1278,7 +1288,7 @@ def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoi
 
 
 def create_vae_model(original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
-    vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
+    vae_config = create_vae_diffusers_config(original_config)
     diffusers_format_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
@@ -1293,9 +1303,7 @@ def create_vae_model(original_config, checkpoint, checkpoint_path_or_dict, **kwa
     return vae
 
 
-def create_text_encoder_components(
-    pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
-):
+def create_text_encoder_tokenizer(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
     model_type = infer_model_type(pipeline_class_name, original_config)
     local_files_only = kwargs.get("local_files_only", False)
 
@@ -1395,10 +1403,17 @@ def create_text_encoder_components(
             "text_encoder_2": text_encoder_2,
         }
 
+    elif model_type == "LDMText2Image":
+        text_config = create_ldm_bert_config(original_config)
+        text_encoder = convert_ldm_bert_checkpoint(checkpoint, text_config)
+        tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased", local_files_only=local_files_only)
+
+        return {"text_encoder": text_encoder, "tokenizer": tokenizer}
+
     return
 
 
-def create_scheduler_component(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
+def create_scheduler(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
     scheduler_config = get_default_scheduler_config()
     model_type = infer_model_type(pipeline_class_name, original_config)
 
@@ -1468,8 +1483,6 @@ def create_scheduler_component(pipeline_class_name, original_config, checkpoint,
 def create_stable_unclip_components(
     pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
 ):
-    components = {}
-
     local_files_only = kwargs.get("local_files_only", False)
     clip_stats_path = kwargs.get("clip_stats_path", None)
 
@@ -1486,7 +1499,7 @@ def create_stable_unclip_components(
         try:
             config_name = "kakaobrain/karlo-v1-alpha"
             prior = PriorTransformer.from_pretrained(config_name, subfolder="prior", local_files_only=local_files_only)
-        except Exception as e:
+        except Exception:
             raise ValueError(
                 f"With local_files_only set to {local_files_only}, you must first locally save the prior in the following path: '{config_name}'."
             )

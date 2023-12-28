@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import importlib
 import inspect
 from contextlib import nullcontext
 from io import BytesIO
@@ -32,11 +31,15 @@ from ..utils import (
 )
 from ..utils.import_utils import BACKENDS_MAPPING
 from .single_file_utils import (
-    create_scheduler_components,
+    create_adapter_model,
+    create_controlnet_model,
+    create_ldm_text_to_image_components,
+    create_paint_by_example_components,
+    create_scheduler,
     create_stable_unclip_components,
+    create_text_encoders_and_tokenizers,
     create_unet_model,
     create_vae_model,
-    download_from_original_stable_diffusion_ckpt,
     fetch_original_config,
 )
 
@@ -197,8 +200,6 @@ def build_additional_components(
     if component_name in pipeline_components:
         return {}
 
-    local_files_only = kwargs.pop("local_files_only", False)
-
     if pipeline_class_name == ["StableUnCLIPPipeline", "StableUnCLIPImg2ImgPipeline"]:
         stable_unclip_components = create_stable_unclip_components(
             pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
@@ -270,42 +271,6 @@ class FromSingleFileMixin:
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
-            extract_ema (`bool`, *optional*, defaults to `False`):
-                Whether to extract the EMA weights or not. Pass `True` to extract the EMA weights which usually yield
-                higher quality images for inference. Non-EMA weights are usually better for continuing finetuning.
-            upcast_attention (`bool`, *optional*, defaults to `None`):
-                Whether the attention computation should always be upcasted.
-            image_size (`int`, *optional*, defaults to 512):
-                The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
-                Diffusion v2 base model. Use 768 for Stable Diffusion v2.
-            prediction_type (`str`, *optional*):
-                The prediction type the model was trained on. Use `'epsilon'` for all Stable Diffusion v1 models and
-                the Stable Diffusion v2 base model. Use `'v_prediction'` for Stable Diffusion v2.
-            num_in_channels (`int`, *optional*, defaults to `None`):
-                The number of input channels. If `None`, it is automatically inferred.
-            scheduler_type (`str`, *optional*, defaults to `"pndm"`):
-                Type of scheduler to use. Should be one of `["pndm", "lms", "heun", "euler", "euler-ancestral", "dpm",
-                "ddim"]`.
-            load_safety_checker (`bool`, *optional*, defaults to `True`):
-                Whether to load the safety checker or not.
-            text_encoder ([`~transformers.CLIPTextModel`], *optional*, defaults to `None`):
-                An instance of `CLIPTextModel` to use, specifically the
-                [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant. If this
-                parameter is `None`, the function loads a new instance of `CLIPTextModel` by itself if needed.
-            vae (`AutoencoderKL`, *optional*, defaults to `None`):
-                Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations. If
-                this parameter is `None`, the function will load a new instance of [CLIP] by itself, if needed.
-            tokenizer ([`~transformers.CLIPTokenizer`], *optional*, defaults to `None`):
-                An instance of `CLIPTokenizer` to use. If this parameter is `None`, the function loads a new instance
-                of `CLIPTokenizer` by itself if needed.
-            original_config_file (`str`):
-                Path to `.yaml` config file corresponding to the original architecture. If `None`, will be
-                automatically inferred by looking for a key that only exists in SD2.0 models.
-            kwargs (remaining dictionary of keyword arguments, *optional*):
-                Can be used to overwrite load and saveable variables (for example the pipeline components of the
-                specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
-                method. See example below for more information.
-
         Examples:
 
         ```py
@@ -338,14 +303,6 @@ class FromSingleFileMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         use_safetensors = kwargs.pop("use_safetensors", None)
-        load_safety_checker = kwargs.pop("load_safety_checker", True)
-
-        extract_ema = kwargs.pop("extract_ema", False)
-        image_size = kwargs.pop("image_size", None)
-        scheduler_type = kwargs.pop("scheduler_type", "pndm")
-        num_in_channels = kwargs.pop("num_in_channels", None)
-        upcast_attention = kwargs.pop("upcast_attention", None)
-        prediction_type = kwargs.pop("prediction_type", None)
 
         pipeline_name = cls.__name__
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
@@ -378,7 +335,7 @@ class FromSingleFileMixin:
         while "state_dict" in checkpoint:
             checkpoint = checkpoint["state_dict"]
 
-        original_config = fetch_original_config(checkpoint, config_files)
+        original_config = fetch_original_config(original_config_file, checkpoint, config_files)
         component_names = extract_pipeline_component_names(cls)
 
         pipeline_components = {}
