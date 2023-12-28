@@ -8,6 +8,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
+| Marigold Monocular Depth Estimation                                                                                                   | A universal monocular depth estimator, utilizing Stable Diffusion, delivering sharp predictions in the wild. (See the [project page](https://marigoldmonodepth.github.io) and [full codebase](https://github.com/prs-eth/marigold) for more details.)                                                                                                                                                                                                                                                        | [Marigold Depth Estimation](#marigold-depth-estimation)                                   | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/toshas/marigold) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/12G8reD13DdpMie5ZQlaFNo2WCGeNUH-u?usp=sharing) | [Bingxin Ke](https://github.com/markkua) and [Anton Obukhov](https://github.com/toshas) |
 | LLM-grounded Diffusion (LMD+)                                                                                                         | LMD greatly improves the prompt following ability of text-to-image generation models by introducing an LLM as a front-end prompt parser and layout planner. [Project page.](https://llm-grounded-diffusion.github.io/) [See our full codebase (also with diffusers).](https://github.com/TonyLianLong/LLM-groundedDiffusion)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [LLM-grounded Diffusion (LMD+)](#llm-grounded-diffusion)                             | [Huggingface Demo](https://huggingface.co/spaces/longlian/llm-grounded-diffusion) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SXzMSeAB-LJYISb2yrUOdypLz4OYWUKj) |                [Long (Tony) Lian](https://tonylian.com/) |
 | CLIP Guided Stable Diffusion                                                                                                          | Doing CLIP guidance for text to image generation with Stable Diffusion                                                                                                                                                                                                                                                                                                                                                                                                                                   | [CLIP Guided Stable Diffusion](#clip-guided-stable-diffusion)                             | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/CLIP_Guided_Stable_diffusion_with_diffusers.ipynb) |                [Suraj Patil](https://github.com/patil-suraj/) |
 | One Step U-Net (Dummy)                                                                                                                | Example showcasing of how to use Community Pipelines (see https://github.com/huggingface/diffusers/issues/841)                                                                                                                                                                                                                                                                                                                                                                                           | [One Step U-Net](#one-step-unet)                                                          | -                                                                                                                                                                                                                  |    [Patrick von Platen](https://github.com/patrickvonplaten/) |
@@ -41,7 +42,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 |   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon)
 |   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) |
-Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | - | [Andrew Zhu](https://xhinker.medium.com/) |
+| Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1LsqilswLR40XLLcp6XFOl5nKb_wOe26W?usp=sharing) | [Andrew Zhu](https://xhinker.medium.com/) |
 FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipeline](#stable-diffusion-fabric-pipeline) | - | [Shauray Singh](https://shauray8.github.io/about_shauray/) |
 sketch inpaint - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion Pipeline](#stable-diffusion-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) |
 prompt-to-prompt | change parts of a prompt and retain image structure (see [paper page](https://prompt-to-prompt.github.io/)) | [Prompt2Prompt Pipeline](#prompt2prompt-pipeline) | - | [Umer H. Adil](https://twitter.com/UmerHAdil) |
@@ -60,6 +61,53 @@ pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custo
 ```
 
 ## Example usages
+
+### Marigold Depth Estimation
+
+Marigold is a universal monocular depth estimator that delivers accurate and sharp predictions in the wild. Based on Stable Diffusion, it is trained exclusively with synthetic depth data and excels in zero-shot adaptation to real-world imagery. This pipeline is an official implementation of the inference process. More details can be found on our [project page](https://marigoldmonodepth.github.io) and [full codebase](https://github.com/prs-eth/marigold) (also implemented with diffusers).
+
+![Marigold Teaser](https://marigoldmonodepth.github.io/images/teaser_collage_compressed.jpg)
+
+This depth estimation pipeline processes a single input image through multiple diffusion denoising stages to estimate depth maps. These maps are subsequently merged to produce the final output. Below is an example code snippet, including optional arguments:
+
+```python
+import numpy as np
+from PIL import Image
+from diffusers import DiffusionPipeline
+from diffusers.utils import load_image
+
+pipe = DiffusionPipeline.from_pretrained(
+    "Bingxin/Marigold",
+    custom_pipeline="marigold_depth_estimation"
+    # torch_dtype=torch.float16,                # (optional) Run with half-precision (16-bit float).
+)
+
+pipe.to("cuda")
+
+img_path_or_url = "https://share.phys.ethz.ch/~pf/bingkedata/marigold/pipeline_example.jpg"
+image: Image.Image = load_image(img_path_or_url)
+
+pipeline_output = pipe(
+    image,                  # Input image.
+    # denoising_steps=10,     # (optional) Number of denoising steps of each inference pass. Default: 10.
+    # ensemble_size=10,       # (optional) Number of inference passes in the ensemble. Default: 10.
+    # processing_res=768,     # (optional) Maximum resolution of processing. If set to 0: will not resize at all. Defaults to 768.
+    # match_input_res=True,   # (optional) Resize depth prediction to match input resolution.
+    # batch_size=0,           # (optional) Inference batch size, no bigger than `num_ensemble`. If set to 0, the script will automatically decide the proper batch size. Defaults to 0.
+    # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral".
+    # show_progress_bar=True, # (optional) If true, will show progress bars of the inference progress.
+)
+
+depth: np.ndarray = pipeline_output.depth_np                    # Predicted depth map
+depth_colored: Image.Image = pipeline_output.depth_colored      # Colorized prediction
+
+# Save as uint16 PNG
+depth_uint16 = (depth * 65535.0).astype(np.uint16)
+Image.fromarray(depth_uint16).save("./depth_map.png", mode="I;16")
+
+# Save colorized depth map
+depth_colored.save("./depth_colored.png")
+```
 
 ### LLM-grounded Diffusion
 
@@ -1619,10 +1667,11 @@ This approach is using (optional) CoCa model to avoid writing image description.
 
 This SDXL pipeline support unlimited length prompt and negative prompt, compatible with A1111 prompt weighted style.
 
-You can provide both `prompt` and `prompt_2`. if only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline.
+You can provide both `prompt` and `prompt_2`. If only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline. 
 
 ```python
 from diffusers import DiffusionPipeline
+from diffusers.utils import load_image
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
@@ -1633,24 +1682,51 @@ pipe = DiffusionPipeline.from_pretrained(
     , custom_pipeline   = "lpw_stable_diffusion_xl",
 )
 
-prompt = "photo of a cute (white) cat running on the grass"*20
-prompt2 = "chasing (birds:1.5)"*20
+prompt = "photo of a cute (white) cat running on the grass" * 20
+prompt2 = "chasing (birds:1.5)" * 20
 prompt = f"{prompt},{prompt2}"
 neg_prompt = "blur, low quality, carton, animate"
 
 pipe.to("cuda")
-images = pipe(
-    prompt                  = prompt
-    , negative_prompt       = neg_prompt
-).images[0]
+
+# text2img
+t2i_images = pipe(
+    prompt=prompt,
+    negative_prompt=neg_prompt,
+).images # alternatively, you can call the .text2img() function
+
+# img2img
+input_image = load_image("/path/to/local/image.png") # or URL to your input image
+i2i_images = pipe.img2img(
+  prompt=prompt,
+  negative_prompt=neg_prompt,
+  image=input_image,
+  strength=0.8, # higher strength will result in more variation compared to original image
+).images
+
+# inpaint
+input_mask = load_image("/path/to/local/mask.png") # or URL to your input inpainting mask
+inpaint_images = pipe.inpaint(
+  prompt="photo of a cute (black) cat running on the grass" * 20,
+  negative_prompt=neg_prompt,
+  image=input_image,
+  mask=input_mask,
+  strength=0.6, # higher strength will result in more variation compared to original image
+).images
 
 pipe.to("cpu")
 torch.cuda.empty_cache()
-images
+
+from IPython.display import display # assuming you are using this code in a notebook
+display(t2i_images[0])
+display(i2i_images[0])
+display(inpaint_images[0])
 ```
 
 In the above code, the `prompt2` is appended to the `prompt`, which is more than 77 tokens. "birds" are showing up in the result.
 ![Stable Diffusion XL Long Weighted Prompt Pipeline sample](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_long_weighted_prompt.png)
+
+For more results, checkout [PR #6114](https://github.com/huggingface/diffusers/pull/6114).
 
 ## Example Images Mixing (with CoCa)
 ```python

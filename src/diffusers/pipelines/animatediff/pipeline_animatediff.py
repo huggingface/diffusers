@@ -61,7 +61,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
         >>> from diffusers.utils import export_to_gif
 
-        >>> adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter")
+        >>> adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
         >>> pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
         >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False)
         >>> output = pipe(prompt="A corgi walking in the park")
