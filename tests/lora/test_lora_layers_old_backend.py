@@ -626,7 +626,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
             LoraLoaderMixin.save_lora_weights(
                 save_directory=tmpdirname,
                 unet_lora_layers=lora_components["unet_lora_params"],
-                text_encoder_lora_layers=lora_components["text_encoder_lora_layers"],
+                text_encoder_lora_layers=lora_components["text_encoder_lora_params"],
             )
             self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.safetensors")))
             sd_pipe.load_lora_weights(tmpdirname)
