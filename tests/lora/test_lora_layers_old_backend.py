@@ -1128,6 +1128,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         # corrupt one LoRA weight with `inf` values
         with torch.no_grad():
+            print(sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight.data[0, :3])
             sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight += float(
                 "inf"
             )
