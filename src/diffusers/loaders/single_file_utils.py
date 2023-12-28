@@ -1263,6 +1263,20 @@ def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoi
     else:
         num_in_channels = 4
 
+    image_size = kwargs.get("image_size", 512)
+    global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
+
+    if pipeline_class_name == "StableDiffusionUpscalePipeline":
+        image_size = image_size or original_config.model.params.unet_config.params.image_size
+
+    elif (
+        "parameterization" in original_config["model"]["params"]
+        and original_config["model"]["params"]["parameterization"] == "v"
+    ):
+            # NOTE: For stable diffusion 2 base one has to pass `image_size==512`
+            # as it relies on a brittle global step parameter here
+            image_size = 512 if global_step == 875000 else 768
+
     upcast_attention = kwargs.get("upcast_attention", False)
     extract_ema = kwargs.get("extract_ema", False)
 
@@ -1492,16 +1506,19 @@ def create_scheduler(pipeline_class_name, original_config, checkpoint, checkpoin
     else:
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
-    """
-    elif model_type == "UpScale":
-        elif pipeline_class == StableDiffusionUpscalePipeline:
-            scheduler = DDIMScheduler.from_pretrained(
-                    "stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler"
-                )
-                low_res_scheduler = DDPMScheduler.from_pretrained(
-                    "stabilityai/stable-diffusion-x4-upscaler", subfolder="low_res_scheduler"
-                )
-    """
+    if pipeline_class_name == "StableDiffusionUpscalePipeline":
+        scheduler = DDIMScheduler.from_pretrained(
+            "stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler"
+        )
+        low_res_scheduler = DDPMScheduler.from_pretrained(
+            "stabilityai/stable-diffusion-x4-upscaler", subfolder="low_res_scheduler"
+        )
+
+        return {
+            "scheduler": scheduler,
+            "low_res_scheduler": low_res_scheduler,
+        }
+
     return {"scheduler": scheduler}
 
 
