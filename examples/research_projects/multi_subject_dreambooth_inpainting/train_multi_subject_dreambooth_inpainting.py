@@ -8,25 +8,24 @@ import random
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
-from tqdm.auto import tqdm
-
 import torch
 import torch.nn.functional as F
 import torch.utils.checkpoint
-from torch.utils.data import Dataset
-from torchvision import transforms
-
+import wandb
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import concatenate_datasets, load_dataset
-from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
-from diffusers.utils import check_min_version, is_wandb_available
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision import transforms
+from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 
-import wandb
+from diffusers import (AutoencoderKL, DDPMScheduler,
+                       StableDiffusionInpaintPipeline, UNet2DConditionModel)
+from diffusers.optimization import get_scheduler
+from diffusers.utils import check_min_version, is_wandb_available
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.13.0.dev0")
