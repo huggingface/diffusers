@@ -730,7 +730,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline):
             )
             gligen_phrases = gligen_phrases[:max_objs]
             gligen_boxes = gligen_boxes[:max_objs]
-        # prepare batched input to the PositionNet (boxes, phrases, mask)
+        # prepare batched input to the GLIGENTextBoundingboxProjection (boxes, phrases, mask)
         # Get tokens for phrases from pre-trained CLIPTokenizer
         tokenizer_inputs = self.tokenizer(gligen_phrases, padding=True, return_tensors="pt").to(device)
         # For the token, we use the same pre-trained text encoder
