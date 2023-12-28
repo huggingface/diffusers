@@ -148,7 +148,7 @@ def load_model_dict_into_meta(
         if param_name not in empty_state_dict:
             unexpected_keys.append(param_name)
             continue
-        
+
         if empty_state_dict[param_name].shape != param.shape:
             print(f"load_model_dict_into_meta param_name {param_name}")
             model_name_or_path_str = f"{model_name_or_path} " if model_name_or_path is not None else ""

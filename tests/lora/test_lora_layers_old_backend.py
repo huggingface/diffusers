@@ -185,7 +185,6 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
             hidden_size = unet.config.block_out_channels[block_id]
         elif attn_processor_name.startswith("transformer_in"):
             # Note that the `8 * ...` comes from: https://github.com/huggingface/diffusers/blob/7139f0e874f10b2463caa8cbd585762a309d12d6/src/diffusers/models/unet_3d_condition.py#L148
-            print("Within transformer_in")
             hidden_size = 8 * unet.config.attention_head_dim
 
         # Parse the attention module.
@@ -198,31 +197,37 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         # print(f"Hidden size != attn_module.to_k.in_features: {hidden_size != attn_module.to_k.in_features}")
         # print(f"Hidden size != attn_module.to_v.in_features: {hidden_size != attn_module.to_v.in_features}")
         # print(f"Hidden size != attn_module.to_out[0].in_features: {hidden_size != attn_module.to_out[0].in_features}")
-        
+
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
-                in_features=hidden_size,
-                out_features=attn_module.to_q.out_features if cross_attention_dim is None else max(attn_module.to_q.out_features, cross_attention_dim),
+                in_features=max(attn_module.to_q.in_features, hidden_size),
+                out_features=attn_module.to_q.out_features
+                if cross_attention_dim is None
+                else max(attn_module.to_q.out_features, cross_attention_dim),
                 rank=rank,
             )
         )
         attn_module.to_k.set_lora_layer(
             LoRALinearLayer(
-                in_features=hidden_size,
-                out_features=attn_module.to_k.out_features if cross_attention_dim is None else max(attn_module.to_k.out_features, cross_attention_dim),
+                in_features=max(attn_module.to_k.in_features, hidden_size),
+                out_features=attn_module.to_k.out_features
+                if cross_attention_dim is None
+                else max(attn_module.to_k.out_features, cross_attention_dim),
                 rank=rank,
             )
         )
         attn_module.to_v.set_lora_layer(
             LoRALinearLayer(
-                in_features=hidden_size,
-                out_features=attn_module.to_v.out_features if cross_attention_dim is None else max(attn_module.to_v.out_features, cross_attention_dim),
+                in_features=max(attn_module.to_v.in_features, hidden_size),
+                out_features=attn_module.to_v.out_features
+                if cross_attention_dim is None
+                else max(attn_module.to_v.out_features, cross_attention_dim),
                 rank=rank,
             )
         )
         attn_module.to_out[0].set_lora_layer(
             LoRALinearLayer(
-                in_features=hidden_size,
+                in_features=max(attn_module.to_out[0].in_features, hidden_size),
                 out_features=attn_module.to_out[0].out_features
                 if cross_attention_dim is None
                 else max(attn_module.to_out[0].out_features, cross_attention_dim),
