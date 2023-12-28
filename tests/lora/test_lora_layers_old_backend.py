@@ -618,6 +618,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         pipeline_components, lora_components = self.get_dummy_components()
         _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
         sd_pipe = StableDiffusionPipeline(**pipeline_components)
+        sd_pipe.unet.set_default_attn_processor()
 
         original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
@@ -998,6 +999,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         pipeline_components, lora_components = self.get_dummy_components()
         _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
+        sd_pipe.unet.set_default_attn_processor()
 
         original_images = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
         orig_image_slice = original_images[0, -3:, -3:, -1]
