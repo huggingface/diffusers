@@ -1132,6 +1132,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight += float(
                 "inf"
             )
+            print(sd_pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_layer.down.weight.data[0, :3])
 
         # with `safe_fusing=True` we should see an Error
         with self.assertRaises(ValueError):
