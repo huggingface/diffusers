@@ -462,7 +462,7 @@ class ImageProjection(nn.Module):
         return image_embeds
 
 
-class MLPProjection(nn.Module):
+class IPAdapterFullImageProjection(nn.Module):
     def __init__(self, image_embed_dim=1024, cross_attention_dim=1024, mult=1, num_tokens=1):
         super().__init__()
         from .attention import FeedForward
@@ -628,29 +628,34 @@ class AttentionPooling(nn.Module):
         return a[:, 0, :]  # cls_token
 
 
-class FourierEmbedder(nn.Module):
-    def __init__(self, num_freqs=64, temperature=100):
-        super().__init__()
+def get_fourier_embeds_from_boundingbox(embed_dim, box):
+    """
+    Args:
+        embed_dim: int
+        box: a 3-D tensor [B x N x 4] representing the bounding boxes for GLIGEN pipeline
+    Returns:
+        [B x N x embed_dim] tensor of positional embeddings
+    """
 
-        self.num_freqs = num_freqs
-        self.temperature = temperature
+    batch_size, num_boxes = box.shape[:2]
 
-        freq_bands = temperature ** (torch.arange(num_freqs) / num_freqs)
-        freq_bands = freq_bands[None, None, None]
-        self.register_buffer("freq_bands", freq_bands, persistent=False)
+    emb = 100 ** (torch.arange(embed_dim) / embed_dim)
+    emb = emb[None, None, None].to(device=box.device, dtype=box.dtype)
+    emb = emb * box.unsqueeze(-1)
 
-    def __call__(self, x):
-        x = self.freq_bands * x.unsqueeze(-1)
-        return torch.stack((x.sin(), x.cos()), dim=-1).permute(0, 1, 3, 4, 2).reshape(*x.shape[:2], -1)
+    emb = torch.stack((emb.sin(), emb.cos()), dim=-1)
+    emb = emb.permute(0, 1, 3, 4, 2).reshape(batch_size, num_boxes, embed_dim * 2 * 4)
+
+    return emb
 
 
-class PositionNet(nn.Module):
+class GLIGENTextBoundingboxProjection(nn.Module):
     def __init__(self, positive_len, out_dim, feature_type="text-only", fourier_freqs=8):
         super().__init__()
         self.positive_len = positive_len
         self.out_dim = out_dim
 
-        self.fourier_embedder = FourierEmbedder(num_freqs=fourier_freqs)
+        self.fourier_embedder_dim = fourier_freqs
         self.position_dim = fourier_freqs * 2 * 4  # 2: sin/cos, 4: xyxy
 
         if isinstance(out_dim, tuple):
@@ -699,7 +704,7 @@ class PositionNet(nn.Module):
         masks = masks.unsqueeze(-1)
 
         # embedding position (it may includes padding as placeholder)
-        xyxy_embedding = self.fourier_embedder(boxes)  # B*N*4 -> B*N*C
+        xyxy_embedding = get_fourier_embeds_from_boundingbox(self.fourier_embedder_dim, boxes)  # B*N*4 -> B*N*C
 
         # learnable null embedding
         xyxy_null = self.null_position_feature.view(1, 1, -1)
@@ -794,7 +799,7 @@ class PixArtAlphaTextProjection(nn.Module):
         return hidden_states
 
 
-class Resampler(nn.Module):
+class IPAdapterPlusImageProjection(nn.Module):
     """Resampler of IP-Adapter Plus.
 
     Args:
