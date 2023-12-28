@@ -121,18 +121,71 @@ def text_encoder_lora_state_dict(text_encoder):
     return state_dict
 
 
-def create_unet_lora_layers(unet: nn.Module, rank=4, is_3d=False, mock_weights=True):
-    in_features = None
-    out_features = None
-
+def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
     for attn_processor_name, attn_processor in unet.attn_processors.items():
-        if is_3d and attn_processor_name.startswith("transformer_in"):
-            # Note that the `8 * ...` comes from: https://github.com/huggingface/diffusers/blob/7139f0e874f10b2463caa8cbd585762a309d12d6/src/diffusers/models/unet_3d_condition.py#L148
-            in_features = 8 * unet.config.attention_head_dim
-            has_cross_attention = attn_processor_name.endswith("attn2.processor") and not (
-                attn_processor_name.startswith("transformer_in") or "temp_attentions" in attn_processor_name.split(".")
+        # Parse the attention module.
+        attn_module = unet
+        for n in attn_processor_name.split(".")[:-1]:
+            attn_module = getattr(attn_module, n)
+
+        # Set the `lora_layer` attribute of the attention-related matrices.
+        attn_module.to_q.set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_q.in_features,
+                out_features=attn_module.to_q.out_features,
+                rank=rank,
             )
-            out_features = unet.config.cross_attention_dim if has_cross_attention else None
+        )
+        attn_module.to_k.set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_k.in_features,
+                out_features=attn_module.to_k.out_features,
+                rank=rank,
+            )
+        )
+        attn_module.to_v.set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_v.in_features,
+                out_features=attn_module.to_v.out_features,
+                rank=rank,
+            )
+        )
+        attn_module.to_out[0].set_lora_layer(
+            LoRALinearLayer(
+                in_features=attn_module.to_out[0].in_features,
+                out_features=attn_module.to_out[0].out_features,
+                rank=rank,
+            )
+        )
+
+        if mock_weights:
+            with torch.no_grad():
+                attn_module.to_q.lora_layer.up.weight += 1
+                attn_module.to_k.lora_layer.up.weight += 1
+                attn_module.to_v.lora_layer.up.weight += 1
+                attn_module.to_out[0].lora_layer.up.weight += 1
+
+    return unet_lora_state_dict(unet)
+
+
+def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
+    for attn_processor_name, attn_processor in unet.attn_processors.items():
+        has_cross_attention = attn_processor_name.endswith("attn2.processor") and not (
+            attn_processor_name.startswith("transformer_in") or "temp_attentions" in attn_processor_name.split(".")
+        )
+        cross_attention_dim = unet.config.cross_attention_dim if has_cross_attention else None
+
+        if attn_processor_name.startswith("mid_block"):
+            hidden_size = unet.config.block_out_channels[-1]
+        elif attn_processor_name.startswith("up_blocks"):
+            block_id = int(attn_processor_name[len("up_blocks.")])
+            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+        elif attn_processor_name.startswith("down_blocks"):
+            block_id = int(attn_processor_name[len("down_blocks.")])
+            hidden_size = unet.config.block_out_channels[block_id]
+        elif attn_processor_name.startswith("transformer_in"):
+            # Note that the `8 * ...` comes from: https://github.com/huggingface/diffusers/blob/7139f0e874f10b2463caa8cbd585762a309d12d6/src/diffusers/models/unet_3d_condition.py#L148
+            hidden_size = 8 * unet.config.attention_head_dim
 
         # Parse the attention module.
         attn_module = unet
@@ -142,29 +195,31 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, is_3d=False, mock_weights=T
         # Set the `lora_layer` attribute of the attention-related matrices.
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_q.in_features if in_features is None else in_features,
-                out_features=attn_module.to_q.out_features if out_features is None else out_features,
+                in_features=hidden_size,
+                out_features=attn_module.to_q.out_features if cross_attention_dim is None else cross_attention_dim,
                 rank=rank,
             )
         )
         attn_module.to_k.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_k.in_features if in_features is None else in_features,
-                out_features=attn_module.to_k.out_features if out_features is None else out_features,
+                in_features=attn_module.to_k.in_features,
+                out_features=attn_module.to_k.out_features if cross_attention_dim is None else cross_attention_dim,
                 rank=rank,
             )
         )
         attn_module.to_v.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_v.in_features if in_features is None else in_features,
-                out_features=attn_module.to_v.out_features if out_features is None else out_features,
+                in_features=attn_module.to_v.in_features,
+                out_features=attn_module.to_v.out_features if cross_attention_dim is None else cross_attention_dim,
                 rank=rank,
             )
         )
         attn_module.to_out[0].set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_out[0].in_features if in_features is None else in_features,
-                out_features=attn_module.to_out[0].out_features if out_features is None else out_features,
+                in_features=attn_module.to_out[0].in_features,
+                out_features=attn_module.to_out[0].out_features
+                if cross_attention_dim is None
+                else cross_attention_dim,
                 rank=rank,
             )
         )
@@ -1643,7 +1698,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        unet_lora_params = create_unet_lora_layers(model, is_3d=True)
+        unet_lora_params = create_3d_unet_lora_layers(model)
 
         # make sure we can set a list of attention processors
         model.load_attn_procs(unet_lora_params)
