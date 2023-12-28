@@ -123,11 +123,16 @@ def text_encoder_lora_state_dict(text_encoder):
 
 def create_unet_lora_layers(unet: nn.Module, rank=4, is_3d=False, mock_weights=True):
     in_features = None
+    out_features = None
 
     for attn_processor_name, attn_processor in unet.attn_processors.items():
         if is_3d and attn_processor_name.startswith("transformer_in"):
             # Note that the `8 * ...` comes from: https://github.com/huggingface/diffusers/blob/7139f0e874f10b2463caa8cbd585762a309d12d6/src/diffusers/models/unet_3d_condition.py#L148
             in_features = 8 * unet.config.attention_head_dim
+            has_cross_attention = attn_processor_name.endswith("attn2.processor") and not (
+                attn_processor_name.startswith("transformer_in") or "temp_attentions" in attn_processor_name.split(".")
+            )
+            out_features = unet.config.cross_attention_dim if has_cross_attention else None
 
         # Parse the attention module.
         attn_module = unet
@@ -138,28 +143,28 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, is_3d=False, mock_weights=T
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
                 in_features=attn_module.to_q.in_features if in_features is None else in_features,
-                out_features=attn_module.to_q.out_features,
+                out_features=attn_module.to_q.out_features if out_features is None else out_features,
                 rank=rank,
             )
         )
         attn_module.to_k.set_lora_layer(
             LoRALinearLayer(
                 in_features=attn_module.to_k.in_features if in_features is None else in_features,
-                out_features=attn_module.to_k.out_features,
+                out_features=attn_module.to_k.out_features if out_features is None else out_features,
                 rank=rank,
             )
         )
         attn_module.to_v.set_lora_layer(
             LoRALinearLayer(
                 in_features=attn_module.to_v.in_features if in_features is None else in_features,
-                out_features=attn_module.to_v.out_features,
+                out_features=attn_module.to_v.out_features if out_features is None else out_features,
                 rank=rank,
             )
         )
         attn_module.to_out[0].set_lora_layer(
             LoRALinearLayer(
                 in_features=attn_module.to_out[0].in_features if in_features is None else in_features,
-                out_features=attn_module.to_out[0].out_features,
+                out_features=attn_module.to_out[0].out_features if out_features is None else out_features,
                 rank=rank,
             )
         )
