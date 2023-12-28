@@ -21,12 +21,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import concatenate_datasets, load_dataset
-from diffusers import (
-    AutoencoderKL,
-    DDPMScheduler,
-    StableDiffusionInpaintPipeline,
-    UNet2DConditionModel,
-)
+from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
 from transformers import CLIPTextModel, CLIPTokenizer
