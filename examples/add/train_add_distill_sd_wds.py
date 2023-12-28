@@ -995,6 +995,16 @@ def parse_args():
         required=False,
         help="The exponential moving average (EMA) rate or decay factor.",
     )
+    parser.add_argument(
+        "--ema_min_decay",
+        type=float,
+        default=None,
+        help=(
+            "The minimum EMA decay rate, which the effective EMA decay rate (e.g. if warmup is used) will never go"
+            " below. If not set, the value set for `ema_decay` will be used, which results in a fixed EMA decay rate"
+            " equal to that value."
+        ),
+    )
     # ----Mixed Precision----
     parser.add_argument(
         "--mixed_precision",
@@ -1225,12 +1235,16 @@ def main(args):
 
     # Make exponential moving average (EMA) version of the student unet weights, if using.
     if args.use_ema:
+        if args.ema_min_decay is None:
+            # Default to `args.ema_decay`, which results in a fixed EMA decay rate throughout distillation.
+            args.ema_min_decay = args.ema_decay
         ema_unet = UNet2DConditionModel.from_pretrained(
             args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
         )
         ema_unet = EMAModel(
             ema_unet.parameters(),
             decay=args.ema_decay,
+            min_decay=args.ema_min_decay,
             model_cls=UNet2DConditionModel,
             model_config=ema_unet.config,
         )
