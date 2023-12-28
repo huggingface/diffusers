@@ -893,7 +893,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         text_encoder_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
-        text_encoder_two_lora_params = StableDiffusionXLLoraLoaderMixin(
+        text_encoder_two_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
             text_encoder_2, dtype=torch.float32, rank=self.lora_rank
         )
 
