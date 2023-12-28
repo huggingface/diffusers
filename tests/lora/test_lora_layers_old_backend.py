@@ -95,6 +95,8 @@ def text_encoder_lora_state_dict(text_encoder):
 
 
 def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
+    unet_lora_parameters = []
+
     for attn_processor_name, attn_processor in unet.attn_processors.items():
         # Parse the attention module.
         attn_module = unet
@@ -138,7 +140,12 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
                 attn_module.to_v.lora_layer.up.weight += 1
                 attn_module.to_out[0].lora_layer.up.weight += 1
 
-    return unet_lora_state_dict(unet)
+        unet_lora_parameters.extend(attn_module.to_q.lora_layer.parameters())
+        unet_lora_parameters.extend(attn_module.to_k.lora_layer.parameters())
+        unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
+        unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
+
+    return unet_lora_parameters, unet_lora_state_dict(unet)
 
 
 def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
@@ -213,12 +220,16 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
 
 
 def set_lora_weights(lora_attn_parameters, randn_weight=False, var=1.0):
-    with torch.no_grad():
-        for parameter in lora_attn_parameters:
-            if randn_weight:
-                parameter[:] = torch.randn_like(parameter) * var
-            else:
-                torch.zero_(parameter)
+    if not isinstance(lora_attn_parameters, dict):
+        with torch.no_grad():
+            for parameter in lora_attn_parameters:
+                if randn_weight:
+                    parameter[:] = torch.randn_like(parameter) * var
+                else:
+                    torch.zero_(parameter)
+    else:
+        modified_state_dict = {k: torch.rand_like(v) * var for k, v in lora_attn_parameters.items()}
+        return modified_state_dict
 
 
 def state_dicts_almost_equal(sd1, sd2):
@@ -280,7 +291,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
+        unet_lora_raw_params, unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
         text_encoder_lora_params = LoraLoaderMixin._modify_text_encoder(
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
@@ -296,7 +307,11 @@ class LoraLoaderMixinTests(unittest.TestCase):
             "feature_extractor": None,
             "image_encoder": None,
         }
-        lora_components = {"unet_lora_params": unet_lora_params, "text_encoder_lora_params": text_encoder_lora_params}
+        lora_components = {
+            "unet_lora_raw_params": unet_lora_raw_params,
+            "unet_lora_params": unet_lora_params,
+            "text_encoder_lora_params": text_encoder_lora_params,
+        }
         return pipeline_components, lora_components
 
     def get_dummy_inputs(self, with_generator=True):
@@ -599,8 +614,9 @@ class LoraLoaderMixinTests(unittest.TestCase):
         orig_image_slice = original_images[0, -3:, -3:, -1]
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_lora_layers"].parameters(), randn_weight=True)
+        lora_components["text_encoder_lora_layers"] = set_lora_weights(
+            lora_components["text_encoder_lora_layers"], randn_weight=True
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             LoraLoaderMixin.save_lora_weights(
@@ -774,7 +790,7 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
+        unet_lora_raw_params, unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
         text_encoder_lora_params = LoraLoaderMixin._modify_text_encoder(
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
@@ -790,7 +806,11 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
             "feature_extractor": None,
             "image_encoder": None,
         }
-        lora_components = {"unet_lora_params": unet_lora_params, "text_encoder_lora_params": text_encoder_lora_params}
+        lora_components = {
+            "unet_lora_raw_params": unet_lora_raw_params,
+            "unet_lora_params": unet_lora_params,
+            "text_encoder_lora_params": text_encoder_lora_params,
+        }
         return components, lora_components
 
     def test_stable_diffusion_inpaint_lora(self):
@@ -888,7 +908,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
+        _, unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
         text_encoder_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
@@ -973,9 +993,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         orig_image_slice = original_images[0, -3:, -3:, -1]
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_two_lora_params"].parameters(), randn_weight=True)
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_lora_params"], randn_weight=True
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_two_lora_params"], randn_weight=True
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1091,9 +1114,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_two_lora_params"].parameters(), randn_weight=True)
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_lora_params"], randn_weight=True
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_two_lora_params"], randn_weight=True
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1135,9 +1161,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         orig_image_slice = original_images[0, -3:, -3:, -1]
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_two_lora_params"].parameters(), randn_weight=True)
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_lora_params"], randn_weight=True
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_two_lora_params"], randn_weight=True
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1168,9 +1197,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         orig_image_slice = original_images[0, -3:, -3:, -1]
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_two_lora_params"].parameters(), randn_weight=True)
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_lora_params"], randn_weight=True
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_two_lora_params"], randn_weight=True
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1213,9 +1245,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         _ = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_two_lora_params"].parameters(), randn_weight=True)
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_lora_params"], randn_weight=True
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_two_lora_params"], randn_weight=True
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1252,9 +1287,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         _ = sd_pipe(**pipeline_inputs, generator=torch.manual_seed(0)).images
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_two_lora_params"].parameters(), randn_weight=True)
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_lora_params"], randn_weight=True
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_two_lora_params"], randn_weight=True
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1304,9 +1342,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         original_imagee_slice = original_images[0, -3:, -3:, -1]
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_lora_params"].parameters(), randn_weight=True)
-        set_lora_weights(lora_components["text_encoder_two_lora_params"].parameters(), randn_weight=True)
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_lora_params"], randn_weight=True
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_two_lora_params"], randn_weight=True
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1352,9 +1393,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         images_slice = images[0, -3:, -3:, -1]
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True, var=0.1)
-        set_lora_weights(lora_components["text_encoder_lora_params"].parameters(), randn_weight=True, var=0.1)
-        set_lora_weights(lora_components["text_encoder_two_lora_params"].parameters(), randn_weight=True, var=0.1)
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_lora_params"], randn_weight=True, var=0.1
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_two_lora_params"], randn_weight=True, var=0.1
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1399,9 +1443,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
 
         # Emulate training.
-        set_lora_weights(lora_components["unet_lora_params"].parameters(), randn_weight=True, var=0.1)
-        set_lora_weights(lora_components["text_encoder_lora_params"].parameters(), randn_weight=True, var=0.1)
-        set_lora_weights(lora_components["text_encoder_two_lora_params"].parameters(), randn_weight=True, var=0.1)
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_lora_params"], randn_weight=True, var=0.1
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            lora_components["text_encoder_two_lora_params"], randn_weight=True, var=0.1
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
@@ -1482,7 +1529,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model)
 
         # make sure we can set a list of attention processors
         model.load_attn_procs(lora_params)
@@ -1515,7 +1562,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         with torch.no_grad():
             old_sample = model(**inputs_dict).sample
 
-        lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model)
         model.load_attn_procs(lora_params)
 
         with torch.no_grad():
@@ -1545,7 +1592,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
-        lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model)
         model.load_attn_procs(lora_params)
 
         # default
