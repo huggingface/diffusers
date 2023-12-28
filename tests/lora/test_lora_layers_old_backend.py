@@ -858,7 +858,7 @@ class SDInpaintLoraMixinTests(unittest.TestCase):
 class SDXLLoraLoaderMixinTests(unittest.TestCase):
     lora_rank = 4
 
-    def get_dummy_components(self):
+    def get_dummy_components(self, modify_text_encoder=True):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
@@ -916,18 +916,23 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         _, unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
-        text_encoder_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
-            text_encoder, dtype=torch.float32, rank=self.lora_rank
-        )
-        text_encoder_lora_params = set_lora_weights(
-            text_encoder_lora_state_dict(text_encoder), randn_weight=True, var=0.1
-        )
-        text_encoder_two_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
-            text_encoder_2, dtype=torch.float32, rank=self.lora_rank
-        )
-        text_encoder_two_lora_params = set_lora_weights(
-            text_encoder_lora_state_dict(text_encoder_2), randn_weight=True, var=0.1
-        )
+        
+        if modify_text_encoder:
+            text_encoder_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
+                text_encoder, dtype=torch.float32, rank=self.lora_rank
+            )
+            text_encoder_lora_params = set_lora_weights(
+                text_encoder_lora_state_dict(text_encoder), randn_weight=True, var=0.1
+            )
+            text_encoder_two_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
+                text_encoder_2, dtype=torch.float32, rank=self.lora_rank
+            )
+            text_encoder_two_lora_params = set_lora_weights(
+                text_encoder_lora_state_dict(text_encoder_2), randn_weight=True, var=0.1
+            )
+        else:
+            text_encoder_lora_params = None 
+            text_encoder_two_lora_params = None
 
         pipeline_components = {
             "unet": unet,
@@ -1052,7 +1057,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         sd_pipe.unload_lora_weights()
 
     def test_text_encoder_lora_state_dict_unchanged(self):
-        pipeline_components, lora_components = self.get_dummy_components()
+        pipeline_components, lora_components = self.get_dummy_components(modify_text_encoder=False)
         sd_pipe = StableDiffusionXLPipeline(**pipeline_components)
 
         text_encoder_1_sd_keys = sorted(sd_pipe.text_encoder.state_dict().keys())
@@ -1060,6 +1065,20 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
+
+        # Modify the text encoder.
+        _ = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
+            sd_pipe.text_encoder, dtype=torch.float32, rank=self.lora_rank
+        )
+        lora_components["text_encoder_lora_params"] = set_lora_weights(
+            text_encoder_lora_state_dict(sd_pipe.text_encoder), randn_weight=True, var=0.1
+        )
+        _ = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
+            sd_pipe.text_encoder_2, dtype=torch.float32, rank=self.lora_rank
+        )
+        lora_components["text_encoder_two_lora_params"] = set_lora_weights(
+            text_encoder_lora_state_dict(sd_pipe.text_encoder_2), randn_weight=True, var=0.1
+        )
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             StableDiffusionXLPipeline.save_lora_weights(
