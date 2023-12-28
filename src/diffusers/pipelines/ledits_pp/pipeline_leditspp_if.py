@@ -39,13 +39,48 @@ if is_ftfy_available():
 
 EXAMPLE_DOC_STRING = """
     Examples:
-    ```py
-    >>> import PIL
-    >>> import requests
-    >>> import torch
-    >>> from io import BytesIO
-        TODO
-    ```
+        ```py
+        >>> import PIL
+        >>> import requests
+        >>> import torch
+        >>> from io import BytesIO
+
+        >>> from diffusers import LEditsPPPipelineIF, IFSuperResolutionPipeline
+
+        >>> pipe = LEditsPPPipelineIF.from_pretrained(
+        ...     "DeepFloyd/IF-I-XL-v1.0"
+        ... )
+        >>> pipe.enable_model_cpu_offload()
+
+        >>> def download_image(url):
+        ...     response = requests.get(url)
+        ...     return PIL.Image.open(BytesIO(response.content)).convert("RGB")
+
+        >>> img_url = "https://www.aiml.informatik.tu-darmstadt.de/people/mbrack/tennis.jpg"
+        >>> image = download_image(img_url)
+
+        >>> _ = pipe.invert(
+        ...     image = image,
+        ...     num_inversion_steps=50,
+        ...     skip=0.3
+        ... )
+
+        >>> edited_image = pipe(
+        ...     editing_prompt=["tennis ball","tomato"],
+        ...     reverse_editing_direction=[True,False],
+        ...     edit_guidance_scale=[5.0,10.0],
+        ...     edit_threshold=[0.9,0.85],
+        ).images[0]
+
+        >>> super_res_1_pipe = IFSuperResolutionPipeline.from_pretrained(
+        ...     "DeepFloyd/IF-II-L-v1.0"
+        ... )
+        >>> super_res_1_pipe.enable_model_cpu_offload()
+
+        >>> image = super_res_1_pipe(
+        ...     image=edited_image, prompt="", noise_level=0
+        ... ).images[0]
+        ```
 """
 
 
