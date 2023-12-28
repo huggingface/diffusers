@@ -926,7 +926,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
 
                     num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
                     denoise_args.update({"latents": latents, "num_warmup_steps": num_warmup_steps})
-                    self._denoise_loop(**denoise_args)
+                    latents = self._denoise_loop(**denoise_args)
 
                     # Whether or not to return intermediate generation results
                     if self._free_init_return_intermediate_results:
