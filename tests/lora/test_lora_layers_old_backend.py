@@ -174,7 +174,6 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
             attn_processor_name.startswith("transformer_in") or "temp_attentions" in attn_processor_name.split(".")
         )
         cross_attention_dim = unet.config.cross_attention_dim if has_cross_attention else None
-        hidden_size = None
 
         # if attn_processor_name.startswith("mid_block"):
         #     hidden_size = unet.config.block_out_channels[-1]
@@ -201,29 +200,37 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         print(f"Hidden size: {hidden_size} in_features (out): {attn_module.to_out[0].in_features}")
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_q.in_features if hidden_size is None else hidden_size,
+                in_features=attn_module.to_q.in_features
+                if not attn_processor_name.startswith("transformer_in")
+                else hidden_size,
                 out_features=attn_module.to_q.out_features if cross_attention_dim is None else cross_attention_dim,
                 rank=rank,
             )
         )
         attn_module.to_k.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_k.in_features if hidden_size is None else hidden_size,
+                in_features=attn_module.to_k.in_features
+                if not attn_processor_name.startswith("transformer_in")
+                else hidden_size,
                 out_features=attn_module.to_k.out_features if cross_attention_dim is None else cross_attention_dim,
                 rank=rank,
             )
         )
         attn_module.to_v.set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_v.in_features if hidden_size is None else hidden_size,
+                in_features=attn_module.to_v.in_features
+                if not attn_processor_name.startswith("transformer_in")
+                else hidden_size,
                 out_features=attn_module.to_v.out_features if cross_attention_dim is None else cross_attention_dim,
                 rank=rank,
             )
         )
         attn_module.to_out[0].set_lora_layer(
             LoRALinearLayer(
-                in_features=attn_module.to_out[0].in_features if hidden_size is None else hidden_size,
-                out_features=attn_module.to_out[0].out_features 
+                in_features=attn_module.to_out[0].in_features
+                if not attn_processor_name.startswith("transformer_in")
+                else hidden_size,
+                out_features=attn_module.to_out[0].out_features
                 if cross_attention_dim is None
                 else cross_attention_dim,
                 rank=rank,
