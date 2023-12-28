@@ -200,7 +200,7 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
 
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
-                in_features=max(attn_module.to_q.in_features, hidden_size),
+                in_features=min(attn_module.to_q.in_features, hidden_size),
                 out_features=attn_module.to_q.out_features
                 if cross_attention_dim is None
                 else max(attn_module.to_q.out_features, cross_attention_dim),
@@ -209,7 +209,7 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         )
         attn_module.to_k.set_lora_layer(
             LoRALinearLayer(
-                in_features=max(attn_module.to_k.in_features, hidden_size),
+                in_features=min(attn_module.to_k.in_features, hidden_size),
                 out_features=attn_module.to_k.out_features
                 if cross_attention_dim is None
                 else max(attn_module.to_k.out_features, cross_attention_dim),
@@ -218,7 +218,7 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         )
         attn_module.to_v.set_lora_layer(
             LoRALinearLayer(
-                in_features=max(attn_module.to_v.in_features, hidden_size),
+                in_features=min(attn_module.to_v.in_features, hidden_size),
                 out_features=attn_module.to_v.out_features
                 if cross_attention_dim is None
                 else max(attn_module.to_v.out_features, cross_attention_dim),
@@ -227,7 +227,7 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         )
         attn_module.to_out[0].set_lora_layer(
             LoRALinearLayer(
-                in_features=max(attn_module.to_out[0].in_features, hidden_size),
+                in_features=min(attn_module.to_out[0].in_features, hidden_size),
                 out_features=attn_module.to_out[0].out_features
                 if cross_attention_dim is None
                 else max(attn_module.to_out[0].out_features, cross_attention_dim),
