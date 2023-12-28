@@ -169,7 +169,7 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
 
 
 def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
-    for attn_processor_name, attn_processor in unet.attn_processors.items():
+    for attn_processor_name in unet.attn_processors.keys():
         has_cross_attention = attn_processor_name.endswith("attn2.processor") and not (
             attn_processor_name.startswith("transformer_in") or "temp_attentions" in attn_processor_name.split(".")
         )
@@ -193,6 +193,10 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
             attn_module = getattr(attn_module, n)
 
         # Set the `lora_layer` attribute of the attention-related matrices.
+        print(f"Hidden size: {hidden_size} in_features (q): {attn_module.to_q.in_features}")
+        print(f"Hidden size: {hidden_size} in_features (k): {attn_module.to_k.in_features}")
+        print(f"Hidden size: {hidden_size} in_features (v): {attn_module.to_v.in_features}")
+        print(f"Hidden size: {hidden_size} in_features (out): {attn_module.to_out[0].in_features}")
         attn_module.to_q.set_lora_layer(
             LoRALinearLayer(
                 in_features=hidden_size,
