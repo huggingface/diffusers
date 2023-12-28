@@ -33,7 +33,14 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    BaseOutput,
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from .freeinit_utils import (
@@ -79,25 +86,19 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
     return outputs
 
 
-def get_freeinit_freq_filter(shape, device, filter_type, n, d_s, d_t):
-    """
-    Form the frequency filter for noise reinitialization.
-
-    Args:
-        shape: shape of latent (B, C, T, H, W)
-        filter_type: type of the freq filter
-        n: (only for butterworth) order of the filter, larger n ~ ideal, smaller n ~ gaussian
-        d_s: normalized stop frequency for spatial dimensions (0.0-1.0)
-        d_t: normalized stop frequency for temporal dimension (0.0-1.0)
-    """
+def _get_freeinit_freq_filter(shape, device, filter_type, order, spatial_stop_frequency, temporal_stop_frequency):
     if filter_type == "gaussian":
-        return gaussian_low_pass_filter(shape=shape, d_s=d_s, d_t=d_t).to(device)
+        return gaussian_low_pass_filter(shape=shape, d_s=spatial_stop_frequency, d_t=temporal_stop_frequency).to(
+            device
+        )
     elif filter_type == "ideal":
-        return ideal_low_pass_filter(shape=shape, d_s=d_s, d_t=d_t).to(device)
+        return ideal_low_pass_filter(shape=shape, d_s=spatial_stop_frequency, d_t=temporal_stop_frequency).to(device)
     elif filter_type == "box":
-        return box_low_pass_filter(shape=shape, d_s=d_s, d_t=d_t).to(device)
+        return box_low_pass_filter(shape=shape, d_s=spatial_stop_frequency, d_t=temporal_stop_frequency).to(device)
     elif filter_type == "butterworth":
-        return butterworth_low_pass_filter(shape=shape, n=n, d_s=d_s, d_t=d_t).to(device)
+        return butterworth_low_pass_filter(
+            shape=shape, n=order, d_s=spatial_stop_frequency, d_t=temporal_stop_frequency
+        ).to(device)
     else:
         raise NotImplementedError
 
@@ -136,7 +137,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
 
-    model_cpu_offload_seq = "text_encoder->unet->vae"
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
     _optional_components = ["feature_extractor", "image_encoder"]
 
     def __init__(
@@ -465,6 +466,62 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
 
+    @property
+    def free_init_enabled(self):
+        return hasattr(self, "_free_init_num_iters") and self._free_init_num_iters is not None
+
+    def enable_freeinit(
+        self,
+        num_iters: int = 3,
+        use_fast_sampling: bool = False,
+        method: str = "butterworth",
+        order: int = 4,
+        spatial_stop_frequency: float = 0.25,
+        temporal_stop_frequency: float = 0.25,
+        generator: torch.Generator = None,
+        return_intermediate_results: bool = False,
+    ):
+        """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
+
+        This implementation has been adapted from the [official repository](https://github.com/TianxingWu/FreeInit).
+
+        Args:
+            num_iters (`int`, *optional*, defaults to `3`):
+                Number of FreeInit noise re-initialization iterations.
+            use_fast_sampling (`bool`, *optional*, defaults to `False`):
+                Whether or not to speedup sampling procedure at the cost of probably lower quality results. Enables
+                the "Coarse-to-Fine Sampling" strategy, as mentioned in the paper, if set to `True`.
+            method (`str`, *optional*, defaults to `butterworth`):
+                Must be one of `box`, `butterworth`, `ideal` or `gaussian` to use as the filtering method for the
+                FreeInit low pass filter.
+            order (`int`, *optional*, defaults to `4`):
+                Order of the filter used in `butterworth` method. Larger values lead to `ideal` method behaviour
+                whereas lower values lead to `gaussian` method behaviour.
+            spatial_stop_frequency (`float`, *optional*, defaults to `0.25`):
+                Normalized stop frequency for spatial dimensions. Must be between 0 to 1. Referred to as `d_s` in
+                the original implementation.
+            temporal_stop_frequency (`float`, *optional*, defaults to `0.25`):
+                Normalized stop frequency for temporal dimensions. Must be between 0 to 1. Referred to as `d_t` in
+                the original implementation.
+            generator (`torch.Generator`, *optional*, defaults to `0.25`):
+                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
+                FreeInit generation deterministic.
+            return_intermediate_results (`bool`, *optional*, defaults to `False`):
+                Whether or not to return intermediate sampling results for every FreeInit iteration.
+        """
+        self._free_init_num_iters = num_iters
+        self._free_init_use_fast_sampling = use_fast_sampling
+        self._free_init_method = method
+        self._free_init_order = order
+        self._free_init_spatial_stop_frequency = spatial_stop_frequency
+        self._free_init_temporal_stop_frequency = temporal_stop_frequency
+        self._free_init_generator = generator
+        self._free_init_return_intermediate_results = return_intermediate_results
+
+    def disable_freeinit(self):
+        """Disables the FreeInit mechanism if enabled."""
+        self._free_init_num_iters = None
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -562,7 +619,72 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def _denoise_loop(
+        self,
+        timesteps,
+        num_inference_steps,
+        do_classifier_free_guidance,
+        guidance_scale,
+        num_warmup_steps,
+        prompt_embeds,
+        latents,
+        cross_attention_kwargs,
+        added_cond_kwargs,
+        extra_step_kwargs,
+        callback,
+        callback_steps,
+    ):
+        """Denoising loop for AnimateDiff."""
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                # predict the noise residual
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    added_cond_kwargs=added_cond_kwargs,
+                ).sample
+
+                # perform guidance
+                if do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
+
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        callback(i, t, latents)
+
+        return latents
+
+    def _retrieve_output(self, latents, output_type, return_dict):
+        """Helper function to handle latents to output conversion."""
+        if output_type == "latent":
+            return AnimateDiffPipelineOutput(frames=latents)
+
+        video_tensor = self.decode_latents(latents)
+
+        if output_type == "pt":
+            video = video_tensor
+        else:
+            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+
+        if not return_dict:
+            return (video,)
+
+        return AnimateDiffPipelineOutput(frames=video)
+
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -585,8 +707,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         callback_steps: Optional[int] = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
-        use_freeinit: bool = False,
-        freeinit_kwargs: Optional[Dict[str, Any]] = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -627,7 +747,8 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            ip_adapter_image: (`PipelineImageInput`, *optional*):
+                Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
                 `np.array`.
@@ -731,110 +852,99 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
-        # 7.1 FreeInit
-        freeinit_num_steps = freeinit_kwargs.get("num_steps", 5) if use_freeinit else 1
-        freeinit_use_fast_sampling = freeinit_kwargs.get("use_fast_sampling", False)
+        # 8. Denoising loop
+        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        denoise_args = {
+            "timesteps": timesteps,
+            "num_inference_steps": num_inference_steps,
+            "do_classifier_free_guidance": do_classifier_free_guidance,
+            "guidance_scale": guidance_scale,
+            "num_warmup_steps": num_warmup_steps,
+            "prompt_embeds": prompt_embeds,
+            "latents": latents,
+            "cross_attention_kwargs": cross_attention_kwargs,
+            "added_cond_kwargs": added_cond_kwargs,
+            "extra_step_kwargs": extra_step_kwargs,
+            "callback": callback,
+            "callback_steps": callback_steps,
+        }
 
-        if use_freeinit:
-            if "method" not in freeinit_kwargs.keys():
-                raise ValueError("`use_freeinit` was set to True but required freeinit kwarg `method` was not set")
-
-            freeinit_filter_shape = (
+        if self.free_init_enabled:
+            video = []
+            free_init_filter_shape = (
                 1,
                 num_channels_latents,
                 num_frames,
                 height // self.vae_scale_factor,
                 width // self.vae_scale_factor,
             )
-            freeinit_freq_filter = get_freeinit_freq_filter(
-                shape=freeinit_filter_shape,
+            free_init_freq_filter = _get_freeinit_freq_filter(
+                shape=free_init_filter_shape,
                 device=device,
-                filter_type=freeinit_kwargs.get("method"),
-                n=freeinit_kwargs.get("n", 4) if freeinit_kwargs.get("method") == "butterworth" else None,
-                d_s=freeinit_kwargs.get("d_s", 0.25),
-                d_t=freeinit_kwargs.get("d_t", 0.25),
+                filter_type=self._free_init_method,
+                order=self._free_init_order,
+                spatial_stop_frequency=self._free_init_spatial_stop_frequency,
+                temporal_stop_frequency=self._free_init_temporal_stop_frequency,
             )
+            with self.progress_bar(total=self._free_init_num_iters) as free_init_progress_bar:
+                for i in range(self._free_init_num_iters):
+                    # For the first FreeInit iteration, the original latent is used without modification.
+                    # Subsequent iterations apply the noise reinitialization technique.
+                    if i == 0:
+                        initial_noise = latents.detach().clone()
+                    else:
+                        current_diffuse_timestep = (
+                            self.scheduler.config.num_train_timesteps - 1
+                        )  # diffuse to t=999 noise level
+                        diffuse_timesteps = torch.full((batch_size,), current_diffuse_timestep).long()
+                        z_T = self.scheduler.add_noise(
+                            original_samples=latents, noise=initial_noise, timesteps=diffuse_timesteps.to(device)
+                        ).to(dtype=torch.float32)
+                        z_rand = randn_tensor(
+                            shape=(
+                                batch_size * num_videos_per_prompt,
+                                num_channels_latents,
+                                num_frames,
+                                height // self.vae_scale_factor,
+                                width // self.vae_scale_factor,
+                            ),
+                            generator=self._free_init_generator,
+                            device=device,
+                            dtype=torch.float32,
+                        )
+                        latents = freq_mix_3d(z_T, z_rand, LPF=free_init_freq_filter)
+                        latents = latents.to(prompt_embeds.dtype)
 
-        # 8. Denoising loop
-        with self.progress_bar(total=freeinit_num_steps) as freeinit_steps_bar:
-            for freeinit_iter in range(freeinit_num_steps):
-                if freeinit_iter == 0:
-                    initial_noise = latents.detach().clone()
-                else:
-                    current_diffuse_timestep = (
-                        self.scheduler.config.num_train_timesteps - 1
-                    )  # diffuse to t=999 noise level
-                    diffuse_timesteps = torch.full((batch_size,), current_diffuse_timestep).long()
-                    z_T = self.scheduler.add_noise(
-                        original_samples=latents, noise=initial_noise, timesteps=diffuse_timesteps.to(device)
-                    ).to(dtype=torch.float32)
-                    z_rand = torch.randn(
-                        (
-                            batch_size * num_videos_per_prompt,
-                            num_channels_latents,
-                            num_frames,
-                            height // self.vae_scale_factor,
-                            width // self.vae_scale_factor,
-                        ),
-                        device=device,
+                    # Coarse-to-Fine Sampling for faster inference (can lead to lower quality)
+                    if self._free_init_use_fast_sampling:
+                        current_num_inference_steps = int(num_inference_steps / self._free_init_num_iters * (i + 1))
+                        self.scheduler.set_timesteps(current_num_inference_steps, device=device)
+                        timesteps = self.scheduler.timesteps
+
+                    num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+                    denoise_args.update(
+                        {
+                            "timesteps": timesteps,
+                            "num_inference_steps": current_num_inference_steps,
+                            "latents": latents,
+                        }
                     )
-                    latents = freq_mix_3d(z_T, z_rand, LPF=freeinit_freq_filter)
-                    latents = latents.to(prompt_embeds.dtype)
+                    self._denoise_loop(**denoise_args)
 
-                if freeinit_use_fast_sampling:
-                    current_num_inference_steps = int(num_inference_steps / freeinit_num_steps * (freeinit_iter + 1))
-                    self.scheduler.set_timesteps(current_num_inference_steps, device=device)
-                    timesteps = self.scheduler.timesteps
+                    # Whether or not to return intermediate generation results
+                    if self._free_init_return_intermediate_results:
+                        intermediate_video = self._retrieve_output(latents, output_type, return_dict)
+                        video.append(intermediate_video)
 
-                num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-                with self.progress_bar(total=num_inference_steps) as progress_bar:
-                    for i, t in enumerate(timesteps):
-                        # expand the latents if we are doing classifier free guidance
-                        latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
-                        latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+                    free_init_progress_bar.update()
 
-                        # predict the noise residual
-                        noise_pred = self.unet(
-                            latent_model_input,
-                            t,
-                            encoder_hidden_states=prompt_embeds,
-                            cross_attention_kwargs=cross_attention_kwargs,
-                            added_cond_kwargs=added_cond_kwargs,
-                        ).sample
-
-                        # perform guidance
-                        if do_classifier_free_guidance:
-                            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                        # compute the previous noisy sample x_t -> x_t-1
-                        latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
-
-                        # call the callback, if provided
-                        if i == len(timesteps) - 1 or (
-                            (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
-                        ):
-                            progress_bar.update()
-                            if callback is not None and i % callback_steps == 0:
-                                callback(i, t, latents)
-
-                freeinit_steps_bar.update()
-
-        if output_type == "latent":
-            return AnimateDiffPipelineOutput(frames=latents)
-
-        # 9. Post-processing
-        video_tensor = self.decode_latents(latents)
-
-        if output_type == "pt":
-            video = video_tensor
+            if not self._free_init_return_intermediate_results:
+                video = self._retrieve_output(latents, output_type, return_dict)
         else:
-            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+            latents = self._denoise_loop(**denoise_args)
+            video = self._retrieve_output(latents, output_type, return_dict)
 
-        # 10. Offload all models
+        # 9. Offload all models
         self.maybe_free_model_hooks()
 
-        if not return_dict:
-            return (video,)
-
-        return AnimateDiffPipelineOutput(frames=video)
+        return video
