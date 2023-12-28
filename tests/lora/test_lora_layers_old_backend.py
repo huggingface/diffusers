@@ -186,6 +186,7 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         #     hidden_size = unet.config.block_out_channels[block_id]
         if attn_processor_name.startswith("transformer_in"):
             # Note that the `8 * ...` comes from: https://github.com/huggingface/diffusers/blob/7139f0e874f10b2463caa8cbd585762a309d12d6/src/diffusers/models/unet_3d_condition.py#L148
+            print("Within transformer_in")
             hidden_size = 8 * unet.config.attention_head_dim
 
         # Parse the attention module.
