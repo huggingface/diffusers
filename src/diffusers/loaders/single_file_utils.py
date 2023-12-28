@@ -1287,6 +1287,21 @@ def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoi
     return unet
 
 
+def create_controlnet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, image_size, **kwargs):
+    if "control_stage_config" not in original_config.model.params:
+        raise ValueError("Config does not have controlnet information")
+
+    path = checkpoint_path_or_dict if isinstance(checkpoint_path_or_dict, str) else ""
+    extract_ema = kwargs.get("extract_ema", False)
+    upcast_attention = kwargs.get("upcast_attention", False)
+
+    controlnet = convert_controlnet_checkpoint(
+        checkpoint, original_config, path, image_size, upcast_attention, extract_ema
+    )
+
+    return {"controlnet": controlnet}
+
+
 def create_vae_model(original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
     vae_config = create_vae_diffusers_config(original_config)
     diffusers_format_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
@@ -1477,6 +1492,16 @@ def create_scheduler(pipeline_class_name, original_config, checkpoint, checkpoin
     else:
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
+    """
+    elif model_type == "UpScale":
+        elif pipeline_class == StableDiffusionUpscalePipeline:
+            scheduler = DDIMScheduler.from_pretrained(
+                    "stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler"
+                )
+                low_res_scheduler = DDPMScheduler.from_pretrained(
+                    "stabilityai/stable-diffusion-x4-upscaler", subfolder="low_res_scheduler"
+                )
+    """
     return {"scheduler": scheduler}
 
 

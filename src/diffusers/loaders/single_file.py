@@ -41,6 +41,7 @@ from .single_file_utils import (
     create_unet_model,
     create_vae_model,
     fetch_original_config,
+    infer_model_type,
 )
 
 
@@ -217,6 +218,14 @@ def build_additional_components(
             pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
         )
         return paint_by_example_components
+
+    if pipeline_class_name == "StableDiffusionXLImg2ImgPipeline":
+        model_type = infer_model_type(pipeline_class_name, original_config)
+        is_refiner = model_type == "SDXL-Refiner"
+        return {
+            "requires_aesthetics_score": is_refiner,
+            "force_zeros_for_empty_prompt": False if is_refiner else True,
+        }
 
 
 class FromSingleFileMixin:
