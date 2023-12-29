@@ -1430,7 +1430,9 @@ def main(args):
     # Compute the text encoder last hidden states `prompt_embeds` for use in the teacher/student U-Nets and pooled
     # output `text_embedding` for use in the discriminator.
     def compute_embeddings(prompt_batch, proportion_empty_prompts, text_encoder, tokenizer, is_train=True):
-        prompt_embeds, text_embedding = encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompts, is_train)
+        prompt_embeds, text_embedding = encode_prompt(
+            prompt_batch, text_encoder, tokenizer, proportion_empty_prompts, is_train
+        )
         return {"prompt_embeds": prompt_embeds, "text_embedding": text_embedding}
 
     dataset = SDText2ImageDataset(
