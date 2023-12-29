@@ -29,19 +29,15 @@ You can use [`DeepCache`](https://github.com/horseee/DeepCache) by loading and e
 + helper = DeepCacheSDHelper(pipe=pipe)
 + helper.set_params(
 +     cache_interval=3,
-+     cache_branch_id=1,
++     cache_branch_id=0,
 + )
 + helper.enable()
 
   image = pipe("a photo of an astronaut on a moon").images[0]
 ```
 
-The `set_params` method accepts two arguments: `cache_interval` and `cache_branch_id`:
-* `cache_interval` means the frequency of feature caching, specified as the number of steps between each cache operation. 
-* `cache_branch_id` identifies which branch of the network (ordered from the shallowest to the deepest layer) is responsible for executing the caching processes. 
-
-Opting for a lower 
-`cache_branch_id` or a larger `cache_interval` can lead to faster inference speed; however, this may come at the cost of reduced image quality. Once those arguments are set, use the `enable` or `disable` methods to activate or deactivate the DeepCacheSDHelper respectively.
+The `set_params` method accepts two arguments: `cache_interval` and `cache_branch_id`. `cache_interval` means the frequency of feature caching, specified as the number of steps between each cache operation. `cache_branch_id` identifies which branch of the network (ordered from the shallowest to the deepest layer) is responsible for executing the caching processes. 
+Opting for a lower `cache_branch_id` or a larger `cache_interval` can lead to faster inference speed; however, this may come at the cost of reduced image quality. Once those arguments are set, use the `enable` or `disable` methods to activate or deactivate the DeepCacheSDHelper respectively.
 
 <div class="flex justify-center">
     <img src="https://github.com/horseee/Diffusion_DeepCache/raw/master/static/images/example.png">
@@ -51,7 +47,7 @@ You can find more generated samples (Original Pipeline v.s. DeepCache) and the c
 
 ## Benchmark
 
-We measure the acceleration ratio achievable using DeepCache. All evaluations are based on the [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) with 50 inference steps, using NVIDIA RTX A5000. The results show the speed enhancements that can be expected under different configurations of `resolution`, `batch size`, `cache_interval(I)` and `cache_branch_id(B)`.
+We measure the acceleration ratio achievable using DeepCache. All evaluations are based on the [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) with 50 inference steps, using NVIDIA RTX A5000. The results show the speed enhancements that can be expected under different configurations of resolution, batch size, the interval for cache(I) and branch for cache(B).
 
 | **Resolution** | **Batch size** | **Original** | **DeepCache(I=3, B=0)** | **DeepCache(I=5, B=0)** | **DeepCache(I=5, B=1)** |
 |----------------|----------------|--------------|-------------------------|-------------------------|-------------------------|
