@@ -1663,7 +1663,7 @@ def main(args):
                 d_r1_regularizer = 0
                 for k, head in discriminator.heads.items():
                     head_grad_params = torch.autograd.grad(
-                        outputs=d_adv_loss_real, inputs=head.params(), create_graph=True
+                        outputs=d_adv_loss_real, inputs=head.parameters(), create_graph=True
                     )
                     head_grad_norm = 0
                     for grad in head_grad_params:
