@@ -10,7 +10,7 @@ Please note that this project is not actively maintained. However, you can open 
 
 ## 1. Data Collection: Make Prompt-Image-Mask Pairs
 
- Earlier training scripts have provided approaches like random masking for the training images. This project provides a notebook for more precise mask setting. 
+ Earlier training scripts have provided approaches like random masking for the training images. This project provides a notebook for more precise mask setting.
 
 The notebook can be found here: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1JNEASI_B7pLW1srxhgln6nM0HoGAQT32?usp=sharing)
 
@@ -18,13 +18,13 @@ The `multi_inpaint_dataset.ipynb` notebook, takes training & validation images, 
 
 ![train_val_pairs](https://drive.google.com/uc?id=1PzwH8E3icl_ubVmA19G0HZGLImFX3x5I)
 
-You can build multiple datasets for every subject and upload them to the 🤗 hub. Later, when launching the training script you can indicate the paths of the datasets, on which you would like to finetune Stable Diffusion for inpaining. 
+You can build multiple datasets for every subject and upload them to the 🤗 hub. Later, when launching the training script you can indicate the paths of the datasets, on which you would like to finetune Stable Diffusion for inpaining.
 
 ## 2. Train Multi Subject Dreambooth for Inpainting
 
 ### 2.1. Setting The Training Configuration
 
-Before launching the training script, make sure to select the inpainting the target model, the output directory and the 🤗 datasets. 
+Before launching the training script, make sure to select the inpainting the target model, the output directory and the 🤗 datasets.
 
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-inpainting"
@@ -52,7 +52,7 @@ accelerate launch train_multi_subject_dreambooth_inpaint.py \
 
 ### 2.3. Fine-tune text encoder with the UNet.
 
-The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces. 
+The script also allows to fine-tune the `text_encoder` along with the `unet`. It's been observed experimentally that fine-tuning `text_encoder` gives much better results especially on faces.
 Pass the `--train_text_encoder` argument to the script to enable training `text_encoder`.
 
 ___Note: Training text encoder requires more memory, with this option the training won't fit on 16GB GPU. It needs at least 24GB VRAM.___
@@ -68,12 +68,12 @@ accelerate launch train_multi_subject_dreambooth_inpaint.py \
   --learning_rate=2e-6 \
   --max_train_steps=500 \
   --report_to_wandb \
-  --train_text_encoder 
+  --train_text_encoder
 ```
 
 ## 3. Results
 
-A [![Weights & Biases](https://img.shields.io/badge/Weights%20&%20Biases-Report-blue)](https://wandb.ai/gzguevara/uncategorized/reports/Multi-Subject-Dreambooth-for-Inpainting--Vmlldzo2MzY5NDQ4) is provided showing the training progress by every 50 steps. Note, the reported  weights & baises run was performed on a A100 GPU with the following stetting:
+A [![Weights & Biases](https://img.shields.io/badge/Weights%20&%20Biases-Report-blue)](https://wandb.ai/gzguevara/uncategorized/reports/Multi-Subject-Dreambooth-for-Inpainting--Vmlldzo2MzY5NDQ4?accessToken=y0nya2d7baguhbryxaikbfr1203amvn1jsmyl07vk122mrs7tnph037u1nqgse8t) is provided showing the training progress by every 50 steps. Note, the reported  weights & baises run was performed on a A100 GPU with the following stetting:
 
 ```bash
 accelerate launch train_multi_subject_dreambooth_inpaint.py \
@@ -86,8 +86,8 @@ accelerate launch train_multi_subject_dreambooth_inpaint.py \
   --learning_rate=1e-6 \
   --max_train_steps=500 \
   --report_to_wandb \
-  --train_text_encoder 
+  --train_text_encoder
 ```
-Here you can see the target objects on my desk and next to my plant: 
+Here you can see the target objects on my desk and next to my plant:
 
 ![Results](https://drive.google.com/uc?id=1kQisOiiF5cj4rOYjdq8SCZenNsUP2aK0)
