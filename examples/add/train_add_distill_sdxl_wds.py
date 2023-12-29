@@ -1608,12 +1608,6 @@ def main(args):
         tracker_config = dict(vars(args))
         accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
-    # Create uncond embeds for classifier free guidance
-    uncond_prompt_embeds = torch.zeros(args.train_batch_size, MAX_SEQ_LENGTH, 2048).to(accelerator.device)
-    uncond_pooled_prompt_embeds = torch.zeros(args.train_batch_size, text_encoder_two.config.projection_dim).to(
-        accelerator.device
-    )
-
     # 16. Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1736,6 +1730,8 @@ def main(args):
                         added_cond_kwargs=encoded_text,
                     ).sample
 
+                    uncond_prompt_embeds = torch.zeros_like(prompt_embeds)
+                    uncond_pooled_prompt_embeds = torch.zeros_like(encoded_text["text_embeds"])
                     uncond_added_conditions = copy.deepcopy(encoded_text)
                     uncond_added_conditions["text_embeds"] = uncond_pooled_prompt_embeds
                     teacher_uncond_noise_pred = teacher_unet(
@@ -1758,7 +1754,11 @@ def main(args):
                 # NOTE: the paper doesn't mention this explicitly AFAIK but I think this makes sense since the
                 # pretrained feature network for the discriminator operates in pixel space rather than latent space.
                 unscaled_student_x_0 = (1 / vae.config.scaling_factor) * student_x_0
-                student_gen_image = vae.decode(unscaled_student_x_0.to(dtype=weight_dtype)).sample
+                if args.pretrained_vae_model_name_or_path is not None:
+                    student_gen_image = vae.decode(unscaled_student_x_0.to(dtype=weight_dtype)).sample
+                else:
+                    # VAE is in full precision due to possible NaN issues
+                    student_gen_image = vae.decode(unscaled_student_x_0).sample
 
                 # 2. Get discriminator real/fake outputs on the real and fake (generated) images respectively.
                 disc_output_real = discriminator(pixel_values.float(), text_embedding)
@@ -1814,7 +1814,12 @@ def main(args):
                 ############################
                 # Calculate distillation loss in pixel space rather than latent space (see section 3.1)
                 unscaled_teacher_x_0 = (1 / vae.config.scaling_factor) * teacher_x_0
-                teacher_gen_image = vae.decode(unscaled_teacher_x_0.to(dtype=weight_dtype)).sample
+                if args.pretrained_vae_model_name_or_path is not None:
+                    teacher_gen_image = vae.decode(unscaled_teacher_x_0.to(dtype=weight_dtype)).sample
+                else:
+                    # VAE is in full precision due to possible NaN issues
+                    teacher_gen_image = vae.decode(unscaled_teacher_x_0).sample
+
                 per_instance_distillation_loss = F.mse_loss(
                     student_gen_image.float(), teacher_gen_image.float(), reduction="none"
                 )
