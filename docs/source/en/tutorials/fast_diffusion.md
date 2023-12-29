@@ -96,6 +96,8 @@ bfloat16 reduces the latency from 7.36 seconds to 4.63 seconds:
 
 </div>
 
+_(We later ran the experiments in float16 and found out that the recent versions of torchao do not incur numerical problems from float16.)_
+
 **Why bfloat16?** 
 
 * Using a reduced numerical precision (such as float16, bfloat16) to run inference doesn’t affect the generation quality but significantly improves latency. 
