@@ -337,10 +337,11 @@ class DiscriminatorHead(torch.nn.Module):
 
         self.input_block = DiscHeadBlock(channels, kernel_size=1)
         self.resblock = ResidualBlock(DiscHeadBlock(channels, kernel_size=9))
-
-        # Map the feature network token embeddings and conditioning embedding to a common dimension cond_map_dim.
-        self.conditioning_map = torch.nn.Linear(self.cond_embedding_dim, cond_map_dim)
+        # Project each token embedding from channels dimensions to cond_map_dim dimensions.
         self.cls = SpectralConv1d(channels, cond_map_dim, kernel_size=1, padding=0)
+
+        # Also project the feature network token embeddings to dimension cond_map_dim.
+        self.conditioning_map = torch.nn.Linear(self.cond_embedding_dim, cond_map_dim)
 
     def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
         """
@@ -363,6 +364,8 @@ class DiscriminatorHead(torch.nn.Module):
 
         # Project conditioning embeddings to cond_map_dim and unsqueeze in the sequence length dimension.
         c = self.conditioning_map(c).unsqueeze(-1)
+
+        # Combine image features with conditioning embedding via a product.
         out = (out * c).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
 
         return out
@@ -1120,7 +1123,24 @@ def encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompt
         text_input_ids = text_inputs.input_ids
         prompt_embeds = text_encoder(text_input_ids.to(text_encoder.device))[0]
 
-    return prompt_embeds
+        # Get pooled output from prompt_embeds for use in the discriminator.
+        # https://github.com/huggingface/transformers/blob/3cefac1d974db5e2825a0cb2b842883a628be7a0/src/transformers/models/clip/modeling_clip.py#L715-L734
+        if text_encoder.config.eos_token_id == 2:
+            pooled_output = prompt_embeds[
+                torch.arange(prompt_embeds.shape[0], device=prompt_embeds.device),
+                text_input_ids.to(dtype=torch.int, device=prompt_embeds.device).argmax(dim=-1),
+            ]
+        else:
+            # The config gets updated `eos_token_id` from transformers PR #24773 (so the use of exta new tokens is possible)
+            pooled_output = prompt_embeds[
+                torch.arange(prompt_embeds.shape[0], device=prompt_embeds.device),
+                # We need to get the first position of `eos_token_id` value (`pad_token_ids` might equal to `eos_token_id`)
+                (text_input_ids.to(dtype=torch.int, device=prompt_embeds.device) == text_encoder.config.eos_token_id)
+                .int()
+                .argmax(dim=-1),
+            ]
+
+    return prompt_embeds, pooled_output
 
 
 def main(args):
@@ -1229,7 +1249,6 @@ def main(args):
     )
 
     # 3. Load text encoders from SD 1.X/2.X checkpoint.
-    # import correct text encoder classes
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_teacher_model, subfolder="text_encoder", revision=args.teacher_revision
     )
@@ -1408,11 +1427,11 @@ def main(args):
     )
 
     # 13. Dataset creation and data processing
-    # Here, we compute not just the text embeddings but also the additional embeddings
-    # needed for the SD XL UNet to operate.
+    # Compute the text encoder last hidden states `prompt_embeds` for use in the teacher/student U-Nets and pooled
+    # output `text_embedding` for use in the discriminator.
     def compute_embeddings(prompt_batch, proportion_empty_prompts, text_encoder, tokenizer, is_train=True):
-        prompt_embeds = encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompts, is_train)
-        return {"prompt_embeds": prompt_embeds}
+        prompt_embeds, text_embedding = encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompts, is_train)
+        return {"prompt_embeds": prompt_embeds, "text_embedding": text_embedding}
 
     dataset = SDText2ImageDataset(
         train_shards_path_or_url=args.train_shards_path_or_url,
@@ -1577,8 +1596,9 @@ def main(args):
                 student_noise = torch.randn_like(latents)
                 noisy_student_input = noise_scheduler.add_noise(latents, student_noise, student_timesteps)
 
-                # 4. Prepare prompt embeds and unet_added_conditions
+                # 4. Prepare prompt embeds (for teacher/student U-Net) and text embedding (for discriminator).
                 prompt_embeds = encoded_text.pop("prompt_embeds")
+                text_embedding = encoded_text.pop("text_embedding")
 
                 # 5. Get the student model predicted original sample `student_x_0`.
                 student_noise_pred = unet(
@@ -1630,8 +1650,8 @@ def main(args):
                 student_gen_image = vae.decode(unscaled_student_x_0.to(dtype=weight_dtype)).sample
 
                 # 2. Get discriminator real/fake outputs on the real and fake (generated) images respectively.
-                disc_output_real = discriminator(pixel_values.float(), prompt_embeds)
-                disc_output_fake = discriminator(student_gen_image.detach().float(), prompt_embeds)
+                disc_output_real = discriminator(pixel_values.float(), text_embedding)
+                disc_output_fake = discriminator(student_gen_image.detach().float(), text_embedding)
 
                 # 3. Calculate the discriminator real adversarial loss terms.
                 d_logits_real = disc_output_real.logits
@@ -1672,7 +1692,7 @@ def main(args):
                 optimizer.zero_grad(set_to_none=True)
 
                 # 1. Rerun the disc on generated image, but this time allow gradients to flow through the generator
-                disc_output_fake = discriminator(student_gen_image, prompt_embeds)
+                disc_output_fake = discriminator(student_gen_image, text_embedding)
 
                 # 2. Calculate generator adversarial loss term
                 g_logits_fake = disc_output_fake.logits

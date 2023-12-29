@@ -355,10 +355,11 @@ class DiscriminatorHead(torch.nn.Module):
 
         self.input_block = DiscHeadBlock(channels, kernel_size=1)
         self.resblock = ResidualBlock(DiscHeadBlock(channels, kernel_size=9))
-
-        # Map the feature network token embeddings and conditioning embedding to a common dimension cond_map_dim.
-        self.conditioning_map = torch.nn.Linear(self.cond_embedding_dim, cond_map_dim)
+        # Project each token embedding from channels dimensions to cond_map_dim dimensions.
         self.cls = SpectralConv1d(channels, cond_map_dim, kernel_size=1, padding=0)
+
+        # Also project the feature network token embeddings to dimension cond_map_dim.
+        self.conditioning_map = torch.nn.Linear(self.cond_embedding_dim, cond_map_dim)
 
     def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
         """
@@ -381,6 +382,8 @@ class DiscriminatorHead(torch.nn.Module):
 
         # Project conditioning embeddings to cond_map_dim and unsqueeze in the sequence length dimension.
         c = self.conditioning_map(c).unsqueeze(-1)
+
+        # Combine image features with conditioning embedding via a product.
         out = (out * c).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
 
         return out
@@ -1345,10 +1348,13 @@ def main(args):
         )
 
     # 7. Initialize GAN discriminator.
-    # TODO: Confirm that using text_encoder_one here is correct
+    # Use text_encoder_two here since it already projects the CLIP embedding to a fixed length vector (e.g. it's
+    # already a ClipTextModelWithProjection)
+    # TODO: what if there's no text_encoder_two? I think we already assume text_encoder_two exists in Step 3 above so
+    # it might be fine?
     discriminator = Discriminator(
         pretrained_feature_network=args.pretrained_feature_network,
-        cond_embedding_dim=text_encoder_one.config.hidden_size,
+        cond_embedding_dim=text_encoder_two.config.projection_dim,
     )
 
     # 8. Freeze teacher vae, text_encoders, and teacher_unet
@@ -1696,8 +1702,9 @@ def main(args):
                 student_noise = torch.randn_like(latents)
                 noisy_student_input = noise_scheduler.add_noise(latents, student_noise, student_timesteps)
 
-                # 4. Prepare prompt embeds and unet_added_conditions
+                # 4. Prepare prompt embeds (for teacher/student U-Net) and text embedding (for discriminator).
                 prompt_embeds = encoded_text.pop("prompt_embeds")
+                text_embedding = encoded_text["text_embeds"]
 
                 # 5. Get the student model predicted original sample `student_x_0`.
                 student_noise_pred = unet(
@@ -1754,8 +1761,8 @@ def main(args):
                 student_gen_image = vae.decode(unscaled_student_x_0.to(dtype=weight_dtype)).sample
 
                 # 2. Get discriminator real/fake outputs on the real and fake (generated) images respectively.
-                disc_output_real = discriminator(pixel_values.float(), prompt_embeds)
-                disc_output_fake = discriminator(student_gen_image.detach().float(), prompt_embeds)
+                disc_output_real = discriminator(pixel_values.float(), text_embedding)
+                disc_output_fake = discriminator(student_gen_image.detach().float(), text_embedding)
 
                 # 3. Calculate the discriminator real adversarial loss terms.
                 d_logits_real = disc_output_real.logits
@@ -1796,7 +1803,7 @@ def main(args):
                 optimizer.zero_grad(set_to_none=True)
 
                 # 1. Rerun the disc on generated image, but this time allow gradients to flow through the generator
-                disc_output_fake = discriminator(student_gen_image, prompt_embeds)
+                disc_output_fake = discriminator(student_gen_image, text_embedding)
 
                 # 2. Calculate generator adversarial loss term
                 g_logits_fake = disc_output_fake.logits
