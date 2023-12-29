@@ -163,12 +163,6 @@ def build_component(
         )
         return controlnet_components
 
-    if component_name == "adapter":
-        adapter_components = create_adapter_model(
-            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
-        )
-        return adapter_components
-
     if component_name == "scheduler":
         scheduler_components = create_scheduler(
             pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
