@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 -->
 
 # DeepCache
-[DeepCache](https://huggingface.co/papers/2312.00858) accelerates ['StableDiffusionPipeline'] by strategically caching and reusing high-level features, while efficiently updating low-level features, which leverages the unique properties of the U-Net architecture. 
+[DeepCache](https://huggingface.co/papers/2312.00858) accelerates [`StableDiffusionPipeline`] by strategically caching and reusing high-level features, while efficiently updating low-level features, which leverages the unique properties of the U-Net architecture. 
 
 Install DeepCache from `pip`:
 ```bash
@@ -51,7 +51,7 @@ You can find more generated samples (Original Pipeline v.s. DeepCache) and the c
 
 ## Benchmark
 
-We measures the acceleration ratio achievable using DeepCache. All evaluations are based on the [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) with 50 inference steps, using NVIDIA RTX A5000. The results show the speed enhancements that can be expected when using different configurations of resolution, batch size, cache_interval(I) and cache_branch_id(B).
+We measure the acceleration ratio achievable using DeepCache. All evaluations are based on the [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) with 50 inference steps, using NVIDIA RTX A5000. The results show the speed enhancements that can be expected when using different configurations of resolution, batch size, cache_interval(I) and cache_branch_id(B).
 
 | **Resolution** | **Batch size** | **Original** | **DeepCache(I=3, B=0)** | **DeepCache(I=5, B=0)** | **DeepCache(I=5, B=1)** |
 |----------------|----------------|--------------|-------------------------|-------------------------|-------------------------|
