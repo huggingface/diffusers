@@ -1268,7 +1268,7 @@ def create_ldm_bert_config(original_config):
     return config
 
 
-def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, image_size, **kwargs):
+def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
     if "num_in_channels" in kwargs:
         num_in_channels = kwargs.get("num_in_channels")
 
@@ -1291,7 +1291,7 @@ def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoi
     extract_ema = kwargs.get("extract_ema", False)
 
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
-    unet_config["num_in_channels"] = num_in_channels
+    unet_config["in_channels"] = num_in_channels
     unet_config["upcast_attention"] = upcast_attention
 
     path = checkpoint_path_or_dict if isinstance(checkpoint_path_or_dict, str) else ""
@@ -1423,6 +1423,7 @@ def create_text_encoders_and_tokenizers(pipeline_class_name, original_config, ch
 
         try:
             config_name = "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k"
+            config_kwargs = {"projection_dim": 1280}
             prefix = "conditioner.embedders.1.model."
             tokenizer_2 = CLIPTokenizer.from_pretrained(config_name, pad_token="!", local_files_only=local_files_only)
             text_encoder_2 = convert_open_clip_checkpoint(
@@ -1434,7 +1435,6 @@ def create_text_encoders_and_tokenizers(pipeline_class_name, original_config, ch
                 **config_kwargs,
             )
         except Exception as e:
-            print(e)
             raise ValueError(
                 f"With local_files_only set to {local_files_only}, you must first locally save the text_encoder_2 and tokenizer_2 in the following path: {config_name} with `pad_token` set to '!'."
             )

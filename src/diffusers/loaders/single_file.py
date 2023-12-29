@@ -347,6 +347,8 @@ class FromSingleFileMixin:
                 pretrained_model_link_or_path,
                 **kwargs,
             )
+            if not components:
+                continue
             pipeline_components.update(components)
 
         additional_components = set(pipeline_components.keys() - component_names)
