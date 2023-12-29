@@ -191,7 +191,7 @@ def build_additional_components(
         return kwargs.pop(component_name, None)
 
     if component_name in pipeline_components:
-        return {}
+        return None
 
     if pipeline_class_name == ["StableUnCLIPPipeline", "StableUnCLIPImg2ImgPipeline"]:
         stable_unclip_components = create_stable_unclip_components(
