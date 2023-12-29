@@ -47,7 +47,7 @@ You can find more generated samples (Original Pipeline v.s. DeepCache) and the c
 
 ## Benchmark
 
-We measure the acceleration ratio achievable using DeepCache. All evaluations are based on the [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) with 50 inference steps, using NVIDIA RTX A5000. The results show the speed enhancements that can be expected under different configurations of resolution, batch size, the interval for cache(I) and branch for cache(B).
+We measure the acceleration ratio achievable using DeepCache. All evaluations are based on the [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) with 50 inference steps, using NVIDIA RTX A5000. The results show the speed enhancements that can be expected under different configurations of resolution, batch size, the interval for cache(I) and the branch for cache(B).
 
 | **Resolution** | **Batch size** | **Original** | **DeepCache(I=3, B=0)** | **DeepCache(I=5, B=0)** | **DeepCache(I=5, B=1)** |
 |----------------|----------------|--------------|-------------------------|-------------------------|-------------------------|
