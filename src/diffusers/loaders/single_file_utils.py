@@ -39,6 +39,7 @@ from ..models import AutoencoderKL, ControlNetModel, PriorTransformer, UNet2DCon
 from ..pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..pipelines.paint_by_example import PaintByExampleImageEncoder
 from ..pipelines.pipeline_utils import DiffusionPipeline
+from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ..pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from ..schedulers import (
     DDIMScheduler,
@@ -53,7 +54,6 @@ from ..schedulers import (
 )
 from ..utils import is_accelerate_available, is_omegaconf_available, logging
 from ..utils.import_utils import BACKENDS_MAPPING
-from .safety_checker import StableDiffusionSafetyChecker
 
 
 if is_accelerate_available():
@@ -1332,7 +1332,7 @@ def create_vae_model(original_config, checkpoint, checkpoint_path_or_dict, **kwa
     return vae
 
 
-def create_text_encoder_tokenizer(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
+def create_text_encoders_and_tokenizers(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
     model_type = infer_model_type(pipeline_class_name, original_config)
     local_files_only = kwargs.get("local_files_only", False)
 
