@@ -319,7 +319,9 @@ class DiscHeadBlock(torch.nn.Module):
 # TODO: implement image conditioning (see Section 3.2 of paper)
 class DiscriminatorHead(torch.nn.Module):
     """
-    Implements a StyleGAN-T-style discriminator head.
+    Implements a StyleGAN-T-style discriminator head. The discriminator head takes in a (possibly intermediate) 1D
+    sequence of tokens from the feature network, processes it, and combines it with conditioning information to output
+    per-token logits.
     """
 
     def __init__(
@@ -341,11 +343,26 @@ class DiscriminatorHead(torch.nn.Module):
         self.cls = SpectralConv1d(channels, cond_map_dim, kernel_size=1, padding=0)
 
     def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+        """
+        Maps a 1D sequence of tokens from a feature network (e.g. ViT trained with DINO) and a conditioning embedding
+        to per-token logits.
+
+        Args:
+            x (`torch.Tensor` of shape `(batch_size, channels, sequence_length)`):
+                A sequence of 1D tokens (possibly intermediate) from a ViT feature neetwork. Note that the channels dim
+                should be the same as the feature network's embedding dim.
+            c (`torch.Tensor` of shape `(batch_size, cond_embedding_dim)`):
+                A conditioning embedding representing conditioning (e.g. text) information.
+
+        Returns:
+            `torch.Tensor` of shape `(batch_size, sequence_length)`: batched 1D sequence of per-token logits.
+        """
         hidden_states = self.input_block(x)
         hidden_states = self.resblock(hidden_states)
         out = self.cls(hidden_states)
 
-        c = self.conditioning_map(c).squeeze(-1)
+        # Project conditioning embeddings to cond_map_dim and unsqueeze in the sequence length dimension.
+        c = self.conditioning_map(c).unsqueeze(-1)
         out = (out * c).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
 
         return out
@@ -499,7 +516,8 @@ class FeatureNetwork(torch.nn.Module):
                 Image with pixel values in [0, 1].
 
         Returns:
-            `Dict[Any]`: dict of activations
+            `Dict[Any]`: dict of activations which are intermediate features from the feature network. The dict values
+            (feature embeddings) have shape `(batch_size, embed_dim, sequence_length)`.
         """
         x = F.interpolate(x, self.img_resolution, mode="area")
         x = self.norm(x)
@@ -526,7 +544,7 @@ class Discriminator(torch.nn.Module):
 
     def __init__(
         self,
-        pretrained_feature_network: str = "vit_small_patch16_224_dino",
+        pretrained_feature_network: str = "vit_small_patch16_224.dino",
         cond_embedding_dim: int = 512,
         patch_size: List[int] = [16, 16],
         hooks: List[int] = [2, 5, 8, 11],
