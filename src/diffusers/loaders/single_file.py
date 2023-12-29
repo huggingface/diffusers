@@ -339,7 +339,13 @@ class FromSingleFileMixin:
         pipeline_components = {}
         for component in component_names:
             components = build_component(
-                pipeline_components, pipeline_name, component, checkpoint, original_config, **kwargs
+                pipeline_components,
+                pipeline_name,
+                component,
+                original_config,
+                checkpoint,
+                pretrained_model_link_or_path,
+                **kwargs,
             )
             pipeline_components.update(components)
 
@@ -354,4 +360,3 @@ class FromSingleFileMixin:
             pipe.to(dtype=torch_dtype)
 
         return pipe
-
