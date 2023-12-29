@@ -314,23 +314,26 @@ class FromSingleFileMixin:
             raise ValueError(
                 f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(VALID_URL_PREFIXES)}"
             )
-        pretrained_model_link_or_path = download_model_checkpoint(
-            ckpt_path,
-            cache_dir=cache_dir,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-        )
-        checkpoint = load_checkpoint(pretrained_model_link_or_path, from_safetensors=from_safetensors)
+        if not ckpt_path.is_file():
+            pretrained_model_link_or_path = download_model_checkpoint(
+                ckpt_path,
+                cache_dir=cache_dir,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
+            )
+            checkpoint = load_checkpoint(pretrained_model_link_or_path, from_safetensors=from_safetensors)
+        else:
+            checkpoint = load_checkpoint(pretrained_model_link_or_path, from_safetensors=from_safetensors)
 
         # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
         # "state_dict" key https://huggingface.co/thibaud/controlnet-canny-sd21
         while "state_dict" in checkpoint:
             checkpoint = checkpoint["state_dict"]
 
-        original_config = fetch_original_config(original_config_file, checkpoint, config_files)
+        original_config = fetch_original_config(checkpoint, original_config_file, config_files)
         component_names = extract_pipeline_component_names(cls)
 
         pipeline_components = {}

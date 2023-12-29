@@ -152,9 +152,14 @@ def fetch_original_config_file_from_file(checkpoint, config_files: list):
     return
 
 
-def fetch_original_config(checkpoint, config_files: list):
-    if config_files is not None:
+def fetch_original_config(checkpoint, original_config_file=None, config_files=None):
+    if original_config_file:
+        original_config = OmegaConf.load(original_config_file)
+        return original_config
+
+    elif config_files:
         original_config_file = fetch_original_config_file_from_file(checkpoint, config_files)
+
     else:
         original_config_file = fetch_original_config_file_from_url(checkpoint)
 
