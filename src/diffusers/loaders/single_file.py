@@ -199,12 +199,6 @@ def build_additional_components(
         )
         return stable_unclip_components
 
-    if pipeline_class_name == "LDMTextToImagePipeline":
-        ldm_text_to_image_components = create_ldm_text_to_image_components(
-            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
-        )
-        return ldm_text_to_image_components
-
     if pipeline_class_name == "PaintByExamplePipeline":
         paint_by_example_components = create_paint_by_example_components(
             pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs

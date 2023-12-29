@@ -237,11 +237,12 @@ def determine_image_size(pipeline_class_name, original_config, checkpoint, **kwa
         "parameterization" in original_config["model"]["params"]
         and original_config["model"]["params"]["parameterization"] == "v"
     ):
-            # NOTE: For stable diffusion 2 base one has to pass `image_size==512`
-            # as it relies on a brittle global step parameter here
-            image_size = 512 if global_step == 875000 else 768
+        # NOTE: For stable diffusion 2 base one has to pass `image_size==512`
+        # as it relies on a brittle global step parameter here
+        image_size = 512 if global_step == 875000 else 768
 
     return image_size
+
 
 def shave_segments(path, n_shave_prefix_segments=1):
     """
@@ -1315,7 +1316,9 @@ def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoi
     return {"unet": unet}
 
 
-def create_controlnet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, image_size, **kwargs):
+def create_controlnet_model(
+    pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, image_size, **kwargs
+):
     if "control_stage_config" not in original_config.model.params:
         raise ValueError("Config does not have controlnet information")
 
@@ -1349,7 +1352,9 @@ def create_vae_model(pipeline_class_name, original_config, checkpoint, checkpoin
     return {"vae": vae}
 
 
-def create_text_encoders_and_tokenizers(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
+def create_text_encoders_and_tokenizers(
+    pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+):
     model_type = infer_model_type(pipeline_class_name, original_config)
     local_files_only = kwargs.get("local_files_only", False)
 
@@ -1450,7 +1455,7 @@ def create_text_encoders_and_tokenizers(pipeline_class_name, original_config, ch
             "text_encoder_2": text_encoder_2,
         }
 
-    elif model_type == "LDMText2Image":
+    elif pipeline_class_name == "LDMTextToImagePipeline":
         text_config = create_ldm_bert_config(original_config)
         text_encoder = convert_ldm_bert_checkpoint(checkpoint, text_config)
         tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased", local_files_only=local_files_only)
@@ -1525,9 +1530,7 @@ def create_scheduler(pipeline_class_name, original_config, checkpoint, checkpoin
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
     if pipeline_class_name == "StableDiffusionUpscalePipeline":
-        scheduler = DDIMScheduler.from_pretrained(
-            "stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler"
-        )
+        scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler")
         low_res_scheduler = DDPMScheduler.from_pretrained(
             "stabilityai/stable-diffusion-x4-upscaler", subfolder="low_res_scheduler"
         )
