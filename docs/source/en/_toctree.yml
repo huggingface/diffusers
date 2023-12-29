@@ -19,6 +19,8 @@
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
     title: Inference with PEFT
+  - local: tutorials/fast_diffusion
+    title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
   - sections:
@@ -264,10 +266,6 @@
       title: ControlNet
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
-    - local: api/pipelines/controlnetxs
-      title: ControlNet-XS
-    - local: api/pipelines/controlnetxs_sdxl
-      title: ControlNet-XS with Stable Diffusion XL
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim

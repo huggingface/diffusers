@@ -44,7 +44,7 @@ import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -452,7 +452,10 @@ def main():
         param.requires_grad_(False)
 
     unet_lora_config = LoraConfig(
-        r=args.rank, init_lora_weights="gaussian", target_modules=["to_k", "to_q", "to_v", "to_out.0"]
+        r=args.rank,
+        lora_alpha=args.rank,
+        init_lora_weights="gaussian",
+        target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
@@ -806,7 +809,9 @@ def main():
                         accelerator.save_state(save_path)
 
                         unwrapped_unet = accelerator.unwrap_model(unet)
-                        unet_lora_state_dict = get_peft_model_state_dict(unwrapped_unet)
+                        unet_lora_state_dict = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(unwrapped_unet)
+                        )
 
                         StableDiffusionPipeline.save_lora_weights(
                             save_directory=save_path,
@@ -844,10 +849,11 @@ def main():
                 if args.seed is not None:
                     generator = generator.manual_seed(args.seed)
                 images = []
-                for _ in range(args.num_validation_images):
-                    images.append(
-                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
-                    )
+                with torch.cuda.amp.autocast():
+                    for _ in range(args.num_validation_images):
+                        images.append(
+                            pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                        )
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
@@ -872,7 +878,7 @@ def main():
         unet = unet.to(torch.float32)
 
         unwrapped_unet = accelerator.unwrap_model(unet)
-        unet_lora_state_dict = get_peft_model_state_dict(unwrapped_unet)
+        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
         StableDiffusionPipeline.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_state_dict,
@@ -913,8 +919,11 @@ def main():
             if args.seed is not None:
                 generator = generator.manual_seed(args.seed)
             images = []
-            for _ in range(args.num_validation_images):
-                images.append(pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0])
+            with torch.cuda.amp.autocast():
+                for _ in range(args.num_validation_images):
+                    images.append(
+                        pipeline(args.validation_prompt, num_inference_steps=30, generator=generator).images[0]
+                    )
 
             for tracker in accelerator.trackers:
                 if len(images) != 0:
