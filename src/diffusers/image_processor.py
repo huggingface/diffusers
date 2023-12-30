@@ -400,7 +400,7 @@ class VaeImageProcessor(ConfigMixin):
             `PIL.Image.Image`:
                 The binarized image. Values less than 0.5 are set to 0, values greater than 0.5 are set to 1.
         """
-        image.point(lambda p: 0 if p < 0.5 else 1, '1')
+        image.point(lambda p: 0 if p < 0.5 else 1, "1")
         return image
 
     def get_default_height_width(
@@ -446,61 +446,6 @@ class VaeImageProcessor(ConfigMixin):
 
         return height, width
 
-<<<<<<< HEAD
-    def resize(
-        self,
-        image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
-        height: Optional[int] = None,
-        width: Optional[int] = None,
-    ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
-        """
-        Resize image.
-
-        Args:
-            image (`PIL.Image.Image`, `np.ndarray` or `torch.Tensor`):
-                The image input, can be a PIL image, numpy array or pytorch tensor.
-            height (`int`, *optional*, defaults to `None`):
-                The height to resize to.
-            width (`int`, *optional*`, defaults to `None`):
-                The width to resize to.
-
-        Returns:
-            `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
-                The resized image.
-        """
-        if isinstance(image, PIL.Image.Image):
-            image = image.resize((width, height), resample=PIL_INTERPOLATION[self.config.resample])
-        elif isinstance(image, torch.Tensor):
-            image = torch.nn.functional.interpolate(
-                image,
-                size=(height, width),
-            )
-        elif isinstance(image, np.ndarray):
-            image = self.numpy_to_pt(image)
-            image = torch.nn.functional.interpolate(
-                image,
-                size=(height, width),
-            )
-            image = self.pt_to_numpy(image)
-        return image
-
-    def binarize(self, image: PIL.Image.Image) -> PIL.Image.Image:
-        """
-        Create a mask.
-
-        Args:
-            image (`PIL.Image.Image`):
-                The image input, should be a PIL image.
-
-        Returns:
-            `PIL.Image.Image`:
-                The binarized image. Values less than 0.5 are set to 0, values greater than 0.5 are set to 1.
-        """
-        image.point(lambda p: 0 if p < 0.5 else 1, "1")
-        return image
-
-=======
->>>>>>> 2013a2d9011964e9e0578f5aa2ebdebb6cc0110b
     def preprocess(
         self,
         image: PipelineImageInput,
