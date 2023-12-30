@@ -59,7 +59,7 @@ if is_accelerate_available():
     import accelerate
     from accelerate import infer_auto_device_map
     from accelerate.utils import set_module_tensor_to_device
-    from accelerate.utils.versions import is_torch_version, get_balanced_memory, get_max_memory
+    from accelerate.utils.versions import get_balanced_memory, get_max_memory, is_torch_version
 
 
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
@@ -101,7 +101,7 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
 
 
 # Adapted from `transformers` (see modeling_utils.py)
-def _determine_device_map_from_string(model: "ModelMixin", torch_dtype):
+def _determine_device_map_from_string(model: "ModelMixin", device_map, max_memory, torch_dtype):
     if isinstance(device_map, str):
         no_split_modules = model._get_no_split_modules(device_map)
         device_map_kwargs = {"no_split_module_classes": no_split_modules}
@@ -474,7 +474,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         for _, module in self.named_modules():
             if isinstance(module, BaseTunerLayer):
                 return module.active_adapter
-            
+
     def _get_no_split_modules(self, device_map: str):
         """
         Get the modules of the model that should not be spit when using device_map. We iterate through the modules to
@@ -503,7 +503,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         _no_split_modules = _no_split_modules | set(module._no_split_modules)
                 modules_to_check += list(module.children())
         return list(_no_split_modules)
-
 
     def save_pretrained(
         self,
@@ -753,7 +752,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 f"You cannot set `low_cpu_mem_usage` to `False` while using device_map={device_map} for loading and"
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
-        
+
         # change device_map into a map if we passed an int, a str or a torch.device
         if isinstance(device_map, torch.device):
             device_map = {"": device_map}
@@ -778,7 +777,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 low_cpu_mem_usage = True
             elif not low_cpu_mem_usage:
                 raise ValueError("Passing along a `device_map` requires `low_cpu_mem_usage=True`")
-            
+
         if low_cpu_mem_usage:
             if device_map is not None and not is_torch_version(">=", "1.10"):
                 # The max memory utils require PyTorch >= 1.10 to have torch.cuda.mem_get_info.
@@ -806,10 +805,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             token=token,
             revision=revision,
             subfolder=subfolder,
-            device_map=device_map,
-            max_memory=max_memory,
-            offload_folder=offload_folder,
-            offload_state_dict=offload_state_dict,
             user_agent=user_agent,
             **kwargs,
         )
@@ -914,7 +909,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
-                    device_map = _determine_device_map_from_string(model, torch_dtype)
+                    device_map = _determine_device_map_from_string(model, device_map, max_memory, torch_dtype)
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
