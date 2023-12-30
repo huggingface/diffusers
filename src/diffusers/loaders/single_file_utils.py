@@ -1384,10 +1384,10 @@ def create_text_encoders_and_tokenizers(
                 checkpoint, local_files_only=local_files_only, text_encoder=None
             )
             tokenizer = CLIPTokenizer.from_pretrained(
-                config_name, subfolder="tokenizer", local_files_only=local_files_only
+                config_name, local_files_only=local_files_only
             )
 
-        except Exception:
+        except Exception as e:
             raise ValueError(
                 f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: '{config_name}'."
             )
