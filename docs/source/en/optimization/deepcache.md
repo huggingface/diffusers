@@ -11,7 +11,7 @@ specific language governing permissions and limitations under the License.
 -->
 
 # DeepCache
-[DeepCache](https://huggingface.co/papers/2312.00858) accelerates [`StableDiffusionPipeline`, `StableDiffusionXLPipeline`] by strategically caching and reusing high-level features, while efficiently updating low-level features, which leverages the unique properties of the U-Net architecture. 
+[DeepCache](https://huggingface.co/papers/2312.00858) accelerates [`StableDiffusionPipeline`] and [`StableDiffusionXLPipeline`] by strategically caching and reusing high-level features, while efficiently updating low-level features, which leverages the unique properties of the U-Net architecture. 
 
 Install DeepCache from `pip`:
 ```bash
