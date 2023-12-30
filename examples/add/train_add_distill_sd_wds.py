@@ -46,7 +46,7 @@ from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from torch.utils.data import default_collate
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import AutoTokenizer, CLIPTextModel
+from transformers import AutoTokenizer, CLIPTextModel, CLIPTextModelWithProjection
 from webdataset.tariterators import (
     base_plus_ext,
     tar_file_expander,
@@ -932,6 +932,24 @@ def parse_args():
         default=0,
         help="Proportion of image prompts to be replaced with empty strings. Defaults to 0 (no prompt replacement).",
     )
+    parser.add_argument(
+        "--use_pretrained_projection",
+        action="store_true",
+        help=(
+            "Whether to use a text encoder which projects the CLIP text embedding to a fixed length vector (that is, a"
+            " `CLIPTextModelWithProjection` rather than the `CLIPTextModel` usually used by SD 1.X/2.X.). If set, the"
+            " text encoder will be loaded from the model id or path given in `text_encoder_with_proj`."
+        ),
+    )
+    parser.add_argument(
+        "--text_encoder_with_proj",
+        type=str,
+        default="openai/clip-vit-large-patch14",
+        help=(
+            "The text encoder with projection that will be used if `use_pretrained_projection` is set. Note that the"
+            " default value of `openai/clip-vit-large-patch14` is the CLIP model used by Stable Diffusion v1.5."
+        ),
+    )
     # ----Adversarial Diffusion Distillation (ADD) Specific Arguments----
     parser.add_argument(
         "--pretrained_feature_network",
@@ -1101,7 +1119,7 @@ def parse_args():
 
 
 # Adapted from pipelines.StableDiffusionPipeline.encode_prompt
-def encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompts, is_train=True):
+def encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompts, has_projection, is_train=True):
     captions = []
     for caption in prompt_batch:
         if random.random() < proportion_empty_prompts:
@@ -1121,24 +1139,14 @@ def encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompt
             return_tensors="pt",
         )
         text_input_ids = text_inputs.input_ids
-        prompt_embeds = text_encoder(text_input_ids.to(text_encoder.device))[0]
-
-        # Get pooled output from prompt_embeds for use in the discriminator.
-        # https://github.com/huggingface/transformers/blob/3cefac1d974db5e2825a0cb2b842883a628be7a0/src/transformers/models/clip/modeling_clip.py#L715-L734
-        if text_encoder.config.eos_token_id == 2:
-            pooled_output = prompt_embeds[
-                torch.arange(prompt_embeds.shape[0], device=prompt_embeds.device),
-                text_input_ids.to(dtype=torch.int, device=prompt_embeds.device).argmax(dim=-1),
-            ]
+        text_model_output = text_encoder(text_input_ids.to(text_encoder.device))
+        # Get last hidden states for use in conditioning the student and teacher U-Nets
+        prompt_embeds = text_model_output.last_hidden_state
+        # Get text embedding (if model has projection) or pooled output for use in conditioning the discriminator
+        if has_projection:
+            pooled_output = text_model_output.text_embeds
         else:
-            # The config gets updated `eos_token_id` from transformers PR #24773 (so the use of exta new tokens is possible)
-            pooled_output = prompt_embeds[
-                torch.arange(prompt_embeds.shape[0], device=prompt_embeds.device),
-                # We need to get the first position of `eos_token_id` value (`pad_token_ids` might equal to `eos_token_id`)
-                (text_input_ids.to(dtype=torch.int, device=prompt_embeds.device) == text_encoder.config.eos_token_id)
-                .int()
-                .argmax(dim=-1),
-            ]
+            pooled_output = text_model_output.pooler_output
 
     return prompt_embeds, pooled_output
 
@@ -1249,9 +1257,12 @@ def main(args):
     )
 
     # 3. Load text encoders from SD 1.X/2.X checkpoint.
-    text_encoder = CLIPTextModel.from_pretrained(
-        args.pretrained_teacher_model, subfolder="text_encoder", revision=args.teacher_revision
-    )
+    if args.use_pretrained_projection:
+        text_encoder = CLIPTextModelWithProjection.from_pretrained(args.text_encoder_with_proj)
+    else:
+        text_encoder = CLIPTextModel.from_pretrained(
+            args.pretrained_teacher_model, subfolder="text_encoder", revision=args.teacher_revision
+        )
 
     # 4. Load VAE from SD 1.X/2.X checkpoint
     vae = AutoencoderKL.from_pretrained(
@@ -1287,9 +1298,10 @@ def main(args):
         )
 
     # 7. Initialize GAN discriminator.
+    conditioning_dim = text_encoder.config.projection_dim if args.use_pretrained_projection else text_encoder.config.hidden_size
     discriminator = Discriminator(
         pretrained_feature_network=args.pretrained_feature_network,
-        cond_embedding_dim=text_encoder.config.hidden_size,
+        cond_embedding_dim=conditioning_dim,
     )
 
     # 8. Freeze teacher vae, text_encoder, and teacher_unet
@@ -1429,9 +1441,11 @@ def main(args):
     # 13. Dataset creation and data processing
     # Compute the text encoder last hidden states `prompt_embeds` for use in the teacher/student U-Nets and pooled
     # output `text_embedding` for use in the discriminator.
-    def compute_embeddings(prompt_batch, proportion_empty_prompts, text_encoder, tokenizer, is_train=True):
+    def compute_embeddings(
+        prompt_batch, proportion_empty_prompts, text_encoder, tokenizer, has_projection, is_train=True
+    ):
         prompt_embeds, text_embedding = encode_prompt(
-            prompt_batch, text_encoder, tokenizer, proportion_empty_prompts, is_train
+            prompt_batch, text_encoder, tokenizer, proportion_empty_prompts, has_projection, is_train
         )
         return {"prompt_embeds": prompt_embeds, "text_embedding": text_embedding}
 
@@ -1453,6 +1467,7 @@ def main(args):
         proportion_empty_prompts=0,
         text_encoder=text_encoder,
         tokenizer=tokenizer,
+        has_projection=args.use_pretrained_projection,
     )
 
     # 14. Create learning rate scheduler for generator and discriminator
