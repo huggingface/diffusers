@@ -496,8 +496,8 @@ class FeatureNetwork(torch.nn.Module):
 
     def __init__(
         self,
-        pretrained_feature_network: str = "vit_small_patch16_224.dino",
-        patch_size: List[int] = [16, 16],
+        pretrained_feature_network: str = "vit_small_patch14_dinov2.lvd142m",
+        patch_size: List[int] = [14, 14],
         hooks: List[int] = [2, 5, 8, 11],
         start_index: int = 1,
     ):
@@ -573,11 +573,11 @@ class Discriminator(torch.nn.Module):
 
     def __init__(
         self,
-        pretrained_feature_network: str = "vit_small_patch16_224.dino",
+        pretrained_feature_network: str = "vit_small_patch14_dinov2.lvd142m",
         c_text_embedding_dim: int = 768,
         c_img_embedding_dim: Optional[int] = None,
         cond_map_dim: int = 64,
-        patch_size: List[int] = [16, 16],
+        patch_size: List[int] = [14, 14],
         hooks: List[int] = [2, 5, 8, 11],
         start_index: int = 1,
     ):
@@ -1000,11 +1000,17 @@ def parse_args():
     parser.add_argument(
         "--pretrained_feature_network",
         type=str,
-        default="vit_small_patch16_224.dino",
+        default="vit_small_patch14_dinov2.lvd142m",
         help=(
             "The pretrained feature network used in the discriminator, typically a vision transformer (ViT) trained"
             " the DINO objective. The given identifier should be compatible with `timm.create_model`."
         ),
+    )
+    parser.add_argument(
+        "--feature_network_patch_size",
+        type=int,
+        default=14,
+        help="The patch size of the `pretrained_feature_network`."
     )
     parser.add_argument(
         "--cond_map_dim",
@@ -1385,6 +1391,7 @@ def main(args):
         pretrained_feature_network=args.pretrained_feature_network,
         c_text_embedding_dim=text_encoder_two.config.projection_dim,
         cond_map_dim=args.cond_map_dim,
+        patch_size=[args.feature_network_patch_size, args.feature_network_patch_size],
     )
 
     # 8. Freeze teacher vae, text_encoders, and teacher_unet
