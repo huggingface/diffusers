@@ -58,8 +58,8 @@ else:
 if is_accelerate_available():
     import accelerate
     from accelerate import infer_auto_device_map
-    from accelerate.utils import set_module_tensor_to_device
-    from accelerate.utils.versions import get_balanced_memory, get_max_memory, is_torch_version
+    from accelerate.utils import get_balanced_memory, get_max_memory, set_module_tensor_to_device
+    from accelerate.utils.versions import is_torch_version
 
 
 def get_parameter_device(parameter: torch.nn.Module) -> torch.device:
