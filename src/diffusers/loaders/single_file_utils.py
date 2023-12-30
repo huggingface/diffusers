@@ -222,9 +222,11 @@ def determine_image_size(pipeline_class_name, original_config, checkpoint, **kwa
 
     if pipeline_class_name == "StableDiffusionUpscalePipeline":
         image_size = original_config.model.params.unet_config.params.image_size
+        return image_size
 
     elif model_type in ["SDXL", "SDXL-Refiner"]:
         image_size = 1024
+        return image_size
 
     elif (
         "parameterization" in original_config["model"]["params"]
@@ -233,6 +235,7 @@ def determine_image_size(pipeline_class_name, original_config, checkpoint, **kwa
         # NOTE: For stable diffusion 2 base one has to pass `image_size==512`
         # as it relies on a brittle global step parameter here
         image_size = 512 if global_step == 875000 else 768
+        return image_size
 
     return image_size
 
