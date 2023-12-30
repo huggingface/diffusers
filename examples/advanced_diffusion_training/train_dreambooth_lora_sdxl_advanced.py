@@ -20,11 +20,11 @@ import itertools
 import logging
 import math
 import os
+import re
 import shutil
 import warnings
 from pathlib import Path
 from typing import List, Optional
-import re
 
 import numpy as np
 import torch
@@ -42,7 +42,7 @@ from peft import LoraConfig
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
-from safetensors.torch import save_file, load_file
+from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
@@ -59,7 +59,13 @@ from diffusers import (
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
-from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, convert_all_state_dict_to_peft, convert_state_dict_to_kohya, is_wandb_available
+from diffusers.utils import (
+    check_min_version,
+    convert_all_state_dict_to_peft,
+    convert_state_dict_to_diffusers,
+    convert_state_dict_to_kohya,
+    is_wandb_available,
+)
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -96,8 +102,8 @@ def save_model_card(
         """
     embeddings_filename = f"{repo_folder}_emb"
     instance_prompt_webui = re.sub(r"<s\d+>", "", re.sub(r"<s\d+>", embeddings_filename, instance_prompt, count=1))
-    ti_keys = ', '.join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
-    if(instance_prompt_webui != embeddings_filename):
+    ti_keys = ", ".join(f'"{match}"' for match in re.findall(r"<s\d+>", instance_prompt))
+    if instance_prompt_webui != embeddings_filename:
         instance_prompt_sentence = f"For example, `{instance_prompt_webui}`"
     else:
         instance_prompt_sentence = ""
@@ -118,7 +124,7 @@ state_dict = load_file(embedding_path)
 pipeline.load_textual_inversion(state_dict["clip_l"], token=[{ti_keys}], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
 pipeline.load_textual_inversion(state_dict["clip_g"], token=[{ti_keys}], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
         """
-        webui_example_pivotal = f"""- *Embeddings*: download **[`{embeddings_filename}.safetensors` here 💾](/{repo_id}/blob/main/{embeddings_filename}.safetensors)**. 
+        webui_example_pivotal = f"""- *Embeddings*: download **[`{embeddings_filename}.safetensors` here 💾](/{repo_id}/blob/main/{embeddings_filename}.safetensors)**.
     - Place it on it on your `embeddings` folder
     - Use it by adding `{embeddings_filename}` to your prompt. {instance_prompt_sentence}
     (you need both the LoRA and the embeddings as they were trained together for this LoRA)
@@ -158,7 +164,7 @@ license: openrail++
 
 ### Use it with UIs such as AUTOMATIC1111, Comfy UI, SD.Next, Invoke
 
-- **LoRA**: download **[`{repo_folder}.safetensors` here 💾](/{repo_id}/blob/main/{repo_folder}.safetensors)**. 
+- **LoRA**: download **[`{repo_folder}.safetensors` here 💾](/{repo_id}/blob/main/{repo_folder}.safetensors)**.
     - Place it on your `models/Lora` folder.
     - On AUTOMATIC1111, load the LoRA by adding `<lora:{repo_folder}:1>` to your prompt. On ComfyUI just [load it as a regular LoRA](https://comfyanonymous.github.io/ComfyUI_examples/lora/).
 {webui_example_pivotal}
@@ -699,6 +705,7 @@ def parse_args(input_args=None):
             warnings.warn("You need not use --class_prompt without --with_prior_preservation.")
 
     return args
+
 
 # Taken from https://github.com/replicate/cog-sdxl/blob/main/dataset_and_utils.py
 class TokenEmbeddingsHandler:
@@ -2050,13 +2057,13 @@ def main(args):
             embedding_handler.save_embeddings(
                 f"{args.output_dir}/{args.output_dir}_emb.safetensors",
             )
-        
-        #Conver to WebUI format
+
+        # Conver to WebUI format
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
         peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
         kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
         save_file(kohya_state_dict, f"{args.output_dir}/{args.output_dir}.safetensors")
-        
+
         save_model_card(
             model_id if not args.push_to_hub else repo_id,
             images=images,
