@@ -579,12 +579,14 @@ class Discriminator(torch.nn.Module):
         # Trainable discriminator heads
         heads = []
         for i in range(self.feature_network.num_hooks):
-            heads.append([
-                str(i),
-                DiscriminatorHead(
-                    self.feature_network.embed_dim, c_text_embedding_dim, c_img_embedding_dim, cond_map_dim
-                )
-            ])
+            heads.append(
+                [
+                    str(i),
+                    DiscriminatorHead(
+                        self.feature_network.embed_dim, c_text_embedding_dim, c_img_embedding_dim, cond_map_dim
+                    ),
+                ]
+            )
         self.heads = torch.nn.ModuleDict(heads)
 
     def train(self, mode: bool = True):
