@@ -18,7 +18,9 @@ import torch
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors.torch import load_file as safe_load
+from transformers import AutoFeatureExtractor
 
+from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ..utils import (
     is_accelerate_available,
     is_transformers_available,
@@ -166,39 +168,69 @@ def build_component(
 
 
 def build_additional_components(
-    pipeline_components,
     pipeline_class_name,
-    component_name,
     original_config,
     checkpoint,
     checkpoint_path_or_dict,
     **kwargs,
 ):
-    if component_name in kwargs:
-        return kwargs.pop(component_name, None)
-
-    if component_name in pipeline_components:
-        return None
+    components = {}
+    load_safety_checker = kwargs.get("load_safety_checker", False)
+    local_files_only = kwargs.get("local_files_only", False)
 
     if pipeline_class_name == ["StableUnCLIPPipeline", "StableUnCLIPImg2ImgPipeline"]:
         stable_unclip_components = create_stable_unclip_components(
             pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
         )
-        return stable_unclip_components
+        components.update(stable_unclip_components)
 
     if pipeline_class_name == "PaintByExamplePipeline":
         paint_by_example_components = create_paint_by_example_components(
             pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
         )
-        return paint_by_example_components
+        return components.update(paint_by_example_components)
 
     if pipeline_class_name in ["StableDiffusionXLImg2ImgPipeline", "StableDiffusionXLInpaintPipeline"]:
         model_type = infer_model_type(pipeline_class_name, original_config)
         is_refiner = model_type == "SDXL-Refiner"
-        return {
-            "requires_aesthetics_score": is_refiner,
-            "force_zeros_for_empty_prompt": False if is_refiner else True,
-        }
+        components.update(
+            {
+                "requires_aesthetics_score": is_refiner,
+                "force_zeros_for_empty_prompt": False if is_refiner else True,
+            }
+        )
+
+    if pipeline_class_name in [
+        "StableDiffusionPipeline",
+        "StableDiffusionImg2ImgPipeline",
+        "StableDiffusionInpaintPipeline",
+        "StableDiffusionUpscalePipeline",
+        "StableDiffusionControlNetPipeline",
+        "StableDiffusionControlNetImg2ImgPipeline",
+        "StableDiffusionControlNetInpaintPipeline",
+        "StableDiffusionLDM3DPipeline",
+        "LatentConsistencyModelPipeline",
+        "LatentConsistencyModelImg2ImgPipeline",
+    ]:
+        if load_safety_checker:
+            safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
+            )
+            feature_extractor = AutoFeatureExtractor.from_pretrained(
+                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
+            )
+        else:
+            safety_checker = None
+            feature_extractor = None
+
+        components.update(
+            {
+                "safety_checker": safety_checker,
+                "feature_extractor": feature_extractor,
+            }
+        )
+
+    return components
 
 
 class FromSingleFileMixin:
@@ -332,10 +364,13 @@ class FromSingleFileMixin:
                 continue
             pipeline_components.update(components)
 
-        additional_components = set(pipeline_components.keys() - component_names)
+        additional_components = set(component_names - pipeline_components.keys())
         if additional_components:
-            components = build_additional_components(pipeline_name, component, checkpoint, original_config, **kwargs)
-            pipeline_components.update(components)
+            components = build_additional_components(
+                pipeline_name, original_config, checkpoint, pretrained_model_link_or_path, **kwargs
+            )
+            if components:
+                pipeline_components.update(components)
 
         pipe = cls(**pipeline_components)
 

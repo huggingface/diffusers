@@ -1383,11 +1383,9 @@ def create_text_encoders_and_tokenizers(
             text_encoder = convert_ldm_clip_checkpoint(
                 checkpoint, local_files_only=local_files_only, text_encoder=None
             )
-            tokenizer = CLIPTokenizer.from_pretrained(
-                config_name, local_files_only=local_files_only
-            )
+            tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
 
-        except Exception as e:
+        except Exception:
             raise ValueError(
                 f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: '{config_name}'."
             )
