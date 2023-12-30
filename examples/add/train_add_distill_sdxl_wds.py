@@ -1010,7 +1010,7 @@ def parse_args():
         "--feature_network_patch_size",
         type=int,
         default=14,
-        help="The patch size of the `pretrained_feature_network`."
+        help="The patch size of the `pretrained_feature_network`.",
     )
     parser.add_argument(
         "--cond_map_dim",
