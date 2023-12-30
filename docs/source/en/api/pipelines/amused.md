@@ -18,12 +18,24 @@ Amused is a vqvae token based transformer that can generate an image in fewer fo
 
 | Model | Params |
 |-------|--------|
-| [amused-256](https://huggingface.co/huggingface/amused-256) | 603M |
-| [amused-512](https://huggingface.co/huggingface/amused-512) | 608M |
+| [amused-256](https://huggingface.co/amused/amused-256) | 603M |
+| [amused-512](https://huggingface.co/amused/amused-512) | 608M |
 
 ## AmusedPipeline
 
 [[autodoc]] AmusedPipeline
+	- __call__
+	- all
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention
+
+[[autodoc]] AmusedImg2ImgPipeline
+	- __call__
+	- all
+	- enable_xformers_memory_efficient_attention
+	- disable_xformers_memory_efficient_attention
+
+[[autodoc]] AmusedInpaintPipeline
 	- __call__
 	- all
 	- enable_xformers_memory_efficient_attention
