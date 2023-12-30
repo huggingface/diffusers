@@ -148,7 +148,8 @@ def build_component(
     **kwargs,
 ):
     if component_name in kwargs:
-        return kwargs.pop(component_name, None)
+        component = kwargs.pop(component_name, None)
+        return {component_name: component}
 
     if component_name in pipeline_components:
         return {}
