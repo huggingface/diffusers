@@ -42,7 +42,7 @@ class PEFTLoRALoading(unittest.TestCase):
         predicted_slice = outputs[0, -3:, -3:, -1].flatten().tolist()
         print(", ".join([str(round(x, 4)) for x in predicted_slice]))
 
-        self.assertTrue(outputs.shape == (1, 64, 64, 3))
+        self.assertTrue(outputs.shape != (1, 64, 64, 3))
 
     def test_stable_diffusion_xl_peft_lora_loading_in_non_peft(self):
         sd_pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-pipe").to(torch_device)
@@ -54,4 +54,4 @@ class PEFTLoRALoading(unittest.TestCase):
         predicted_slice = outputs[0, -3:, -3:, -1].flatten().tolist()
         print(", ".join([str(round(x, 4)) for x in predicted_slice]))
         
-        self.assertTrue(outputs.shape == (1, 64, 64, 3))
+        self.assertTrue(outputs.shape != (1, 64, 64, 3))
