@@ -146,12 +146,6 @@ def build_component(
         )
         return vae_components
 
-    if component_name == "controlnet":
-        controlnet_components = create_controlnet_model(
-            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
-        )
-        return controlnet_components
-
     if component_name == "scheduler":
         scheduler_components = create_scheduler(
             pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
