@@ -223,7 +223,7 @@ def determine_image_size(pipeline_class_name, original_config, checkpoint, **kwa
     if pipeline_class_name == "StableDiffusionUpscalePipeline":
         image_size = original_config.model.params.unet_config.params.image_size
 
-    if model_type in ["SDXL", "SDXL-Refiner"]:
+    elif model_type in ["SDXL", "SDXL-Refiner"]:
         image_size = 1024
 
     elif (
