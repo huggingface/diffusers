@@ -16,6 +16,7 @@
 import unittest
 
 from diffusers import DiffusionPipeline
+from diffusers.utils.testing_utils import torch_device
 
 
 class PEFTLoRALoading(unittest.TestCase):
@@ -29,7 +30,7 @@ class PEFTLoRALoading(unittest.TestCase):
         return pipeline_inputs
 
     def test_stable_diffusion_peft_lora_loading_in_non_peft(self):
-        sd_pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(self.torch_device)
+        sd_pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
         # This LoRA was obtained using similarly as how it's done in the training scripts.
         # For details on how the LoRA was obtained, refer to:
         # https://colab.research.google.com/gist/sayakpaul/4a00d0223c03225f82735ff93930f43d/scratchpad.ipynb
@@ -40,7 +41,7 @@ class PEFTLoRALoading(unittest.TestCase):
         self.assertTrue(outputs.shape == (1, 64, 64, 3))
 
     def test_stable_diffusion_xl_peft_lora_loading_in_non_peft(self):
-        sd_pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-pipe").to(self.torch_device)
+        sd_pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-pipe").to(torch_device)
         # This LoRA was obtained using similarly as how it's done in the training scripts.
         sd_pipe.load_lora_weights("hf-internal-testing/tiny-sdxl-lora-peft")
 
