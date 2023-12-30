@@ -50,6 +50,7 @@ from diffusers.utils.testing_utils import (
     nightly,
     numpy_cosine_similarity_distance,
     require_peft_backend,
+    require_peft_version_greater,
     require_torch_gpu,
     slow,
     torch_device,
@@ -115,9 +116,12 @@ class PeftLoraLoaderMixinTests:
 
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**self.unet_kwargs)
+
         scheduler = scheduler_cls(**self.scheduler_kwargs)
+
         torch.manual_seed(0)
         vae = AutoencoderKL(**self.vae_kwargs)
+
         text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
         tokenizer = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
@@ -1102,6 +1106,68 @@ class PeftLoraLoaderMixinTests:
                 {"unet": ["adapter-1", "adapter-2", "adapter-3"], "text_encoder": ["adapter-1", "adapter-2"]},
             )
 
+    @require_peft_version_greater(peft_version="0.6.2")
+    def test_simple_inference_with_text_lora_unet_fused_multi(self):
+        """
+        Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
+        and makes sure it works as expected - with unet and multi-adapter case
+        """
+        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
+            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(self.torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+
+            # Attach a second adapter
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
+            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+            if self.has_two_text_encoders:
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
+                self.assertTrue(
+                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+
+            # set them to multi-adapter inference mode
+            pipe.set_adapters(["adapter-1", "adapter-2"])
+            ouputs_all_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            pipe.set_adapters(["adapter-1"])
+            ouputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            pipe.fuse_lora(adapter_names=["adapter-1"])
+
+            # Fusing should still keep the LoRA layers so outpout should remain the same
+            outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            self.assertTrue(
+                np.allclose(ouputs_lora_1, outputs_lora_1_fused, atol=1e-3, rtol=1e-3),
+                "Fused lora should not change the output",
+            )
+
+            pipe.unfuse_lora()
+            pipe.fuse_lora(adapter_names=["adapter-2", "adapter-1"])
+
+            # Fusing should still keep the LoRA layers
+            output_all_lora_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(
+                np.allclose(output_all_lora_fused, ouputs_all_lora, atol=1e-3, rtol=1e-3),
+                "Fused lora should not change the output",
+            )
+
     @unittest.skip("This is failing for now - need to investigate")
     def test_simple_inference_with_text_unet_lora_unfused_torch_compile(self):
         """
@@ -1402,6 +1468,35 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 @slow
 @require_torch_gpu
 class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
+    pipeline_class = StableDiffusionPipeline
+    scheduler_cls = DDIMScheduler
+    scheduler_kwargs = {
+        "beta_start": 0.00085,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "clip_sample": False,
+        "set_alpha_to_one": False,
+        "steps_offset": 1,
+    }
+    unet_kwargs = {
+        "block_out_channels": (32, 64),
+        "layers_per_block": 2,
+        "sample_size": 32,
+        "in_channels": 4,
+        "out_channels": 4,
+        "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
+        "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
+        "cross_attention_dim": 32,
+    }
+    vae_kwargs = {
+        "block_out_channels": [32, 64],
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+        "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
+        "latent_channels": 4,
+    }
+
     def tearDown(self):
         import gc
 
@@ -1655,6 +1750,42 @@ class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
 @slow
 @require_torch_gpu
 class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
+    has_two_text_encoders = True
+    pipeline_class = StableDiffusionXLPipeline
+    scheduler_cls = EulerDiscreteScheduler
+    scheduler_kwargs = {
+        "beta_start": 0.00085,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "timestep_spacing": "leading",
+        "steps_offset": 1,
+    }
+    unet_kwargs = {
+        "block_out_channels": (32, 64),
+        "layers_per_block": 2,
+        "sample_size": 32,
+        "in_channels": 4,
+        "out_channels": 4,
+        "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
+        "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
+        "attention_head_dim": (2, 4),
+        "use_linear_projection": True,
+        "addition_embed_type": "text_time",
+        "addition_time_embed_dim": 8,
+        "transformer_layers_per_block": (1, 2),
+        "projection_class_embeddings_input_dim": 80,  # 6 * 8 + 32
+        "cross_attention_dim": 64,
+    }
+    vae_kwargs = {
+        "block_out_channels": [32, 64],
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+        "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
+        "latent_channels": 4,
+        "sample_size": 128,
+    }
+
     def tearDown(self):
         import gc
 

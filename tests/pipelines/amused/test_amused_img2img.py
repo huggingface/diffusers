@@ -137,7 +137,7 @@ class AmusedImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @require_torch_gpu
 class AmusedImg2ImgPipelineSlowTests(unittest.TestCase):
     def test_amused_256(self):
-        pipe = AmusedImg2ImgPipeline.from_pretrained("huggingface/amused-256")
+        pipe = AmusedImg2ImgPipeline.from_pretrained("amused/amused-256")
         pipe.to(torch_device)
 
         image = (
@@ -162,9 +162,7 @@ class AmusedImg2ImgPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-2
 
     def test_amused_256_fp16(self):
-        pipe = AmusedImg2ImgPipeline.from_pretrained(
-            "huggingface/amused-256", torch_dtype=torch.float16, variant="fp16"
-        )
+        pipe = AmusedImg2ImgPipeline.from_pretrained("amused/amused-256", torch_dtype=torch.float16, variant="fp16")
         pipe.to(torch_device)
 
         image = (
@@ -189,7 +187,7 @@ class AmusedImg2ImgPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 1e-2
 
     def test_amused_512(self):
-        pipe = AmusedImg2ImgPipeline.from_pretrained("huggingface/amused-512")
+        pipe = AmusedImg2ImgPipeline.from_pretrained("amused/amused-512")
         pipe.to(torch_device)
 
         image = (
@@ -213,9 +211,7 @@ class AmusedImg2ImgPipelineSlowTests(unittest.TestCase):
         assert np.abs(image_slice - expected_slice).max() < 0.1
 
     def test_amused_512_fp16(self):
-        pipe = AmusedImg2ImgPipeline.from_pretrained(
-            "huggingface/amused-512", variant="fp16", torch_dtype=torch.float16
-        )
+        pipe = AmusedImg2ImgPipeline.from_pretrained("amused/amused-512", variant="fp16", torch_dtype=torch.float16)
         pipe.to(torch_device)
 
         image = (
