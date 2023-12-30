@@ -20,7 +20,7 @@ from diffusers.utils.testing_utils import torch_device
 
 
 class PEFTLoRALoading(unittest.TestCase):
-    def get_dummy_inputs():
+    def get_dummy_inputs(self):
         pipeline_inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "num_inference_steps": 2,
