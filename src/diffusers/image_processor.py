@@ -400,7 +400,9 @@ class VaeImageProcessor(ConfigMixin):
             `PIL.Image.Image`:
                 The binarized image. Values less than 0.5 are set to 0, values greater than 0.5 are set to 1.
         """
-        image.point(lambda p: 0 if p < 0.5 else 1, "1")
+        image[image < 0.5] = 0
+        image[image >= 0.5] = 1
+        
         return image
 
     def get_default_height_width(
