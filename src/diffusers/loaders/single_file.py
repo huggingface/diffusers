@@ -47,6 +47,27 @@ logger = logging.get_logger(__name__)
 
 VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
 
+# Pipelines where safety_checker is a required argument
+SAFETY_CHECKER_PIPELINES = [
+    "StableDiffusionPipeline",
+    "StableDiffusionImg2ImgPipeline",
+    "StableDiffusionInpaintPipeline",
+    "StableDiffusionUpscalePipeline",
+    "StableDiffusionControlNetPipeline",
+    "StableDiffusionControlNetImg2ImgPipeline",
+    "StableDiffusionControlNetInpaintPipeline",
+    "StableDiffusionLDM3DPipeline",
+    "LatentConsistencyModelPipeline",
+    "LatentConsistencyModelImg2ImgPipeline",
+]
+
+# Pipelines that support the SDXL Refiner checkpoint
+REFINER_PIPELINES = [
+    "StableDiffusionXLImg2ImgPipeline",
+    "StableDiffusionXLInpaintPipeline",
+    "StableDiffusionXLControlNetImg2ImgPipeline",
+]
+
 
 def extract_pipeline_component_names(pipeline_class):
     components = inspect.signature(pipeline_class).parameters.keys()
@@ -167,11 +188,7 @@ def build_additional_components(
     load_safety_checker = kwargs.get("load_safety_checker", False)
     local_files_only = kwargs.get("local_files_only", False)
 
-    if pipeline_class_name in [
-        "StableDiffusionXLImg2ImgPipeline",
-        "StableDiffusionXLInpaintPipeline",
-        "StableDiffusionXLControlNetImg2ImgPipeline",
-    ]:
+    if pipeline_class_name in REFINER_PIPELINES:
         model_type = infer_model_type(pipeline_class_name, original_config)
         is_refiner = model_type == "SDXL-Refiner"
         components.update(
@@ -181,18 +198,7 @@ def build_additional_components(
             }
         )
 
-    if pipeline_class_name in [
-        "StableDiffusionPipeline",
-        "StableDiffusionImg2ImgPipeline",
-        "StableDiffusionInpaintPipeline",
-        "StableDiffusionUpscalePipeline",
-        "StableDiffusionControlNetPipeline",
-        "StableDiffusionControlNetImg2ImgPipeline",
-        "StableDiffusionControlNetInpaintPipeline",
-        "StableDiffusionLDM3DPipeline",
-        "LatentConsistencyModelPipeline",
-        "LatentConsistencyModelImg2ImgPipeline",
-    ]:
+    if pipeline_class_name in SAFETY_CHECKER_PIPELINES:
         if load_safety_checker:
             safety_checker = StableDiffusionSafetyChecker.from_pretrained(
                 "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
@@ -293,7 +299,7 @@ class FromSingleFileMixin:
         torch_dtype = kwargs.pop("torch_dtype", None)
         use_safetensors = kwargs.pop("use_safetensors", True)
 
-        pipeline_name = cls.__name__
+        pipeline_class_name = cls.__name__
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
 
@@ -327,14 +333,14 @@ class FromSingleFileMixin:
         while "state_dict" in checkpoint:
             checkpoint = checkpoint["state_dict"]
 
-        original_config = fetch_original_config(pipeline_name, checkpoint, original_config_file, config_files)
+        original_config = fetch_original_config(pipeline_class_name, checkpoint, original_config_file, config_files)
         component_names = extract_pipeline_component_names(cls)
 
         pipeline_components = {}
         for component in component_names:
             components = build_component(
                 pipeline_components,
-                pipeline_name,
+                pipeline_class_name,
                 component,
                 original_config,
                 checkpoint,
@@ -347,7 +353,7 @@ class FromSingleFileMixin:
 
         additional_components = set(component_names - pipeline_components.keys())
         if additional_components:
-            components = build_additional_components(pipeline_name, original_config, **kwargs)
+            components = build_additional_components(pipeline_class_name, original_config, **kwargs)
             if components:
                 pipeline_components.update(components)
 
