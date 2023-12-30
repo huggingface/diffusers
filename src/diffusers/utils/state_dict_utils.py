@@ -15,10 +15,11 @@
 State dict utilities: utility methods for converting state dicts easily
 """
 import enum
-import logging
+
+from .logging import get_logger
 
 
-logger = logging.get_logger(__name__)
+logger = get_logger(__name__)
 
 
 class StateDictType(enum.Enum):
