@@ -178,7 +178,7 @@ def load_checkpoint(checkpoint_path_or_dict, device=None, from_safetensors=True)
     return checkpoint
 
 
-def infer_model_type(pipeline_class_name, original_config, model_type=None):
+def infer_model_type(pipeline_class_name, original_config, model_type=None, **kwargs):
     if model_type is not None:
         return model_type
 
