@@ -15,6 +15,9 @@
 
 import unittest
 
+import numpy as np
+import torch
+
 from diffusers import DiffusionPipeline
 from diffusers.utils.testing_utils import torch_device
 
@@ -26,6 +29,7 @@ class PEFTLoRALoading(unittest.TestCase):
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "output_type": "np",
+            "generator": torch.manual_seed(0),
         }
         return pipeline_inputs
 
@@ -39,10 +43,12 @@ class PEFTLoRALoading(unittest.TestCase):
         inputs = self.get_dummy_inputs()
         outputs = sd_pipe(**inputs).images
 
-        predicted_slice = outputs[0, -3:, -3:, -1].flatten().tolist()
-        print(", ".join([str(round(x, 4)) for x in predicted_slice]))
+        predicted_slice = outputs[0, -3:, -3:, -1].flatten()
+        print(", ".join([str(round(x, 4)) for x in predicted_slice.tolist()]))
+        expected_slice = np.array([0.6529, 0.681, 0.8817, 0.4394, 0.5177, 0.8957, 0.4798, 0.5993, 0.6701])
 
         self.assertTrue(outputs.shape != (1, 64, 64, 3))
+        assert np.allclose(expected_slice, predicted_slice, atol=1e-3, rtol=1e-3)
 
     def test_stable_diffusion_xl_peft_lora_loading_in_non_peft(self):
         sd_pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-pipe").to(torch_device)
@@ -51,7 +57,10 @@ class PEFTLoRALoading(unittest.TestCase):
 
         inputs = self.get_dummy_inputs()
         outputs = sd_pipe(**inputs).images
-        predicted_slice = outputs[0, -3:, -3:, -1].flatten().tolist()
-        print(", ".join([str(round(x, 4)) for x in predicted_slice]))
-        
+
+        predicted_slice = outputs[0, -3:, -3:, -1].flatten()
+        print(", ".join([str(round(x, 4)) for x in predicted_slice.tolist()]))
+        expected_slice = np.array([0.645, 0.5317, 0.6253, 0.5971, 0.5605, 0.6075, 0.5713, 0.467, 0.447])
+
         self.assertTrue(outputs.shape != (1, 64, 64, 3))
+        assert np.allclose(expected_slice, predicted_slice, atol=1e-3, rtol=1e-3)
