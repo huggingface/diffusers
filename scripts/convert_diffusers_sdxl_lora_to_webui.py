@@ -2,7 +2,13 @@
 # This means that you can input your diffusers-trained LoRAs and
 # Get the output to work with WebUIs such as AUTOMATIC1111, ComfyUI, SD.Next and others.
 
-# Here are some diffusers training scripts and utils that you can use and then convert:
+# To get started you can find some cool `diffusers` trained LoRAs such as this cute Corgy
+# https://huggingface.co/ignasbud/corgy_dog_LoRA/, download its `pytorch_lora_weights.safetensors` file
+# and run the script:
+# python convert_diffusers_sdxl_lora_to_webui.py --input_lora pytorch_lora_weights.safetensors --output_lora corgy.safetensors
+# now you can use corgy.safetensors in your WebUI of choice!
+
+# To train your own, here are some diffusers training scripts and utils that you can use and then convert:
 # LoRA Ease - no code SDXL Dreambooth LoRA trainer: https://huggingface.co/spaces/multimodalart/lora-ease
 # Dreambooth Advanced Training Script - state of the art techniques such as pivotal tuning and prodigy optimizer:
 # - Script: https://github.com/huggingface/diffusers/blob/main/examples/advanced_diffusion_training/train_dreambooth_lora_sdxl_advanced.py
