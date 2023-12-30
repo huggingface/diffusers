@@ -26,7 +26,7 @@ import random
 import shutil
 import types
 from pathlib import Path
-from typing import Callable, List, Union
+from typing import Callable, List, Optional, Union
 
 import accelerate
 import numpy as np
@@ -334,7 +334,6 @@ class DiscHeadBlock(torch.nn.Module):
 
 # Based on DiscHead in the official StyleGAN-T implementation
 # https://github.com/autonomousvision/stylegan-t/blob/36ab80ce76237fefe03e65e9b3161c040ae888e3/networks/discriminator.py#L78
-# TODO: implement image conditioning (see Section 3.2 of paper)
 class DiscriminatorHead(torch.nn.Module):
     """
     Implements a StyleGAN-T-style discriminator head. The discriminator head takes in a (possibly intermediate) 1D
@@ -345,12 +344,14 @@ class DiscriminatorHead(torch.nn.Module):
     def __init__(
         self,
         channels: int,
-        cond_embedding_dim: int,
+        c_text_embedding_dim: int,
+        c_img_embedding_dim: Optional[int] = None,
         cond_map_dim: int = 64,
     ):
         super().__init__()
         self.channels = channels
-        self.cond_embedding_dim = cond_embedding_dim
+        self.c_text_embedding_dim = c_text_embedding_dim
+        self.c_img_embedding_dim = c_img_embedding_dim
         self.cond_map_dim = cond_map_dim
 
         self.input_block = DiscHeadBlock(channels, kernel_size=1)
@@ -358,10 +359,12 @@ class DiscriminatorHead(torch.nn.Module):
         # Project each token embedding from channels dimensions to cond_map_dim dimensions.
         self.cls = SpectralConv1d(channels, cond_map_dim, kernel_size=1, padding=0)
 
-        # Also project the feature network token embeddings to dimension cond_map_dim.
-        self.conditioning_map = torch.nn.Linear(self.cond_embedding_dim, cond_map_dim)
+        # Also project the text conditioning embeddings to dimension cond_map_dim.
+        self.c_text_map = torch.nn.Linear(self.c_text_embedding_dim, cond_map_dim)
+        if self.c_img_embedding_dim is not None:
+            self.c_img_map = torch.nn.Linear(self.c_img_embedding_dim, cond_map_dim)
 
-    def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, c_text: torch.Tensor, c_img: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
         Maps a 1D sequence of tokens from a feature network (e.g. ViT trained with DINO) and a conditioning embedding
         to per-token logits.
@@ -370,8 +373,10 @@ class DiscriminatorHead(torch.nn.Module):
             x (`torch.Tensor` of shape `(batch_size, channels, sequence_length)`):
                 A sequence of 1D tokens (possibly intermediate) from a ViT feature neetwork. Note that the channels dim
                 should be the same as the feature network's embedding dim.
-            c (`torch.Tensor` of shape `(batch_size, cond_embedding_dim)`):
-                A conditioning embedding representing conditioning (e.g. text) information.
+            c_text (`torch.Tensor` of shape `(batch_size, c_text_embedding_dim)`):
+                A conditioning embedding representing text conditioning information.
+            c_img (`torch.Tensor` of shape `(batch_size, c_img_embedding_dim)`):
+                A conditioning embedding representing image conditioning information.
 
         Returns:
             `torch.Tensor` of shape `(batch_size, sequence_length)`: batched 1D sequence of per-token logits.
@@ -380,11 +385,15 @@ class DiscriminatorHead(torch.nn.Module):
         hidden_states = self.resblock(hidden_states)
         out = self.cls(hidden_states)
 
-        # Project conditioning embeddings to cond_map_dim and unsqueeze in the sequence length dimension.
-        c = self.conditioning_map(c).unsqueeze(-1)
+        # Project text conditioning embedding to cond_map_dim and unsqueeze in the sequence length dimension.
+        c_text = self.c_text_map(c_text).unsqueeze(-1)
 
-        # Combine image features with conditioning embedding via a product.
-        out = (out * c).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
+        # Combine image features with text conditioning embedding via a product.
+        out = (out * c_text).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
+
+        if self.c_img_embedding_dim is not None:
+            c_img = self.c_img_map(c_img).unsqueeze(-1)
+            out = (out * c_img).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
 
         return out
 
@@ -557,7 +566,6 @@ class DiscriminatorOutput(BaseOutput):
 
 # Based on ProjectedDiscriminator from the official StyleGAN-T code
 # https://github.com/autonomousvision/stylegan-t/blob/36ab80ce76237fefe03e65e9b3161c040ae888e3/networks/discriminator.py#L130
-# TODO: implement image conditioning (see Section 3.2 of paper)
 class Discriminator(torch.nn.Module):
     """
     StyleGAN-T-style discriminator for adversarial diffusion distillation (ADD).
@@ -566,13 +574,17 @@ class Discriminator(torch.nn.Module):
     def __init__(
         self,
         pretrained_feature_network: str = "vit_small_patch16_224.dino",
-        cond_embedding_dim: int = 512,
+        c_text_embedding_dim: int = 768,
+        c_img_embedding_dim: Optional[int] = None,
+        cond_map_dim: int = 64,
         patch_size: List[int] = [16, 16],
         hooks: List[int] = [2, 5, 8, 11],
         start_index: int = 1,
     ):
         super().__init__()
-        self.cond_embedding_dim = cond_embedding_dim
+        self.c_text_embedding_dim = c_text_embedding_dim
+        self.c_img_embedding_dim = c_img_embedding_dim
+        self.cond_map_dim = cond_map_dim
 
         # Frozen feature network, e.g. DINO
         self.feature_network = FeatureNetwork(
@@ -585,7 +597,12 @@ class Discriminator(torch.nn.Module):
         # Trainable discriminator heads
         heads = []
         for i in range(self.feature_network.num_hooks):
-            heads.append([str(i), DiscriminatorHead(self.feature_network.embed_dim, cond_embedding_dim)])
+            heads.append([
+                str(i),
+                DiscriminatorHead(
+                    self.feature_network.embed_dim, c_text_embedding_dim, c_img_embedding_dim, cond_map_dim
+                )
+            ])
         self.heads = torch.nn.ModuleDict(heads)
 
     def train(self, mode: bool = True):
@@ -599,8 +616,9 @@ class Discriminator(torch.nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        c: torch.Tensor,
-        transform_positive=True,
+        c_text: torch.Tensor,
+        c_img: Optional[torch.Tensor] = None,
+        transform_positive: bool = True,
         return_dict: bool = True,
     ):
         # TODO: do we need the augmentations from the original StyleGAN-T code?
@@ -614,7 +632,7 @@ class Discriminator(torch.nn.Module):
         # Apply discriminator heads.
         logits = []
         for k, head in self.heads.items():
-            logits.append(head(features[k], c).view(x.size(0), -1))
+            logits.append(head(features[k], c_text, c_img).view(x.size(0), -1))
         logits = torch.cat(logits, dim=1)
 
         if not return_dict:
@@ -987,6 +1005,15 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--cond_map_dim",
+        type=int,
+        default=64,
+        help=(
+            "The common dimension to which the discriminator feature network features and conditioning embeddings will"
+            " be projected to in the discriminator heads."
+        ),
+    )
+    parser.add_argument(
         "--weight_schedule",
         type=str,
         default="exponential",
@@ -1354,7 +1381,8 @@ def main(args):
     # it might be fine?
     discriminator = Discriminator(
         pretrained_feature_network=args.pretrained_feature_network,
-        cond_embedding_dim=text_encoder_two.config.projection_dim,
+        c_text_embedding_dim=text_encoder_two.config.projection_dim,
+        cond_map_dim=args.cond_map_dim,
     )
 
     # 8. Freeze teacher vae, text_encoders, and teacher_unet
