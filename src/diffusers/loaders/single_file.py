@@ -46,21 +46,6 @@ logger = logging.get_logger(__name__)
 
 
 VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
-
-# Pipelines where safety_checker is a required argument
-SAFETY_CHECKER_PIPELINES = [
-    "StableDiffusionPipeline",
-    "StableDiffusionImg2ImgPipeline",
-    "StableDiffusionInpaintPipeline",
-    "StableDiffusionUpscalePipeline",
-    "StableDiffusionControlNetPipeline",
-    "StableDiffusionControlNetImg2ImgPipeline",
-    "StableDiffusionControlNetInpaintPipeline",
-    "StableDiffusionLDM3DPipeline",
-    "LatentConsistencyModelPipeline",
-    "LatentConsistencyModelImg2ImgPipeline",
-]
-
 # Pipelines that support the SDXL Refiner checkpoint
 REFINER_PIPELINES = [
     "StableDiffusionXLImg2ImgPipeline",
