@@ -9,10 +9,11 @@ concurrency:
 
 jobs:
   build:
-    uses: huggingface/doc-builder/.github/workflows/build_pr_documentation.yml@main
+    uses: huggingface/doc-builder/.github/workflows/build_pr_documentation.yml@mishig25-patch-2
     with:
       commit_sha: ${{ github.event.pull_request.head.sha }}
       pr_number: ${{ github.event.number }}
       install_libgl1: true
       package: diffusers
-      languages: en ko zh ja pt
+      languages: en
+      doc_builder_revision: mishig25-patch-2
