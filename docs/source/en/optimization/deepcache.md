@@ -37,7 +37,7 @@ You can use [`DeepCache`](https://github.com/horseee/DeepCache) by loading and e
 ```
 
 The `set_params` method accepts two arguments: `cache_interval` and `cache_branch_id`. `cache_interval` means the frequency of feature caching, specified as the number of steps between each cache operation. `cache_branch_id` identifies which branch of the network (ordered from the shallowest to the deepest layer) is responsible for executing the caching processes. 
-Opting for a lower `cache_branch_id` or a larger `cache_interval` can lead to faster inference speed; however, this may come at the cost of reduced image quality. Once those arguments are set, use the `enable` or `disable` methods to activate or deactivate the DeepCacheSDHelper respectively.
+Opting for a lower `cache_branch_id` or a larger `cache_interval` can lead to faster inference speed; however, this may come at the cost of reduced image quality. Ablation experiments of these two hyper-parameters can be found in the [paper](https://arxiv.org/abs/2312.00858). Once those arguments are set, use the `enable` or `disable` methods to activate or deactivate the DeepCacheSDHelper respectively.
 
 <div class="flex justify-center">
     <img src="https://github.com/horseee/Diffusion_DeepCache/raw/master/static/images/example.png">
