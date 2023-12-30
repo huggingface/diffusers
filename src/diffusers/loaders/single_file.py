@@ -12,24 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
-from contextlib import nullcontext
-from io import BytesIO
 from pathlib import Path
 
-import requests
 import torch
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors.torch import load_file as safe_load
 
 from ..utils import (
-    deprecate,
     is_accelerate_available,
-    is_omegaconf_available,
     is_transformers_available,
     logging,
 )
-from ..utils.import_utils import BACKENDS_MAPPING
 from .single_file_utils import (
     create_controlnet_model,
     create_paint_by_example_components,
@@ -47,19 +41,12 @@ if is_transformers_available():
     pass
 
 if is_accelerate_available():
-    from accelerate import init_empty_weights
+    pass
 
 logger = logging.get_logger(__name__)
 
 
 VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
-TEXT_ENCODER_FROM_PIPELINE_CLASS = {
-    "StableUnCLIPPipeline": "FrozenOpenCLIPEmbedder",
-    "StableUnCLIPImg2ImgPipeline": "FrozenOpenCLIPEmbedder",
-    "LDMTextToImagePipeline": "LDMTextToImage",
-    "PaintByExamplePipeline": "PaintByExample",
-    "StableDiffusion": "stable-diffusion",
-}
 
 
 def extract_pipeline_component_names(pipeline_class):

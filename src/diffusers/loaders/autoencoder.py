@@ -1,4 +1,3 @@
-import inspect
 from contextlib import nullcontext
 from io import BytesIO
 from pathlib import Path
@@ -7,10 +6,8 @@ import requests
 import torch
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
-from safetensors.torch import load_file as safe_load
 
 from ..utils import (
-    deprecate,
     is_accelerate_available,
     is_omegaconf_available,
     is_transformers_available,
