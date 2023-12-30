@@ -304,7 +304,7 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        use_safetensors = kwargs.pop("use_safetensors", None)
+        use_safetensors = kwargs.pop("use_safetensors", True)
 
         pipeline_name = cls.__name__
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
