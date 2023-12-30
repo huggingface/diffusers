@@ -880,7 +880,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     model = cls.from_config(config, **unused_kwargs)
 
                 # if device_map is None, load the state dict and move the params from meta device to the cpu
-                if device_map is None:                    
+                if device_map is None:
                     param_device = "cpu"
                     state_dict = load_state_dict(model_file, variant=variant)
                     model._convert_deprecated_attention_blocks(state_dict)
