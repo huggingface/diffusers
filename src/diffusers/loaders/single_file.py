@@ -346,7 +346,7 @@ class FromSingleFileMixin:
         while "state_dict" in checkpoint:
             checkpoint = checkpoint["state_dict"]
 
-        original_config = fetch_original_config(checkpoint, original_config_file, config_files)
+        original_config = fetch_original_config(pipeline_name, checkpoint, original_config_file, config_files)
         component_names = extract_pipeline_component_names(cls)
 
         pipeline_components = {}

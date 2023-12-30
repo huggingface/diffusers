@@ -1436,7 +1436,6 @@ def download_from_original_stable_diffusion_ckpt(
 
     if pipeline_class == StableDiffusionUpscalePipeline:
         image_size = original_config.model.params.unet_config.params.image_size
-    import ipdb; ipdb.set_trace()
 
     # Convert the UNet2DConditionModel model.
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
