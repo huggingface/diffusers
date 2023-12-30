@@ -1298,7 +1298,9 @@ def main(args):
         )
 
     # 7. Initialize GAN discriminator.
-    conditioning_dim = text_encoder.config.projection_dim if args.use_pretrained_projection else text_encoder.config.hidden_size
+    conditioning_dim = (
+        text_encoder.config.projection_dim if args.use_pretrained_projection else text_encoder.config.hidden_size
+    )
     discriminator = Discriminator(
         pretrained_feature_network=args.pretrained_feature_network,
         cond_embedding_dim=conditioning_dim,
