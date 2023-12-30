@@ -43,7 +43,7 @@ Opting for a lower `cache_branch_id` or a larger `cache_interval` can lead to fa
     <img src="https://github.com/horseee/Diffusion_DeepCache/raw/master/static/images/example.png">
 </div>
 
-You can find more generated samples (Original Pipeline v.s. DeepCache) and the corresponding inference latency in the [WanDB report](https://wandb.ai/horseee/DeepCache/runs/jwlsqqgt?workspace=user-horseee). The prompts are randomly selected from the [MS-COCO 2017](https://cocodataset.org/#home) dataset.
+You can find more generated samples (Original Pipeline v.s. DeepCache) and the corresponding inference latency in the [WandB report](https://wandb.ai/horseee/DeepCache/runs/jwlsqqgt?workspace=user-horseee). The prompts are randomly selected from the [MS-COCO 2017](https://cocodataset.org/#home) dataset.
 
 ## Benchmark
 
