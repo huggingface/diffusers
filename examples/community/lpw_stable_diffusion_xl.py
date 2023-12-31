@@ -12,12 +12,18 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 from PIL import Image
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import DiffusionPipeline, StableDiffusionXLPipeline
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     FusedAttnProcessor2_0,
@@ -530,7 +536,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin):
+class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
 
@@ -538,10 +544,10 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     The pipeline also inherits the following loading methods:
-        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
-        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
+        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -578,6 +584,8 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
         scheduler: KarrasDiffusionSchedulers,
+        feature_extractor: Optional[CLIPImageProcessor] = None,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
     ):
@@ -591,6 +599,8 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
             tokenizer_2=tokenizer_2,
             unet=unet,
             scheduler=scheduler,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
@@ -861,6 +871,31 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
             )
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        dtype = next(self.image_encoder.parameters()).dtype
+
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_enc_hidden_states = self.image_encoder(
+                torch.zeros_like(image), output_hidden_states=True
+            ).hidden_states[-2]
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+            return image_enc_hidden_states, uncond_image_enc_hidden_states
+        else:
+            image_embeds = self.image_encoder(image).image_embeds
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_embeds = torch.zeros_like(image_embeds)
+
+            return image_embeds, uncond_image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -1398,6 +1433,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -1488,6 +1524,8 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
                 Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
+            ip_adapter_image: (`PipelineImageInput`, *optional*):
+                Optional image input to work with IP Adapters.
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
@@ -1588,10 +1626,11 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
 
         device = self._execution_device
 
-        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-        # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = guidance_scale > 1.0
+        if ip_adapter_image is not None:
+            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
+            image_embeds, negative_image_embeds = self.encode_image(
+                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+            )
 
         # 3. Encode input prompt
         (cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None)
@@ -1723,6 +1762,9 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
+        # 6.1 Add image embeds for IP-Adapter
+        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+
         height, width = latents.shape[-2:]
         height = height * self.vae_scale_factor
         width = width * self.vae_scale_factor
@@ -1736,7 +1778,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
             original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
         )
 
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
             add_time_ids = torch.cat([add_time_ids, add_time_ids], dim=0)
@@ -1783,7 +1825,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
@@ -1791,7 +1833,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
                     latent_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
 
                 # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                added_cond_kwargs.update({"text_embeds": add_text_embeds, "time_ids": add_time_ids})
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
@@ -1803,11 +1845,11 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
                 )[0]
 
                 # perform guidance
-                if do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                if do_classifier_free_guidance and guidance_rescale > 0.0:
+                if self.do_classifier_free_guidance and guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
 
@@ -1886,6 +1928,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -1922,6 +1965,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
             eta=eta,
             generator=generator,
             latents=latents,
+            ip_adapter_image=ip_adapter_image,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
@@ -1957,6 +2001,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -1995,6 +2040,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
             eta=eta,
             generator=generator,
             latents=latents,
+            ip_adapter_image=ip_adapter_image,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
@@ -2032,6 +2078,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -2072,6 +2119,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, Lo
             eta=eta,
             generator=generator,
             latents=latents,
+            ip_adapter_image=ip_adapter_image,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
