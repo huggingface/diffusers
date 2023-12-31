@@ -44,6 +44,7 @@ class PEFTLoRALoading(unittest.TestCase):
         outputs = sd_pipe(**inputs).images
 
         predicted_slice = outputs[0, -3:, -3:, -1].flatten()
+        print(", ".join([str(round(x, 4)) for x in predicted_slice.tolist()]))
         expected_slice = np.array([0.5708, 0.6001, 0.4895, 0.5191, 0.5518, 0.4583, 0.5059, 0.4866, 0.4759])
 
         self.assertTrue(outputs.shape == (1, 64, 64, 3))
@@ -58,6 +59,7 @@ class PEFTLoRALoading(unittest.TestCase):
         outputs = sd_pipe(**inputs).images
 
         predicted_slice = outputs[0, -3:, -3:, -1].flatten()
+        print(", ".join([str(round(x, 4)) for x in predicted_slice.tolist()]))
         expected_slice = np.array([0.6079, 0.551, 0.521, 0.4106, 0.3948, 0.4648, 0.5277, 0.501, 0.49])
 
         self.assertTrue(outputs.shape == (1, 64, 64, 3))
