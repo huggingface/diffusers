@@ -33,14 +33,7 @@ PipelineImageInput = Union[
     List[torch.FloatTensor],
 ]
 
-PipelineDepthInput = Union[
-    PIL.Image.Image,
-    np.ndarray,
-    torch.FloatTensor,
-    List[PIL.Image.Image],
-    List[np.ndarray],
-    List[torch.FloatTensor],
-]
+PipelineDepthInput = PipelineImageInput
 
 
 class VaeImageProcessor(ConfigMixin):
@@ -153,27 +146,21 @@ class VaeImageProcessor(ConfigMixin):
         """
         Converts a PIL image to RGB format.
         """
-        image = image.convert("RGB")
-
-        return image
+        return image.convert("RGB")
 
     @staticmethod
     def convert_to_grayscale(image: PIL.Image.Image) -> PIL.Image.Image:
         """
         Converts a PIL image to grayscale format.
         """
-        image = image.convert("L")
-
-        return image
+        return image.convert("L")
 
     @staticmethod
     def blur(image: PIL.Image.Image, blur_factor: int = 4) -> PIL.Image.Image:
         """
-        Blurs an image.
+        Applies Gaussian blur to an image.
         """
-        image = image.filter(ImageFilter.GaussianBlur(blur_factor))
-
-        return image
+        return image.filter(ImageFilter.GaussianBlur(blur_factor))
 
     @staticmethod
     def get_crop_region(mask_image: PIL.Image.Image, width: int, height: int, pad=0):
@@ -402,7 +389,7 @@ class VaeImageProcessor(ConfigMixin):
         """
         image[image < 0.5] = 0
         image[image >= 0.5] = 1
-        
+
         return image
 
     def get_default_height_width(
