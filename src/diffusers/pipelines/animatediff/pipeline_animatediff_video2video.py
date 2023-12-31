@@ -517,6 +517,7 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
     def check_inputs(
         self,
         prompt,
+        strength,
         height,
         width,
         callback_steps,
@@ -526,6 +527,9 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         callback_on_step_end_tensor_inputs=None,
         latent_interpolation_method=None,
     ):
+        if strength < 0 or strength > 1:
+            raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
+
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
@@ -588,23 +592,12 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         self,
         video,
         batch_size,
-        num_channels_latents,
-        num_frames,
-        height,
-        width,
         timestep,
         dtype,
         device,
         generator,
         latents=None,
     ):
-        # shape = (
-        #     batch_size,
-        #     num_channels_latents,
-        #     num_frames,
-        #     height // self.vae_scale_factor,
-        #     width // self.vae_scale_factor,
-        # )
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -672,7 +665,6 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         prompt: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_frames: Optional[int] = 16,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 7.5,
@@ -697,16 +689,13 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
 
         Args:
             video (`List[PipelineImageInput]`):
-                The input video to condition the generation on.
+                The input video to condition the generation on. Must be a list of images/frames of the video.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated video.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated video.
-            num_frames (`int`, *optional*, defaults to 16):
-                The number of video frames that are generated. Defaults to 16 frames which at 8 frames per seconds
-                amounts to 2 seconds of video.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality videos at the
                 expense of slower inference.
@@ -741,7 +730,7 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
                 `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`AnimateDiffImg2VideoPipelineOutput`] instead
+                Whether or not to return a [`AnimateDiffVideo2VideoPipelineOutput`] instead
                 of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
@@ -758,8 +747,8 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         Examples:
 
         Returns:
-            [`AnimateDiffImg2VideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`AnimateDiffImg2VideoPipelineOutput`] is
+            [`AnimateDiffVideo2VideoPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`AnimateDiffVideo2VideoPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
@@ -771,6 +760,7 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt=prompt,
+            strength=strength,
             height=height,
             width=width,
             callback_steps=callback_steps,
@@ -824,22 +814,18 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
             if do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
-        video = self.image_processor.preprocess(video)
+        # 4. Preprocess video
+        video = self.image_processor.preprocess(video, height=height, width=width)
 
-        # 4. Prepare timesteps
+        # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
 
-        # 5. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
+        # 6. Prepare latent variables
         latents = self.prepare_latents(
             video=video,
             batch_size=batch_size * num_videos_per_prompt,
-            num_channels_latents=num_channels_latents,
-            num_frames=num_frames,
-            height=height,
-            width=width,
             timestep=latent_timestep,
             dtype=prompt_embeds.dtype,
             device=device,
@@ -847,12 +833,13 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
             latents=latents,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-        # 7 Add image embeds for IP-Adapter
+
+        # 8. Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
-        # Denoising loop
+        # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -886,7 +873,7 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         if output_type == "latent":
             return AnimateDiffVideo2VideoPipelineOutput(frames=latents)
 
-        # Post-processing
+        # 10. Post-processing
         video_tensor = self.decode_latents(latents)
 
         if output_type == "pt":
@@ -894,7 +881,7 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         else:
             video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
-        # Offload all models
+        # 11. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:

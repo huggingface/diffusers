@@ -731,7 +731,7 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         prompt: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        num_frames: Optional[int] = 16,
+        num_frames: int = 16,
         num_inference_steps: int = 50,
         timesteps: Optional[List[int]] = None,
         guidance_scale: float = 7.5,
@@ -912,10 +912,11 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
-        # 7 Add image embeds for IP-Adapter
+
+        # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
-        # Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -949,7 +950,7 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         if output_type == "latent":
             return AnimateDiffImg2VideoPipelineOutput(frames=latents)
 
-        # Post-processing
+        # 9. Post-processing
         video_tensor = self.decode_latents(latents)
 
         if output_type == "pt":
@@ -957,7 +958,7 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         else:
             video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
-        # Offload all models
+        # 10. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
