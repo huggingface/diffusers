@@ -887,12 +887,13 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             if do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
-        image = self.image_processor.preprocess(image)
+        # 4. Preprocess image
+        image = self.image_processor.preprocess(image, height=height, width=width)
 
-        # 4. Prepare timesteps
+        # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
 
-        # 5. Prepare latent variables
+        # 6. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             image=image,
@@ -909,13 +910,13 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             latent_interpolation_method=latent_interpolation_method,
         )
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Add image embeds for IP-Adapter
+        # 8. Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
-        # 8. Denoising loop
+        # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -949,7 +950,7 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         if output_type == "latent":
             return AnimateDiffImg2VideoPipelineOutput(frames=latents)
 
-        # 9. Post-processing
+        # 10. Post-processing
         video_tensor = self.decode_latents(latents)
 
         if output_type == "pt":
@@ -957,7 +958,7 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
         else:
             video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
-        # 10. Offload all models
+        # 11. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
