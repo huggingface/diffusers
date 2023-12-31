@@ -127,6 +127,24 @@ def tarfile_to_samples_nothrow(src, handler=wds.warn_and_continue):
     return samples
 
 
+def resolve_interpolation_mode(interpolation_type):
+    if interpolation_type == "bilinear":
+        interpolation_mode = TF.InterpolationMode.BILINEAR
+    elif interpolation_type == "bicubic":
+        interpolation_mode = TF.InterpolationMode.BICUBIC
+    elif interpolation_type == "nearest":
+        interpolation_mode = TF.InterpolationMode.NEAREST
+    elif interpolation_type == "lanczos":
+        interpolation_mode = TF.InterpolationMode.LANCZOS
+    else:
+        raise ValueError(
+            f"The given interpolation mode {interpolation_type} is not supported. Currently supported interpolation"
+            f" modes are `bilinear`, `bicubic`, `lanczos`, and `nearest`."
+        )
+
+    return interpolation_mode
+
+
 class WebdatasetFilter:
     def __init__(self, min_size=1024, max_pwatermark=0.5):
         self.min_size = min_size
@@ -161,6 +179,9 @@ class SDXLText2ImageDataset:
         pin_memory: bool = False,
         persistent_workers: bool = False,
         use_fix_crop_and_size: bool = False,
+        use_image_conditioning: bool = False,
+        cond_resolution: Optional[int] = None,
+        cond_interpolation_type: Optional[str] = None,
     ):
         if not isinstance(train_shards_path_or_url, str):
             train_shards_path_or_url = [list(braceexpand(urls)) for urls in train_shards_path_or_url]
@@ -173,24 +194,17 @@ class SDXLText2ImageDataset:
             else:
                 return (int(json.get(WDS_JSON_WIDTH, 0.0)), int(json.get(WDS_JSON_HEIGHT, 0.0)))
 
-        if interpolation_type == "bilinear":
-            self.interpolation_mode = TF.InterpolationMode.BILINEAR
-        elif interpolation_type == "bicubic":
-            self.interpolation_mode = TF.InterpolationMode.BICUBIC
-        elif interpolation_type == "nearest":
-            self.interpolation_mode = TF.InterpolationMode.NEAREST
-        elif interpolation_type == "lanczos":
-            self.interpolation_mode = TF.InterpolationMode.LANCZOS
-        else:
-            raise ValueError(
-                f"The given interpolation mode {interpolation_type} is not supported. Currently supported interpolation"
-                f" modes are `bilinear`, `bicubic`, `lanczos`, and `nearest`."
-            )
+        interpolation_mode = resolve_interpolation_mode(interpolation_type)
+        if use_image_conditioning:
+            cond_interpolation_mode = resolve_interpolation_mode(cond_interpolation_type)
 
         def transform(example):
             # resize image
             image = example["image"]
-            image = TF.resize(image, resolution, interpolation=self.interpolation_mode)
+            if use_image_conditioning:
+                cond_image = copy.deepcopy(image)
+
+            image = TF.resize(image, resolution, interpolation=interpolation_mode)
 
             # get crop coordinates and crop image
             c_top, c_left, _, _ = transforms.RandomCrop.get_params(image, output_size=(resolution, resolution))
@@ -200,6 +214,14 @@ class SDXLText2ImageDataset:
 
             example["image"] = image
             example["crop_coords"] = (c_top, c_left) if not use_fix_crop_and_size else (0, 0)
+
+            if use_image_conditioning:
+                # Prepare a separate image for image conditioning since the preprocessing pipelines are different.
+                cond_image = TF.resize(cond_image, cond_resolution, interpolation=cond_interpolation_mode)
+                cond_image = TF.center_crop(cond_image, output_size=(cond_resolution, cond_resolution))
+                cond_image = TF.normalize(cond_image, IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
+                example["cond_image"] = cond_image
+
             return example
 
         processing_pipeline = [
@@ -210,8 +232,12 @@ class SDXLText2ImageDataset:
             wds.map(filter_keys({"image", "text", "orig_size"})),
             wds.map_dict(orig_size=get_orig_size),
             wds.map(transform),
-            wds.to_tuple("image", "text", "orig_size", "crop_coords"),
         ]
+
+        if use_image_conditioning:
+            processing_pipeline.append(wds.to_tuple("image", "text", "orig_size", "crop_coords", "cond_image"))
+        else:
+            processing_pipeline.append(wds.to_tuple("image", "text", "orig_size", "crop_coords"))
 
         # Create train dataset and loader
         pipeline = [
@@ -1022,6 +1048,39 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--use_image_conditioning",
+        action="store_true",
+        help=(
+            "Whether to also use an image encoder to calculate image conditioning embeddings for the discriminator. If"
+            " set, the model at the timm model id given in `image_encoder_with_proj` will be used."
+        ),
+    )
+    parser.add_argument(
+        "--pretrained_image_encoder",
+        type=str,
+        default="vit_large_patch14_dinov2.lvd142m",
+        help=(
+            "An optional image encoder to add image conditioning information to the discriminator. Is used if"
+            " `use_image_conditioning` is set. The model id should be loadable by `timm.create_model`. Note that ADD"
+            " uses a DINOv2 ViT-L encoder (see section 4 of the paper)."
+        ),
+    )
+    parser.add_argument(
+        "--cond_resolution",
+        type=int,
+        default=518,
+        help="Resolution to resize the original images to for image conditioning."
+    )
+    parser.add_argument(
+        "--cond_interpolation_type",
+        type=str,
+        default="bicubic",
+        help=(
+            "The interpolation function used when resizing the image for conditioning. Choose between `bilinear`,"
+            " `bicubic`, `lanczos`, and `nearest`."
+        ),
+    )
+    parser.add_argument(
         "--weight_schedule",
         type=str,
         default="exponential",
@@ -1220,6 +1279,12 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
     return prompt_embeds, pooled_prompt_embeds
 
 
+def encode_images(image_batch, image_encoder):
+    # image_encoder pre-processing is done in SDText2ImageDataset
+    image_embeds = image_encoder(image_batch)
+    return image_embeds
+
+
 def main(args):
     logging_dir = Path(args.output_dir, args.logging_dir)
 
@@ -1344,6 +1409,11 @@ def main(args):
         args.pretrained_teacher_model, subfolder="text_encoder_2", revision=args.teacher_revision
     )
 
+    # Optionally load a image encoder model for image conditioning of the discriminator.
+    if args.use_image_conditioning:
+        # Set num_classes=0 so that we get image embeddings from image_encoder forward pass
+        image_encoder = timm.create_model(args.pretrained_image_encoder, pretrained=True, num_classes=0)
+
     # 4. Load VAE from SD-XL checkpoint (or more stable VAE)
     vae_path = (
         args.pretrained_teacher_model
@@ -1387,10 +1457,12 @@ def main(args):
     # already a ClipTextModelWithProjection)
     # TODO: what if there's no text_encoder_two? I think we already assume text_encoder_two exists in Step 3 above so
     # it might be fine?
+    text_conditioning_dim = text_encoder_two.config.projection_dim
+    img_conditioning_dim = image_encoder.num_features if args.use_image_conditioning else None
     discriminator = Discriminator(
         pretrained_feature_network=args.pretrained_feature_network,
-        c_text_embedding_dim=text_encoder_two.config.projection_dim,
-        cond_map_dim=args.cond_map_dim,
+        c_text_embedding_dim=text_conditioning_dim,
+        c_img_embedding_dim=img_conditioning_dim,
         patch_size=[args.feature_network_patch_size, args.feature_network_patch_size],
     )
 
@@ -1399,6 +1471,9 @@ def main(args):
     text_encoder_one.requires_grad_(False)
     text_encoder_two.requires_grad_(False)
     teacher_unet.requires_grad_(False)
+    if args.use_image_conditioning:
+        image_encoder.eval()
+        image_encoder.requires_grad_(False)
 
     unet.train()
 
@@ -1430,6 +1505,8 @@ def main(args):
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
     teacher_unet.to(accelerator.device, dtype=weight_dtype)
+    if args.use_image_conditioning:
+        image_encoder.to(accelerator.device, dtype=weight_dtype)
 
     # Move target (EMA) unet to device but keep in full precision
     if args.use_ema:
@@ -1561,6 +1638,10 @@ def main(args):
 
         return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
 
+    def compute_image_embeddings(image_batch, image_encoder):
+        image_embeds = encode_images(image_batch, image_encoder)
+        return {"image_embeds": image_embeds}
+
     dataset = SDXLText2ImageDataset(
         train_shards_path_or_url=args.train_shards_path_or_url,
         num_train_examples=args.max_train_samples,
@@ -1572,6 +1653,9 @@ def main(args):
         pin_memory=True,
         persistent_workers=True,
         use_fix_crop_and_size=args.use_fix_crop_and_size,
+        use_image_conditioning=args.use_image_conditioning,
+        cond_resolution=args.cond_resolution,
+        cond_interpolation_type=args.cond_interpolation_type,
     )
     train_dataloader = dataset.train_dataloader
 
@@ -1586,6 +1670,12 @@ def main(args):
         text_encoders=text_encoders,
         tokenizers=tokenizers,
     )
+
+    if args.use_image_conditioning:
+        compute_image_embeddings_fn = functools.partial(
+            compute_image_embeddings,
+            image_encoder=image_encoder,
+        )
 
     # 14. Create learning rate scheduler for generator and discriminator
     # Scheduler and math around the number of training steps.
@@ -1697,10 +1787,15 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # 1. Load and process the image, text, and micro-conditioning (original image size, crop coordinates)
-                image, text, orig_size, crop_coords = batch
+                if args.use_image_conditioning:
+                    image, text, orig_size, crop_coords, cond_image = batch
+                else:
+                    image, text, orig_size, crop_coords = batch
 
                 image = image.to(accelerator.device, non_blocking=True)
                 encoded_text = compute_embeddings_fn(text, orig_size, crop_coords)
+                if args.use_image_conditioning:
+                    encoded_image = compute_image_embeddings_fn(cond_image)
 
                 if args.pretrained_vae_model_name_or_path is not None:
                     pixel_values = image.to(dtype=weight_dtype)
@@ -1736,6 +1831,15 @@ def main(args):
                 # 4. Prepare prompt embeds (for teacher/student U-Net) and text embedding (for discriminator).
                 prompt_embeds = encoded_text.pop("prompt_embeds")
                 text_embedding = encoded_text["text_embeds"]
+                image_embedding = None
+                if args.use_image_conditioning:
+                    image_embedding = encoded_image.pop("image_embeds")
+                    # Only supply image conditioning when student timestep is not last training timestep T.
+                    image_embedding = torch.where(
+                        student_timesteps.unsqueeze(1) < noise_scheduler.config.num_train_timesteps - 1,
+                        torch.zeros_like(image_embedding),
+                        image_embedding,
+                    )
 
                 # 5. Get the student model predicted original sample `student_x_0`.
                 student_noise_pred = unet(
@@ -1798,8 +1902,8 @@ def main(args):
                     student_gen_image = vae.decode(unscaled_student_x_0).sample
 
                 # 2. Get discriminator real/fake outputs on the real and fake (generated) images respectively.
-                disc_output_real = discriminator(pixel_values.float(), text_embedding)
-                disc_output_fake = discriminator(student_gen_image.detach().float(), text_embedding)
+                disc_output_real = discriminator(pixel_values.float(), text_embedding, image_embedding)
+                disc_output_fake = discriminator(student_gen_image.detach().float(), text_embedding, image_embedding)
 
                 # 3. Calculate the discriminator real adversarial loss terms.
                 d_logits_real = disc_output_real.logits
@@ -1840,7 +1944,7 @@ def main(args):
                 optimizer.zero_grad(set_to_none=True)
 
                 # 1. Rerun the disc on generated image, but this time allow gradients to flow through the generator
-                disc_output_fake = discriminator(student_gen_image, text_embedding)
+                disc_output_fake = discriminator(student_gen_image, text_embedding, image_embedding)
 
                 # 2. Calculate generator adversarial loss term
                 g_logits_fake = disc_output_fake.logits
