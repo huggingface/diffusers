@@ -585,7 +585,6 @@ class AnimateDiffImg2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixi
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
