@@ -385,10 +385,11 @@ class DiscriminatorHead(torch.nn.Module):
         # Project each token embedding from channels dimensions to cond_map_dim dimensions.
         self.cls = SpectralConv1d(channels, cond_map_dim, kernel_size=1, padding=0)
 
-        # Also project the text conditioning embeddings to dimension cond_map_dim.
-        self.c_text_map = torch.nn.Linear(self.c_text_embedding_dim, cond_map_dim)
+        # Also project the concatenated conditioning embeddings to dimension cond_map_dim.
+        c_map_input_dim = self.c_text_embedding_dim
         if self.c_img_embedding_dim is not None:
-            self.c_img_map = torch.nn.Linear(self.c_img_embedding_dim, cond_map_dim)
+            c_map_input_dim += self.c_img_embedding_dim
+        self.c_map = torch.nn.Linear(c_map_input_dim, cond_map_dim)
 
     def forward(self, x: torch.Tensor, c_text: torch.Tensor, c_img: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
@@ -411,15 +412,15 @@ class DiscriminatorHead(torch.nn.Module):
         hidden_states = self.resblock(hidden_states)
         out = self.cls(hidden_states)
 
-        # Project text conditioning embedding to cond_map_dim and unsqueeze in the sequence length dimension.
-        c_text = self.c_text_map(c_text).unsqueeze(-1)
-
-        # Combine image features with text conditioning embedding via a product.
-        out = (out * c_text).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
-
         if self.c_img_embedding_dim is not None:
-            c_img = self.c_img_map(c_img).unsqueeze(-1)
-            out = (out * c_img).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
+            c = torch.cat([c_text, c_img], dim=1)
+        else:
+            c = c_text
+        # Project conditioning embedding to cond_map_dim and unsqueeze in the sequence length dimension.
+        c = self.c_map(c).unsqueeze(-1)
+
+        # Combine image features with projected conditioning embedding via a product.
+        out = (out * c).sum(1, keepdim=True) * (1 / np.sqrt(self.cond_map_dim))
 
         return out
 
