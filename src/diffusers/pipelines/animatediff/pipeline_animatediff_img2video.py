@@ -45,13 +45,15 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
-        >>> from diffusers.utils import export_to_gif
+        >>> from diffusers import MotionAdapter, AnimateDiffImg2VideoPipeline, DDIMScheduler
+        >>> from diffusers.utils import export_to_gif, load_image
 
         >>> adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter")
-        >>> pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
-        >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False)
-        >>> output = pipe(prompt="A corgi walking in the park")
+        >>> pipe = AnimateDiffImg2VideoPipeline.from_pretrained("SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter).to("cuda")
+        >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace")
+
+        >>> img = load_image("snail.png")
+        >>> output = pipe(image=image, prompt="A snail moving on the ground", strength=0.8, latent_interpolation_method="slerp")
         >>> frames = output.frames[0]
         >>> export_to_gif(frames, "animation.gif")
         ```

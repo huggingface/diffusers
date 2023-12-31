@@ -44,14 +44,25 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        >>> import imageio
         >>> import torch
-        >>> from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
-        >>> from diffusers.utils import export_to_gif
+        >>> from diffusers import MotionAdapter, AnimateDiffVideo2VideoPipeline, DDIMScheduler
+        >>> from diffusers.utils import export_to_gif, load_image
 
         >>> adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter")
-        >>> pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
-        >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False)
-        >>> output = pipe(prompt="A corgi walking in the park")
+        >>> pipe = AnimateDiffVideo2VideoPipeline.from_pretrained("SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter).to("cuda")
+        >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace")
+
+        >>> def load_video(file_path):
+        >>>     images = []
+        >>>     vid = imageio.get_reader(file_path)
+        >>>     for i, frame in enumerate(vid):
+        >>>         pil_image = Image.fromarray(frame)
+        >>>         images.append(pil_image)
+        >>>     return images
+
+        >>> video = load_image("animation_fireworks.png")
+        >>> output = pipe(video=video, prompt="Closeup of a woman, fireworks in the background", strength=0.7)
         >>> frames = output.frames[0]
         >>> export_to_gif(frames, "animation.gif")
         ```
