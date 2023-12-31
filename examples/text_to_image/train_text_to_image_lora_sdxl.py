@@ -708,6 +708,9 @@ def main(args):
 
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
+        if args.train_text_encoder:
+            text_encoder_one.gradient_checkpointing_enable()
+            text_encoder_two.gradient_checkpointing_enable()
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
