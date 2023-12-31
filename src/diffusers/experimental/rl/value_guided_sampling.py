@@ -51,7 +51,7 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         super().__init__()
 
         self.register_modules(value_function=value_function, unet=unet, scheduler=scheduler, env=env)
-        
+
         self.data = env.get_dataset()
         self.means = {}
         for key in self.data.keys():
