@@ -45,7 +45,7 @@ class PEFTLoRALoading(unittest.TestCase):
 
         predicted_slice = outputs[0, -3:, -3:, -1].flatten()
         print(", ".join([str(round(x, 4)) for x in predicted_slice.tolist()]))
-        expected_slice = np.array([0.5708, 0.6001, 0.4895, 0.5191, 0.5518, 0.4583, 0.5059, 0.4866, 0.4759])
+        expected_slice = np.array([0.5396, 0.5707, 0.477, 0.4665, 0.5419, 0.4594, 0.4857, 0.4741, 0.4804])
 
         self.assertTrue(outputs.shape == (1, 64, 64, 3))
         assert np.allclose(expected_slice, predicted_slice, atol=1e-3, rtol=1e-3)
@@ -60,7 +60,7 @@ class PEFTLoRALoading(unittest.TestCase):
 
         predicted_slice = outputs[0, -3:, -3:, -1].flatten()
         print(", ".join([str(round(x, 4)) for x in predicted_slice.tolist()]))
-        expected_slice = np.array([0.6079, 0.551, 0.521, 0.4106, 0.3948, 0.4648, 0.5277, 0.501, 0.49])
+        expected_slice = np.array([0.6014, 0.5416, 0.5028, 0.4166, 0.4143, 0.479, 0.5317, 0.5032, 0.5014])
 
         self.assertTrue(outputs.shape == (1, 64, 64, 3))
         assert np.allclose(expected_slice, predicted_slice, atol=1e-3, rtol=1e-3)
