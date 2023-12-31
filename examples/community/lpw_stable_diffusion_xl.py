@@ -253,6 +253,7 @@ def get_weighted_text_embeddings_sdxl(
     neg_prompt_2: str = None,
     num_images_per_prompt: int = 1,
     device: Optional[torch.device] = None,
+    clip_skip: Optional[int] = None,
 ):
     """
     This function can process long prompt with weights, no length limitation
@@ -266,6 +267,7 @@ def get_weighted_text_embeddings_sdxl(
         neg_prompt_2 (str)
         num_images_per_prompt (int)
         device (torch.device)
+        clip_skip (int)
     Returns:
         prompt_embeds (torch.Tensor)
         neg_prompt_embeds (torch.Tensor)
@@ -343,12 +345,18 @@ def get_weighted_text_embeddings_sdxl(
 
         # use first text encoder
         prompt_embeds_1 = pipe.text_encoder(token_tensor.to(device), output_hidden_states=True)
-        prompt_embeds_1_hidden_states = prompt_embeds_1.hidden_states[-2]
 
         # use second text encoder
         prompt_embeds_2 = pipe.text_encoder_2(token_tensor_2.to(device), output_hidden_states=True)
-        prompt_embeds_2_hidden_states = prompt_embeds_2.hidden_states[-2]
         pooled_prompt_embeds = prompt_embeds_2[0]
+
+        if clip_skip is None:
+            prompt_embeds_1_hidden_states = prompt_embeds_1.hidden_states[-2]
+            prompt_embeds_2_hidden_states = prompt_embeds_2.hidden_states[-2]
+        else:
+            # "2" because SDXL always indexes from the penultimate layer.
+            prompt_embeds_1_hidden_states = prompt_embeds_1.hidden_states[-(clip_skip + 2)]
+            prompt_embeds_2_hidden_states = prompt_embeds_2.hidden_states[-(clip_skip + 2)]
 
         prompt_embeds_list = [prompt_embeds_1_hidden_states, prompt_embeds_2_hidden_states]
         token_embedding = torch.concat(prompt_embeds_list, dim=-1).squeeze(0)
