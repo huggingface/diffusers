@@ -666,6 +666,95 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
 
         return latents
 
+    def _free_init_loop(
+        self,
+        height,
+        width,
+        num_frames,
+        num_channels_latents,
+        batch_size,
+        num_videos_per_prompt,
+        denoise_args,
+        device,
+        output_type,
+        return_dict,
+    ):
+        """Denoising loop for AnimateDiff using FreeInit noise reinitialization technique."""
+
+        latents = denoise_args.get("latents")
+        prompt_embeds = denoise_args.get("prompt_embeds")
+        num_inference_steps = denoise_args.get("num_inference_steps")
+
+        video = []
+        latent_shape = (
+            batch_size * num_videos_per_prompt,
+            num_channels_latents,
+            num_frames,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
+        free_init_filter_shape = (
+            1,
+            num_channels_latents,
+            num_frames,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
+        free_init_freq_filter = _get_freeinit_freq_filter(
+            shape=free_init_filter_shape,
+            device=device,
+            filter_type=self._free_init_method,
+            order=self._free_init_order,
+            spatial_stop_frequency=self._free_init_spatial_stop_frequency,
+            temporal_stop_frequency=self._free_init_temporal_stop_frequency,
+        )
+
+        with self.progress_bar(total=self._free_init_num_iters) as free_init_progress_bar:
+            for i in range(self._free_init_num_iters):
+                # For the first FreeInit iteration, the original latent is used without modification.
+                # Subsequent iterations apply the noise reinitialization technique.
+                if i == 0:
+                    initial_noise = latents.detach().clone()
+                else:
+                    current_diffuse_timestep = (
+                        self.scheduler.config.num_train_timesteps - 1
+                    )  # diffuse to t=999 noise level
+                    diffuse_timesteps = torch.full((batch_size,), current_diffuse_timestep).long()
+                    z_T = self.scheduler.add_noise(
+                        original_samples=latents, noise=initial_noise, timesteps=diffuse_timesteps.to(device)
+                    ).to(dtype=torch.float32)
+                    z_rand = randn_tensor(
+                        shape=latent_shape,
+                        generator=self._free_init_generator,
+                        device=device,
+                        dtype=torch.float32,
+                    )
+                    latents = freq_mix_3d(z_T, z_rand, LPF=free_init_freq_filter)
+                    latents = latents.to(prompt_embeds.dtype)
+
+                # Coarse-to-Fine Sampling for faster inference (can lead to lower quality)
+                if self._free_init_use_fast_sampling:
+                    current_num_inference_steps = int(num_inference_steps / self._free_init_num_iters * (i + 1))
+                    self.scheduler.set_timesteps(current_num_inference_steps, device=device)
+                    timesteps = self.scheduler.timesteps
+                    denoise_args.update({"timesteps": timesteps, "num_inference_steps": current_num_inference_steps})
+
+                num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+                denoise_args.update({"latents": latents, "num_warmup_steps": num_warmup_steps})
+                latents = self._denoise_loop(**denoise_args)
+
+                # Whether or not to return intermediate generation results
+                if self._free_init_return_intermediate_results:
+                    intermediate_video = self._retrieve_output(latents, output_type, return_dict)
+                    video.append(intermediate_video)
+
+                free_init_progress_bar.update()
+
+        if not self._free_init_return_intermediate_results:
+            video = self._retrieve_output(latents, output_type, return_dict)
+
+        return video
+
     def _retrieve_output(self, latents, output_type, return_dict):
         """Helper function to handle latents to output conversion."""
         if output_type == "latent":
@@ -870,73 +959,18 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         }
 
         if self.free_init_enabled:
-            video = []
-            free_init_filter_shape = (
-                1,
-                num_channels_latents,
-                num_frames,
-                height // self.vae_scale_factor,
-                width // self.vae_scale_factor,
-            )
-            free_init_freq_filter = _get_freeinit_freq_filter(
-                shape=free_init_filter_shape,
+            video = self._free_init_loop(
+                height=height,
+                width=width,
+                num_frames=num_frames,
+                num_channels_latents=num_channels_latents,
+                batch_size=batch_size,
+                num_videos_per_prompt=num_videos_per_prompt,
+                denoise_args=denoise_args,
                 device=device,
-                filter_type=self._free_init_method,
-                order=self._free_init_order,
-                spatial_stop_frequency=self._free_init_spatial_stop_frequency,
-                temporal_stop_frequency=self._free_init_temporal_stop_frequency,
+                output_type=output_type,
+                return_dict=return_dict,
             )
-            with self.progress_bar(total=self._free_init_num_iters) as free_init_progress_bar:
-                for i in range(self._free_init_num_iters):
-                    # For the first FreeInit iteration, the original latent is used without modification.
-                    # Subsequent iterations apply the noise reinitialization technique.
-                    if i == 0:
-                        initial_noise = latents.detach().clone()
-                    else:
-                        current_diffuse_timestep = (
-                            self.scheduler.config.num_train_timesteps - 1
-                        )  # diffuse to t=999 noise level
-                        diffuse_timesteps = torch.full((batch_size,), current_diffuse_timestep).long()
-                        z_T = self.scheduler.add_noise(
-                            original_samples=latents, noise=initial_noise, timesteps=diffuse_timesteps.to(device)
-                        ).to(dtype=torch.float32)
-                        z_rand = randn_tensor(
-                            shape=(
-                                batch_size * num_videos_per_prompt,
-                                num_channels_latents,
-                                num_frames,
-                                height // self.vae_scale_factor,
-                                width // self.vae_scale_factor,
-                            ),
-                            generator=self._free_init_generator,
-                            device=device,
-                            dtype=torch.float32,
-                        )
-                        latents = freq_mix_3d(z_T, z_rand, LPF=free_init_freq_filter)
-                        latents = latents.to(prompt_embeds.dtype)
-
-                    # Coarse-to-Fine Sampling for faster inference (can lead to lower quality)
-                    if self._free_init_use_fast_sampling:
-                        current_num_inference_steps = int(num_inference_steps / self._free_init_num_iters * (i + 1))
-                        self.scheduler.set_timesteps(current_num_inference_steps, device=device)
-                        timesteps = self.scheduler.timesteps
-                        denoise_args.update(
-                            {"timesteps": timesteps, "num_inference_steps": current_num_inference_steps}
-                        )
-
-                    num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-                    denoise_args.update({"latents": latents, "num_warmup_steps": num_warmup_steps})
-                    latents = self._denoise_loop(**denoise_args)
-
-                    # Whether or not to return intermediate generation results
-                    if self._free_init_return_intermediate_results:
-                        intermediate_video = self._retrieve_output(latents, output_type, return_dict)
-                        video.append(intermediate_video)
-
-                    free_init_progress_bar.update()
-
-            if not self._free_init_return_intermediate_results:
-                video = self._retrieve_output(latents, output_type, return_dict)
         else:
             latents = self._denoise_loop(**denoise_args)
             video = self._retrieve_output(latents, output_type, return_dict)
