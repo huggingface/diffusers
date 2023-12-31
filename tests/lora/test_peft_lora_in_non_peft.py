@@ -37,14 +37,13 @@ class PEFTLoRALoading(unittest.TestCase):
         sd_pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
         # This LoRA was obtained using similarly as how it's done in the training scripts.
         # For details on how the LoRA was obtained, refer to:
-        # https://colab.research.google.com/gist/sayakpaul/4a00d0223c03225f82735ff93930f43d/scratchpad.ipynb
+        # https://colab.research.google.com/gist/sayakpaul/c2d890de8e4f4ff2d25db6ab06d8fb23/notebook.ipynb
         sd_pipe.load_lora_weights("hf-internal-testing/tiny-sd-lora-peft")
 
         inputs = self.get_dummy_inputs()
         outputs = sd_pipe(**inputs).images
 
         predicted_slice = outputs[0, -3:, -3:, -1].flatten()
-        print(", ".join([str(round(x, 4)) for x in predicted_slice.tolist()]))
         expected_slice = np.array([0.5396, 0.5707, 0.477, 0.4665, 0.5419, 0.4594, 0.4857, 0.4741, 0.4804])
 
         self.assertTrue(outputs.shape == (1, 64, 64, 3))
@@ -59,7 +58,6 @@ class PEFTLoRALoading(unittest.TestCase):
         outputs = sd_pipe(**inputs).images
 
         predicted_slice = outputs[0, -3:, -3:, -1].flatten()
-        print(", ".join([str(round(x, 4)) for x in predicted_slice.tolist()]))
         expected_slice = np.array([0.6014, 0.5416, 0.5028, 0.4166, 0.4143, 0.479, 0.5317, 0.5032, 0.5014])
 
         self.assertTrue(outputs.shape == (1, 64, 64, 3))
