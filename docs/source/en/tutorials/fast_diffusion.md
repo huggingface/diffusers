@@ -166,7 +166,9 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipe(prompt, num_inference_steps=30).images[0]
 ```
 
-`torch.compile` offers different backends and modes. As we’re aiming for maximum inference speed, we opt for the inductor backend using the “max-autotune”. “max-autotune” uses CUDA graphs and optimizes the compilation graph specifically for latency. Specifying fullgraph to be True ensures that there are no graph breaks in the underlying model, ensuring the fullest potential of `torch.compile`. 
+`torch.compile` offers different backends and modes. As we’re aiming for maximum inference speed, we opt for the inductor backend using the “max-autotune”. “max-autotune” uses CUDA graphs and optimizes the compilation graph specifically for latency. Using CUDA graphs greatly reduces the overhead of launching GPU operations. It saves time by using a mechanism to launch multiple GPU operations through a single CPU operation.
+
+Specifying fullgraph to be True ensures that there are no graph breaks in the underlying model, ensuring the fullest potential of `torch.compile`. 
 
 Using SDPA attention and compiling both the UNet and VAE reduces the latency from 3.31 seconds to 2.54 seconds. 
 
@@ -212,7 +214,7 @@ Through experimentation, we found that certain linear layers in the UNet and the
 
 </Tip>
 
-You will leverage the ultra-lightweight pure PyTorch library [torchao](https://github.com/pytorch-labs/ao) to use its user-friendly APIs for quantization. 
+You will leverage the ultra-lightweight pure PyTorch library [torchao](https://github.com/pytorch-labs/ao) (commit SHA: 54bcd5a10d0abbe7b0c045052029257099f83fd9) to use its user-friendly APIs for quantization. 
 
 First, configure all the compiler tags:
 
