@@ -683,6 +683,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
 
         latents = denoise_args.get("latents")
         prompt_embeds = denoise_args.get("prompt_embeds")
+        timesteps = denoise_args.get("timesteps")
         num_inference_steps = denoise_args.get("num_inference_steps")
 
         video = []
