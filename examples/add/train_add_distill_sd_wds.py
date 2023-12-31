@@ -1758,8 +1758,8 @@ def main(args):
                     # Only supply image conditioning when student timestep is not last training timestep T.
                     image_embedding = torch.where(
                         student_timesteps.unsqueeze(1) < noise_scheduler.config.num_train_timesteps - 1,
-                        torch.zeros_like(image_embedding),
                         image_embedding,
+                        torch.zeros_like(image_embedding),
                     )
 
                 # 5. Get the student model predicted original sample `student_x_0`.
