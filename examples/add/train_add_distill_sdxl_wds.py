@@ -1069,7 +1069,7 @@ def parse_args():
         "--cond_resolution",
         type=int,
         default=518,
-        help="Resolution to resize the original images to for image conditioning."
+        help="Resolution to resize the original images to for image conditioning.",
     )
     parser.add_argument(
         "--cond_interpolation_type",
