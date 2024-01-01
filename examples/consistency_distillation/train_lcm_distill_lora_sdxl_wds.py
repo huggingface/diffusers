@@ -721,6 +721,21 @@ def parse_args():
         help="The rank of the LoRA projection matrix.",
     )
     parser.add_argument(
+        "--lora_alpha",
+        type=int,
+        default=64,
+        help=(
+            "The value of the LoRA alpha parameter, which controls the scaling factor in front of the LoRA weight"
+            " update delta_W. No scaling will be performed if this value is equal to `lora_rank`."
+        ),
+    )
+    parser.add_argument(
+        "--lora_dropout",
+        type=float,
+        default=0.0,
+        help="The dropout probability for the dropout layer added before applying the LoRA to each layer input.",
+    )
+    parser.add_argument(
         "--vae_encode_batch_size",
         type=int,
         default=8,
@@ -971,6 +986,8 @@ def main(args):
     # 8. Add LoRA to the student U-Net, only the LoRA projection matrix will be updated by the optimizer.
     lora_config = LoraConfig(
         r=args.lora_rank,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
         target_modules=[
             "to_q",
             "to_k",
