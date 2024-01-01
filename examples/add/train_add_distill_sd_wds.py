@@ -676,10 +676,10 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step, name="stude
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
     validation_prompts = [
-        "portrait photo of a girl, photograph, highly detailed face, depth of field, moody light, golden hour, style by Dan Winters, Russell James, Steve McCurry, centered, extremely detailed, Nikon D850, award winning photography",
-        "Self-portrait oil painting, a beautiful cyborg with golden hair, 8k",
-        "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
-        "A photo of beautiful mountain with realistic sunset and blue lake, highly detailed, masterpiece",
+        "A cinematic shot of robot with colorful feathers.",
+        "Teddy bears working on new AI research on the moon in the 1980s.",
+        "A robot is playing the guitar at a rock concert in front of a large crowd.",
+        "A photo of an astronaut riding a horse in the forest. There is a river in front of them with water lilies.",
     ]
 
     image_logs = []
