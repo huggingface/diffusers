@@ -37,7 +37,7 @@ class PEFTLoRALoading(unittest.TestCase):
         sd_pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
         # This LoRA was obtained using similarly as how it's done in the training scripts.
         # For details on how the LoRA was obtained, refer to:
-        # https://colab.research.google.com/gist/sayakpaul/c2d890de8e4f4ff2d25db6ab06d8fb23/notebook.ipynb
+        # https://huggingface.co/datasets/diffusers/notebooks/blob/main/dummy_components_peft_lora.ipynb
         sd_pipe.load_lora_weights("hf-internal-testing/tiny-sd-lora-peft")
 
         inputs = self.get_dummy_inputs()
