@@ -136,6 +136,24 @@ def tarfile_to_samples_nothrow(src, handler=wds.warn_and_continue):
     return samples
 
 
+def resolve_interpolation_mode(interpolation_type):
+    if interpolation_type == "bilinear":
+        interpolation_mode = TF.InterpolationMode.BILINEAR
+    elif interpolation_type == "bicubic":
+        interpolation_mode = TF.InterpolationMode.BICUBIC
+    elif interpolation_type == "nearest":
+        interpolation_mode = TF.InterpolationMode.NEAREST
+    elif interpolation_type == "lanczos":
+        interpolation_mode = TF.InterpolationMode.LANCZOS
+    else:
+        raise ValueError(
+            f"The given interpolation mode {interpolation_type} is not supported. Currently supported interpolation"
+            f" modes are `bilinear`, `bicubic`, `lanczos`, and `nearest`."
+        )
+
+    return interpolation_mode
+
+
 class WebdatasetFilter:
     def __init__(self, min_size=1024, max_pwatermark=0.5):
         self.min_size = min_size
@@ -165,6 +183,7 @@ class SDText2ImageDataset:
         global_batch_size: int,
         num_workers: int,
         resolution: int = 512,
+        interpolation_type: str = "bilinear",
         shuffle_buffer_size: int = 1000,
         pin_memory: bool = False,
         persistent_workers: bool = False,
@@ -174,10 +193,12 @@ class SDText2ImageDataset:
             # flatten list using itertools
             train_shards_path_or_url = list(itertools.chain.from_iterable(train_shards_path_or_url))
 
+        interpolation_mode = resolve_interpolation_mode(interpolation_type)
+
         def transform(example):
             # resize image
             image = example["image"]
-            image = TF.resize(image, resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+            image = TF.resize(image, resolution, interpolation=interpolation_mode)
 
             # get crop coordinates and crop image
             c_top, c_left, _, _ = transforms.RandomCrop.get_params(image, output_size=(resolution, resolution))
@@ -570,6 +591,15 @@ def parse_args():
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
+        ),
+    )
+    parser.add_argument(
+        "--interpolation_type",
+        type=str,
+        default="bilinear",
+        help=(
+            "The interpolation function used when resizing images to the desired resolution. Choose between `bilinear`,"
+            " `bicubic`, `lanczos`, and `nearest`."
         ),
     )
     parser.add_argument(
@@ -1051,6 +1081,7 @@ def main(args):
         global_batch_size=args.train_batch_size * accelerator.num_processes,
         num_workers=args.dataloader_num_workers,
         resolution=args.resolution,
+        interpolation_type=args.interpolation_type,
         shuffle_buffer_size=1000,
         pin_memory=True,
         persistent_workers=True,
