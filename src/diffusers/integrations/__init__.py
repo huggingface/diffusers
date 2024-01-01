@@ -18,12 +18,10 @@ from ..utils import DIFFUSERS_SLOW_IMPORT, _LazyModule, is_peft_available, is_to
 
 _import_structure = {}
 
-if is_torch_available() and is_peft_available():
-    _import_structure = {"peft": ["PeftAdapterMixin"]}
+_import_structure = {"peft": ["PeftAdapterMixin"]}
 
-if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
-    if is_torch_available() and is_peft_available():
-        from .peft import PeftAdapterMixin
+if TYPE_CHECKING:
+    from .peft import PeftAdapterMixin
 else:
     import sys
 

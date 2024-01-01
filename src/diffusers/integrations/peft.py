@@ -14,7 +14,7 @@
 # limitations under the License.
 from typing import List, Union
 
-from ..utils import MIN_PEFT_VERSION, check_peft_version
+from ..utils import MIN_PEFT_VERSION, check_peft_version, is_peft_available
 
 
 class PeftAdapterMixin:
@@ -50,6 +50,9 @@ class PeftAdapterMixin:
                 The name of the adapter to add. If no name is passed, a default name is assigned to the adapter.
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
+
+        if not is_peft_available():
+            raise ImportError("PEFT is not available. Please install PEFT to use this function: `pip install peft`.")
 
         from peft import PeftConfig, inject_adapter_in_model
 
@@ -171,6 +174,9 @@ class PeftAdapterMixin:
         official documentation: https://huggingface.co/docs/peft
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
+
+        if not is_peft_available():
+            raise ImportError("PEFT is not available. Please install PEFT to use this function: `pip install peft`.")
 
         if not self._hf_peft_config_loaded:
             raise ValueError("No adapter loaded. Please load an adapter first.")
