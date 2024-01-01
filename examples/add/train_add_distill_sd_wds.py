@@ -1823,7 +1823,9 @@ def main(args):
                 student_gen_image = []
                 for i in range(0, unscaled_student_x_0.shape[0], args.vae_encode_batch_size):
                     student_gen_image.append(
-                        vae.decode(unscaled_student_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)).sample
+                        vae.decode(
+                            unscaled_student_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)
+                        ).sample
                     )
                 student_gen_image = torch.cat(student_gen_image, dim=0)
 
@@ -1885,7 +1887,9 @@ def main(args):
                 teacher_gen_image = []
                 for i in range(0, unscaled_teacher_x_0.shape[0], args.vae_encode_batch_size):
                     teacher_gen_image.append(
-                        vae.decode(unscaled_teacher_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)).sample
+                        vae.decode(
+                            unscaled_teacher_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)
+                        ).sample
                     )
                 teacher_gen_image = torch.cat(teacher_gen_image, dim=0)
 

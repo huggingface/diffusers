@@ -1911,7 +1911,9 @@ def main(args):
                 for i in range(0, unscaled_student_x_0.shape[0], args.vae_encode_batch_size):
                     if args.pretrained_vae_model_name_or_path:
                         student_gen_image.append(
-                            vae.decode(unscaled_student_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)).sample
+                            vae.decode(
+                                unscaled_student_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)
+                            ).sample
                         )
                     else:
                         # VAE is in full precision due to possible NaN issues
@@ -1979,7 +1981,9 @@ def main(args):
                 for i in range(0, unscaled_teacher_x_0.shape[0], args.vae_encode_batch_size):
                     if args.pretrained_vae_model_name_or_path:
                         teacher_gen_image.append(
-                            vae.decode(unscaled_teacher_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)).sample
+                            vae.decode(
+                                unscaled_teacher_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)
+                            ).sample
                         )
                     else:
                         # VAE is in full precision due to possible NaN issues
