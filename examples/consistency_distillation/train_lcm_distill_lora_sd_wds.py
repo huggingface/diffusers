@@ -374,8 +374,9 @@ def append_dims(x, target_dims):
 
 # From LCMScheduler.get_scalings_for_boundary_condition_discrete
 def scalings_for_boundary_conditions(timestep, sigma_data=0.5, timestep_scaling=10.0):
-    c_skip = sigma_data**2 / ((timestep / 0.1) ** 2 + sigma_data**2)
-    c_out = (timestep / 0.1) / ((timestep / 0.1) ** 2 + sigma_data**2) ** 0.5
+    scaled_timestep = timestep_scaling * timestep
+    c_skip = sigma_data**2 / (scaled_timestep**2 + sigma_data**2)
+    c_out = scaled_timestep / (scaled_timestep**2 + sigma_data**2) ** 0.5
     return c_skip, c_out
 
 
@@ -763,6 +764,16 @@ def parse_args():
         help=(
             "The batch size used when encoding (and decoding) images to latents (and vice versa) using the VAE."
             " Encoding or decoding the whole batch at once may run into OOM issues."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_scaling_factor",
+        type=float,
+        default=10.0,
+        help=(
+            "The multiplicative timestep scaling factor used when calculating the boundary scalings for LCM. The"
+            " higher the scaling is, the lower the approximation error, but the default value of 10.0 should typically"
+            " suffice."
         ),
     )
     # ----Mixed Precision----
@@ -1239,9 +1250,13 @@ def main(args):
                 timesteps = torch.where(timesteps < 0, torch.zeros_like(timesteps), timesteps)
 
                 # 3. Get boundary scalings for start_timesteps and (end) timesteps.
-                c_skip_start, c_out_start = scalings_for_boundary_conditions(start_timesteps)
+                c_skip_start, c_out_start = scalings_for_boundary_conditions(
+                    start_timesteps, timestep_scaling=args.timestep_scaling_factor
+                )
                 c_skip_start, c_out_start = [append_dims(x, latents.ndim) for x in [c_skip_start, c_out_start]]
-                c_skip, c_out = scalings_for_boundary_conditions(timesteps)
+                c_skip, c_out = scalings_for_boundary_conditions(
+                    timesteps, timestep_scaling=args.timestep_scaling_factor
+                )
                 c_skip, c_out = [append_dims(x, latents.ndim) for x in [c_skip, c_out]]
 
                 # 4. Sample noise from the prior and add it to the latents according to the noise magnitude at each
