@@ -534,6 +534,16 @@ def parse_args():
         default=64,
         help="The rank of the LoRA projection matrix.",
     )
+    parser.add_argument(
+        "--vae_encode_batch_size",
+        type=int,
+        default=8,
+        required=False,
+        help=(
+            "The batch size used when encoding (and decoding) images to latents (and vice versa) using the VAE."
+            " Encoding or decoding the whole batch at once may run into OOM issues."
+        ),
+    )
     # ----Mixed Precision----
     parser.add_argument(
         "--mixed_precision",
@@ -1121,11 +1131,11 @@ def main(args):
 
                 encoded_text = compute_embeddings_fn(text, orig_size, crop_coords)
 
-                # encode pixel values with batch size of at most 8
+                # encode pixel values with batch size of at most args.vae_encode_batch_size
                 pixel_values = pixel_values.to(dtype=vae.dtype)
                 latents = []
-                for i in range(0, pixel_values.shape[0], args.encode_batch_size):
-                    latents.append(vae.encode(pixel_values[i : i + args.encode_batch_size]).latent_dist.sample())
+                for i in range(0, pixel_values.shape[0], args.vae_encode_batch_size):
+                    latents.append(vae.encode(pixel_values[i : i + args.vae_encode_batch_size]).latent_dist.sample())
                 latents = torch.cat(latents, dim=0)
 
                 latents = latents * vae.config.scaling_factor
