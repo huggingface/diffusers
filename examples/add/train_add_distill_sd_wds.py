@@ -1119,6 +1119,16 @@ def parse_args():
             " compared to the original paper."
         ),
     )
+    parser.add_argument(
+        "--vae_encode_batch_size",
+        type=int,
+        default=32,
+        required=False,
+        help=(
+            "The batch size used when encoding (and decoding) images to latents (and vice versa) using the VAE."
+            " Encoding or decoding the whole batch at once may run into OOM issues."
+        ),
+    )
     # ----Exponential Moving Average (EMA)----
     parser.add_argument(
         "--use_ema", action="store_true", help="Whether to also maintain an EMA version of the student U-Net weights."
@@ -1726,10 +1736,10 @@ def main(args):
                 if vae.dtype != weight_dtype:
                     vae.to(dtype=weight_dtype)
 
-                # encode pixel values with batch size of at most 32
+                # encode pixel values with batch size of at most args.vae_encode_batch_size
                 latents = []
-                for i in range(0, pixel_values.shape[0], 32):
-                    latents.append(vae.encode(pixel_values[i : i + 32]).latent_dist.sample())
+                for i in range(0, pixel_values.shape[0], args.vae_encode_batch_size):
+                    latents.append(vae.encode(pixel_values[i : i + args.vae_encode_batch_size]).latent_dist.sample())
                 latents = torch.cat(latents, dim=0)
 
                 latents = latents * vae.config.scaling_factor
@@ -1809,7 +1819,13 @@ def main(args):
                 # NOTE: the paper doesn't mention this explicitly AFAIK but I think this makes sense since the
                 # pretrained feature network for the discriminator operates in pixel space rather than latent space.
                 unscaled_student_x_0 = (1 / vae.config.scaling_factor) * student_x_0
-                student_gen_image = vae.decode(unscaled_student_x_0.to(dtype=weight_dtype)).sample
+                # Perform batched decode with batch size of at most args.vae_encode_batch_size
+                student_gen_image = []
+                for i in range(0, unscaled_student_x_0.shape[0], args.vae_encode_batch_size):
+                    student_gen_image.append(
+                        vae.decode(unscaled_student_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)).sample
+                    )
+                student_gen_image = torch.cat(student_gen_image, dim=0)
 
                 # 2. Get discriminator real/fake outputs on the real and fake (generated) images respectively.
                 disc_output_real = discriminator(pixel_values.float(), text_embedding, image_embedding)
@@ -1865,7 +1881,14 @@ def main(args):
                 ############################
                 # Calculate distillation loss in pixel space rather than latent space (see section 3.1)
                 unscaled_teacher_x_0 = (1 / vae.config.scaling_factor) * teacher_x_0
-                teacher_gen_image = vae.decode(unscaled_teacher_x_0.to(dtype=weight_dtype)).sample
+                # Perform batched decode with batch size of at most args.vae_encode_batch_size
+                teacher_gen_image = []
+                for i in range(0, unscaled_teacher_x_0.shape[0], args.vae_encode_batch_size):
+                    teacher_gen_image.append(
+                        vae.decode(unscaled_teacher_x_0[i : i + args.vae_encode_batch_size].to(dtype=weight_dtype)).sample
+                    )
+                teacher_gen_image = torch.cat(teacher_gen_image, dim=0)
+
                 per_instance_distillation_loss = F.mse_loss(
                     student_gen_image.float(), teacher_gen_image.float(), reduction="none"
                 )
