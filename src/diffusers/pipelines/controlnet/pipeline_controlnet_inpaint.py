@@ -890,10 +890,12 @@ class StableDiffusionControlNetInpaintPipeline(
         num_images_per_prompt,
         device,
         dtype,
+        crops_coords,
+        resize_mode,
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        image = self.control_image_processor.preprocess(image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
@@ -1264,7 +1266,7 @@ class StableDiffusionControlNetInpaintPipeline(
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            control_image,
+            image,
             mask_image,
             height,
             width,
@@ -1290,6 +1292,13 @@ class StableDiffusionControlNetInpaintPipeline(
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+            
+        if padding_mask_crop is not None:
+            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
+            resize_mode = "fill"
+        else:
+            crops_coords = None
+            resize_mode = "default"
 
         device = self._execution_device
 
@@ -1342,6 +1351,8 @@ class StableDiffusionControlNetInpaintPipeline(
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
+                crops_coords=crops_coords,
+                resize_mode=resize_mode,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
@@ -1357,6 +1368,8 @@ class StableDiffusionControlNetInpaintPipeline(
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
+                    crops_coords=crops_coords,
+                    resize_mode=resize_mode,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
@@ -1368,13 +1381,6 @@ class StableDiffusionControlNetInpaintPipeline(
             assert False
 
         # 4.1 Preprocess mask and image - resizes image and mask w.r.t height and width
-        if padding_mask_crop is not None:
-            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
-            resize_mode = "fill"
-        else:
-            crops_coords = None
-            resize_mode = "default"
-
         original_image = image
         init_image = self.image_processor.preprocess(
             image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
