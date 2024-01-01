@@ -37,7 +37,7 @@ class PEFTLoRALoading(unittest.TestCase):
         sd_pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sd-pipe").to(torch_device)
         # This LoRA was obtained using similarly as how it's done in the training scripts.
         # For details on how the LoRA was obtained, refer to:
-        # https://huggingface.co/datasets/diffusers/notebooks/blob/main/dummy_components_peft_lora.ipynb
+        # https://hf.co/datasets/diffusers/notebooks/blob/main/check_logits_with_serialization_peft_lora.py
         sd_pipe.load_lora_weights("hf-internal-testing/tiny-sd-lora-peft")
 
         inputs = self.get_dummy_inputs()
@@ -58,7 +58,7 @@ class PEFTLoRALoading(unittest.TestCase):
         outputs = sd_pipe(**inputs).images
 
         predicted_slice = outputs[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.6014, 0.5416, 0.5028, 0.4166, 0.4143, 0.479, 0.5317, 0.5032, 0.5014])
+        expected_slice = np.array([0.613, 0.5566, 0.54, 0.4162, 0.4042, 0.4596, 0.5374, 0.5286, 0.5038])
 
         self.assertTrue(outputs.shape == (1, 64, 64, 3))
         assert np.allclose(expected_slice, predicted_slice, atol=1e-3, rtol=1e-3)
