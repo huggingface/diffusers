@@ -1266,7 +1266,7 @@ class StableDiffusionControlNetInpaintPipeline(
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
-            image,
+            control_image,
             mask_image,
             height,
             width,
