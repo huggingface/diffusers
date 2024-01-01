@@ -1660,6 +1660,7 @@ def main(args):
         global_batch_size=args.train_batch_size * accelerator.num_processes,
         num_workers=args.dataloader_num_workers,
         resolution=args.resolution,
+        interpolation_type=args.interpolation_type,
         shuffle_buffer_size=1000,
         pin_memory=True,
         persistent_workers=True,
