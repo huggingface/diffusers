@@ -254,7 +254,7 @@ class ResnetBlock2D(nn.Module):
                 "Passing `ada_group` as `time_embedding_norm` is deprecated, please create `ResnetBlockCondNorm2D` instead",
             )
         if time_embedding_norm == "spatial":
-            deprecate(
+            raise ValueError(
                 "spatial",
                 "1.0.0",
                 "Passing `spatial` as `time_embedding_norm` is deprecated, please create `ResnetBlockCondNorm2D` instead",
