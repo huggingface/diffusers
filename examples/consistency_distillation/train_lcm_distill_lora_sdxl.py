@@ -51,6 +51,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import resolve_interpolation_mode
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -395,6 +396,15 @@ def parse_args():
         help=(
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
+        ),
+    )
+    parser.add_argument(
+        "--interpolation_type",
+        type=str,
+        default="bilinear",
+        help=(
+            "The interpolation function used when resizing images to the desired resolution. Choose between `bilinear`,"
+            " `bicubic`, `box`, `nearest`, `nearest_exact`, `hamming`, and `lanczos`."
         ),
     )
     parser.add_argument(
@@ -979,7 +989,8 @@ def main(args):
             )
 
     # Preprocessing the datasets.
-    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+    interpolation_mode = resolve_interpolation_mode(args.interpolation_type)
+    train_resize = transforms.Resize(args.resolution, interpolation=interpolation_mode)
     train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
     train_transforms = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])

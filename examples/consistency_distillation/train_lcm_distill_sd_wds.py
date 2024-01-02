@@ -60,6 +60,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import resolve_interpolation_mode
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -116,24 +117,6 @@ def tarfile_to_samples_nothrow(src, handler=wds.warn_and_continue):
     files = tar_file_expander(streams, handler=handler)
     samples = group_by_keys_nothrow(files, handler=handler)
     return samples
-
-
-def resolve_interpolation_mode(interpolation_type):
-    if interpolation_type == "bilinear":
-        interpolation_mode = TF.InterpolationMode.BILINEAR
-    elif interpolation_type == "bicubic":
-        interpolation_mode = TF.InterpolationMode.BICUBIC
-    elif interpolation_type == "nearest":
-        interpolation_mode = TF.InterpolationMode.NEAREST
-    elif interpolation_type == "lanczos":
-        interpolation_mode = TF.InterpolationMode.LANCZOS
-    else:
-        raise ValueError(
-            f"The given interpolation mode {interpolation_type} is not supported. Currently supported interpolation"
-            f" modes are `bilinear`, `bicubic`, `lanczos`, and `nearest`."
-        )
-
-    return interpolation_mode
 
 
 class WebdatasetFilter:
@@ -577,7 +560,7 @@ def parse_args():
         default="bilinear",
         help=(
             "The interpolation function used when resizing images to the desired resolution. Choose between `bilinear`,"
-            " `bicubic`, `lanczos`, and `nearest`."
+            " `bicubic`, `box`, `nearest`, `nearest_exact`, `hamming`, and `lanczos`."
         ),
     )
     parser.add_argument(
