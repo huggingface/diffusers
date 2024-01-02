@@ -1403,6 +1403,35 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, IP
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
 
+    # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
+    def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
+        """
+        See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
+
+        Args:
+            timesteps (`torch.Tensor`):
+                generate embedding vectors at these timesteps
+            embedding_dim (`int`, *optional*, defaults to 512):
+                dimension of the embeddings to generate
+            dtype:
+                data type of the generated embeddings
+
+        Returns:
+            `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
+        """
+        assert len(w.shape) == 1
+        w = w * 1000.0
+
+        half_dim = embedding_dim // 2
+        emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, dtype=dtype) * -emb)
+        emb = w.to(dtype)[:, None] * emb[None, :]
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
+        if embedding_dim % 2 == 1:  # zero pad
+            emb = torch.nn.functional.pad(emb, (0, 1))
+        assert emb.shape == (w.shape[0], embedding_dim)
+        return emb
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -1779,7 +1808,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, IP
             else:
                 latents, noise = latents
 
-        # 5.1. Prepare mask latent variables
+        # 5.1 Prepare mask latent variables
         if mask is not None:
             mask, masked_image_latents = self.prepare_mask_latents(
                 mask=mask,
@@ -1793,7 +1822,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, IP
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
             )
 
-            # 8. Check that sizes of mask, masked image and latents match
+            # Check that sizes of mask, masked image and latents match
             if num_channels_unet == 9:
                 # default case for runwayml/stable-diffusion-inpainting
                 num_channels_mask = mask.shape[1]
