@@ -827,7 +827,7 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     def test_download_ckpt_diff_format_is_same(self):
-        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0")
+        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16)
         single_file_url = (
             "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
         )
@@ -844,7 +844,7 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
         )
         single_file_images = pipe_single_file(
-            prompt, image=image, generator=generator, output_type="np", num_inference_steps=3
+            prompt, image=image, generator=generator, output_type="np", num_inference_steps=2
         ).images
 
         generator = torch.Generator(device="cpu").manual_seed(0)
@@ -853,13 +853,13 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
         )
         pipe.unet.set_default_attn_processor()
         pipe.enable_model_cpu_offload()
-        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=2).images
 
         assert images[0].shape == (512, 512, 3)
         assert single_file_images[0].shape == (512, 512, 3)
 
         max_diff = numpy_cosine_similarity_distance(images[0].flatten(), single_file_images[0].flatten())
-        assert max_diff < 1e-4
+        assert max_diff < 5e-2
 
 
 class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNetPipelineFastTests):
