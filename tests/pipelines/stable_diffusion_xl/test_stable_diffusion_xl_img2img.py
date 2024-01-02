@@ -784,24 +784,24 @@ class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
             "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
 
-        pipe = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
+        pipe_single_file = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
+        pipe_single_file.scheduler = DDIMScheduler.from_config(pipe_single_file.scheduler.config)
+        pipe_single_file.enable_model_cpu_offload()
 
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe(
-            "mountains", image=init_image, num_inference_steps=2, generator=generator, output_type="np"
-        ).images[0]
-
-        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-1.0")
+        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         image = pipe(
-            "mountains", image=init_image, num_inference_steps=2, generator=generator, output_type="np"
+            prompt="mountains", image=init_image, num_inference_steps=2, generator=generator, output_type="np"
         ).images[0]
 
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_single_file = pipe_single_file(
+            prompt="mountains", image=init_image, num_inference_steps=2, generator=generator, output_type="np"
+        ).images[0]
+
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
         assert max_diff < 1e-3

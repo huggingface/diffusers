@@ -61,6 +61,7 @@ CONFIG_URLS = {
     "v1": "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml",
     "v2": "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml",
     "xl": "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml",
+    "xl_refiner": "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml",
     "upscale": "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml",
 }
 
@@ -1355,6 +1356,8 @@ def create_text_encoders_and_tokenizers(
 
         else:
             return {
+                "text_encoder": None,
+                "tokenizer": None,
                 "tokenizer_2": tokenizer_2,
                 "text_encoder_2": text_encoder_2,
             }
