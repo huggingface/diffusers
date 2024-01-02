@@ -784,7 +784,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # (batch_size, 2*channels, h, w) -> (2*batch_size, channels, h, w)
-                pixel_values = batch["batch"].to(dtype=vae.dtype)
+                pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                 feed_pixel_values = torch.cat(pixel_values.chunk(2, dim=1))
 
                 latents = []
