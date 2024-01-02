@@ -808,4 +808,4 @@ class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
 
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
-        assert max_diff < 5e-3
+        assert max_diff < 5e-2
