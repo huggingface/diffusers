@@ -835,8 +835,7 @@ def main(args):
 
                 # For logging
                 raw_model_loss = 0.5 * (model_losses_w.mean() + model_losses_l.mean())
-                model_diff = model_losses_w - model_losses_l  # These are both LBS (as is t)
-                print(f"model_diff: {model_diff}")
+                model_diff = (model_losses_w - model_losses_l).mean()  # These are both LBS (as is t)
 
                 # Reference model predictions.
                 accelerator.unwrap_model(unet).disable_adapters()
@@ -850,9 +849,8 @@ def main(args):
                     ref_loss = ref_loss.mean(dim=list(range(1, len(ref_loss.shape))))
 
                     ref_losses_w, ref_losses_l = ref_loss.chunk(2)
-                    ref_diff = ref_losses_w - ref_losses_l
+                    ref_diff = (ref_losses_w - ref_losses_l).mean()
                     raw_ref_loss = ref_loss.mean()
-                    print(f"ref_diff: {ref_diff}")
 
                 # Re-enable adapters.
                 accelerator.unwrap_model(unet).enable_adapters()
@@ -860,9 +858,7 @@ def main(args):
                 # Final loss.
                 scale_term = -0.5 * args.beta_dpo
                 inside_term = scale_term * (model_diff - ref_diff)
-                print(f"inside_term: {inside_term}")
                 loss = -1 * F.logsigmoid(inside_term)
-                print(f"Loss: {loss}")
 
                 implicit_acc = (inside_term > 0).sum().float() / inside_term.size(0)
                 implicit_acc += 0.5 * (inside_term == 0).sum().float() / inside_term.size(0)
