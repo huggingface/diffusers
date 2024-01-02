@@ -784,7 +784,9 @@ class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
             "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
 
-        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16)
+        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16
+        )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_default_attn_processor()
         pipe.enable_model_cpu_offload()
