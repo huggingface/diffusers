@@ -40,7 +40,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 import diffusers
 from diffusers import (
@@ -767,6 +767,53 @@ def main():
         text_encoder, optimizer, train_dataloader, lr_scheduler
     )
 
+    has_added_cond_kwargs = True if "stable-diffusion-xl" in args.pretrained_model_name_or_path else False
+    if has_added_cond_kwargs:
+        tokenizer_2 = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer_2")
+        text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
+        )
+        # Resize the token embeddings as we are adding new special tokens to the tokenizer
+        text_encoder_2.resize_token_embeddings(len(tokenizer_2))
+        # Freeze all parameters except for the token embeddings in text encoder
+        text_encoder_2.text_model.encoder.requires_grad_(False)
+        text_encoder_2.text_model.final_layer_norm.requires_grad_(False)
+        text_encoder_2.text_model.embeddings.position_embedding.requires_grad_(False)
+        if args.gradient_checkpointing:
+            text_encoder.gradient_checkpointing_enable()
+
+        train_dataset_2 = TextualInversionDataset(
+            data_root=args.train_data_dir,
+            tokenizer=tokenizer_2,
+            size=args.resolution,
+            placeholder_token=(" ".join(tokenizer.convert_ids_to_tokens(placeholder_token_ids))),
+            repeats=args.repeats,
+            learnable_property=args.learnable_property,
+            center_crop=args.center_crop,
+            set="train",
+        )
+        train_dataloader_2 = torch.utils.data.DataLoader(
+            train_dataset_2, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers
+        )
+        optimizer_2 = torch.optim.AdamW(
+            text_encoder_2.get_input_embeddings().parameters(),  # only optimize the embeddings
+            lr=args.learning_rate,
+            betas=(args.adam_beta1, args.adam_beta2),
+            weight_decay=args.adam_weight_decay,
+            eps=args.adam_epsilon,
+        )
+        lr_scheduler_2 = get_scheduler(
+            args.lr_scheduler,
+            optimizer=optimizer_2,
+            num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
+            num_training_steps=args.max_train_steps * accelerator.num_processes,
+            num_cycles=args.lr_num_cycles,
+        )
+        text_encoder_2.train()
+        text_encoder_2, optimizer_2, train_dataloader_2, lr_scheduler_2 = accelerator.prepare(
+            text_encoder_2, optimizer_2, train_dataloader_2, lr_scheduler_2
+        )
+
     # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
@@ -844,6 +891,7 @@ def main():
 
     for epoch in range(first_epoch, args.num_train_epochs):
         text_encoder.train()
+        text_encoder_2.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
@@ -863,9 +911,21 @@ def main():
 
                 # Get the text embedding for conditioning
                 encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype)
+                added_cond_kwargs = None
+                if has_added_cond_kwargs:
+                    encoder_hidden_states = text_encoder(batch["input_ids"], output_hidden_states=True).hidden_states[-2].to(dtype=weight_dtype)
+                    encoder_output_2 = text_encoder_2(train_dataset_2[step]["input_ids"].reshape(batch["input_ids"].shape[0], -1), output_hidden_states=True)
+                    encoder_hidden_states_2 = encoder_output_2.hidden_states[-2].to(dtype=weight_dtype)
+                    sample_size = unet.config.sample_size * (2 ** (len(vae.config.block_out_channels) - 1))
+                    original_size = (sample_size, sample_size)
+                    add_time_ids = torch.tensor([list(original_size + (0, 0) + original_size)], dtype=weight_dtype)
+                    added_cond_kwargs = {"text_embeds": encoder_output_2[0], "time_ids": add_time_ids}
+                    encoder_hidden_states = torch.cat([encoder_hidden_states, encoder_hidden_states_2], dim=-1)
+                else:
+                    encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype)
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -882,6 +942,10 @@ def main():
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
+
+                optimizer_2.step()
+                lr_scheduler_2.step()
+                optimizer_2.zero_grad()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
                 index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
@@ -959,13 +1023,23 @@ def main():
         else:
             save_full_model = args.save_as_full_pipeline
         if save_full_model:
-            pipeline = StableDiffusionPipeline.from_pretrained(
-                args.pretrained_model_name_or_path,
-                text_encoder=accelerator.unwrap_model(text_encoder),
-                vae=vae,
-                unet=unet,
-                tokenizer=tokenizer,
-            )
+            if "xl" in args.pretrained_model_name_or_path:
+                pipeline = DiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    text_encoder_2=accelerator.unwrap_model(text_encoder_2),
+                    vae=vae,
+                    unet=unet,
+                    tokenizer=tokenizer,
+                )
+            else:
+                pipeline = StableDiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    text_encoder=accelerator.unwrap_model(text_encoder),
+                    vae=vae,
+                    unet=unet,
+                    tokenizer=tokenizer,
+                )
             pipeline.save_pretrained(args.output_dir)
         # Save the newly trained embeddings
         weight_name = "learned_embeds.bin" if args.no_safe_serialization else "learned_embeds.safetensors"
