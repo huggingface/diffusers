@@ -96,7 +96,7 @@ def log_validation(args, unet, accelerator, weight_dtype, epoch, is_final_valida
         torch_dtype=weight_dtype,
     )
     if not is_final_validation:
-        pipeline.unet = (accelerator.unwrap_model(unet),)
+        pipeline.unet = accelerator.unwrap_model(unet)
     else:
         pipeline.load_lora_weights(args.output_dir, weight_name="pytorch_lora_weights.safetensors")
 
