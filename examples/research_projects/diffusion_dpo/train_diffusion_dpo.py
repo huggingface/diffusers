@@ -430,18 +430,19 @@ def parse_args(input_args=None):
     return args
 
 
-def tokenize_captions(tokenizer, prompt):
+def tokenize_captions(tokenizer, examples):
     max_length = tokenizer.model_max_length
+    captions = [caption for caption in examples["caption"]]
 
     text_inputs = tokenizer(
-        prompt,
+        captions,
         truncation=True,
         padding="max_length",
         max_length=max_length,
-        return_tensors="pt",
+        return_tensors="pt"
     )
 
-    return text_inputs
+    return text_inputs.input_ids
 
 
 @torch.no_grad()
