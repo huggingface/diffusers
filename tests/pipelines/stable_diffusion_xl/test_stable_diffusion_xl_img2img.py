@@ -778,7 +778,7 @@ class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_download_ckpt_diff_format_is_same(self):
-        ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0_0.9vae.safetensors"
+        ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors"
         init_image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/sketch-mountains-input.png"
