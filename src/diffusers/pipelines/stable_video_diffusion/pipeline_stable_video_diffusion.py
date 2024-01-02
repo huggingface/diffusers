@@ -311,7 +311,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         max_guidance_scale: float = 3.0,
         fps: int = 7,
         motion_bucket_id: int = 127,
-        noise_aug_strength: int = 0.02,
+        noise_aug_strength: float = 0.02,
         decode_chunk_size: Optional[int] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -346,7 +346,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 Note that Stable Diffusion Video's UNet was micro-conditioned on fps-1 during training.
             motion_bucket_id (`int`, *optional*, defaults to 127):
                 The motion bucket ID. Used as conditioning for the generation. The higher the number the more motion will be in the video.
-            noise_aug_strength (`int`, *optional*, defaults to 0.02):
+            noise_aug_strength (`float`, *optional*, defaults to 0.02):
                 The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
             decode_chunk_size (`int`, *optional*):
                 The number of frames to decode at a time. The higher the chunk size, the higher the temporal consistency
