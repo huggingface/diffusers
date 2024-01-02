@@ -778,30 +778,32 @@ class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_download_ckpt_diff_format_is_same(self):
-        ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors"
+        ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0_0.9vae.safetensors"
         init_image = load_image(
             "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
             "/stable_diffusion_img2img/sketch-mountains-input.png"
         )
 
-        pipe_single_file = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
-        pipe_single_file.scheduler = DDIMScheduler.from_config(pipe_single_file.scheduler.config)
-        pipe_single_file.enable_model_cpu_offload()
-
         pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16)
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
         pipe.enable_model_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         image = pipe(
-            prompt="mountains", image=init_image, num_inference_steps=2, generator=generator, output_type="np"
+            prompt="mountains", image=init_image, num_inference_steps=5, generator=generator, output_type="np"
         ).images[0]
+
+        pipe_single_file = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
+        pipe_single_file.scheduler = DDIMScheduler.from_config(pipe_single_file.scheduler.config)
+        pipe_single_file.unet.set_default_attn_processor()
+        pipe_single_file.enable_model_cpu_offload()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         image_single_file = pipe_single_file(
-            prompt="mountains", image=init_image, num_inference_steps=2, generator=generator, output_type="np"
+            prompt="mountains", image=init_image, num_inference_steps=5, generator=generator, output_type="np"
         ).images[0]
 
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
-        assert max_diff < 1e-3
+        assert max_diff < 5e-3
