@@ -943,9 +943,10 @@ def main():
                 lr_scheduler.step()
                 optimizer.zero_grad()
 
-                optimizer_2.step()
-                lr_scheduler_2.step()
-                optimizer_2.zero_grad()
+                if has_added_cond_kwargs:
+                    optimizer_2.step()
+                    lr_scheduler_2.step()
+                    optimizer_2.zero_grad()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
                 index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
@@ -1023,7 +1024,7 @@ def main():
         else:
             save_full_model = args.save_as_full_pipeline
         if save_full_model:
-            if "xl" in args.pretrained_model_name_or_path:
+            if has_added_cond_kwargs:
                 pipeline = DiffusionPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     text_encoder=accelerator.unwrap_model(text_encoder),
