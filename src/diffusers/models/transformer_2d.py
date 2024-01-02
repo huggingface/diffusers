@@ -169,8 +169,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.width = sample_size
 
             self.patch_size = patch_size
-            interpolation_scale = self.config.sample_size // 64  # => 64 (= 512 pixart) has interpolation scale 1
-            interpolation_scale = max(interpolation_scale, 1)
+            interpolation_scale = self.config.sample_size / 64  # => 64 (= 512 pixart) has interpolation scale 1
             self.pos_embed = PatchEmbed(
                 height=sample_size,
                 width=sample_size,
@@ -221,7 +220,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
         elif self.is_input_patches and norm_type == "ada_norm_single":
             self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
+            self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim ** 0.5)
             self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
 
         # 5. PixArt-Alpha blocks.
