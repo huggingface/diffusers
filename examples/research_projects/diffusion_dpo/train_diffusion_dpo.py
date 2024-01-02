@@ -123,7 +123,7 @@ def log_validation(args, unet, accelerator, weight_dtype, epoch, is_final_valida
             tracker.log(
                 {
                     tracker_key: [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
+                        wandb.Image(image, caption=f"{i}: {VALIDATION_PROMPTS[i]}") for i, image in enumerate(images)
                     ]
                 }
             )
@@ -143,7 +143,7 @@ def log_validation(args, unet, accelerator, weight_dtype, epoch, is_final_valida
                 tracker.log(
                     {
                         "test_without_lora": [
-                            wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                            wandb.Image(image, caption=f"{i}: {VALIDATION_PROMPTS[i]}")
                             for i, image in enumerate(no_lora_images)
                         ]
                     }
