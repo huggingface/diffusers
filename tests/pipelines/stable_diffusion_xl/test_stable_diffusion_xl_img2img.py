@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import random
 import unittest
 
@@ -31,15 +32,19 @@ from transformers import (
 from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
+    DDIMScheduler,
     EulerDiscreteScheduler,
     LCMScheduler,
     StableDiffusionXLImg2ImgPipeline,
     UNet2DConditionModel,
 )
+from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
+    slow,
     torch_device,
 )
 
@@ -763,3 +768,40 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
+
+
+@slow
+class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_download_ckpt_diff_format_is_same(self):
+        ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors"
+        init_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/sketch-mountains-input.png"
+        )
+
+        pipe = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_ckpt = pipe(
+            "mountains", image=init_image, num_inference_steps=2, generator=generator, output_type="np"
+        ).images[0]
+
+        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-xl-refiner-1.0")
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image = pipe(
+            "mountains", image=init_image, num_inference_steps=2, generator=generator, output_type="np"
+        ).images[0]
+
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+
+        assert max_diff < 1e-3
