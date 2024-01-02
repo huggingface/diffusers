@@ -432,7 +432,9 @@ def parse_args(input_args=None):
 
 def tokenize_captions(tokenizer, examples):
     max_length = tokenizer.model_max_length
-    captions = [caption for caption in examples["caption"]]
+    captions = []
+    for caption in examples["caption"]:
+        captions.append(caption)
 
     text_inputs = tokenizer(
         captions,
@@ -836,19 +838,22 @@ def main(args):
                 model_diff = model_losses_w - model_losses_l  # These are both LBS (as is t)
 
                 # Reference model predictions.
+                accelerator.unwrap_model(unet).disable_adapters()
                 with torch.no_grad():
-                    accelerator.unwrap_model(unet).disable_adapters()
                     ref_preds = unet(
                         noisy_model_input,
                         timesteps,
                         encoder_hidden_states,
-                    ).sample.detach()
+                    ).sample
                     ref_loss = F.mse_loss(ref_preds.float(), target.float(), reduction="none")
                     ref_loss = ref_loss.mean(dim=list(range(1, len(ref_loss.shape))))
 
                     ref_losses_w, ref_losses_l = ref_loss.chunk(2)
                     ref_diff = ref_losses_w - ref_losses_l
                     raw_ref_loss = ref_loss.mean()
+
+                # Re-enable adapters.
+                accelerator.unwrap_model(unet).enable_adapters()
 
                 # Final loss.
                 scale_term = -0.5 * args.beta_dpo
@@ -857,9 +862,6 @@ def main(args):
 
                 implicit_acc = (inside_term > 0).sum().float() / inside_term.size(0)
                 implicit_acc += 0.5 * (inside_term == 0).sum().float() / inside_term.size(0)
-
-                # Re-enable adapters.
-                accelerator.unwrap_model(unet).enable_adapters()
 
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
