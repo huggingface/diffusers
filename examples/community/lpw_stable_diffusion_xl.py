@@ -287,17 +287,24 @@ def get_weighted_text_embeddings_sdxl(
     if neg_prompt_2:
         neg_prompt = f"{neg_prompt} {neg_prompt_2}"
 
+    prompt_t1 = prompt_t2 = prompt
+    neg_prompt_t1 = neg_prompt_t2 = neg_prompt
+
+    if isinstance(pipe, TextualInversionLoaderMixin):
+        prompt_t1 = pipe.maybe_convert_prompt(prompt_t1, pipe.tokenizer)
+        neg_prompt_t1 = pipe.maybe_convert_prompt(neg_prompt_t1, pipe.tokenizer)
+        prompt_t2 = pipe.maybe_convert_prompt(prompt_t2, pipe.tokenizer_2)
+        neg_prompt_t2 = pipe.maybe_convert_prompt(neg_prompt_t2, pipe.tokenizer_2)
+
     eos = pipe.tokenizer.eos_token_id
 
     # tokenizer 1
-    prompt_tokens, prompt_weights = get_prompts_tokens_with_weights(pipe.tokenizer, prompt)
-
-    neg_prompt_tokens, neg_prompt_weights = get_prompts_tokens_with_weights(pipe.tokenizer, neg_prompt)
+    prompt_tokens, prompt_weights = get_prompts_tokens_with_weights(pipe.tokenizer, prompt_t1)
+    neg_prompt_tokens, neg_prompt_weights = get_prompts_tokens_with_weights(pipe.tokenizer, neg_prompt_t1)
 
     # tokenizer 2
-    prompt_tokens_2, prompt_weights_2 = get_prompts_tokens_with_weights(pipe.tokenizer_2, prompt)
-
-    neg_prompt_tokens_2, neg_prompt_weights_2 = get_prompts_tokens_with_weights(pipe.tokenizer_2, neg_prompt)
+    prompt_tokens_2, prompt_weights_2 = get_prompts_tokens_with_weights(pipe.tokenizer_2, prompt_t2)
+    neg_prompt_tokens_2, neg_prompt_weights_2 = get_prompts_tokens_with_weights(pipe.tokenizer_2, neg_prompt_t2)
 
     # padding the shorter one for prompt set 1
     prompt_token_len = len(prompt_tokens)
@@ -537,7 +544,9 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin):
+class SDXLLongPromptWeightingPipeline(
+    DiffusionPipeline, FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
 
@@ -549,6 +558,7 @@ class SDXLLongPromptWeightingPipeline(DiffusionPipeline, FromSingleFileMixin, IP
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
         - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
         - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
 
     Args:
         vae ([`AutoencoderKL`]):
