@@ -737,6 +737,15 @@ def parse_args():
         help="The dropout probability for the dropout layer added before applying the LoRA to each layer input.",
     )
     parser.add_argument(
+        "--lora_target_modules",
+        type=str,
+        default=None,
+        help=(
+            "A comma-separated string of target module keys to add LoRA to. If not set, a default list of modules will"
+            " be used."
+        ),
+    )
+    parser.add_argument(
         "--vae_encode_batch_size",
         type=int,
         default=8,
@@ -995,11 +1004,10 @@ def main(args):
         )
 
     # 8. Add LoRA to the student U-Net, only the LoRA projection matrix will be updated by the optimizer.
-    lora_config = LoraConfig(
-        r=args.lora_rank,
-        lora_alpha=args.lora_alpha,
-        lora_dropout=args.lora_dropout,
-        target_modules=[
+    if args.lora_target_modules is not None:
+        lora_target_modules = [module_key.strip() for module_key in args.lora_target_modules.split(",")]
+    else:
+        lora_target_modules = [
             "to_q",
             "to_k",
             "to_v",
@@ -1014,7 +1022,12 @@ def main(args):
             "downsamplers.0.conv",
             "upsamplers.0.conv",
             "time_emb_proj",
-        ],
+        ]
+    lora_config = LoraConfig(
+        r=args.lora_rank,
+        target_modules=lora_target_modules,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
     )
     unet = get_peft_model(unet, lora_config)
 
