@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe = DiffusionPipeline.from_pretrained("SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter, custom_pipeline="pipeline_animatediff_img2video").to("cuda")
         >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace")
 
-        >>> img = load_image("snail.png")
+        >>> image = load_image("snail.png")
         >>> output = pipe(image=image, prompt="A snail moving on the ground", strength=0.8, latent_interpolation_method="slerp")
         >>> frames = output.frames[0]
         >>> export_to_gif(frames, "animation.gif")

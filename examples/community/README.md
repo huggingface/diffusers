@@ -53,6 +53,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   Regional Prompting Pipeline                                                                                               | Assign multiple prompts for different regions                                                                                                                                                                                                                                                                                                                                                    |  [Regional Prompting Pipeline](#regional-prompting-pipeline) | - | [hako-mikan](https://github.com/hako-mikan) |
 | LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
 | AnimateDiff ControlNet Pipeline                                                                                                    | Combines AnimateDiff with precise motion control using ControlNets                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff ControlNet Pipeline](#animatediff-controlnet-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SKboYeGjEQmQPWoFC0aLYpBlYdHXkvAu?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) and [Edoardo Botta](https://github.com/EdoardoBotta) |
+| AnimateDiff Image-To-Video Pipeline                                                                                                    | Image-To-Video experimental support for AnimateDiff (open to improvements)                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff Image To Video Pipeline](#animatediff-image-to-video-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1TvzCDPHhfFtdcJZe4RLloAwyoLKuttWK/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 |   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -2942,7 +2943,7 @@ pipe = DiffusionPipeline.from_pretrained(
     custom_pipeline="pipeline_animatediff_controlnet",
 ).to(device="cuda", dtype=torch.float16)
 pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
-    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+    model_id, subfolder="scheduler", beta_schedule="linear", clip_sample=False, timestep_spacing="linspace", steps_offset=1
 )
 pipe.enable_vae_slicing()
 
@@ -2981,7 +2982,33 @@ export_to_gif(result.frames[0], "result.gif")
     <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/eb7d2952-72e4-44fa-b664-077c79b4fc70" alt="gif-2"></td>
   </tr>
 </table>
+
+### AnimateDiff Image-To-Video Pipeline
+
+This pipeline adds experimental support for the image-to-video task using AnimateDiff. Refer to [this](https://github.com/huggingface/diffusers/pull/6328) PR for more examples and results.
+
+```py
+import torch
+from diffusers import MotionAdapter, DiffusionPipeline, DDIMScheduler
+from diffusers.utils import export_to_gif, load_image
+
+adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter")
+pipe = DiffusionPipeline.from_pretrained("SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter, custom_pipeline="pipeline_animatediff_img2video").to("cuda")
+pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace")
+
+image = load_image("snail.png")
+output = pipe(
+  image=image,
+  prompt="A snail moving on the ground",
+  strength=0.8,
+  latent_interpolation_method="slerp", # can be lerp, slerp, or your own callback
+)
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
+```
+
 ### DemoFusion
+
 This pipeline is the official implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973).
 The original repo can be found at [repo](https://github.com/PRIS-CV/DemoFusion).
 - `view_batch_size` (`int`, defaults to 16):

@@ -61,7 +61,7 @@ EXAMPLE_DOC_STRING = """
         >>>         images.append(pil_image)
         >>>     return images
 
-        >>> video = load_image("animation_fireworks.png")
+        >>> video = load_video("animation_fireworks.gif")
         >>> output = pipe(video=video, prompt="Closeup of a woman, fireworks in the background", strength=0.7)
         >>> frames = output.frames[0]
         >>> export_to_gif(frames, "animation.gif")
