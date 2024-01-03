@@ -149,13 +149,13 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
         unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
 
-    unet_lora_state_dict = unet_lora_state_dict(unet)
+    unet_lora_sd = unet_lora_state_dict(unet)
     # Unload LoRA.
     for module in unet.modules():
         if hasattr(module, "set_lora_layer"):
             module.set_lora_layer(None)
 
-    return unet_lora_parameters, unet_lora_state_dict
+    return unet_lora_parameters, unet_lora_sd
 
 
 def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
