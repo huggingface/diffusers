@@ -11,9 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import os
 from collections import defaultdict
 from contextlib import nullcontext
+from functools import partial
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
@@ -22,7 +24,7 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from ..models.embeddings import ImageProjection, MLPProjection, Resampler
+from ..models.embeddings import ImageProjection, IPAdapterFullImageProjection, IPAdapterPlusImageProjection
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -504,22 +506,43 @@ class UNet2DConditionLoadersMixin:
         save_function(state_dict, os.path.join(save_directory, weight_name))
         logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
 
-    def fuse_lora(self, lora_scale=1.0, safe_fusing=False):
+    def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
         self.lora_scale = lora_scale
         self._safe_fusing = safe_fusing
-        self.apply(self._fuse_lora_apply)
+        self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
 
-    def _fuse_lora_apply(self, module):
+    def _fuse_lora_apply(self, module, adapter_names=None):
         if not USE_PEFT_BACKEND:
             if hasattr(module, "_fuse_lora"):
                 module._fuse_lora(self.lora_scale, self._safe_fusing)
+
+            if adapter_names is not None:
+                raise ValueError(
+                    "The `adapter_names` argument is not supported in your environment. Please switch"
+                    " to PEFT backend to use this argument by installing latest PEFT and transformers."
+                    " `pip install -U peft transformers`"
+                )
         else:
             from peft.tuners.tuners_utils import BaseTunerLayer
+
+            merge_kwargs = {"safe_merge": self._safe_fusing}
 
             if isinstance(module, BaseTunerLayer):
                 if self.lora_scale != 1.0:
                     module.scale_layer(self.lora_scale)
-                module.merge(safe_merge=self._safe_fusing)
+
+                # For BC with prevous PEFT versions, we need to check the signature
+                # of the `merge` method to see if it supports the `adapter_names` argument.
+                supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+                if "adapter_names" in supported_merge_kwargs:
+                    merge_kwargs["adapter_names"] = adapter_names
+                elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                    raise ValueError(
+                        "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
+                        " to the latest version of PEFT. `pip install -U peft`"
+                    )
+
+                module.merge(**merge_kwargs)
 
     def unfuse_lora(self):
         self.apply(self._unfuse_lora_apply)
@@ -689,7 +712,7 @@ class UNet2DConditionLoadersMixin:
             clip_embeddings_dim = state_dict["proj.0.weight"].shape[0]
             cross_attention_dim = state_dict["proj.3.weight"].shape[0]
 
-            image_projection = MLPProjection(
+            image_projection = IPAdapterFullImageProjection(
                 cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
             )
 
@@ -707,7 +730,7 @@ class UNet2DConditionLoadersMixin:
             hidden_dims = state_dict["latents"].shape[2]
             heads = state_dict["layers.0.0.to_q.weight"].shape[0] // 64
 
-            image_projection = Resampler(
+            image_projection = IPAdapterPlusImageProjection(
                 embed_dims=embed_dims,
                 output_dims=output_dims,
                 hidden_dims=hidden_dims,
@@ -757,7 +780,7 @@ class UNet2DConditionLoadersMixin:
             num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
 
         # Set encoder_hid_proj after loading ip_adapter weights,
-        # because `Resampler` also has `attn_processors`.
+        # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None
 
         # set ip-adapter cross-attention processors & load state_dict
