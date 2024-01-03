@@ -891,7 +891,8 @@ def main():
 
     for epoch in range(first_epoch, args.num_train_epochs):
         text_encoder.train()
-        text_encoder_2.train()
+        if has_added_cond_kwargs:
+            text_encoder_2.train()
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(text_encoder):
                 # Convert images to latent space
