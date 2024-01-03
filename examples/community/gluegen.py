@@ -348,12 +348,15 @@ class GlueGenStableDiffusionPipeline(
 
             if hasattr(self.text_encoder.config, "use_attention_mask") and self.text_encoder.config.use_attention_mask:
                 attention_mask = text_inputs.attention_mask.to(device)
+            elif self.language_adapter is not None:
+                attention_mask = text_inputs.attention_mask.to(device)
             else:
                 attention_mask = None
 
             if clip_skip is None:
                 prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
                 prompt_embeds = prompt_embeds[0]
+
             else:
                 prompt_embeds = self.text_encoder(
                     text_input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
@@ -406,10 +409,6 @@ class GlueGenStableDiffusionPipeline(
                 )
             else:
                 uncond_tokens = negative_prompt
-
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
