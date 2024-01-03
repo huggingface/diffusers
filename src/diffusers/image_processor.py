@@ -628,7 +628,9 @@ class VaeImageProcessor(ConfigMixin):
         init_image_masked = init_image_masked.convert("RGBA")
 
         if crop_coords is not None:
-            x, y, w, h = crop_coords
+            x, y, x2, y2 = crop_coords
+            w = x2 - x
+            h = y2 - y
             base_image = PIL.Image.new("RGBA", (width, height))
             image = self.resize(image, height=h, width=w, resize_mode="crop")
             base_image.paste(image, (x, y))
