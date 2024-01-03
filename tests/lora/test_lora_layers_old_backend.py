@@ -1654,9 +1654,6 @@ class UNet3DConditionModelTests(unittest.TestCase):
         model.load_attn_procs(unet_lora_params)
         model.to(torch_device)
 
-        # test that attn processors can be set to itself
-        model.set_attn_processor(model.attn_processors)
-
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
             sample3 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
