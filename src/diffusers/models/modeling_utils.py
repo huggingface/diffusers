@@ -29,7 +29,6 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
-from ..loaders import PeftAdapterMixin
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
@@ -182,7 +181,7 @@ def _load_state_dict_into_model(model_to_load, state_dict: OrderedDict) -> List[
     return error_msgs
 
 
-class ModelMixin(torch.nn.Module, PushToHubMixin, PeftAdapterMixin):
+class ModelMixin(torch.nn.Module, PushToHubMixin):
     r"""
     Base class for all models.
 
