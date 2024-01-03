@@ -232,7 +232,7 @@ class StableDiffusionXLAdapterPipeline(
         "tokenizer",
         "tokenizer_2",
         "text_encoder",
-        "text_encoder_2"
+        "text_encoder_2",
         "feature_extractor",
         "image_encoder",
         ]
