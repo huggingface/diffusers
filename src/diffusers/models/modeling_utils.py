@@ -29,7 +29,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
-from ..integrations import PeftAdapterMixin
+from ..loaders import PeftAdapterMixin
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
