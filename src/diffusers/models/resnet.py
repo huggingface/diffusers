@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import USE_PEFT_BACKEND, deprecate
+from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
 from .attention_processor import SpatialNorm
 from .downsampling import (  # noqa
@@ -248,15 +248,11 @@ class ResnetBlock2D(nn.Module):
     ):
         super().__init__()
         if time_embedding_norm == "ada_group":
-            deprecate(
-                "ada_group",
-                "1.0.0",
+            raise ValueError(
                 "Passing `ada_group` as `time_embedding_norm` is deprecated, please create `ResnetBlockCondNorm2D` instead",
             )
         if time_embedding_norm == "spatial":
             raise ValueError(
-                "spatial",
-                "1.0.0",
                 "Passing `spatial` as `time_embedding_norm` is deprecated, please create `ResnetBlockCondNorm2D` instead",
             )
 
