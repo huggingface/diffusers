@@ -227,12 +227,14 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
                 attn_module.to_v.lora_layer.up.weight += 1
                 attn_module.to_out[0].lora_layer.up.weight += 1
 
-    # Unload LoRA.
+    unet_lora_sd =  unet_lora_state_dict(unet)
+
+     # Unload LoRA.
     for module in unet.modules():
         if hasattr(module, "set_lora_layer"):
             module.set_lora_layer(None)
 
-    return unet_lora_state_dict(unet)
+    return unet_lora_sd
 
 
 def set_lora_weights(lora_attn_parameters, randn_weight=False, var=1.0):
@@ -1653,6 +1655,9 @@ class UNet3DConditionModelTests(unittest.TestCase):
         # make sure we can set a list of attention processors
         model.load_attn_procs(unet_lora_params)
         model.to(torch_device)
+
+        # test that attn processors can be set to itself
+        model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
