@@ -498,7 +498,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         hidden_states = self.norm_in(hidden_states)
 
         if self._chunk_size is not None:
-            hidden_states = _chunked_feed_forward(self.ff, hidden_states, self._chunk_dim, self._chunk_size)
+            hidden_states = _chunked_feed_forward(self.ff_in, hidden_states, self._chunk_dim, self._chunk_size)
         else:
             hidden_states = self.ff_in(hidden_states)
 
