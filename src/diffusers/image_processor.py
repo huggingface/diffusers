@@ -147,7 +147,7 @@ class VaeImageProcessor(ConfigMixin):
         Converts a PIL image to RGB format.
         """
         image = image.convert("RGB")
-        
+
         return image
 
     @staticmethod
@@ -156,7 +156,7 @@ class VaeImageProcessor(ConfigMixin):
         Converts a PIL image to grayscale format.
         """
         image = image.convert("L")
-        
+
         return image
 
     @staticmethod
@@ -165,7 +165,7 @@ class VaeImageProcessor(ConfigMixin):
         Applies Gaussian blur to an image.
         """
         image = image.filter(ImageFilter.GaussianBlur(blur_factor))
-        
+
         return image
 
     @staticmethod
@@ -395,7 +395,7 @@ class VaeImageProcessor(ConfigMixin):
         """
         image[image < 0.5] = 0
         image[image >= 0.5] = 1
-        
+
         return image
 
     def get_default_height_width(
