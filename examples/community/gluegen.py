@@ -230,6 +230,12 @@ class GlueGenStableDiffusionPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+    
+    def load_language_adapter(self, model_path: str, num_token: int, dim: int, dim_out: int, tensor_norm: torch.FloatTensor, mult: int = 2, depth: int = 5):
+        device = self._execution_device
+        self.tensor_norm = tensor_norm.to(device)
+        self.language_adapter = Translator_noln(num_tok=num_token, dim=dim, dim_out=dim_out, mult=mult, depth=depth).to(device)
+        self.language_adapter.load_state_dict(torch.load(model_path))
 
     def enable_vae_slicing(self):
         r"""
