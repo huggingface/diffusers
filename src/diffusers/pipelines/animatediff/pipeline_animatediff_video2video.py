@@ -531,6 +531,8 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         height,
         width,
         callback_steps,
+        video=None,
+        latents=None,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -589,6 +591,9 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
                     "`latent_interpolation_method` must be one of `lerp`, `slerp` or a Callable[[torch.Tensor, torch.Tensor, int], torch.Tensor]"
                 )
 
+        if video is not None and latents is not None:
+            raise ValueError("Only one of `video` or `latents` should be provided")
+
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -608,17 +613,16 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         generator,
         latents=None,
     ):
+        print(batch_size)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
 
-        video = video.to(device=device, dtype=dtype)
+        if latents is None:
+            video = video.to(device=device, dtype=dtype)
 
-        if video.shape[1] == 4:
-            latents = video
-        else:
             # make sure the VAE is in float32 mode, as it overflows in float16
             if self.vae.config.force_upcast:
                 video = video.float()
@@ -632,13 +636,15 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
                     )
 
                 init_latents = [
-                    retrieve_latents(self.vae.encode(video[i : i + 1]), generator=generator[i])
-                    for i in range(batch_size)
+                    retrieve_latents(self.vae.encode(video[i]), generator=generator[i]) for i in range(batch_size)
                 ]
-                init_latents = torch.cat(init_latents, dim=0)
+                init_latents = torch.stack(init_latents)
             else:
-                init_latents = retrieve_latents(self.vae.encode(video), generator=generator)
+                init_latents = torch.stack(
+                    [retrieve_latents(self.vae.encode(vid), generator=generator) for vid in video]
+                )
 
+            # restore vae to original dtype
             if self.vae.config.force_upcast:
                 self.vae.to(dtype)
 
@@ -653,9 +659,9 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
                     " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
                     " your script to pass as many initial images as text prompts to suppress this warning."
                 )
-                deprecate("len(prompt) != len(image)", "1.0.0", deprecation_message, standard_warn=False)
-                additional_image_per_prompt = batch_size // init_latents.shape[0]
-                init_latents = torch.cat([init_latents] * additional_image_per_prompt, dim=0)
+                deprecate("len(prompt) != len(video)", "1.0.0", deprecation_message, standard_warn=False)
+                additional_video_per_prompt = batch_size // init_latents.shape[0]
+                init_latents = torch.cat([init_latents] * additional_video_per_prompt, dim=0)
             elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
                 raise ValueError(
                     f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
@@ -664,14 +670,19 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 init_latents = torch.cat([init_latents], dim=0)
 
             noise = randn_tensor(init_latents.shape, generator=generator, device=device, dtype=dtype)
-            latents = self.scheduler.add_noise(init_latents, noise, timestep).unsqueeze(0).permute(0, 2, 1, 3, 4)
+            latents = self.scheduler.add_noise(init_latents, noise, timestep).permute(0, 2, 1, 3, 4)
+        else:
+            if latents.dim() != 5:
+                # [B, F, C, H, W]
+                raise ValueError(f"`latents` expected to have dim=5, but found {latents.dim()=}")
+            latents = latents.to(device, dtype=dtype)
 
         return latents
 
     @torch.no_grad()
     def __call__(
         self,
-        video: List[PipelineImageInput],
+        video: List[List[PipelineImageInput]] = None,
         prompt: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -777,6 +788,8 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            video=video,
+            latents=latents,
         )
 
         # 2. Define call parameters
@@ -825,7 +838,10 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 4. Preprocess video
-        video = self.image_processor.preprocess(video, height=height, width=width)
+        if latents is None:
+            if not isinstance(video[0], list):
+                video = [video]
+            video = torch.stack([self.image_processor.preprocess(vid, height=height, width=width) for vid in video])
 
         # 5. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
