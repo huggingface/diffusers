@@ -210,6 +210,8 @@
       title: Textual Inversion
     - local: api/loaders/unet
       title: UNet
+    - local: api/loaders/peft
+      title: PEFT
     title: Loaders
   - sections:
     - local: api/models/overview
