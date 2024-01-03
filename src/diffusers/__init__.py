@@ -207,7 +207,7 @@ else:
             "AmusedInpaintPipeline",
             "AmusedPipeline",
             "AnimateDiffPipeline",
-            "AnimateDiffVideoToVideoPipeline"
+            "AnimateDiffVideoToVideoPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
