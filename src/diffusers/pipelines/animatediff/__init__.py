@@ -22,13 +22,9 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
     _import_structure["pipeline_animatediff"] = ["AnimateDiffPipeline", "AnimateDiffPipelineOutput"]
-    _import_structure["pipeline_animatediff_img2video"] = [
-        "AnimateDiffImg2VideoPipeline",
-        "AnimateDiffImg2VideoPipelineOutput",
-    ]
     _import_structure["pipeline_animatediff_video2video"] = [
-        "AnimateDiffVideo2VideoPipeline",
-        "AnimateDiffVideo2VideoPipelineOutput",
+        "AnimateDiffVideoToVideoPipeline",
+        "AnimateDiffVideoToVideoPipelineOutput",
     ]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
@@ -40,10 +36,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
 
     else:
         from .pipeline_animatediff import AnimateDiffPipeline, AnimateDiffPipelineOutput
-        from .pipeline_animatediff_img2video import AnimateDiffImg2VideoPipeline, AnimateDiffImg2VideoPipelineOutput
         from .pipeline_animatediff_video2video import (
-            AnimateDiffVideo2VideoPipeline,
-            AnimateDiffVideo2VideoPipelineOutput,
+            AnimateDiffVideoToVideoPipeline,
+            AnimateDiffVideoToVideoPipelineOutput,
         )
 
 else:

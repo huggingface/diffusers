@@ -111,8 +111,7 @@ else:
     _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
     _import_structure["animatediff"] = [
         "AnimateDiffPipeline",
-        "AnimateDiffImg2VideoPipeline",
-        "AnimateDiffVideo2VideoPipeline",
+        "AnimateDiffVideoToVideoPipeline",
     ]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
@@ -342,7 +341,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
         from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
-        from .animatediff import AnimateDiffImg2VideoPipeline, AnimateDiffPipeline, AnimateDiffVideo2VideoPipeline
+        from .animatediff import AnimateDiffPipeline, AnimateDiffVideoToVideoPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import (
             AudioLDM2Pipeline,

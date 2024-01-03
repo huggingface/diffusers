@@ -46,11 +46,11 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import imageio
         >>> import torch
-        >>> from diffusers import MotionAdapter, AnimateDiffVideo2VideoPipeline, DDIMScheduler
+        >>> from diffusers import MotionAdapter, AnimateDiffVideoToVideoPipeline, DDIMScheduler
         >>> from diffusers.utils import export_to_gif, load_image
 
         >>> adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter")
-        >>> pipe = AnimateDiffVideo2VideoPipeline.from_pretrained("SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter).to("cuda")
+        >>> pipe = AnimateDiffVideoToVideoPipeline.from_pretrained("SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter).to("cuda")
         >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace")
 
         >>> def load_video(file_path):
@@ -144,11 +144,11 @@ def retrieve_timesteps(
 
 
 @dataclass
-class AnimateDiffVideo2VideoPipelineOutput(BaseOutput):
+class AnimateDiffVideoToVideoPipelineOutput(BaseOutput):
     frames: Union[torch.Tensor, np.ndarray]
 
 
-class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):
+class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-video generation.
 
@@ -751,7 +751,7 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
                 The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
                 `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`AnimateDiffVideo2VideoPipelineOutput`] instead
+                Whether or not to return a [`AnimateDiffVideoToVideoPipelineOutput`] instead
                 of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
@@ -768,8 +768,8 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         Examples:
 
         Returns:
-            [`AnimateDiffVideo2VideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`AnimateDiffVideo2VideoPipelineOutput`] is
+            [`AnimateDiffVideoToVideoPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`AnimateDiffVideoToVideoPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
@@ -897,7 +897,7 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
                         callback(i, t, latents)
 
         if output_type == "latent":
-            return AnimateDiffVideo2VideoPipelineOutput(frames=latents)
+            return AnimateDiffVideoToVideoPipelineOutput(frames=latents)
 
         # 10. Post-processing
         video_tensor = self.decode_latents(latents)
@@ -913,4 +913,4 @@ class AnimateDiffVideo2VideoPipeline(DiffusionPipeline, TextualInversionLoaderMi
         if not return_dict:
             return (video,)
 
-        return AnimateDiffVideo2VideoPipelineOutput(frames=video)
+        return AnimateDiffVideoToVideoPipelineOutput(frames=video)
