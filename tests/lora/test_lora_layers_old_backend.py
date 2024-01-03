@@ -61,7 +61,8 @@ from diffusers.utils.testing_utils import (
 )
 
 
-def text_encoder_attn_modules(text_encoder):
+def text_encoder_attn_modules(text_encoder: nn.Module):
+    """Fetches the attention modules from `text_encoder`."""
     attn_modules = []
 
     if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
@@ -75,7 +76,8 @@ def text_encoder_attn_modules(text_encoder):
     return attn_modules
 
 
-def text_encoder_lora_state_dict(text_encoder):
+def text_encoder_lora_state_dict(text_encoder: nn.Module):
+    """Returns the LoRA state dict of the `text_encoder`. Assumes that `_modify_text_encoder()` was already called on it."""
     state_dict = {}
 
     for name, module in text_encoder_attn_modules(text_encoder):
@@ -95,11 +97,15 @@ def text_encoder_lora_state_dict(text_encoder):
 
 
 def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
+    """Creates and returns the LoRA state dict for the UNet."""
+    # So that we accidentally don't end up using the in-place modified UNet.
+    copied_unet = copy.deepcopy(unet)
+
     unet_lora_parameters = []
 
-    for attn_processor_name, attn_processor in unet.attn_processors.items():
+    for attn_processor_name, attn_processor in copied_unet.attn_processors.items():
         # Parse the attention module.
-        attn_module = unet
+        attn_module = copied_unet
         for n in attn_processor_name.split(".")[:-1]:
             attn_module = getattr(attn_module, n)
 
@@ -145,30 +151,33 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
         unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
 
-    return unet_lora_parameters, unet_lora_state_dict(unet)
+    return unet_lora_parameters, unet_lora_state_dict(copied_unet)
 
 
 def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
-    for attn_processor_name in unet.attn_processors.keys():
+    """Creates and returns the LoRA state dict for the 3D UNet."""
+    copied_unet = copy.deepcopy(unet)
+
+    for attn_processor_name in copied_unet.attn_processors.keys():
         has_cross_attention = attn_processor_name.endswith("attn2.processor") and not (
             attn_processor_name.startswith("transformer_in") or "temp_attentions" in attn_processor_name.split(".")
         )
-        cross_attention_dim = unet.config.cross_attention_dim if has_cross_attention else None
+        cross_attention_dim = copied_unet.config.cross_attention_dim if has_cross_attention else None
 
         if attn_processor_name.startswith("mid_block"):
-            hidden_size = unet.config.block_out_channels[-1]
+            hidden_size = copied_unet.config.block_out_channels[-1]
         elif attn_processor_name.startswith("up_blocks"):
             block_id = int(attn_processor_name[len("up_blocks.")])
-            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
+            hidden_size = list(reversed(copied_unet.config.block_out_channels))[block_id]
         elif attn_processor_name.startswith("down_blocks"):
             block_id = int(attn_processor_name[len("down_blocks.")])
-            hidden_size = unet.config.block_out_channels[block_id]
+            hidden_size = copied_unet.config.block_out_channels[block_id]
         elif attn_processor_name.startswith("transformer_in"):
             # Note that the `8 * ...` comes from: https://github.com/huggingface/diffusers/blob/7139f0e874f10b2463caa8cbd585762a309d12d6/src/diffusers/models/unet_3d_condition.py#L148
-            hidden_size = 8 * unet.config.attention_head_dim
+            hidden_size = 8 * copied_unet.config.attention_head_dim
 
         # Parse the attention module.
-        attn_module = unet
+        attn_module = copied_unet
         for n in attn_processor_name.split(".")[:-1]:
             attn_module = getattr(attn_module, n)
 
@@ -216,10 +225,11 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
                 attn_module.to_v.lora_layer.up.weight += 1
                 attn_module.to_out[0].lora_layer.up.weight += 1
 
-    return unet_lora_state_dict(unet)
+    return unet_lora_state_dict(copied_unet)
 
 
 def set_lora_weights(lora_attn_parameters, randn_weight=False, var=1.0):
+    """Randomizes the LoRA params if specified."""
     if not isinstance(lora_attn_parameters, dict):
         with torch.no_grad():
             for parameter in lora_attn_parameters:
@@ -1441,6 +1451,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 class UNet2DConditionLoRAModelTests(unittest.TestCase):
     model_class = UNet2DConditionModel
     main_input_name = "sample"
+    lora_rank = 4
 
     @property
     def dummy_input(self):
@@ -1489,7 +1500,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        _, lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model, rank=self.lora_rank)
 
         # make sure we can set a list of attention processors
         model.load_attn_procs(lora_params)
@@ -1522,7 +1533,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         with torch.no_grad():
             old_sample = model(**inputs_dict).sample
 
-        _, lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model, rank=self.lora_rank)
         model.load_attn_procs(lora_params)
 
         with torch.no_grad():
@@ -1552,7 +1563,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
-        _, lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model, rank=self.lora_rank)
         model.load_attn_procs(lora_params)
 
         # default
