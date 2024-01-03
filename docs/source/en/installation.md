@@ -41,6 +41,7 @@ You should also install 🤗 Transformers because 🤗 Diffusers relies on its m
 <pt>
 ```bash
 pip install diffusers["torch"] transformers
+Note - PyTorch doesn't support Python 3.12 on Windows. Please use Python 3.11 instead.
 ```
 </pt>
 <jax>
