@@ -18,17 +18,20 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from ...utils import is_torch_version
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..downsampling import Downsample2D
-from ..loaders import UNet2DConditionLoadersMixin
-from ..resnet import ResnetBlock2D
-from ..transformer_2d import Transformer2DModel
-from ..upsampling import Upsample2D
-from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
-from ..utils.torch_utils import apply_freeu
-from .activations import get_activation
-from .attention_processor import (
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import UNet2DConditionLoadersMixin
+from ...utils import (
+    USE_PEFT_BACKEND,
+    BaseOutput,
+    deprecate,
+    is_torch_version,
+    logging,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
+from ...utils.torch_utils import apply_freeu
+from ..activations import get_activation
+from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
     Attention,
@@ -36,14 +39,18 @@ from .attention_processor import (
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .embeddings import (
+from ..downsampling import Downsample2D
+from ..embeddings import (
     TimestepEmbedding,
     Timesteps,
 )
-from .modeling_utils import ModelMixin
-from .unet_2d_blocks import (
+from ..modeling_utils import ModelMixin
+from ..resnet import ResnetBlock2D
+from ..transformer_2d import Transformer2DModel
+from ..unet_2d_blocks import (
     UNetMidBlock2DCrossAttn,
 )
+from ..upsampling import Upsample2D
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -772,7 +779,6 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     add_downsample=not is_final_block,
                     use_linear_projection=use_linear_projection,
                     upcast_attention=upcast_attention,
-                    resnet_time_scale_shift="default",
                     attention_type=attention_type,
                 )
             else:
@@ -832,21 +838,21 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 add_upsample = False
 
             if up_block_type == "SDCrossAttnUpBlock2D":
-                up_block = SDCrossAttnDownBlock2D(
+                up_block = SDCrossAttnUpBlock2D(
                     in_channels=input_channel,
                     out_channels=output_channel,
                     prev_output_channel=prev_output_channel,
                     temb_channels=blocks_time_embed_dim,
                     dropout=dropout,
-                    num_layers=reversed_layers_per_block[i],
+                    resolution_idx=i,
+                    num_layers=reversed_layers_per_block[i] + 1,
                     transformer_layers_per_block=reversed_transformer_layers_per_block[i],
                     resnet_groups=norm_num_groups,
                     num_attention_heads=reversed_num_attention_heads[i],
                     cross_attention_dim=reversed_cross_attention_dim[i],
-                    add_downsample=add_upsample,
+                    add_upsample=add_upsample,
                     use_linear_projection=use_linear_projection,
                     upcast_attention=upcast_attention,
-                    resnet_time_scale_shift="default",
                     attention_type=attention_type,
                 )
 
