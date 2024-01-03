@@ -3,12 +3,15 @@ from typing import Any, Dict, List, Optional, Union
 
 import torch
 import torch.nn as nn
-from transformers import CLIPImageProcessor, AutoModel, AutoTokenizer, CLIPVisionModelWithProjection
+from transformers import AutoModel, AutoTokenizer, CLIPImageProcessor
 
+from diffusers import DiffusionPipeline
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.loaders import LoraLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -17,9 +20,6 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -28,7 +28,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 class translator_base(nn.Module):
     def __init__(self, num_tok, dim, dim_out, mult=2):
         super().__init__()
-        
+
         self.dim_in = dim
         self.dim_out = dim_out
 
@@ -41,9 +41,8 @@ class translator_base(nn.Module):
             nn.GELU(),
             nn.Linear(int(num_tok * mult), num_tok),
             nn.LayerNorm(num_tok),
-            
         )
-        
+
         self.net_sen = nn.Sequential(
             nn.Linear(dim, int(dim * mult)),
             nn.LayerNorm(int(dim * mult)),
@@ -52,7 +51,7 @@ class translator_base(nn.Module):
             nn.LayerNorm(int(dim * mult)),
             nn.GELU(),
             nn.Linear(int(dim * mult), dim_out),
-            nn.LayerNorm(dim_out)
+            nn.LayerNorm(dim_out),
         )
 
     def forward(self, x):
@@ -60,25 +59,25 @@ class translator_base(nn.Module):
             indentity_0 = x
             x = self.net_sen(x)
             x += indentity_0
-            x = x.transpose(1,2)
+            x = x.transpose(1, 2)
 
             indentity_1 = x
             x = self.net_tok(x)
             x += indentity_1
-            x = x.transpose(1,2)
+            x = x.transpose(1, 2)
         else:
             x = self.net_sen(x)
-            x = x.transpose(1,2)
+            x = x.transpose(1, 2)
 
             x = self.net_tok(x)
-            x = x.transpose(1,2)
+            x = x.transpose(1, 2)
         return x
 
 
 class translator_base_noln(nn.Module):
     def __init__(self, num_tok, dim, dim_out, mult=2):
         super().__init__()
-        
+
         self.dim_in = dim
         self.dim_out = dim_out
 
@@ -87,9 +86,9 @@ class translator_base_noln(nn.Module):
             nn.GELU(),
             nn.Linear(int(num_tok * mult), int(num_tok * mult)),
             nn.GELU(),
-            nn.Linear(int(num_tok * mult), num_tok),            
+            nn.Linear(int(num_tok * mult), num_tok),
         )
-        
+
         self.net_sen = nn.Sequential(
             nn.Linear(dim, int(dim * mult)),
             nn.GELU(),
@@ -103,39 +102,35 @@ class translator_base_noln(nn.Module):
             indentity_0 = x
             x = self.net_sen(x)
             x += indentity_0
-            x = x.transpose(1,2)
+            x = x.transpose(1, 2)
 
             indentity_1 = x
             x = self.net_tok(x)
             x += indentity_1
-            x = x.transpose(1,2)
+            x = x.transpose(1, 2)
         else:
             x = self.net_sen(x)
-            x = x.transpose(1,2)
+            x = x.transpose(1, 2)
 
             x = self.net_tok(x)
-            x = x.transpose(1,2)
+            x = x.transpose(1, 2)
         return x
-    
+
 
 class Translator_noln(nn.Module):
     def __init__(self, num_tok, dim, dim_out, mult=2, depth=5):
         super().__init__()
-        
-        self.blocks = nn.ModuleList(
-            [translator_base(num_tok, dim, dim, mult=2)
-                for d in range(depth)]
-        )
+
+        self.blocks = nn.ModuleList([translator_base(num_tok, dim, dim, mult=2) for d in range(depth)])
         self.gelu = nn.GELU()
 
         self.tail = translator_base_noln(num_tok, dim, dim_out, mult=2)
-        
+
     def forward(self, x):
-        
         for block in self.blocks:
             x = block(x) + x
             x = self.gelu(x)
-            
+
         x = self.tail(x)
         return x
 
@@ -198,9 +193,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class GlueGenStableDiffusionPipeline(
-    DiffusionPipeline, LoraLoaderMixin
-):
+class GlueGenStableDiffusionPipeline(DiffusionPipeline, LoraLoaderMixin):
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -230,11 +223,22 @@ class GlueGenStableDiffusionPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-    
-    def load_language_adapter(self, model_path: str, num_token: int, dim: int, dim_out: int, tensor_norm: torch.FloatTensor, mult: int = 2, depth: int = 5):
+
+    def load_language_adapter(
+        self,
+        model_path: str,
+        num_token: int,
+        dim: int,
+        dim_out: int,
+        tensor_norm: torch.FloatTensor,
+        mult: int = 2,
+        depth: int = 5,
+    ):
         device = self._execution_device
         self.tensor_norm = tensor_norm.to(device)
-        self.language_adapter = Translator_noln(num_tok=num_token, dim=dim, dim_out=dim_out, mult=mult, depth=depth).to(device)
+        self.language_adapter = Translator_noln(
+            num_tok=num_token, dim=dim, dim_out=dim_out, mult=mult, depth=depth
+        ).to(device)
         self.language_adapter.load_state_dict(torch.load(model_path))
 
     def enable_vae_slicing(self):
@@ -265,10 +269,10 @@ class GlueGenStableDiffusionPipeline(
         computing decoding in one step.
         """
         self.vae.disable_tiling()
-    
+
     def _adapt_language(self, prompt_embeds: torch.FloatTensor):
         prompt_embeds = prompt_embeds / 3
-        prompt_embeds = self.language_adapter(prompt_embeds) * (self.tensor_norm/2)
+        prompt_embeds = self.language_adapter(prompt_embeds) * (self.tensor_norm / 2)
         return prompt_embeds
 
     def encode_prompt(
@@ -376,7 +380,7 @@ class GlueGenStableDiffusionPipeline(
                 # obtaining the final prompt representations passes through the LayerNorm
                 # layer.
                 prompt_embeds = self.text_encoder.text_model.final_layer_norm(prompt_embeds)
-            
+
             # Run prompt language adapter
             if self.language_adapter is not None:
                 prompt_embeds = self._adapt_language(prompt_embeds)
@@ -467,7 +471,6 @@ class GlueGenStableDiffusionPipeline(
                 images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
             )
         return image, has_nsfw_concept
-
 
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
