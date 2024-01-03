@@ -227,9 +227,9 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
                 attn_module.to_v.lora_layer.up.weight += 1
                 attn_module.to_out[0].lora_layer.up.weight += 1
 
-    unet_lora_sd =  unet_lora_state_dict(unet)
+    unet_lora_sd = unet_lora_state_dict(unet)
 
-     # Unload LoRA.
+    # Unload LoRA.
     for module in unet.modules():
         if hasattr(module, "set_lora_layer"):
             module.set_lora_layer(None)
