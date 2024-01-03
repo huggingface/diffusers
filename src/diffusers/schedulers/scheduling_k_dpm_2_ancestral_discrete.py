@@ -277,7 +277,11 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas_up = torch.cat([sigmas_up[:1], sigmas_up[1:].repeat_interleave(2), sigmas_up[-1:]])
         self.sigmas_down = torch.cat([sigmas_down[:1], sigmas_down[1:].repeat_interleave(2), sigmas_down[-1:]])
 
-        timesteps = torch.from_numpy(timesteps).to(device)
+        if str(device).startswith("mps"):
+            timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
+        else:
+            timesteps = torch.from_numpy(timesteps).to(device)
+
         sigmas_interpol = sigmas_interpol.cpu()
         log_sigmas = self.log_sigmas.cpu()
         timesteps_interpol = np.array(
