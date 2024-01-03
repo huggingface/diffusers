@@ -96,6 +96,8 @@ bfloat16 reduces the latency from 7.36 seconds to 4.63 seconds:
 
 </div>
 
+_(We later ran the experiments in float16 and found out that the recent versions of torchao do not incur numerical problems from float16.)_
+
 **Why bfloat16?** 
 
 * Using a reduced numerical precision (such as float16, bfloat16) to run inference doesn’t affect the generation quality but significantly improves latency. 
@@ -164,7 +166,9 @@ prompt = "Astronaut in a jungle, cold color palette, muted colors, detailed, 8k"
 image = pipe(prompt, num_inference_steps=30).images[0]
 ```
 
-`torch.compile` offers different backends and modes. As we’re aiming for maximum inference speed, we opt for the inductor backend using the “max-autotune”. “max-autotune” uses CUDA graphs and optimizes the compilation graph specifically for latency. Specifying fullgraph to be True ensures that there are no graph breaks in the underlying model, ensuring the fullest potential of `torch.compile`. 
+`torch.compile` offers different backends and modes. As we’re aiming for maximum inference speed, we opt for the inductor backend using the “max-autotune”. “max-autotune” uses CUDA graphs and optimizes the compilation graph specifically for latency. Using CUDA graphs greatly reduces the overhead of launching GPU operations. It saves time by using a mechanism to launch multiple GPU operations through a single CPU operation.
+
+Specifying fullgraph to be True ensures that there are no graph breaks in the underlying model, ensuring the fullest potential of `torch.compile`. 
 
 Using SDPA attention and compiling both the UNet and VAE reduces the latency from 3.31 seconds to 2.54 seconds. 
 
@@ -210,7 +214,7 @@ Through experimentation, we found that certain linear layers in the UNet and the
 
 </Tip>
 
-You will leverage the ultra-lightweight pure PyTorch library [torchao](https://github.com/pytorch-labs/ao) to use its user-friendly APIs for quantization. 
+You will leverage the ultra-lightweight pure PyTorch library [torchao](https://github.com/pytorch-labs/ao) (commit SHA: 54bcd5a10d0abbe7b0c045052029257099f83fd9) to use its user-friendly APIs for quantization. 
 
 First, configure all the compiler tags:
 
@@ -316,3 +320,25 @@ Applying dynamic quantization improves the latency from 2.52 seconds to 2.43 sec
 <img src="https://huggingface.co/datasets/sayakpaul/sample-datasets/resolve/main/progressive-acceleration-sdxl/SDXL%2C_Batch_Size%3A_1%2C_Steps%3A_30_5.png" width=500>
 
 </div>
+
+## Misc
+
+### No graph breaks during torch.compile
+
+Ensuring that the underlying model/method can be fully compiled is crucial for performance (torch.compile with fullgraph=True). This means having no graph breaks. We did this for the UNet and VAE by changing how we access the returning variables. Consider the following example: 
+
+```diff
+- latents = unet(
+-	latents, timestep=timestep, encoder_hidden_states=prompt_embeds
+-).sample
+
++ latents = unet(
++	latents, timestep=timestep, encoder_hidden_states=prompt_embeds, return_dict=False
++)[0]
+```
+
+### Getting rid of GPU syncs after compilation
+
+During the iterative reverse diffusion process, we [call](https://github.com/huggingface/diffusers/blob/1d686bac8146037e97f3fd8c56e4063230f71751/src/diffusers/pipelines/stable_diffusion_xl/pipeline_stable_diffusion_xl.py#L1228) `step()` on the scheduler each time after the denoiser predicts the less noisy latent embeddings. Inside `step()`, the `sigmas` variable is [indexed](https://github.com/huggingface/diffusers/blob/1d686bac8146037e97f3fd8c56e4063230f71751/src/diffusers/schedulers/scheduling_euler_discrete.py#L476). If the `sigmas` array is placed on the GPU, indexing causes a communication sync between the CPU and GPU. This causes a latency, and it becomes more evident when the denoiser has already been compiled. 
+
+But if the `sigmas` array always stays on the CPU (refer to [this line](https://github.com/huggingface/diffusers/blob/35a969d297cba69110d175ee79c59312b9f49e1e/src/diffusers/schedulers/scheduling_euler_discrete.py#L240)), this sync doesn’t take place, hence improved latency. In general, any CPU <-> GPU communication sync should be none or be kept to a bare minimum as it can impact inference latency. 
