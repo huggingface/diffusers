@@ -86,7 +86,7 @@ accelerate launch train_dreambooth_lora_sdxl.py \
   --resolution=1024 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
-  --learning_rate=1e-5 \
+  --learning_rate=1e-4 \
   --report_to="wandb" \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
