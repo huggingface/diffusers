@@ -146,21 +146,27 @@ class VaeImageProcessor(ConfigMixin):
         """
         Converts a PIL image to RGB format.
         """
-        return image.convert("RGB")
+        image = image.convert("RGB")
+        
+        return image
 
     @staticmethod
     def convert_to_grayscale(image: PIL.Image.Image) -> PIL.Image.Image:
         """
         Converts a PIL image to grayscale format.
         """
-        return image.convert("L")
+        image = image.convert("L")
+        
+        return image
 
     @staticmethod
     def blur(image: PIL.Image.Image, blur_factor: int = 4) -> PIL.Image.Image:
         """
         Applies Gaussian blur to an image.
         """
-        return image.filter(ImageFilter.GaussianBlur(blur_factor))
+        image = image.filter(ImageFilter.GaussianBlur(blur_factor))
+        
+        return image
 
     @staticmethod
     def get_crop_region(mask_image: PIL.Image.Image, width: int, height: int, pad=0):
@@ -389,7 +395,7 @@ class VaeImageProcessor(ConfigMixin):
         """
         image[image < 0.5] = 0
         image[image >= 0.5] = 1
-
+        
         return image
 
     def get_default_height_width(
