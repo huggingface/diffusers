@@ -48,6 +48,7 @@ class IPAdapterMixin:
     def load_ip_adapter(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
+        subfolder: str,
         weight_name: str,
         **kwargs,
     ):
@@ -96,7 +97,6 @@ class IPAdapterMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        subfolder = kwargs.pop("subfolder", None)
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -136,7 +136,7 @@ class IPAdapterMixin:
 
         # load CLIP image encoder here if it has not been registered to the pipeline yet
         if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
-            if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+            if not isinstance(pretrained_model_name_or_path_or_dict, dict) and subfolder is not None:
                 logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
                 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
                     pretrained_model_name_or_path_or_dict,
@@ -144,6 +144,12 @@ class IPAdapterMixin:
                 ).to(self.device, dtype=self.dtype)
                 self.image_encoder = image_encoder
                 self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
+            elif subfolder is None:
+                logger.warning(
+                    "Cannot load an image encoder because `subfolder` is None. "
+                    "If you do not load an image_encoder, you must extract the"
+                    " image embeddings from the input image and pass them as image_embeds to the pipeline."
+                )
             else:
                 raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
 
