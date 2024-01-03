@@ -61,7 +61,8 @@ from diffusers.utils.testing_utils import (
 )
 
 
-def text_encoder_attn_modules(text_encoder):
+def text_encoder_attn_modules(text_encoder: nn.Module):
+    """Fetches the attention modules from `text_encoder`."""
     attn_modules = []
 
     if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
@@ -75,7 +76,8 @@ def text_encoder_attn_modules(text_encoder):
     return attn_modules
 
 
-def text_encoder_lora_state_dict(text_encoder):
+def text_encoder_lora_state_dict(text_encoder: nn.Module):
+    """Returns the LoRA state dict of the `text_encoder`. Assumes that `_modify_text_encoder()` was already called on it."""
     state_dict = {}
 
     for name, module in text_encoder_attn_modules(text_encoder):
@@ -95,6 +97,8 @@ def text_encoder_lora_state_dict(text_encoder):
 
 
 def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
+    """Creates and returns the LoRA state dict for the UNet."""
+    # So that we accidentally don't end up using the in-place modified UNet.
     unet_lora_parameters = []
 
     for attn_processor_name, attn_processor in unet.attn_processors.items():
@@ -145,10 +149,17 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
         unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
 
-    return unet_lora_parameters, unet_lora_state_dict(unet)
+    unet_lora_sd = unet_lora_state_dict(unet)
+    # Unload LoRA.
+    for module in unet.modules():
+        if hasattr(module, "set_lora_layer"):
+            module.set_lora_layer(None)
+
+    return unet_lora_parameters, unet_lora_sd
 
 
 def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
+    """Creates and returns the LoRA state dict for the 3D UNet."""
     for attn_processor_name in unet.attn_processors.keys():
         has_cross_attention = attn_processor_name.endswith("attn2.processor") and not (
             attn_processor_name.startswith("transformer_in") or "temp_attentions" in attn_processor_name.split(".")
@@ -216,10 +227,18 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
                 attn_module.to_v.lora_layer.up.weight += 1
                 attn_module.to_out[0].lora_layer.up.weight += 1
 
-    return unet_lora_state_dict(unet)
+    unet_lora_sd = unet_lora_state_dict(unet)
+
+    # Unload LoRA.
+    for module in unet.modules():
+        if hasattr(module, "set_lora_layer"):
+            module.set_lora_layer(None)
+
+    return unet_lora_sd
 
 
 def set_lora_weights(lora_attn_parameters, randn_weight=False, var=1.0):
+    """Randomizes the LoRA params if specified."""
     if not isinstance(lora_attn_parameters, dict):
         with torch.no_grad():
             for parameter in lora_attn_parameters:
@@ -1441,6 +1460,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 class UNet2DConditionLoRAModelTests(unittest.TestCase):
     model_class = UNet2DConditionModel
     main_input_name = "sample"
+    lora_rank = 4
 
     @property
     def dummy_input(self):
@@ -1489,7 +1509,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        _, lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model, rank=self.lora_rank)
 
         # make sure we can set a list of attention processors
         model.load_attn_procs(lora_params)
@@ -1522,13 +1542,16 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         with torch.no_grad():
             old_sample = model(**inputs_dict).sample
 
-        _, lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model, rank=self.lora_rank)
         model.load_attn_procs(lora_params)
 
         with torch.no_grad():
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
-        model.set_default_attn_processor()
+        # Unload LoRA.
+        for module in model.modules():
+            if hasattr(module, "set_lora_layer"):
+                module.set_lora_layer(None)
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
@@ -1552,7 +1575,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
-        _, lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model, rank=self.lora_rank)
         model.load_attn_procs(lora_params)
 
         # default
