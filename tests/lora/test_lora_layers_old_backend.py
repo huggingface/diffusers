@@ -1539,7 +1539,10 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         with torch.no_grad():
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
-        model.set_default_attn_processor()
+        # Unload LoRA.
+        for module in model.modules():
+            if hasattr(module, "set_lora_layer"):
+                module.set_lora_layer(None)
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
