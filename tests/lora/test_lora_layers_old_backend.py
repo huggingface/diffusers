@@ -1497,7 +1497,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_lora_processors(self):
+    def test_lora_at_different_scales(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -1515,22 +1515,16 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         model.load_attn_procs(lora_params)
         model.to(torch_device)
 
-        # test that attn processors can be set to itself
-        print(f"Attention processors: {list(model.attn_processors.keys())}")
-        for k, v in model.attn_processors.items():
-            print(f"{k}: {type(v)}")
-        model.set_attn_processor(model.attn_processors)
-
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
             sample3 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
             sample4 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.5}).sample
 
-        assert (sample1 - sample2).abs().max() < 3e-3 + 1e4
-        assert (sample3 - sample4).abs().max() < 3e-3  + 1e4
+        assert (sample1 - sample2).abs().max() < 3e-3
+        assert (sample3 - sample4).abs().max() < 3e-3
 
         # sample 2 and sample 3 should be different
-        assert (sample2 - sample3).abs().max() > 1e-4  + 1e4
+        assert (sample2 - sample3).abs().max() > 1e-4
 
     def test_lora_on_off(self, expected_max_diff=1e-3):
         # enable deterministic behavior for gradient checkpointing
@@ -1642,7 +1636,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_lora_processors(self):
+    def test_lora_at_different_scales(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["attention_head_dim"] = 8
@@ -1658,9 +1652,6 @@ class UNet3DConditionModelTests(unittest.TestCase):
         # make sure we can set a list of attention processors
         model.load_attn_procs(unet_lora_params)
         model.to(torch_device)
-
-        # test that attn processors can be set to itself
-        model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
