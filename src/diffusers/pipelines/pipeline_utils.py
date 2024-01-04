@@ -13,7 +13,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import fnmatch
 import importlib
 import inspect
@@ -27,6 +26,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import PIL.Image
+import requests
 import torch
 from huggingface_hub import (
     ModelCard,
@@ -35,7 +35,7 @@ from huggingface_hub import (
     model_info,
     snapshot_download,
 )
-from huggingface_hub.utils import validate_hf_hub_args
+from huggingface_hub.utils import OfflineModeIsEnabled, validate_hf_hub_args
 from packaging import version
 from requests.exceptions import HTTPError
 from tqdm.auto import tqdm
@@ -1654,7 +1654,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if not local_files_only:
             try:
                 info = model_info(pretrained_model_name, token=token, revision=revision)
-            except HTTPError as e:
+            except (HTTPError, OfflineModeIsEnabled, requests.ConnectionError) as e:
                 logger.warn(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
                 local_files_only = True
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
