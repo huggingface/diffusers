@@ -318,6 +318,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
         text_encoder_lora_params = text_encoder_lora_state_dict(text_encoder)
+        # We call this to ensure that the effects of the in-place `_modify_text_encoder` have been erased.
         LoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder)
 
         pipeline_components = {
