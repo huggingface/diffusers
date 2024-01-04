@@ -937,18 +937,20 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         _, unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
 
         if modify_text_encoder:
-            text_encoder_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
+            _ = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
                 text_encoder, dtype=torch.float32, rank=self.lora_rank
             )
             text_encoder_lora_params = set_lora_weights(
                 text_encoder_lora_state_dict(text_encoder), randn_weight=True, var=0.1
             )
-            text_encoder_two_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
+            _ = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
                 text_encoder_2, dtype=torch.float32, rank=self.lora_rank
             )
             text_encoder_two_lora_params = set_lora_weights(
                 text_encoder_lora_state_dict(text_encoder_2), randn_weight=True, var=0.1
             )
+            # To make sure that the text encoder isn't affected from the getgo.
+            StableDiffusionXLLoraLoaderMixin._remove_text_encoder_monkey_patch()
         else:
             text_encoder_lora_params = None
             text_encoder_two_lora_params = None
