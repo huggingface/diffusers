@@ -617,11 +617,12 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
         latents=None,
     ):
         # video must be a list of list of images
-        # the outer list denotes having multiple videos as input, whereas inner list means the frames of the video as images
+        # the outer list denotes having multiple videos as input, whereas inner list means the frames of the video
+        # as a list of images
         if not isinstance(video[0], list):
             video = [video]
         if latents is None:
-            video = torch.stack([self.image_processor.preprocess(vid, height=height, width=width) for vid in video])
+            video = torch.cat([self.image_processor.preprocess(vid, height=height, width=width).unsqueeze(0) for vid in video], dim=0)
             video = video.to(device=device, dtype=dtype)
             num_frames = video.shape[1]
         else:
@@ -654,14 +655,11 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
                         f" size of {batch_size}. Make sure the batch size matches the length of the generators."
                     )
 
-                init_latents = [
-                    retrieve_latents(self.vae.encode(video[i]), generator=generator[i]) for i in range(batch_size)
-                ]
-                init_latents = torch.stack(init_latents)
+                init_latents = [retrieve_latents(self.vae.encode(video[i]), generator=generator[i]).unsqueeze(0) for i in range(batch_size)]
             else:
-                init_latents = torch.stack(
-                    [retrieve_latents(self.vae.encode(vid), generator=generator) for vid in video]
-                )
+                init_latents = [retrieve_latents(self.vae.encode(vid), generator=generator).unsqueeze(0) for vid in video]
+            
+            init_latents = torch.cat(init_latents, dim=0)
 
             # restore vae to original dtype
             if self.vae.config.force_upcast:
