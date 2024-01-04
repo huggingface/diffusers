@@ -713,6 +713,10 @@ def main(args):
 
         for col_name in ["jpg_0", "jpg_1"]:
             images = [Image.open(io.BytesIO(im_bytes)).convert("RGB") for im_bytes in examples[col_name]]
+            if col_name == "jpg_1":
+                # Need to bring down the image to the same resolution.
+                # This seems like the simplest reasonable approach.
+                images = [image.resize(original_sizes[i][::-1]) for i, image in enumerate(images)]
             pixel_values = [train_transforms(image) for image in images]
             all_pixel_values.append(pixel_values)
 
