@@ -606,6 +606,9 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
     def prepare_latents(
         self,
         video,
+        height,
+        width,
+        num_channels_latents,
         batch_size,
         timestep,
         dtype,
@@ -613,7 +616,25 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
         generator,
         latents=None,
     ):
-        print(batch_size)
+        # video must be a list of list of images
+        # the outer list denotes having multiple videos as input, whereas inner list means the frames of the video as images
+        if not isinstance(video[0], list):
+            video = [video]
+        if latents is None:
+            video = torch.stack([self.image_processor.preprocess(vid, height=height, width=width) for vid in video])
+            video = video.to(device=device, dtype=dtype)
+            num_frames = video.shape[1]
+        else:
+            num_frames = latents.shape[2]
+
+        shape = (
+            batch_size,
+            num_channels_latents,
+            num_frames,
+            height // self.vae_scale_factor,
+            width // self.vae_scale_factor,
+        )
+
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -621,8 +642,6 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
             )
 
         if latents is None:
-            video = video.to(device=device, dtype=dtype)
-
             # make sure the VAE is in float32 mode, as it overflows in float16
             if self.vae.config.force_upcast:
                 video = video.float()
@@ -672,9 +691,9 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
             noise = randn_tensor(init_latents.shape, generator=generator, device=device, dtype=dtype)
             latents = self.scheduler.add_noise(init_latents, noise, timestep).permute(0, 2, 1, 3, 4)
         else:
-            if latents.dim() != 5:
+            if shape != latents.shape:
                 # [B, F, C, H, W]
-                raise ValueError(f"`latents` expected to have dim=5, but found {latents.dim()=}")
+                raise ValueError(f"`latents` expected to have {shape=}, but found {latents.shape=}")
             latents = latents.to(device, dtype=dtype)
 
         return latents
@@ -837,20 +856,18 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
             if do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
-        # 4. Preprocess video
-        if latents is None:
-            if not isinstance(video[0], list):
-                video = [video]
-            video = torch.stack([self.image_processor.preprocess(vid, height=height, width=width) for vid in video])
-
-        # 5. Prepare timesteps
+        # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
 
-        # 6. Prepare latent variables
+        # 5. Prepare latent variables
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             video=video,
+            height=height,
+            width=width,
+            num_channels_latents=num_channels_latents,
             batch_size=batch_size * num_videos_per_prompt,
             timestep=latent_timestep,
             dtype=prompt_embeds.dtype,
@@ -859,13 +876,13 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
             latents=latents,
         )
 
-        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 8. Add image embeds for IP-Adapter
+        # 7. Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
 
-        # 9. Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -899,7 +916,7 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
         if output_type == "latent":
             return AnimateDiffVideoToVideoPipelineOutput(frames=latents)
 
-        # 10. Post-processing
+        # 9. Post-processing
         video_tensor = self.decode_latents(latents)
 
         if output_type == "pt":
@@ -907,7 +924,7 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
         else:
             video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
-        # 11. Offload all models
+        # 10. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
