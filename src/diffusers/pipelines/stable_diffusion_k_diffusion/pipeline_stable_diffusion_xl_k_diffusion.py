@@ -51,7 +51,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import StableDiffusionXLPipelineOutput
+from ..stable_diffusion_xl import StableDiffusionXLPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -490,8 +490,6 @@ class StableDiffusionXLKDiffusionPipeline(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-        print("inside prepare_latents:")
-        print(f" device: {device}, dtype: {dtype}")
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
