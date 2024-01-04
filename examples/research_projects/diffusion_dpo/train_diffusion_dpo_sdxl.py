@@ -726,8 +726,7 @@ def main(args):
         for im_tup, label_0 in zip(im_tup_iterator, examples["label_0"]):
             if label_0 == 0:
                 im_tup = im_tup[::-1]
-
-            print(im_tup[0].shape, im_tup[1].shape)
+                
             combined_im = torch.cat(im_tup, dim=0)  # no batch dim
 
             # Resize.
