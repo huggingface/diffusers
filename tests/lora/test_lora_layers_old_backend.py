@@ -1446,7 +1446,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             sd_pipe.save_pretrained(tmpdirname)
-            sd_pipe_loaded = StableDiffusionXLPipeline.from_pretrained(tmpdirname).to(torch_device)
+            sd_pipe_loaded = StableDiffusionXLPipeline.from_pretrained(tmpdirname)
 
         loaded_lora_images = sd_pipe_loaded(**pipeline_inputs, generator=torch.manual_seed(0)).images
         loaded_lora_image_slice = loaded_lora_images[0, -3:, -3:, -1]
