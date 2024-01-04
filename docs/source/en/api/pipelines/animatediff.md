@@ -99,6 +99,8 @@ Here are some sample outputs:
 
 AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples. Additionally, the AnimateDiff checkpoints can be sensitive to the beta schedule of the scheduler. We recommend setting this to `linear`.
 
+</Tip>
+
 ### AnimateDiffVideoToVideoPipeline
 
 AnimateDiff can also be used to generate visually similar videos or enable style/character/background or other edits starting from an initial video, allowing you to seamlessly explore creative possibilities.
@@ -152,8 +154,6 @@ output = pipe(
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
 ```
-
-</Tip>
 
 ## Using Motion LoRAs
 
