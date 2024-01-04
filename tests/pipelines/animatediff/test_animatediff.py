@@ -38,8 +38,8 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator",
             "latents",
             "return_dict",
-            "callback",
-            "callback_steps",
+            "callback_on_step_end",
+            "callback_on_step_end_tensor_inputs",
         ]
     )
 
