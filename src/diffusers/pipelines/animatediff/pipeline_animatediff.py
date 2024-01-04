@@ -676,8 +676,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         num_videos_per_prompt,
         denoise_args,
         device,
-        output_type,
-        return_dict,
     ):
         """Denoising loop for AnimateDiff using FreeInit noise reinitialization technique."""
 
@@ -686,7 +684,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         timesteps = denoise_args.get("timesteps")
         num_inference_steps = denoise_args.get("num_inference_steps")
 
-        video = []
+        video_latents = []
         latent_shape = (
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -746,17 +744,16 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
 
                 # Whether or not to return intermediate generation results
                 if self._free_init_return_intermediate_results:
-                    intermediate_video = self._retrieve_output(latents, output_type, return_dict)
-                    video.append(intermediate_video)
+                    video_latents.append(latents)
 
                 free_init_progress_bar.update()
 
         if not self._free_init_return_intermediate_results:
-            video = self._retrieve_output(latents, output_type, return_dict)
+            video_latents = latents
 
-        return video
+        return video_latents
 
-    def _retrieve_output(self, latents, output_type, return_dict):
+    def _retrieve_video_frames(self, latents, output_type, return_dict):
         """Helper function to handle latents to output conversion."""
         if output_type == "latent":
             return AnimateDiffPipelineOutput(frames=latents)
@@ -960,7 +957,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         }
 
         if self.free_init_enabled:
-            video = self._free_init_loop(
+            latents = self._free_init_loop(
                 height=height,
                 width=width,
                 num_frames=num_frames,
@@ -969,12 +966,14 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
                 num_videos_per_prompt=num_videos_per_prompt,
                 denoise_args=denoise_args,
                 device=device,
-                output_type=output_type,
-                return_dict=return_dict,
             )
+            if self._free_init_return_intermediate_results:
+                video = [self._retrieve_video_frames(latent, output_type, return_dict) for latent in latents]
+            else:
+                video = self._retrieve_video_frames(latents, output_type, return_dict)
         else:
             latents = self._denoise_loop(**denoise_args)
-            video = self._retrieve_output(latents, output_type, return_dict)
+            video = self._retrieve_video_frames(latents, output_type, return_dict)
 
         # 9. Offload all models
         self.maybe_free_model_hooks()
