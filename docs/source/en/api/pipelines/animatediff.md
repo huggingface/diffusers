@@ -101,7 +101,7 @@ AnimateDiff tends to work better with finetuned Stable Diffusion models. If you 
 
 ### AnimateDiffVideoToVideoPipeline
 
-AnimateDiff can also be used to generate visually similar videos or enable style/character/background edits starting from an initial video, allowing you to seamlessly explore creative possibilities.
+AnimateDiff can also be used to generate visually similar videos or enable style/character/background or other edits starting from an initial video, allowing you to seamlessly explore creative possibilities.
 
 ```python
 import torch
