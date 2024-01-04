@@ -503,6 +503,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.unload_lora
     def unload_lora(self):
         """Unloads LoRA weights."""
         deprecate(
