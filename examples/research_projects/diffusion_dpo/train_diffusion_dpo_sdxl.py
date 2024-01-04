@@ -715,6 +715,7 @@ def main(args):
             if col_name == "jpg_1":
                 # Need to bring down the image to the same resolution.
                 # This seems like the simplest reasonable approach.
+                # "::-1" because PIL resize takes (width, height).
                 images = [image.resize(original_sizes[i][::-1]) for i, image in enumerate(images)]
             pixel_values = [train_transforms(image) for image in images]
             all_pixel_values.append(pixel_values)
