@@ -698,12 +698,7 @@ def main(args):
     train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
     train_crop = transforms.RandomCrop(args.resolution) if args.random_crop else transforms.CenterCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
-    train_transforms = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
+    train_transforms = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
 
     def preprocess_train(examples):
         all_pixel_values = []
@@ -726,7 +721,7 @@ def main(args):
         for im_tup, label_0 in zip(im_tup_iterator, examples["label_0"]):
             if label_0 == 0:
                 im_tup = im_tup[::-1]
-                
+
             combined_im = torch.cat(im_tup, dim=0)  # no batch dim
 
             # Resize.
