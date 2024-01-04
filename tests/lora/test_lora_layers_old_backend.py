@@ -320,6 +320,7 @@ class LoraLoaderMixinTests(unittest.TestCase):
         text_encoder_lora_params = set_lora_weights(
             text_encoder_lora_state_dict(text_encoder), randn_weight=True, var=0.1
         )
+        LoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder)
 
         pipeline_components = {
             "unet": unet,
@@ -943,12 +944,15 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             text_encoder_lora_params = set_lora_weights(
                 text_encoder_lora_state_dict(text_encoder), randn_weight=True, var=0.1
             )
+            StableDiffusionXLLoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder)
+
             _ = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
                 text_encoder_2, dtype=torch.float32, rank=self.lora_rank
             )
             text_encoder_two_lora_params = set_lora_weights(
                 text_encoder_lora_state_dict(text_encoder_2), randn_weight=True, var=0.1
             )
+            StableDiffusionXLLoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder_2)
         else:
             text_encoder_lora_params = None
             text_encoder_two_lora_params = None
@@ -1381,9 +1385,6 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
         sd_pipe.unet.set_default_attn_processor()
-
-        # To make sure that the in-place _modify_text_encoder() call doesn't leave any unintentional effects.
-        sd_pipe.unload_lora_weights()
 
         _, _, pipeline_inputs = self.get_dummy_inputs(with_generator=False)
 
