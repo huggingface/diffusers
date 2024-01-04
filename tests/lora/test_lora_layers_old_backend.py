@@ -317,9 +317,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
         text_encoder_lora_params = LoraLoaderMixin._modify_text_encoder(
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
-        # text_encoder_lora_params = set_lora_weights(
-        #     text_encoder_lora_state_dict(text_encoder), randn_weight=True, var=0.1
-        # )
         text_encoder_lora_params = text_encoder_lora_state_dict(text_encoder)
         LoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder)
 
@@ -942,18 +939,12 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             _ = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
                 text_encoder, dtype=torch.float32, rank=self.lora_rank
             )
-            # text_encoder_lora_params = set_lora_weights(
-            #     text_encoder_lora_state_dict(text_encoder), randn_weight=True, var=0.1
-            # )
             text_encoder_lora_params = text_encoder_lora_state_dict(text_encoder)
             StableDiffusionXLLoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder)
 
             _ = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
                 text_encoder_2, dtype=torch.float32, rank=self.lora_rank
             )
-            # text_encoder_two_lora_params = set_lora_weights(
-            #     text_encoder_lora_state_dict(text_encoder_2), randn_weight=True, var=0.1
-            # )
             text_encoder_two_lora_params = text_encoder_lora_state_dict(text_encoder_2)
             StableDiffusionXLLoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder_2)
         else:
