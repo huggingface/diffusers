@@ -50,7 +50,7 @@ from diffusers import (
     DiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.loaders import LoraLoaderMixin
+from diffusers.loaders import StableDiffusionXLLoraLoaderMixin
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers
 from diffusers.utils.import_utils import is_xformers_available
@@ -578,11 +578,13 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    # Move unet, vae and text_encoder to device and cast to weight_dtype
+    # Move unet and text_encoders to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
+
+    # The VAE is always in float32 to avoid NaN losses.
+    vae.to(accelerator.device, dtype=torch.float32)
 
     # Set up LoRA.
     unet_lora_config = LoraConfig(
@@ -631,7 +633,7 @@ def main(args):
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
-            LoraLoaderMixin.save_lora_weights(
+            StableDiffusionXLLoraLoaderMixin.save_lora_weights(
                 output_dir,
                 unet_lora_layers=unet_lora_layers_to_save,
                 text_encoder_lora_layers=None,
@@ -648,8 +650,10 @@ def main(args):
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
-        lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+        lora_state_dict, network_alphas = StableDiffusionXLLoraLoaderMixin.lora_state_dict(input_dir)
+        StableDiffusionXLLoraLoaderMixin.load_lora_into_unet(
+            lora_state_dict, network_alphas=network_alphas, unet=unet_
+        )
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -879,6 +883,8 @@ def main(args):
                     )
                 latents = torch.cat(latents, dim=0)
                 latents = latents * vae.config.scaling_factor
+                if args.pretrained_vae_model_name_or_path is None:
+                    latents = latents.to(weight_dtype)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents).chunk(2)[0].repeat(2, 1, 1, 1)
@@ -1028,8 +1034,11 @@ def main(args):
         unet = unet.to(torch.float32)
         unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
-        LoraLoaderMixin.save_lora_weights(
-            save_directory=args.output_dir, unet_lora_layers=unet_lora_state_dict, text_encoder_lora_layers=None
+        StableDiffusionXLLoraLoaderMixin.save_lora_weights(
+            save_directory=args.output_dir,
+            unet_lora_layers=unet_lora_state_dict,
+            text_encoder_lora_layers=None,
+            text_encoder_2_lora_layers=None,
         )
 
         # Final validation?
