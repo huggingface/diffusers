@@ -697,7 +697,7 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
             latents = self.scheduler.add_noise(init_latents, noise, timestep).permute(0, 2, 1, 3, 4)
         else:
             if shape != latents.shape:
-                # [B, F, C, H, W]
+                # [B, C, F, H, W]
                 raise ValueError(f"`latents` expected to have {shape=}, but found {latents.shape=}")
             latents = latents.to(device, dtype=dtype)
 
