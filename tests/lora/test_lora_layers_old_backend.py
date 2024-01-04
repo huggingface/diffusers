@@ -1593,7 +1593,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
 
 
 @deprecate_after_peft_backend
-class UNet3DConditionModelTests(unittest.TestCase):
+class UNet3DConditionLoRAModelTests(unittest.TestCase):
     model_class = UNet3DConditionModel
     main_input_name = "sample"
 
