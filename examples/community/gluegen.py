@@ -25,7 +25,7 @@ from diffusers.utils.torch_utils import randn_tensor
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class translator_base(nn.Module):
+class TranslatorBase(nn.Module):
     def __init__(self, num_tok, dim, dim_out, mult=2):
         super().__init__()
 
@@ -74,7 +74,7 @@ class translator_base(nn.Module):
         return x
 
 
-class translator_base_noln(nn.Module):
+class TranslatorBaseNoLN(nn.Module):
     def __init__(self, num_tok, dim, dim_out, mult=2):
         super().__init__()
 
@@ -117,14 +117,14 @@ class translator_base_noln(nn.Module):
         return x
 
 
-class Translator_noln(nn.Module):
+class TranslatorNoLN(nn.Module):
     def __init__(self, num_tok, dim, dim_out, mult=2, depth=5):
         super().__init__()
 
-        self.blocks = nn.ModuleList([translator_base(num_tok, dim, dim, mult=2) for d in range(depth)])
+        self.blocks = nn.ModuleList([TranslatorBase(num_tok, dim, dim, mult=2) for d in range(depth)])
         self.gelu = nn.GELU()
 
-        self.tail = translator_base_noln(num_tok, dim, dim_out, mult=2)
+        self.tail = TranslatorBaseNoLN(num_tok, dim, dim_out, mult=2)
 
     def forward(self, x):
         for block in self.blocks:
@@ -203,7 +203,7 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, LoraLoaderMixin):
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        language_adapter: Translator_noln = None,
+        language_adapter: TranslatorNoLN = None,
         tensor_norm: torch.FloatTensor = None,
         requires_safety_checker: bool = True,
     ):
@@ -236,9 +236,9 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, LoraLoaderMixin):
     ):
         device = self._execution_device
         self.tensor_norm = tensor_norm.to(device)
-        self.language_adapter = Translator_noln(
-            num_tok=num_token, dim=dim, dim_out=dim_out, mult=mult, depth=depth
-        ).to(device)
+        self.language_adapter = TranslatorNoLN(num_tok=num_token, dim=dim, dim_out=dim_out, mult=mult, depth=depth).to(
+            device
+        )
         self.language_adapter.load_state_dict(torch.load(model_path))
 
     def enable_vae_slicing(self):

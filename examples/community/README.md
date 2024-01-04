@@ -769,7 +769,7 @@ if __name__ == "__main__":
         text_encoder=text_encoder,
         tokenizer=tokenizer,
         custom_pipeline="gluegen"
-    )
+    ).to(device)
     pipeline.load_language_adapter("gluenet_French_clip_overnorm_over3_noln.ckpt", num_token=token_max_length, dim=1024, dim_out=768, tensor_norm=tensor_norm)
 
     prompt = "une voiture sur la plage" 
