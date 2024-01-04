@@ -13,11 +13,13 @@
 # limitations under the License.
 
 import inspect
+import math
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
+import torch.fft as fft
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
@@ -44,13 +46,6 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .freeinit_utils import (
-    box_low_pass_filter,
-    butterworth_low_pass_filter,
-    freq_mix_3d,
-    gaussian_low_pass_filter,
-    ideal_low_pass_filter,
-)
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -88,20 +83,67 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
 
 
 def _get_freeinit_freq_filter(shape, device, filter_type, order, spatial_stop_frequency, temporal_stop_frequency):
-    if filter_type == "gaussian":
-        return gaussian_low_pass_filter(shape=shape, d_s=spatial_stop_frequency, d_t=temporal_stop_frequency).to(
-            device
-        )
+    T, H, W = shape[-3], shape[-2], shape[-1]
+    mask = torch.zeros(shape)
+
+    if spatial_stop_frequency == 0 or temporal_stop_frequency == 0:
+        return mask
+
+    if filter_type == "butterworth":
+
+        def retrieve_mask(x):
+            return 1 / (1 + (x / spatial_stop_frequency**2) ** order)
+    elif filter_type == "gaussian":
+
+        def retrieve_mask(x):
+            return math.exp(-1 / (2 * spatial_stop_frequency**2) * x)
     elif filter_type == "ideal":
-        return ideal_low_pass_filter(shape=shape, d_s=spatial_stop_frequency, d_t=temporal_stop_frequency).to(device)
-    elif filter_type == "box":
-        return box_low_pass_filter(shape=shape, d_s=spatial_stop_frequency, d_t=temporal_stop_frequency).to(device)
-    elif filter_type == "butterworth":
-        return butterworth_low_pass_filter(
-            shape=shape, n=order, d_s=spatial_stop_frequency, d_t=temporal_stop_frequency
-        ).to(device)
+
+        def retrieve_mask(x):
+            return 1 if x <= spatial_stop_frequency * 2 else 0
     else:
-        raise NotImplementedError
+        raise NotImplementedError("`filter_type` must be one of gaussian, butterworth or ideal")
+
+    for t in range(T):
+        for h in range(H):
+            for w in range(W):
+                d_square = (
+                    ((spatial_stop_frequency / temporal_stop_frequency) * (2 * t / T - 1)) ** 2
+                    + (2 * h / H - 1) ** 2
+                    + (2 * w / W - 1) ** 2
+                )
+                mask[..., t, h, w] = retrieve_mask(d_square)
+
+    mask.to(device)
+    return mask
+
+
+def _freq_mix_3d(x, noise, LPF):
+    """
+    Noise reinitialization.
+
+    Args:
+        x: diffused latent
+        noise: randomly sampled noise
+        LPF: low pass filter
+    """
+    # FFT
+    x_freq = fft.fftn(x, dim=(-3, -2, -1))
+    x_freq = fft.fftshift(x_freq, dim=(-3, -2, -1))
+    noise_freq = fft.fftn(noise, dim=(-3, -2, -1))
+    noise_freq = fft.fftshift(noise_freq, dim=(-3, -2, -1))
+
+    # frequency mix
+    HPF = 1 - LPF
+    x_freq_low = x_freq * LPF
+    noise_freq_high = noise_freq * HPF
+    x_freq_mixed = x_freq_low + noise_freq_high  # mix in freq domain
+
+    # IFFT
+    x_freq_mixed = fft.ifftshift(x_freq_mixed, dim=(-3, -2, -1))
+    x_mixed = fft.ifftn(x_freq_mixed, dim=(-3, -2, -1)).real
+
+    return x_mixed
 
 
 @dataclass
@@ -743,7 +785,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
                         device=device,
                         dtype=torch.float32,
                     )
-                    latents = freq_mix_3d(z_T, z_rand, LPF=free_init_freq_filter)
+                    latents = _freq_mix_3d(z_T, z_rand, LPF=free_init_freq_filter)
                     latents = latents.to(prompt_embeds.dtype)
 
                 # Coarse-to-Fine Sampling for faster inference (can lead to lower quality)
