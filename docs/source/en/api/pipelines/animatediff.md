@@ -25,12 +25,15 @@ The abstract of the paper is the following:
 | Pipeline | Tasks | Demo
 |---|---|:---:|
 | [AnimateDiffPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff.py) | *Text-to-Video Generation with AnimateDiff* |
+| [AnimateDiffVideoToVideoPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_video2video.py) | *Video-to-Video Generation with AnimateDiff* |
 
 ## Available checkpoints
 
 Motion Adapter checkpoints can be found under [guoyww](https://huggingface.co/guoyww/). These checkpoints are meant to work with any model based on Stable Diffusion 1.4/1.5.
 
 ## Usage example
+
+### AnimateDiffPipeline
 
 AnimateDiff works with a MotionAdapter checkpoint and a Stable Diffusion model checkpoint. The MotionAdapter is a collection of Motion Modules that are responsible for adding coherent motion across image frames. These modules are applied after the Resnet and Attention blocks in Stable Diffusion UNet.
 
@@ -95,6 +98,60 @@ Here are some sample outputs:
 <Tip>
 
 AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples. Additionally, the AnimateDiff checkpoints can be sensitive to the beta schedule of the scheduler. We recommend setting this to `linear`.
+
+### AnimateDiffVideoToVideoPipeline
+
+AnimateDiff can also be used to generate visually similar videos or enable style/character/background edits starting from an initial video, allowing you to seamlessly explore creative possibilities.
+
+```python
+import torch
+from diffusers import AnimateDiffVideoToVideoPipeline, DDIMScheduler, MotionAdapter
+from diffusers.utils import export_to_gif
+
+# Load the motion adapter
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
+# load SD 1.5 based finetuned model
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = AnimateDiffVideoToVideoPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
+scheduler = DDIMScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    beta_schedule="linear",
+    steps_offset=1,
+)
+pipe.scheduler = scheduler
+
+# enable memory savings
+pipe.enable_vae_slicing()
+pipe.enable_model_cpu_offload()
+
+# helper function to load videos
+def load_video(file_path: str):
+    import imageio
+
+    images = []
+    vid = imageio.get_reader(file_path)
+    for frame in vid:
+        pil_image = Image.fromarray(frame)
+        images.append(pil_image)
+    return images
+
+# load initial video
+video = load_video("/path/to/local/animation_fireworks.gif")
+
+output = pipe(
+    video = video,
+    prompt="closeup of a handsome man, robert downey jr., iron man, fireworks in the background, realistic, high quality",
+    negative_prompt="bad quality, worse quality",
+    guidance_scale=7.5,
+    num_inference_steps=25,
+    generator=torch.Generator("cpu").manual_seed(42),
+)
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
+```
 
 </Tip>
 
@@ -256,3 +313,19 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 ## AnimateDiffPipelineOutput
 
 [[autodoc]] pipelines.animatediff.AnimateDiffPipelineOutput
+
+## AnimateDiffVideoToVideoPipeline
+
+[[autodoc]] AnimateDiffVideoToVideoPipeline
+	- all
+	- __call__
+    - enable_freeu
+    - disable_freeu
+    - enable_vae_slicing
+    - disable_vae_slicing
+    - enable_vae_tiling
+    - disable_vae_tiling
+
+## AnimateDiffVideoToVideoPipelineOutput
+
+[[autodoc]] pipelines.animatediff.AnimateDiffVideoToVideoPipelineOutput
