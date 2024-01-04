@@ -151,9 +151,7 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
 
     unet_lora_sd = unet_lora_state_dict(unet)
     # Unload LoRA.
-    for module in unet.modules():
-        if hasattr(module, "set_lora_layer"):
-            module.set_lora_layer(None)
+    unet.unload_lora()
 
     return unet_lora_parameters, unet_lora_sd
 
@@ -230,9 +228,7 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
     unet_lora_sd = unet_lora_state_dict(unet)
 
     # Unload LoRA.
-    for module in unet.modules():
-        if hasattr(module, "set_lora_layer"):
-            module.set_lora_layer(None)
+    unet.unload_lora()
 
     return unet_lora_sd
 
@@ -1549,9 +1545,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
         # Unload LoRA.
-        for module in model.modules():
-            if hasattr(module, "set_lora_layer"):
-                module.set_lora_layer(None)
+        model.unload_lora()
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
