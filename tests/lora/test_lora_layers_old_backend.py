@@ -950,7 +950,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
                 text_encoder_lora_state_dict(text_encoder_2), randn_weight=True, var=0.1
             )
             # To make sure that the text encoder isn't affected from the getgo.
-            StableDiffusionXLLoraLoaderMixin._remove_text_encoder_monkey_patch()
+            StableDiffusionXLLoraLoaderMixin.unload_lora_weights()
         else:
             text_encoder_lora_params = None
             text_encoder_two_lora_params = None
