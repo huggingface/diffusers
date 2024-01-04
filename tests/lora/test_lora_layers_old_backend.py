@@ -1517,6 +1517,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
 
         # test that attn processors can be set to itself
         print(f"Attention processors: {list(model.attn_processors.keys())}")
+        print(type(list(model.attn_processors.keys())[0]))
         model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
