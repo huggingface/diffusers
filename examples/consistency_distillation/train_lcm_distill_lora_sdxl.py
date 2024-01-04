@@ -566,7 +566,7 @@ def parse_args():
         default=None,
         help=(
             "A comma-separated string of target module keys to add LoRA to. If not set, a default list of modules will"
-            " be used."
+            " be used. By default, LoRA will be applied to all conv and linear layers."
         ),
     )
     parser.add_argument(
