@@ -333,6 +333,8 @@ class SDCrossAttnUpBlock2D(nn.Module):
                     attention_type=attention_type,
                 )
             )
+
+        # import ipdb; ipdb.set_trace()
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
 
@@ -556,27 +558,13 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             Height and width of input/output sample.
         in_channels (`int`, *optional*, defaults to 4): Number of channels in the input sample.
         out_channels (`int`, *optional*, defaults to 4): Number of channels in the output.
-        center_input_sample (`bool`, *optional*, defaults to `False`): Whether to center the input sample.
-        flip_sin_to_cos (`bool`, *optional*, defaults to `False`):
-            Whether to flip the sin to cos in the time embedding.
-        freq_shift (`int`, *optional*, defaults to 0): The frequency shift to apply to the time embedding.
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D")`):
             The tuple of downsample blocks to use.
-        mid_block_type (`str`, *optional*, defaults to `"UNetMidBlock2DCrossAttn"`):
-            Block type for middle of UNet, it can be one of `UNetMidBlock2DCrossAttn`, `UNetMidBlock2D`, or
-            `UNetMidBlock2DSimpleCrossAttn`. If `None`, the mid block layer is skipped.
         up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")`):
             The tuple of upsample blocks to use.
-        only_cross_attention(`bool` or `Tuple[bool]`, *optional*, default to `False`):
-            Whether to include self-attention in the basic transformer blocks, see
-            [`~models.attention.BasicTransformerBlock`].
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
-        downsample_padding (`int`, *optional*, defaults to 1): The padding to use for the downsampling convolution.
-        mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
-        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
@@ -586,22 +574,7 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
             [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-       reverse_transformer_layers_per_block : (`Tuple[Tuple]`, *optional*, defaults to None):
-            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling
-            blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `Tuple[Tuple]` and for
-            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
-            [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-        encoder_hid_dim (`int`, *optional*, defaults to None):
-            If `encoder_hid_dim_type` is defined, `encoder_hidden_states` will be projected from `encoder_hid_dim`
-            dimension to `cross_attention_dim`.
-        encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
-            If given, the `encoder_hidden_states` and potentially other embeddings are down-projected to text
-            embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
-        num_attention_heads (`int`, *optional*):
-            The number of attention heads. If not defined, defaults to `attention_head_dim`
-        resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
-            for ResNet blocks (see [`~models.resnet.ResnetBlock2D`]). Choose from `default` or `scale_shift`.
         class_embed_type (`str`, *optional*, defaults to `None`):
             The type of class embedding to use which is ultimately summed with the time embeddings. Choose from `None`,
             `"timestep"`, `"identity"`, `"projection"`, or `"simple_projection"`.
@@ -610,31 +583,8 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             "text". "text" will use the `TextTimeEmbedding` layer.
         addition_time_embed_dim: (`int`, *optional*, defaults to `None`):
             Dimension for the timestep embeddings.
-        num_class_embeds (`int`, *optional*, defaults to `None`):
-            Input dimension of the learnable embedding matrix to be projected to `time_embed_dim`, when performing
-            class conditioning with `class_embed_type` equal to `None`.
-        time_embedding_type (`str`, *optional*, defaults to `positional`):
-            The type of position embedding to use for timesteps. Choose from `positional` or `fourier`.
-        time_embedding_dim (`int`, *optional*, defaults to `None`):
-            An optional override for the dimension of the projected time embedding.
-        time_embedding_act_fn (`str`, *optional*, defaults to `None`):
-            Optional activation function to use only once on the time embeddings before they are passed to the rest of
-            the UNet. Choose from `silu`, `mish`, `gelu`, and `swish`.
-        timestep_post_act (`str`, *optional*, defaults to `None`):
-            The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
         time_cond_proj_dim (`int`, *optional*, defaults to `None`):
             The dimension of `cond_proj` layer in the timestep embedding.
-        conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer. conv_out_kernel (`int`,
-        *optional*, default to `3`): The kernel size of `conv_out` layer. projection_class_embeddings_input_dim (`int`,
-        *optional*): The dimension of the `class_labels` input when
-            `class_embed_type="projection"`. Required when `class_embed_type="projection"`.
-        class_embeddings_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the time
-            embeddings with the class embeddings.
-        mid_block_only_cross_attention (`bool`, *optional*, defaults to `None`):
-            Whether to use cross attention with the mid block when using the `UNetMidBlock2DSimpleCrossAttn`. If
-            `only_cross_attention` is given as a single boolean and `mid_block_only_cross_attention` is `None`, the
-            `only_cross_attention` value is used as the value for `mid_block_only_cross_attention`. Default to `False`
-            otherwise.
     """
 
     _supports_gradient_checkpointing = True
@@ -671,6 +621,7 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         time_cond_proj_dim: Optional[int] = None,
         projection_class_embeddings_input_dim: Optional[int] = None,
         attention_type: str = "default",
+        class_embed_type: Optional[str] = None,
     ):
         super().__init__()
 
@@ -729,7 +680,32 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             cond_proj_dim=time_cond_proj_dim,
         )
         self.encoder_hid_proj = None
-        self.class_embedding = None
+
+        if class_embed_type == "timestep":
+            self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn="silu")
+        elif class_embed_type == "identity":
+            self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
+        elif class_embed_type == "projection":
+            if projection_class_embeddings_input_dim is None:
+                raise ValueError(
+                    "`class_embed_type`: 'projection' requires `projection_class_embeddings_input_dim` be set"
+                )
+            # The projection `class_embed_type` is the same as the timestep `class_embed_type` except
+            # 1. the `class_labels` inputs are not first converted to sinusoidal embeddings
+            # 2. it projects from an arbitrary input dimension.
+            #
+            # Note that `TimestepEmbedding` is quite general, being mainly linear layers and activations.
+            # When used for embedding actual timesteps, the timesteps are first converted to sinusoidal embeddings.
+            # As a result, `TimestepEmbedding` can be passed arbitrary vectors.
+            self.class_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
+        elif class_embed_type == "simple_projection":
+            if projection_class_embeddings_input_dim is None:
+                raise ValueError(
+                    "`class_embed_type`: 'simple_projection' requires `projection_class_embeddings_input_dim` be set"
+                )
+            self.class_embedding = nn.Linear(projection_class_embeddings_input_dim, time_embed_dim)
+        else:
+            self.class_embedding = None
 
         if addition_embed_type == "text_time":
             self.add_time_proj = Timesteps(addition_time_embed_dim, True, 0)
@@ -863,7 +839,7 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     prev_output_channel=prev_output_channel,
                     temb_channels=blocks_time_embed_dim,
                     dropout=dropout,
-                    num_layers=reversed_layers_per_block[i],
+                    num_layers=reversed_layers_per_block[i] + 1,
                     resnet_groups=norm_num_groups,
                     add_upsample=add_upsample,
                 )
@@ -1035,6 +1011,7 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
+        class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -1166,6 +1143,20 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         emb = self.time_embedding(t_emb, timestep_cond)
         aug_emb = None
+
+        if self.class_embedding is not None:
+            if class_labels is None:
+                raise ValueError("class_labels should be provided when class_embedding_type is not None")
+
+            if self.config.class_embed_type == "timestep":
+                class_labels = self.time_proj(class_labels)
+
+                # `Timesteps` does not contain any weights and will always return f32 tensors
+                # there might be better ways to encapsulate this.
+                class_labels = class_labels.to(dtype=sample.dtype)
+
+            class_emb = self.class_embedding(class_labels).to(dtype=sample.dtype)
+            emb = emb + class_emb
 
         if self.config.addition_embed_type == "text_time":
             # SDXL - style
