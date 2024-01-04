@@ -742,7 +742,7 @@ def main(args):
 
             # Flipping.
             if random.random() < 0.5:
-                x1 = cropped_im.shape[1] - x1
+                x1 = cropped_im.shape[2] - x1
                 cropped_im = train_flip(cropped_im)
 
             crop_top_left = (y1, x1)
