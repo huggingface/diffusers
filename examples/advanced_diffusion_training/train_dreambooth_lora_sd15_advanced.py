@@ -1009,7 +1009,6 @@ def tokenize_prompt(tokenizer, prompt, add_special_tokens=False):
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
 def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
-    prompt_embeds_list = []
 
     for i, text_encoder in enumerate(text_encoders):
         if tokenizers is not None:
@@ -1023,17 +1022,7 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
             text_input_ids.to(text_encoder.device),
             output_hidden_states=True,
         )
-
-        # We are only ALWAYS interested in the pooled output of the final text encoder
-        pooled_prompt_embeds = prompt_embeds[0]
-        prompt_embeds = prompt_embeds.hidden_states[-2]
-        bs_embed, seq_len, _ = prompt_embeds.shape
-        prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
-        prompt_embeds_list.append(prompt_embeds)
-
-    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
-    pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
-    return prompt_embeds, pooled_prompt_embeds
+    return prompt_embeds[0] 
 
 
 def main(args):
@@ -1461,20 +1450,6 @@ def main(args):
         num_workers=args.dataloader_num_workers,
     )
 
-    # Computes additional embeddings/ids required by the SDXL UNet.
-    # regular text embeddings (when `train_text_encoder` is not True)
-    # pooled text embeddings
-    # time ids
-
-    def compute_time_ids():
-        # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-        original_size = (args.resolution, args.resolution)
-        target_size = (args.resolution, args.resolution)
-        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
-        add_time_ids = list(original_size + crops_coords_top_left + target_size)
-        add_time_ids = torch.tensor([add_time_ids])
-        add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
-        return add_time_ids
 
     if not args.train_text_encoder:
         tokenizers = [tokenizer_one]
@@ -1482,27 +1457,23 @@ def main(args):
 
         def compute_text_embeddings(prompt, text_encoders, tokenizers):
             with torch.no_grad():
-                prompt_embeds, pooled_prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
+                prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
                 prompt_embeds = prompt_embeds.to(accelerator.device)
-                pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
-            return prompt_embeds, pooled_prompt_embeds
+            return prompt_embeds
 
-    # Handle instance prompt.
-    instance_time_ids = compute_time_ids()
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if freeze_text_encoder and not train_dataset.custom_instance_prompts:
-        instance_prompt_hidden_states, instance_pooled_prompt_embeds = compute_text_embeddings(
+        instance_prompt_hidden_states = compute_text_embeddings(
             args.instance_prompt, text_encoders, tokenizers
         )
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
-        class_time_ids = compute_time_ids()
         if freeze_text_encoder:
-            class_prompt_hidden_states, class_pooled_prompt_embeds = compute_text_embeddings(
+            class_prompt_hidden_states = compute_text_embeddings(
                 args.class_prompt, text_encoders, tokenizers
             )
 
@@ -1515,9 +1486,6 @@ def main(args):
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
-    add_time_ids = instance_time_ids
-    if args.with_prior_preservation:
-        add_time_ids = torch.cat([add_time_ids, class_time_ids], dim=0)
 
     # if --train_text_encoder_ti we need add_special_tokens to be True fo textual inversion
     add_special_tokens = True if args.train_text_encoder_ti else False
@@ -1525,10 +1493,9 @@ def main(args):
     if not train_dataset.custom_instance_prompts:
         if freeze_text_encoder:
             prompt_embeds = instance_prompt_hidden_states
-            unet_add_text_embeds = instance_pooled_prompt_embeds
             if args.with_prior_preservation:
                 prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
-                unet_add_text_embeds = torch.cat([unet_add_text_embeds, class_pooled_prompt_embeds], dim=0)
+
         # if we're optmizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
@@ -1673,7 +1640,7 @@ def main(args):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
                     if freeze_text_encoder:
-                        prompt_embeds, unet_add_text_embeds = compute_text_embeddings(
+                        prompt_embeds = compute_text_embeddings(
                             prompts, text_encoders, tokenizers
                         )
 
@@ -1706,39 +1673,28 @@ def main(args):
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
                 if not train_dataset.custom_instance_prompts:
                     elems_to_repeat_text_embeds = bsz // 2 if args.with_prior_preservation else bsz
-                    elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 else:
                     elems_to_repeat_text_embeds = 1
-                    elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 # Predict the noise residual
                 if freeze_text_encoder:
-                    unet_added_conditions = {
-                        "time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1),
-                        "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat_text_embeds, 1),
-                    }
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
                         noisy_model_input,
                         timesteps,
-                        prompt_embeds_input,
-                        added_cond_kwargs=unet_added_conditions,
+                        prompt_embeds_input
                     ).sample
                 else:
-                    unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
-                    prompt_embeds, pooled_prompt_embeds = encode_prompt(
+                    prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one],
                         tokenizers=None,
                         prompt=None,
                         text_input_ids_list=[tokens_one],
                     )
-                    unet_added_conditions.update(
-                        {"text_embeds": pooled_prompt_embeds.repeat(elems_to_repeat_text_embeds, 1)}
-                    )
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions
+                        noisy_model_input, timesteps, prompt_embeds_input
                     ).sample
 
                 # Get the target for loss depending on the prediction type
