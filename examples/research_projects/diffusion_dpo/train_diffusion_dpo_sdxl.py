@@ -702,7 +702,8 @@ def main(args):
     train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
     train_crop = transforms.RandomCrop(args.resolution) if args.random_crop else transforms.CenterCrop(args.resolution)
     train_flip = transforms.RandomHorizontalFlip(p=1.0)
-    train_transforms = transforms.Compose([transforms.ToTensor(), transforms.Normalize([0.5], [0.5])])
+    to_tensor = transforms.ToTensor()
+    normalize = transforms.Normalize([0.5], [0.5])
 
     def preprocess_train(examples):
         all_pixel_values = []
@@ -717,7 +718,7 @@ def main(args):
                 # This seems like the simplest reasonable approach.
                 # "::-1" because PIL resize takes (width, height).
                 images = [image.resize(original_sizes[i][::-1]) for i, image in enumerate(images)]
-            pixel_values = [train_transforms(image) for image in images]
+            pixel_values = [to_tensor(image) for image in images]
             all_pixel_values.append(pixel_values)
 
         # Double on channel dim, jpg_y then jpg_w
@@ -730,25 +731,26 @@ def main(args):
             combined_im = torch.cat(im_tup, dim=0)  # no batch dim
 
             # Resize.
-            resized_im = train_resize(combined_im)
+            combined_im = train_resize(combined_im)
 
             # Cropping.
             if not args.random_crop:
-                y1 = max(0, int(round((resized_im.shape[1] - args.resolution) / 2.0)))
-                x1 = max(0, int(round((resized_im.shape[2] - args.resolution) / 2.0)))
-                cropped_im = train_crop(resized_im)
+                y1 = max(0, int(round((combined_im.shape[1] - args.resolution) / 2.0)))
+                x1 = max(0, int(round((combined_im.shape[2] - args.resolution) / 2.0)))
+                combined_im = train_crop(combined_im)
             else:
-                y1, x1, h, w = train_crop.get_params(resized_im, (args.resolution, args.resolution))
-                cropped_im = crop(resized_im, y1, x1, h, w)
+                y1, x1, h, w = train_crop.get_params(combined_im, (args.resolution, args.resolution))
+                combined_im = crop(combined_im, y1, x1, h, w)
 
             # Flipping.
             if random.random() < 0.5:
-                x1 = cropped_im.shape[2] - x1
-                cropped_im = train_flip(cropped_im)
+                x1 = combined_im.shape[2] - x1
+                combined_im = train_flip(combined_im)
 
             crop_top_left = (y1, x1)
             crop_top_lefts.append(crop_top_left)
-            combined_pixel_values.append(cropped_im)
+            combined_im = normalize(combined_im)
+            combined_pixel_values.append(combined_im)
 
         examples["pixel_values"] = combined_pixel_values
         examples["original_sizes"] = original_sizes
