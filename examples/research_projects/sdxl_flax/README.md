@@ -72,8 +72,8 @@ params = jax.tree_util.tree_map(lambda x: x.astype(jnp.bfloat16), params)
 params["scheduler"] = scheduler_state
 ```
 This section adjusts the data types of the model parameters.
-We convert all parameters to `bfloat16` to speed-up the computation with model weights. 
-**Note** that the scheduler parameters are **not** converted to `blfoat16` as the loss 
+We convert all parameters to `bfloat16` to speed-up the computation with model weights.
+**Note** that the scheduler parameters are **not** converted to `blfoat16` as the loss
 in precision is degrading the pipeline's performance too significantly.
 
 **3. Define Inputs to Pipeline**
@@ -146,12 +146,12 @@ For this we will be using a JAX feature called [Ahead of Time](https://jax.readt
 
 In [sdxl_single_aot.py](./sdxl_single_aot.py) we give a simple example of how to write our own parallelization logic for text-to-image generation pipeline in JAX using [StabilityAI's Stable Diffusion XL](stabilityai/stable-diffusion-xl-base-1.0)
 
-We add a `aot_compile` function that compiles the `pipeline._generate` function 
+We add a `aot_compile` function that compiles the `pipeline._generate` function
 telling JAX which input arguments are static, that is, arguments that
-are known at compile time and won't change. In our case, it is num_inference_steps, 
+are known at compile time and won't change. In our case, it is num_inference_steps,
 height, width and return_latents.
 
-Once the function is compiled, these parameters are omitted from future calls and 
+Once the function is compiled, these parameters are omitted from future calls and
 cannot be changed without modifying the code and recompiling.
 
 ```python
@@ -205,9 +205,9 @@ def generate(
     g = jnp.array([guidance_scale] * prompt_ids.shape[0], dtype=jnp.float32)
     g = g[:, None]
     images = p_generate(
-        prompt_ids, 
-        p_params, 
-        rng, 
+        prompt_ids,
+        p_params,
+        rng,
         g,
         None,
         neg_prompt_ids)
@@ -220,7 +220,7 @@ def generate(
 The first forward pass after AOT compilation still takes a while longer than
 subsequent passes, this is because on the first pass, JAX uses Python dispatch, which
 Fills the C++ dispatch cache.
-When using jit, this extra step is done automatically, but when using AOT compilation, 
+When using jit, this extra step is done automatically, but when using AOT compilation,
 it doesn't happen until the function call is made.
 
 ```python
