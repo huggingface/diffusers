@@ -840,7 +840,7 @@ def main(args):
                         noisy_model_input,
                         timesteps,
                         encoder_hidden_states,
-                    ).sample
+                    ).sample.detach()
                     ref_loss = F.mse_loss(ref_preds.float(), target.float(), reduction="none")
                     ref_loss = ref_loss.mean(dim=list(range(1, len(ref_loss.shape))))
 
