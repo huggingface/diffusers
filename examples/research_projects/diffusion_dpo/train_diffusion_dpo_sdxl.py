@@ -633,11 +633,7 @@ def main(args):
                 # make sure to pop weight so that corresponding model is not saved again
                 weights.pop()
 
-            StableDiffusionXLLoraLoaderMixin.save_lora_weights(
-                output_dir,
-                unet_lora_layers=unet_lora_layers_to_save,
-                text_encoder_lora_layers=None,
-            )
+            StableDiffusionXLLoraLoaderMixin.save_lora_weights(output_dir, unet_lora_layers=unet_lora_layers_to_save)
 
     def load_model_hook(models, input_dir):
         unet_ = None
