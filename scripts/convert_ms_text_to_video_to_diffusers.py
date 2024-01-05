@@ -414,7 +414,7 @@ if __name__ == "__main__":
     unet_checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
     if "state_dict" in unet_checkpoint:
         unet_checkpoint = unet_checkpoint["state_dict"]
-    unet = UNet3DConditionModel()
+    unet = UNet3DConditionModel(in_channels=unet_checkpoint["conv_in.weight"].shape[1])
 
     converted_ckpt = convert_ldm_unet_checkpoint(unet_checkpoint, unet.config)
 
