@@ -11,14 +11,14 @@ specific language governing permissions and limitations under the License.
 -->
 
 # DeepCache
-[DeepCache](https://huggingface.co/papers/2312.00858) accelerates [`StableDiffusionPipeline`] and [`StableDiffusionXLPipeline`] by strategically caching and reusing high-level features, while efficiently updating low-level features, which leverages the unique properties of the U-Net architecture. 
+[DeepCache](https://huggingface.co/papers/2312.00858) accelerates [`StableDiffusionPipeline`] and [`StableDiffusionXLPipeline`] by strategically caching and reusing high-level features while efficiently updating low-level features by taking advantage of the U-Net architecture.
 
-Install DeepCache from `pip`:
+Start by installing [DeepCache](https://github.com/horseee/DeepCache):
 ```bash
 pip install DeepCache
 ```
 
-You can use [`DeepCache`](https://github.com/horseee/DeepCache) by loading and enabling the [`DeepCacheSDHelper`](https://github.com/horseee/DeepCache#usage):
+Then load and enable the [`DeepCacheSDHelper`](https://github.com/horseee/DeepCache#usage):
 
 ```diff
   import torch
@@ -37,17 +37,17 @@ You can use [`DeepCache`](https://github.com/horseee/DeepCache) by loading and e
 ```
 
 The `set_params` method accepts two arguments: `cache_interval` and `cache_branch_id`. `cache_interval` means the frequency of feature caching, specified as the number of steps between each cache operation. `cache_branch_id` identifies which branch of the network (ordered from the shallowest to the deepest layer) is responsible for executing the caching processes. 
-Opting for a lower `cache_branch_id` or a larger `cache_interval` can lead to faster inference speed; however, this may come at the cost of reduced image quality. Ablation experiments of these two hyper-parameters can be found in the [paper](https://arxiv.org/abs/2312.00858). Once those arguments are set, use the `enable` or `disable` methods to activate or deactivate the DeepCacheSDHelper respectively.
+Opting for a lower `cache_branch_id` or a larger `cache_interval` can lead to faster inference speed at the expense of reduced image quality (ablation experiments of these two hyperparameters can be found in the [paper](https://arxiv.org/abs/2312.00858)). Once those arguments are set, use the `enable` or `disable` methods to activate or deactivate the `DeepCacheSDHelper`.
 
 <div class="flex justify-center">
     <img src="https://github.com/horseee/Diffusion_DeepCache/raw/master/static/images/example.png">
 </div>
 
-You can find more generated samples (Original Pipeline v.s. DeepCache) and the corresponding inference latency in the [WandB report](https://wandb.ai/horseee/DeepCache/runs/jwlsqqgt?workspace=user-horseee). The prompts are randomly selected from the [MS-COCO 2017](https://cocodataset.org/#home) dataset.
+You can find more generated samples (original pipeline vs DeepCache) and the corresponding inference latency in the [WandB report](https://wandb.ai/horseee/DeepCache/runs/jwlsqqgt?workspace=user-horseee). The prompts are randomly selected from the [MS-COCO 2017](https://cocodataset.org/#home) dataset.
 
 ## Benchmark
 
-We measure the acceleration ratio achievable using DeepCache. All evaluations are based on the [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) with 50 inference steps, using NVIDIA RTX A5000. The results show the speed enhancements that can be expected under different configurations of resolution, batch size, the interval for cache(I) and the branch for cache(B).
+We tested how much faster DeepCache accelerates [Stable Diffusion v2.1](https://huggingface.co/stabilityai/stable-diffusion-2-1) with 50 inference steps on an NVIDIA RTX A5000, using different configurations for resolution, batch size, cache interval (I), and cache branch (B).
 
 | **Resolution** | **Batch size** | **Original** | **DeepCache(I=3, B=0)** | **DeepCache(I=5, B=0)** | **DeepCache(I=5, B=1)** |
 |----------------|----------------|--------------|-------------------------|-------------------------|-------------------------|
