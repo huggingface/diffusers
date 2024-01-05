@@ -579,8 +579,9 @@ def main():
     else:
         optimizer_cls = torch.optim.AdamW
 
+    # train on only unet_lora_parameters
     optimizer = optimizer_cls(
-        unet.parameters(),
+        unet_lora_parameters, 
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -733,8 +734,8 @@ def main():
     )
 
     # Prepare everything with our `accelerator`.
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
+    unet, unet_lora_parameters, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        unet, unet_lora_parameters, optimizer, train_dataloader, lr_scheduler
     )
 
     if args.use_ema:
@@ -884,7 +885,7 @@ def main():
                 # Backpropagate
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
+                    accelerator.clip_grad_norm_(unet_lora_parameters, args.max_grad_norm)
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -892,7 +893,7 @@ def main():
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 if args.use_ema:
-                    ema_unet.step(unet.parameters())
+                    ema_unet.step(unet_lora_parameters)
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)
