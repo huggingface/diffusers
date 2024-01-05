@@ -1339,7 +1339,7 @@ def main(args):
             )
         if args.train_text_encoder_ti:
             embedding_handler.save_embeddings(
-                f"{output_dir}/{output_dir}_emb.safetensors",
+                f"{output_dir}/{args.output_dir}_emb.safetensors",
             )
 
     def load_model_hook(models, input_dir):
