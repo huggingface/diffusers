@@ -210,7 +210,7 @@ This provides a minor improvement from 2.54 seconds to 2.52 seconds.
 
 <Tip warning={true}>
 
-Support for [`~StableDiffusionXLPipeline.fuse_qkv_projections``] is limited and experimental. It's not available for many non-Stable Diffusion pipelines such as [Kandinsky](../using-diffusers/kandinsky). You can refer to this [PR](https://github.com/huggingface/diffusers/pull/6179) to get an idea about how to enable this for the other pipelines.
+Support for [`~StableDiffusionXLPipeline.fuse_qkv_projections`] is limited and experimental. It's not available for many non-Stable Diffusion pipelines such as [Kandinsky](../using-diffusers/kandinsky). You can refer to this [PR](https://github.com/huggingface/diffusers/pull/6179) to get an idea about how to enable this for the other pipelines.
 
 </Tip>
 
