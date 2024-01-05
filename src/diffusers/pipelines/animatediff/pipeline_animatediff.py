@@ -114,8 +114,7 @@ def _get_freeinit_freq_filter(shape, device, filter_type, order, spatial_stop_fr
                 )
                 mask[..., t, h, w] = retrieve_mask(d_square)
 
-    mask.to(device)
-    return mask
+    return mask.to(device)
 
 
 def _freq_mix_3d(x, noise, LPF):
