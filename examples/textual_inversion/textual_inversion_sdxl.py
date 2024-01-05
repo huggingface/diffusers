@@ -48,7 +48,6 @@ from diffusers import (
     DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
-    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
