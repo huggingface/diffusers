@@ -1316,13 +1316,15 @@ def main(args):
                 if isinstance(model, type(accelerator.unwrap_model(unet))):
                     unet_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
-                    text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
-                        get_peft_model_state_dict(model)
-                    )
+                    if args.train_text_encoder:
+                        text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(model)
+                        )
                 elif isinstance(model, type(accelerator.unwrap_model(text_encoder_two))):
-                    text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
-                        get_peft_model_state_dict(model)
-                    )
+                    if args.train_text_encoder:
+                        text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(model)
+                        )
                 else:
                     raise ValueError(f"unexpected save model: {model.__class__}")
 
@@ -1335,6 +1337,8 @@ def main(args):
                 text_encoder_lora_layers=text_encoder_one_lora_layers_to_save,
                 text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
             )
+        if args.train_text_encoder_ti:
+            embedding_handler.save_embeddings(f"{output_dir}/{args.output_dir}_emb.safetensors")
 
     def load_model_hook(models, input_dir):
         unet_ = None
