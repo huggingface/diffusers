@@ -40,7 +40,7 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 import diffusers
 from diffusers import (
@@ -112,7 +112,7 @@ These are textual inversion adaption weights for {base_model}. You can find some
         f.write(yaml + model_card)
 
 
-def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch):
+def log_validation(text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
@@ -120,8 +120,10 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
     # create pipeline (note: unet and vae are loaded again in float32)
     pipeline = DiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
-        text_encoder=accelerator.unwrap_model(text_encoder),
-        tokenizer=tokenizer,
+        text_encoder=accelerator.unwrap_model(text_encoder_1),
+        text_encoder_2=accelerator.unwrap_model(text_encoder_2),
+        tokenizer=tokenizer_1,
+        tokenizer_2=tokenizer_2,
         unet=unet,
         vae=vae,
         safety_checker=None,
@@ -212,12 +214,6 @@ def parse_args():
         type=str,
         default=None,
         help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
-    )
-    parser.add_argument(
-        "--tokenizer_name",
-        type=str,
-        default=None,
-        help="Pretrained tokenizer name or path if not the same as model_name",
     )
     parser.add_argument(
         "--train_data_dir", type=str, default=None, required=True, help="A folder containing the training data."
@@ -495,7 +491,8 @@ class TextualInversionDataset(Dataset):
     def __init__(
         self,
         data_root,
-        tokenizer,
+        tokenizer_1,
+        tokenizer_2,
         learnable_property="object",  # [object, style]
         size=512,
         repeats=100,
@@ -506,7 +503,8 @@ class TextualInversionDataset(Dataset):
         center_crop=False,
     ):
         self.data_root = data_root
-        self.tokenizer = tokenizer
+        self.tokenizer_1 = tokenizer_1
+        self.tokenizer_2 = tokenizer_2
         self.learnable_property = learnable_property
         self.size = size
         self.placeholder_token = placeholder_token
@@ -544,11 +542,19 @@ class TextualInversionDataset(Dataset):
         placeholder_string = self.placeholder_token
         text = random.choice(self.templates).format(placeholder_string)
 
-        example["input_ids"] = self.tokenizer(
+        example["input_ids_1"] = self.tokenizer_1(
             text,
             padding="max_length",
             truncation=True,
-            max_length=self.tokenizer.model_max_length,
+            max_length=self.tokenizer_1.model_max_length,
+            return_tensors="pt",
+        ).input_ids[0]
+
+        example["input_ids_2"] = self.tokenizer_2(
+            text,
+            padding="max_length",
+            truncation=True,
+            max_length=self.tokenizer_2.model_max_length,
             return_tensors="pt",
         ).input_ids[0]
 
@@ -621,15 +627,16 @@ def main():
             ).repo_id
 
     # Load tokenizer
-    if args.tokenizer_name:
-        tokenizer = CLIPTokenizer.from_pretrained(args.tokenizer_name)
-    elif args.pretrained_model_name_or_path:
-        tokenizer = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+    tokenizer_1 = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer")
+    tokenizer_2 = CLIPTokenizer.from_pretrained(args.pretrained_model_name_or_path, subfolder="tokenizer_2")
 
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    text_encoder = CLIPTextModel.from_pretrained(
+    text_encoder_1 = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+    )
+    text_encoder_2 = CLIPTextModelWithProjection.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
     )
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
@@ -638,7 +645,8 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
-    # Add the placeholder token in tokenizer
+
+    # Add the placeholder token in tokenizer_1
     placeholder_tokens = [args.placeholder_token]
 
     if args.num_vectors < 1:
@@ -650,7 +658,7 @@ def main():
         additional_tokens.append(f"{args.placeholder_token}_{i}")
     placeholder_tokens += additional_tokens
 
-    num_added_tokens = tokenizer.add_tokens(placeholder_tokens)
+    num_added_tokens = tokenizer_1.add_tokens(placeholder_tokens)
     if num_added_tokens != args.num_vectors:
         raise ValueError(
             f"The tokenizer already contains the token {args.placeholder_token}. Please pass a different"
@@ -658,19 +666,19 @@ def main():
         )
 
     # Convert the initializer_token, placeholder_token to ids
-    token_ids = tokenizer.encode(args.initializer_token, add_special_tokens=False)
+    token_ids = tokenizer_1.encode(args.initializer_token, add_special_tokens=False)
     # Check if initializer_token is a single token or a sequence of tokens
     if len(token_ids) > 1:
         raise ValueError("The initializer token must be a single token.")
 
     initializer_token_id = token_ids[0]
-    placeholder_token_ids = tokenizer.convert_tokens_to_ids(placeholder_tokens)
+    placeholder_token_ids = tokenizer_1.convert_tokens_to_ids(placeholder_tokens)
 
     # Resize the token embeddings as we are adding new special tokens to the tokenizer
-    text_encoder.resize_token_embeddings(len(tokenizer))
+    text_encoder_1.resize_token_embeddings(len(tokenizer_1))
 
     # Initialise the newly added placeholder token with the embeddings of the initializer token
-    token_embeds = text_encoder.get_input_embeddings().weight.data
+    token_embeds = text_encoder_1.get_input_embeddings().weight.data
     with torch.no_grad():
         for token_id in placeholder_token_ids:
             token_embeds[token_id] = token_embeds[initializer_token_id].clone()
@@ -679,15 +687,19 @@ def main():
     vae.requires_grad_(False)
     unet.requires_grad_(False)
     # Freeze all parameters except for the token embeddings in text encoder
-    text_encoder.text_model.encoder.requires_grad_(False)
-    text_encoder.text_model.final_layer_norm.requires_grad_(False)
-    text_encoder.text_model.embeddings.position_embedding.requires_grad_(False)
+    text_encoder_1.text_model.encoder.requires_grad_(False)
+    text_encoder_1.text_model.final_layer_norm.requires_grad_(False)
+    text_encoder_1.text_model.embeddings.position_embedding.requires_grad_(False)
+    text_encoder_2.text_model.encoder.requires_grad_(False)
+    text_encoder_2.text_model.final_layer_norm.requires_grad_(False)
+    text_encoder_2.text_model.embeddings.position_embedding.requires_grad_(False)
 
     if args.gradient_checkpointing:
         # Keep unet in train mode if we are using gradient checkpointing to save memory.
         # The dropout cannot be != 0 so it doesn't matter if we are in eval or train mode.
         unet.train()
-        text_encoder.gradient_checkpointing_enable()
+        text_encoder_1.gradient_checkpointing_enable()
+        text_encoder_2.gradient_checkpointing_enable()
         unet.enable_gradient_checkpointing()
 
     if args.enable_xformers_memory_efficient_attention:
@@ -714,8 +726,8 @@ def main():
         )
 
     # Initialize the optimizer
-    optimizer = torch.optim.AdamW(
-        text_encoder.get_input_embeddings().parameters(),  # only optimize the embeddings
+    optimizer_1 = torch.optim.AdamW(
+        text_encoder_1.get_input_embeddings().parameters(),  # only optimize the embeddings
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
@@ -725,9 +737,10 @@ def main():
     # Dataset and DataLoaders creation:
     train_dataset = TextualInversionDataset(
         data_root=args.train_data_dir,
-        tokenizer=tokenizer,
+        tokenizer_1=tokenizer_1,
+        tokenizer_2=tokenizer_2,
         size=args.resolution,
-        placeholder_token=(" ".join(tokenizer.convert_ids_to_tokens(placeholder_token_ids))),
+        placeholder_token=(" ".join(tokenizer_1.convert_ids_to_tokens(placeholder_token_ids))),
         repeats=args.repeats,
         learnable_property=args.learnable_property,
         center_crop=args.center_crop,
@@ -753,18 +766,18 @@ def main():
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
 
-    lr_scheduler = get_scheduler(
+    lr_scheduler_1 = get_scheduler(
         args.lr_scheduler,
-        optimizer=optimizer,
+        optimizer=optimizer_1,
         num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
         num_training_steps=args.max_train_steps * accelerator.num_processes,
         num_cycles=args.lr_num_cycles,
     )
 
-    text_encoder.train()
+    text_encoder_1.train()
     # Prepare everything with our `accelerator`.
-    text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        text_encoder, optimizer, train_dataloader, lr_scheduler
+    text_encoder_1, optimizer_1, train_dataloader, lr_scheduler_1 = accelerator.prepare(
+        text_encoder_1, optimizer_1, train_dataloader, lr_scheduler_1
     )
 
     # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
@@ -775,9 +788,10 @@ def main():
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
 
-    # Move vae and unet to device and cast to weight_dtype
+    # Move vae and unet and text_encoder_2 to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_2 = text_encoder_2.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -840,12 +854,12 @@ def main():
     )
 
     # keep original embeddings as reference
-    orig_embeds_params = accelerator.unwrap_model(text_encoder).get_input_embeddings().weight.data.clone()
+    orig_embeds_params = accelerator.unwrap_model(text_encoder_1).get_input_embeddings().weight.data.clone()
 
     for epoch in range(first_epoch, args.num_train_epochs):
-        text_encoder.train()
+        text_encoder_1.train()
         for step, batch in enumerate(train_dataloader):
-            with accelerator.accumulate(text_encoder):
+            with accelerator.accumulate(text_encoder_1):
                 # Convert images to latent space
                 latents = vae.encode(batch["pixel_values"].to(dtype=weight_dtype)).latent_dist.sample().detach()
                 latents = latents * vae.config.scaling_factor
@@ -862,10 +876,17 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0].to(dtype=weight_dtype)
+                encoder_hidden_states_1 = text_encoder_1(batch["input_ids_1"], output_hidden_states=True).hidden_states[-2].to(dtype=weight_dtype)
+                encoder_output_2 = text_encoder_2(batch["input_ids_2"].reshape(batch["input_ids_1"].shape[0], -1), output_hidden_states=True)
+                encoder_hidden_states_2 = encoder_output_2.hidden_states[-2].to(dtype=weight_dtype)
+                sample_size = unet.config.sample_size * (2 ** (len(vae.config.block_out_channels) - 1))
+                original_size = (sample_size, sample_size)
+                add_time_ids = torch.tensor([list(original_size + (0, 0) + original_size)], dtype=weight_dtype, device=accelerator.device)
+                added_cond_kwargs = {"text_embeds": encoder_output_2[0], "time_ids": add_time_ids}
+                encoder_hidden_states = torch.cat([encoder_hidden_states_1, encoder_hidden_states_2], dim=-1)
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -879,16 +900,16 @@ def main():
 
                 accelerator.backward(loss)
 
-                optimizer.step()
-                lr_scheduler.step()
-                optimizer.zero_grad()
+                optimizer_1.step()
+                lr_scheduler_1.step()
+                optimizer_1.zero_grad()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
-                index_no_updates = torch.ones((len(tokenizer),), dtype=torch.bool)
+                index_no_updates = torch.ones((len(tokenizer_1),), dtype=torch.bool)
                 index_no_updates[min(placeholder_token_ids) : max(placeholder_token_ids) + 1] = False
 
                 with torch.no_grad():
-                    accelerator.unwrap_model(text_encoder).get_input_embeddings().weight[
+                    accelerator.unwrap_model(text_encoder_1).get_input_embeddings().weight[
                         index_no_updates
                     ] = orig_embeds_params[index_no_updates]
 
@@ -905,7 +926,7 @@ def main():
                     )
                     save_path = os.path.join(args.output_dir, weight_name)
                     save_progress(
-                        text_encoder,
+                        text_encoder_1,
                         placeholder_token_ids,
                         accelerator,
                         args,
@@ -941,10 +962,10 @@ def main():
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         images = log_validation(
-                            text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch
+                            text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch
                         )
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
+            logs = {"loss": loss.detach().item(), "lr": lr_scheduler_1.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
@@ -959,19 +980,21 @@ def main():
         else:
             save_full_model = args.save_as_full_pipeline
         if save_full_model:
-            pipeline = StableDiffusionPipeline.from_pretrained(
+            pipeline = DiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
-                text_encoder=accelerator.unwrap_model(text_encoder),
+                text_encoder=accelerator.unwrap_model(text_encoder_1),
+                text_encoder_2=accelerator.unwrap_model(text_encoder_2),
                 vae=vae,
                 unet=unet,
-                tokenizer=tokenizer,
+                tokenizer=tokenizer_1,
+                tokenizer_2=tokenizer_2,
             )
             pipeline.save_pretrained(args.output_dir)
         # Save the newly trained embeddings
         weight_name = "learned_embeds.bin" if args.no_safe_serialization else "learned_embeds.safetensors"
         save_path = os.path.join(args.output_dir, weight_name)
         save_progress(
-            text_encoder,
+            text_encoder_1,
             placeholder_token_ids,
             accelerator,
             args,
@@ -998,3 +1021,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
