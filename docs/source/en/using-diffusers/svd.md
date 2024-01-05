@@ -53,11 +53,6 @@ frames = pipe(image, decode_chunk_size=8, generator=generator).frames[0]
 export_to_video(frames, "generated.mp4", fps=7)
 ```
 
-<video controls width="1024" height="576">
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.webm" type="video/webm" />
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.mp4" type="video/mp4" />
-</video>
-
 | **Source Image** | **Video** |
 |:------------:|:-----:|
 |     ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png)      |  ![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/output_rocket.gif)  |
@@ -86,7 +81,7 @@ You can achieve a 20-25% speed-up at the expense of slightly increased memory by
 Video generation is very memory intensive as we have to essentially generate `num_frames` all at once. The mechanism is very comparable to text-to-image generation with a high batch size. To reduce the memory requirement you have multiple options. The following options trade inference speed against lower memory requirement:
 - enable model offloading: Each component of the pipeline is offloaded to CPU once it's not needed anymore.
 - enable feed-forward chunking: The feed-forward layer runs in a loop instead of running with a single huge feed-forward batch size
-- reduce `decode_chunk_size`: This means that the VAE decodes frames in chunks instead of decoding them all together. **Note**: In addition to leading to a small slowdown, this method also slightly leads to video quality deterioration
+- reduce `decode_chunk_size`: This means that the VAE decodes frames in chunks instead of decoding them all together. **Note that**, in addition to leading to a small slowdown, this method also slightly leads to video quality deterioration.
 
 You can enable them as follows:
 
