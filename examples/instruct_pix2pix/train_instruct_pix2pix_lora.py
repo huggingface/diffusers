@@ -457,6 +457,11 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
+    # Freeze vae, text_encoder and unet
+    vae.requires_grad_(False)
+    text_encoder.requires_grad_(False)
+    unet.requires_grad_(False)
+
     # referred to https://github.com/huggingface/diffusers/blob/main/examples/text_to_image/train_text_to_image_lora.py
     unet_lora_parameters = []
     for attn_processor_name, attn_processor in unet.attn_processors.items():
@@ -490,9 +495,6 @@ def main():
             )
         )
 
-    # Freeze vae and text_encoder
-    vae.requires_grad_(False)
-    text_encoder.requires_grad_(False)
         # Accumulate the LoRA params to optimize.
         unet_lora_parameters.extend(attn_module.to_q.lora_layer.parameters())
         unet_lora_parameters.extend(attn_module.to_k.lora_layer.parameters())
