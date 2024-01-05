@@ -583,7 +583,7 @@ def main(args):
 
         alphas_cumprod = torch.cumprod(alphas, dim=0)
         scheduler.alphas_cumprod = alphas_cumprod
-        return 
+        return
 
     if args.is_turbo:
         enforce_zero_terminal_snr(noise_scheduler)
