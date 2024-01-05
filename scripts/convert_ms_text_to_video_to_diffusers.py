@@ -176,7 +176,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
     new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
 
-    if config["class_embed_type"] is None:
+    if "class_embed_type" in config and config["class_embed_type"] is None:
         # No parameters to port
         ...
     elif config["class_embed_type"] == "timestep" or config["class_embed_type"] == "projection":
@@ -411,6 +411,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     unet_checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
+    if "state_dict" in unet_checkpoint:
+        unet_checkpoint = unet_checkpoint["state_dict"]
     unet = UNet3DConditionModel()
 
     converted_ckpt = convert_ldm_unet_checkpoint(unet_checkpoint, unet.config)
