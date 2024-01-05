@@ -15,7 +15,7 @@
 import inspect
 import math
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -82,7 +82,16 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
     return outputs
 
 
-def _get_freeinit_freq_filter(shape, device, filter_type, order, spatial_stop_frequency, temporal_stop_frequency):
+def _get_freeinit_freq_filter(
+    shape: Tuple[int, ...],
+    device: Union[str, torch.dtype],
+    filter_type: str,
+    order: float,
+    spatial_stop_frequency: float,
+    temporal_stop_frequency: float,
+) -> torch.Tensor:
+    r"""Returns the FreeInit filter based on filter type and other input conditions."""
+
     T, H, W = shape[-3], shape[-2], shape[-1]
     mask = torch.zeros(shape)
 
@@ -117,15 +126,8 @@ def _get_freeinit_freq_filter(shape, device, filter_type, order, spatial_stop_fr
     return mask.to(device)
 
 
-def _freq_mix_3d(x, noise, LPF):
-    """
-    Noise reinitialization.
-
-    Args:
-        x: diffused latent
-        noise: randomly sampled noise
-        LPF: low pass filter
-    """
+def _freq_mix_3d(x: torch.Tensor, noise: torch.Tensor, LPF: torch.Tensor) -> torch.Tensor:
+    r"""Noise reinitialization."""
     # FFT
     x_freq = fft.fftn(x, dim=(-3, -2, -1))
     x_freq = fft.fftshift(x_freq, dim=(-3, -2, -1))
@@ -535,7 +537,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
                 Whether or not to speedup sampling procedure at the cost of probably lower quality results. Enables
                 the "Coarse-to-Fine Sampling" strategy, as mentioned in the paper, if set to `True`.
             method (`str`, *optional*, defaults to `butterworth`):
-                Must be one of `box`, `butterworth`, `ideal` or `gaussian` to use as the filtering method for the
+                Must be one of `butterworth`, `ideal` or `gaussian` to use as the filtering method for the
                 FreeInit low pass filter.
             order (`int`, *optional*, defaults to `4`):
                 Order of the filter used in `butterworth` method. Larger values lead to `ideal` method behaviour
