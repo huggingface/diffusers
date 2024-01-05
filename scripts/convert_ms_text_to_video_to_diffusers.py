@@ -176,16 +176,17 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
     new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
 
-    if "class_embed_type" in config and config["class_embed_type"] is None:
-        # No parameters to port
-        ...
-    elif config["class_embed_type"] == "timestep" or config["class_embed_type"] == "projection":
-        new_checkpoint["class_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
-        new_checkpoint["class_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
-        new_checkpoint["class_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
-        new_checkpoint["class_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
-    else:
-        raise NotImplementedError(f"Not implemented `class_embed_type`: {config['class_embed_type']}")
+    if "class_embed_type" in config:
+        if config["class_embed_type"] is None:
+            # No parameters to port
+            ...
+        elif config["class_embed_type"] == "timestep" or config["class_embed_type"] == "projection":
+            new_checkpoint["class_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
+            new_checkpoint["class_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
+            new_checkpoint["class_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
+            new_checkpoint["class_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
+        else:
+            raise NotImplementedError(f"Not implemented `class_embed_type`: {config['class_embed_type']}")
 
     new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
     new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
