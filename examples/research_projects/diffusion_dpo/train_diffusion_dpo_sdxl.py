@@ -444,7 +444,7 @@ def parse_args(input_args=None):
 
     if args.dataset_name is None:
         raise ValueError("Must provide a `dataset_name`.")
-        
+
     if args.is_turbo:
         assert 'turbo' in args.pretrained_model_name_or_path
 
@@ -558,7 +558,7 @@ def main(args):
 
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    
+
     def enforce_zero_terminal_snr(scheduler):
         # Modified from https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_ddpm.py#L93
         # Original implementation https://arxiv.org/pdf/2305.08891.pdf
@@ -580,14 +580,14 @@ def main(args):
         alphas_bar = alphas_bar_sqrt ** 2
         alphas = alphas_bar[1:] / alphas_bar[:-1]
         alphas = torch.cat([alphas_bar[0:1], alphas])
-    
+
         alphas_cumprod = torch.cumprod(alphas, dim=0)
         scheduler.alphas_cumprod = alphas_cumprod
         return 
-    
+
     if args.is_turbo:
         enforce_zero_terminal_snr(noise_scheduler)
-    
+
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
