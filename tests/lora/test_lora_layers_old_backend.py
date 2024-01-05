@@ -1492,7 +1492,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_lora_processors(self):
+    def test_lora_at_different_scales(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -1509,9 +1509,6 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         # make sure we can set a list of attention processors
         model.load_attn_procs(lora_params)
         model.to(torch_device)
-
-        # test that attn processors can be set to itself
-        model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
@@ -1589,7 +1586,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
 
 
 @deprecate_after_peft_backend
-class UNet3DConditionModelTests(unittest.TestCase):
+class UNet3DConditionLoRAModelTests(unittest.TestCase):
     model_class = UNet3DConditionModel
     main_input_name = "sample"
 
@@ -1632,7 +1629,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_lora_processors(self):
+    def test_lora_at_different_scales(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["attention_head_dim"] = 8
@@ -1648,9 +1645,6 @@ class UNet3DConditionModelTests(unittest.TestCase):
         # make sure we can set a list of attention processors
         model.load_attn_procs(unet_lora_params)
         model.to(torch_device)
-
-        # test that attn processors can be set to itself
-        model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
