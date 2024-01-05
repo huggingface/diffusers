@@ -54,8 +54,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 | LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
 | AnimateDiff ControlNet Pipeline                                                                                                    | Combines AnimateDiff with precise motion control using ControlNets                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff ControlNet Pipeline](#animatediff-controlnet-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SKboYeGjEQmQPWoFC0aLYpBlYdHXkvAu?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) and [Edoardo Botta](https://github.com/EdoardoBotta) |
 |   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
-|   Null-Text Inversion Pipeline  | Implement [Null-text Inversion for Editing Real Images using Guided Diffusion Models](https://arxiv.org/abs/2211.09794) as a pipeline.                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Null-Text Inversion](https://github.com/google/prompt-to-prompt/)      | - |              [Junsheng Luan](https://github.com/Junsheng121) |
-
+|   Instaflow Pipeline                                                                                                    | Implementation of [InstaFlow! One-Step Stable Diffusion with Rectified Flow](https://arxiv.org/abs/2309.06380)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Instaflow Pipeline](#instaflow-pipeline)      | - |              [Ayush Mangal](https://github.com/ayushtues) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -3104,6 +3103,48 @@ output_image = PIL.Image.fromarray(output)
 output_image.save("./output.png")
 
 ```
+
+### Instaflow Pipeline
+InstaFlow is an ultra-fast, one-step image generator that achieves image quality close to Stable Diffusion, significantly reducing the demand of computational resources. This efficiency is made possible through a recent [Rectified Flow](https://github.com/gnobitab/RectifiedFlow) technique, which trains probability flows with straight trajectories, hence inherently requiring only a single step for fast inference.
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+
+pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float32, custom_pipeline="instaflow_one_step")
+pipe.do_lora() ### use dreambooth lora for better quality
+pipe.to("cuda")  ### if GPU is not available, comment this line
+prompt = "A hyper-realistic photo of a cute cat."
+
+images = pipe(prompt=prompt,
+            num_inference_steps=1,
+            guidance_scale=0.0).images
+images[0].save("./image.png")
+```
+![image8](https://github.com/huggingface/diffusers/assets/43698245/2bcd7fcd-cfb8-46ce-8e3a-f6490bfba24c)
+
+
+### Instaflow Pipeline
+InstaFlow is an ultra-fast, one-step image generator that achieves image quality close to Stable Diffusion, significantly reducing the demand of computational resources. This efficiency is made possible through a recent [Rectified Flow](https://github.com/gnobitab/RectifiedFlow) technique, which trains probability flows with straight trajectories, hence inherently requiring only a single step for fast inference.
+
+```python
+from diffusers import DiffusionPipeline
+import torch
+
+
+pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float32, custom_pipeline="instaflow_one_step")
+pipe.do_lora() ### use dreambooth lora for better quality
+pipe.to("cuda")  ### if GPU is not available, comment this line
+prompt = "A hyper-realistic photo of a cute cat."
+
+images = pipe(prompt=prompt,
+            num_inference_steps=1,
+            guidance_scale=0.0).images
+images[0].save("./image.png")
+```
+![image8](https://github.com/huggingface/diffusers/assets/43698245/2bcd7fcd-cfb8-46ce-8e3a-f6490bfba24c)
+
 
 ### Null-Text Inversion pipeline
 
