@@ -457,23 +457,8 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
-    # InstructPix2Pix uses an additional image for conditioning. To accommodate that,
-    # it uses 8 channels (instead of 4) in the first (conv) layer of the UNet. This UNet is
-    # then fine-tuned on the custom InstructPix2Pix dataset. This modified UNet is initialized
-    # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
-    # initialized to zero.
-    logger.info("Initializing the InstructPix2Pix UNet from the pretrained UNet.")
-    in_channels = 8
-    out_channels = unet.conv_in.out_channels
-    unet.register_to_config(in_channels=in_channels)
 
-    with torch.no_grad():
-        new_conv_in = nn.Conv2d(
-            in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
         )
-        new_conv_in.weight.zero_()
-        new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
-        unet.conv_in = new_conv_in
 
     # Freeze vae and text_encoder
     vae.requires_grad_(False)
