@@ -90,12 +90,17 @@ def import_model_class_from_model_name_or_path(
         raise ValueError(f"{model_class} is not supported.")
 
 
-def log_validation(args, unet, accelerator, weight_dtype, epoch, is_final_validation=False):
+def log_validation(args, unet, vae, accelerator, weight_dtype, epoch, is_final_validation=False):
     logger.info(f"Running validation... \n Generating images with prompts:\n" f" {VALIDATION_PROMPTS}.")
+
+    if is_final_validation:
+        if args.mixed_precision == "fp16":
+            vae.to(weight_dtype)
 
     # create pipeline
     pipeline = DiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
+        vae=vae,
         revision=args.revision,
         variant=args.variant,
         torch_dtype=weight_dtype,
@@ -1010,7 +1015,7 @@ def main(args):
 
                     if args.run_validation and global_step % args.validation_steps == 0:
                         log_validation(
-                            args, unet=unet, accelerator=accelerator, weight_dtype=weight_dtype, epoch=epoch
+                            args, unet=unet, vae=vae, accelerator=accelerator, weight_dtype=weight_dtype, epoch=epoch
                         )
 
             logs = {
@@ -1045,6 +1050,7 @@ def main(args):
             log_validation(
                 args,
                 unet=None,
+                vae=vae,
                 accelerator=accelerator,
                 weight_dtype=weight_dtype,
                 epoch=epoch,
