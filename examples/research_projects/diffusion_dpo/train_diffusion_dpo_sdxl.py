@@ -702,7 +702,7 @@ def main(args):
     # Preprocessing the datasets.
     train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
     train_crop = transforms.RandomCrop(args.resolution) if args.random_crop else transforms.CenterCrop(args.resolution)
-    train_flip = transforms.RandomHorizontalFlip(p=1.0)
+    train_flip = transforms.RandomHorizontalFlip(p=0.5)
     to_tensor = transforms.ToTensor()
     normalize = transforms.Normalize([0.5], [0.5])
 
