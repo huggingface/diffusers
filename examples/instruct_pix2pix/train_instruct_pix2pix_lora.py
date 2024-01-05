@@ -1007,7 +1007,8 @@ def main():
             revision=args.revision,
             variant=args.variant,
         )
-        pipeline.save_pretrained(args.output_dir)
+        # store only LORA layers
+        unet.save_attn_procs(args.output_dir)
 
         if args.push_to_hub:
             upload_folder(
