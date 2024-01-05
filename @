@@ -681,10 +681,8 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        if timesteps.dtype not in [torch.int16, torch.int32, torch.int64]:
-            raise ValueError(
-                f"{self.__class__.__name__} does not support using a scheduler of type {self.scheduler.__class__.__name__}. Please make sure to use one of 'DDIMScheduler, PNDMScheduler, DDPMScheduler, DEISMultistepScheduler, UniPCMultistepScheduler, DPMSolverMultistepScheduler, DPMSolverSinlgestepScheduler'."
-            )
+        if not timesteps.dtype in [torch.int16, torch.int32, torch.int64]:
+            raise ValueError(f"{self.__class__.__name__} does not support using a scheduler of type {self.scheduler.__class__.__name__}. Please make sure to use one of 'DDIMScheduler, PNDMScheduler, DDPMScheduler, DEISMultistepScheduler, UniPCMultistepScheduler, DPMSolverMultistepScheduler, DPMSolverSinlgestepScheduler'.")
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
