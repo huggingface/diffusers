@@ -524,7 +524,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         spatial_stop_frequency: float = 0.25,
         temporal_stop_frequency: float = 0.25,
         generator: torch.Generator = None,
-        return_intermediate_results: bool = False,
     ):
         """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
 
@@ -551,8 +550,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             generator (`torch.Generator`, *optional*, defaults to `0.25`):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 FreeInit generation deterministic.
-            return_intermediate_results (`bool`, *optional*, defaults to `False`):
-                Whether or not to return intermediate sampling results for every FreeInit iteration.
         """
         self._free_init_num_iters = num_iters
         self._free_init_use_fast_sampling = use_fast_sampling
@@ -561,7 +558,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         self._free_init_spatial_stop_frequency = spatial_stop_frequency
         self._free_init_temporal_stop_frequency = temporal_stop_frequency
         self._free_init_generator = generator
-        self._free_init_return_intermediate_results = return_intermediate_results
 
     def disable_free_init(self):
         """Disables the FreeInit mechanism if enabled."""
@@ -742,7 +738,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         timesteps = denoise_args.get("timesteps")
         num_inference_steps = denoise_args.get("num_inference_steps")
 
-        video_latents = []
         latent_shape = (
             batch_size * num_videos_per_prompt,
             num_channels_latents,
@@ -800,16 +795,9 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
                 denoise_args.update({"latents": latents, "num_warmup_steps": num_warmup_steps})
                 latents = self._denoise_loop(**denoise_args)
 
-                # Whether or not to return intermediate generation results
-                if self._free_init_return_intermediate_results:
-                    video_latents.append(latents)
-
                 free_init_progress_bar.update()
 
-        if not self._free_init_return_intermediate_results:
-            video_latents = latents
-
-        return video_latents
+        return latents
 
     def _retrieve_video_frames(self, latents, output_type, return_dict):
         """Helper function to handle latents to output conversion."""
@@ -1084,10 +1072,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         else:
             latents = self._denoise_loop(**denoise_args)
 
-        if self.free_init_enabled and self._free_init_return_intermediate_results:
-            video = [self._retrieve_video_frames(latent, output_type, return_dict) for latent in latents]
-        else:
-            video = self._retrieve_video_frames(latents, output_type, return_dict)
+        video = self._retrieve_video_frames(latents, output_type, return_dict)
 
         # 9. Offload all models
         self.maybe_free_model_hooks()
