@@ -874,6 +874,7 @@ def main(args):
                 # (batch_size, 2*channels, h, w) -> (2*batch_size, channels, h, w)
                 pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                 feed_pixel_values = torch.cat(pixel_values.chunk(2, dim=1))
+                print(f"Max: {feed_pixel_values.max()} Min: {feed_pixel_values.min()}")
 
                 latents = []
                 for i in range(0, feed_pixel_values.shape[0], args.vae_encode_batch_size):
