@@ -143,27 +143,27 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
     @register_to_config
     def __init__(
-            self,
-            num_train_timesteps: int = 1000,
-            beta_start: float = 0.0001,
-            beta_end: float = 0.02,
-            beta_schedule: str = "linear",
-            trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
-            predictor_order: int = 2,
-            corrector_order: int = 2,
-            predictor_corrector_mode: str = 'PEC',
-            prediction_type: str = "epsilon",
-            tau_func: Optional[Callable] = None,
-            thresholding: bool = False,
-            dynamic_thresholding_ratio: float = 0.995,
-            sample_max_value: float = 1.0,
-            algorithm_type: str = "data_prediction",
-            lower_order_final: bool = True,
-            use_karras_sigmas: Optional[bool] = False,
-            lambda_min_clipped: float = -float("inf"),
-            variance_type: Optional[str] = None,
-            timestep_spacing: str = "linspace",
-            steps_offset: int = 0,
+        self,
+        num_train_timesteps: int = 1000,
+        beta_start: float = 0.0001,
+        beta_end: float = 0.02,
+        beta_schedule: str = "linear",
+        trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
+        predictor_order: int = 2,
+        corrector_order: int = 2,
+        predictor_corrector_mode: str = "PEC",
+        prediction_type: str = "epsilon",
+        tau_func: Optional[Callable] = None,
+        thresholding: bool = False,
+        dynamic_thresholding_ratio: float = 0.995,
+        sample_max_value: float = 1.0,
+        algorithm_type: str = "data_prediction",
+        lower_order_final: bool = True,
+        use_karras_sigmas: Optional[bool] = False,
+        lambda_min_clipped: float = -float("inf"),
+        variance_type: Optional[str] = None,
+        timestep_spacing: str = "linspace",
+        steps_offset: int = 0,
     ):
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
@@ -171,9 +171,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             self.betas = torch.linspace(beta_start, beta_end, num_train_timesteps, dtype=torch.float32)
         elif beta_schedule == "scaled_linear":
             # this schedule is very specific to the latent diffusion model.
-            self.betas = (
-                    torch.linspace(beta_start ** 0.5, beta_end ** 0.5, num_train_timesteps, dtype=torch.float32) ** 2
-            )
+            self.betas = torch.linspace(beta_start**0.5, beta_end**0.5, num_train_timesteps, dtype=torch.float32) ** 2
         elif beta_schedule == "squaredcos_cap_v2":
             # Glide cosine schedule
             self.betas = betas_for_alpha_bar(num_train_timesteps)
@@ -265,8 +263,8 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.num_inference_steps = len(timesteps)
 
         self.model_outputs = [
-                                 None,
-                             ] * max(self.config.predictor_order, self.config.corrector_order - 1)
+            None,
+        ] * max(self.config.predictor_order, self.config.corrector_order - 1)
         self.lower_order_nums = 0
         self.last_sample = None
 
@@ -355,7 +353,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         return sigmas
 
     def convert_model_output(
-            self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
+        self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
     ) -> torch.FloatTensor:
         """
         Convert the model output to the corresponding type the DPMSolver/DPMSolver++ algorithm needs. DPM-Solver is
@@ -444,15 +442,19 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             return torch.exp(-interval_end) * (torch.exp(interval_end - interval_start) - 1)
         elif order == 1:
             return torch.exp(-interval_end) * (
-                        (interval_start + 1) * torch.exp(interval_end - interval_start) - (interval_end + 1))
+                (interval_start + 1) * torch.exp(interval_end - interval_start) - (interval_end + 1)
+            )
         elif order == 2:
             return torch.exp(-interval_end) * (
-                        (interval_start ** 2 + 2 * interval_start + 2) * torch.exp(interval_end - interval_start) - (
-                            interval_end ** 2 + 2 * interval_end + 2))
+                (interval_start**2 + 2 * interval_start + 2) * torch.exp(interval_end - interval_start)
+                - (interval_end**2 + 2 * interval_end + 2)
+            )
         elif order == 3:
             return torch.exp(-interval_end) * (
-                        (interval_start ** 3 + 3 * interval_start ** 2 + 6 * interval_start + 6) * torch.exp(
-                    interval_end - interval_start) - (interval_end ** 3 + 3 * interval_end ** 2 + 6 * interval_end + 6))
+                (interval_start**3 + 3 * interval_start**2 + 6 * interval_start + 6)
+                * torch.exp(interval_end - interval_start)
+                - (interval_end**3 + 3 * interval_end**2 + 6 * interval_end + 6)
+            )
 
     def get_coefficients_exponential_positive(self, order, interval_start, interval_end, tau):
         """
@@ -461,24 +463,42 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         assert order in [0, 1, 2, 3], "order is only supported for 0, 1, 2 and 3"
 
         # after change of variable(cov)
-        interval_end_cov = (1 + tau ** 2) * interval_end
-        interval_start_cov = (1 + tau ** 2) * interval_start
+        interval_end_cov = (1 + tau**2) * interval_end
+        interval_start_cov = (1 + tau**2) * interval_start
 
         if order == 0:
-            return torch.exp(interval_end_cov) * (1 - torch.exp(-(interval_end_cov - interval_start_cov))) / (
-            (1 + tau ** 2))
+            return (
+                torch.exp(interval_end_cov) * (1 - torch.exp(-(interval_end_cov - interval_start_cov))) / (1 + tau**2)
+            )
         elif order == 1:
-            return torch.exp(interval_end_cov) * ((interval_end_cov - 1) - (interval_start_cov - 1) * torch.exp(
-                -(interval_end_cov - interval_start_cov))) / ((1 + tau ** 2) ** 2)
+            return (
+                torch.exp(interval_end_cov)
+                * (
+                    (interval_end_cov - 1)
+                    - (interval_start_cov - 1) * torch.exp(-(interval_end_cov - interval_start_cov))
+                )
+                / ((1 + tau**2) ** 2)
+            )
         elif order == 2:
-            return torch.exp(interval_end_cov) * ((interval_end_cov ** 2 - 2 * interval_end_cov + 2) - (
-                        interval_start_cov ** 2 - 2 * interval_start_cov + 2) * torch.exp(
-                -(interval_end_cov - interval_start_cov))) / ((1 + tau ** 2) ** 3)
+            return (
+                torch.exp(interval_end_cov)
+                * (
+                    (interval_end_cov**2 - 2 * interval_end_cov + 2)
+                    - (interval_start_cov**2 - 2 * interval_start_cov + 2)
+                    * torch.exp(-(interval_end_cov - interval_start_cov))
+                )
+                / ((1 + tau**2) ** 3)
+            )
         elif order == 3:
-            return torch.exp(interval_end_cov) * (
-                        (interval_end_cov ** 3 - 3 * interval_end_cov ** 2 + 6 * interval_end_cov - 6) - (
-                            interval_start_cov ** 3 - 3 * interval_start_cov ** 2 + 6 * interval_start_cov - 6) * torch.exp(
-                    -(interval_end_cov - interval_start_cov))) / ((1 + tau ** 2) ** 4)
+            return (
+                torch.exp(interval_end_cov)
+                * (
+                    (interval_end_cov**3 - 3 * interval_end_cov**2 + 6 * interval_end_cov - 6)
+                    - (interval_start_cov**3 - 3 * interval_start_cov**2 + 6 * interval_start_cov - 6)
+                    * torch.exp(-(interval_end_cov - interval_start_cov))
+                )
+                / ((1 + tau**2) ** 4)
+            )
 
     def lagrange_polynomial_coefficient(self, order, lambda_list):
         """
@@ -490,86 +510,127 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         if order == 0:
             return [[1]]
         elif order == 1:
-            return [[1 / (lambda_list[0] - lambda_list[1]), -lambda_list[1] / (lambda_list[0] - lambda_list[1])],
-                    [1 / (lambda_list[1] - lambda_list[0]), -lambda_list[0] / (lambda_list[1] - lambda_list[0])]]
+            return [
+                [1 / (lambda_list[0] - lambda_list[1]), -lambda_list[1] / (lambda_list[0] - lambda_list[1])],
+                [1 / (lambda_list[1] - lambda_list[0]), -lambda_list[0] / (lambda_list[1] - lambda_list[0])],
+            ]
         elif order == 2:
             denominator1 = (lambda_list[0] - lambda_list[1]) * (lambda_list[0] - lambda_list[2])
             denominator2 = (lambda_list[1] - lambda_list[0]) * (lambda_list[1] - lambda_list[2])
             denominator3 = (lambda_list[2] - lambda_list[0]) * (lambda_list[2] - lambda_list[1])
-            return [[1 / denominator1,
-                     (-lambda_list[1] - lambda_list[2]) / denominator1,
-                     lambda_list[1] * lambda_list[2] / denominator1],
-
-                    [1 / denominator2,
-                     (-lambda_list[0] - lambda_list[2]) / denominator2,
-                     lambda_list[0] * lambda_list[2] / denominator2],
-
-                    [1 / denominator3,
-                     (-lambda_list[0] - lambda_list[1]) / denominator3,
-                     lambda_list[0] * lambda_list[1] / denominator3]
-                    ]
+            return [
+                [
+                    1 / denominator1,
+                    (-lambda_list[1] - lambda_list[2]) / denominator1,
+                    lambda_list[1] * lambda_list[2] / denominator1,
+                ],
+                [
+                    1 / denominator2,
+                    (-lambda_list[0] - lambda_list[2]) / denominator2,
+                    lambda_list[0] * lambda_list[2] / denominator2,
+                ],
+                [
+                    1 / denominator3,
+                    (-lambda_list[0] - lambda_list[1]) / denominator3,
+                    lambda_list[0] * lambda_list[1] / denominator3,
+                ],
+            ]
         elif order == 3:
-            denominator1 = (lambda_list[0] - lambda_list[1]) * (lambda_list[0] - lambda_list[2]) * (
-                        lambda_list[0] - lambda_list[3])
-            denominator2 = (lambda_list[1] - lambda_list[0]) * (lambda_list[1] - lambda_list[2]) * (
-                        lambda_list[1] - lambda_list[3])
-            denominator3 = (lambda_list[2] - lambda_list[0]) * (lambda_list[2] - lambda_list[1]) * (
-                        lambda_list[2] - lambda_list[3])
-            denominator4 = (lambda_list[3] - lambda_list[0]) * (lambda_list[3] - lambda_list[1]) * (
-                        lambda_list[3] - lambda_list[2])
-            return [[1 / denominator1,
-                     (-lambda_list[1] - lambda_list[2] - lambda_list[3]) / denominator1,
-                     (lambda_list[1] * lambda_list[2] + lambda_list[1] * lambda_list[3] + lambda_list[2] * lambda_list[
-                         3]) / denominator1,
-                     (-lambda_list[1] * lambda_list[2] * lambda_list[3]) / denominator1],
-
-                    [1 / denominator2,
-                     (-lambda_list[0] - lambda_list[2] - lambda_list[3]) / denominator2,
-                     (lambda_list[0] * lambda_list[2] + lambda_list[0] * lambda_list[3] + lambda_list[2] * lambda_list[
-                         3]) / denominator2,
-                     (-lambda_list[0] * lambda_list[2] * lambda_list[3]) / denominator2],
-
-                    [1 / denominator3,
-                     (-lambda_list[0] - lambda_list[1] - lambda_list[3]) / denominator3,
-                     (lambda_list[0] * lambda_list[1] + lambda_list[0] * lambda_list[3] + lambda_list[1] * lambda_list[
-                         3]) / denominator3,
-                     (-lambda_list[0] * lambda_list[1] * lambda_list[3]) / denominator3],
-
-                    [1 / denominator4,
-                     (-lambda_list[0] - lambda_list[1] - lambda_list[2]) / denominator4,
-                     (lambda_list[0] * lambda_list[1] + lambda_list[0] * lambda_list[2] + lambda_list[1] * lambda_list[
-                         2]) / denominator4,
-                     (-lambda_list[0] * lambda_list[1] * lambda_list[2]) / denominator4]
-
-                    ]
+            denominator1 = (
+                (lambda_list[0] - lambda_list[1])
+                * (lambda_list[0] - lambda_list[2])
+                * (lambda_list[0] - lambda_list[3])
+            )
+            denominator2 = (
+                (lambda_list[1] - lambda_list[0])
+                * (lambda_list[1] - lambda_list[2])
+                * (lambda_list[1] - lambda_list[3])
+            )
+            denominator3 = (
+                (lambda_list[2] - lambda_list[0])
+                * (lambda_list[2] - lambda_list[1])
+                * (lambda_list[2] - lambda_list[3])
+            )
+            denominator4 = (
+                (lambda_list[3] - lambda_list[0])
+                * (lambda_list[3] - lambda_list[1])
+                * (lambda_list[3] - lambda_list[2])
+            )
+            return [
+                [
+                    1 / denominator1,
+                    (-lambda_list[1] - lambda_list[2] - lambda_list[3]) / denominator1,
+                    (
+                        lambda_list[1] * lambda_list[2]
+                        + lambda_list[1] * lambda_list[3]
+                        + lambda_list[2] * lambda_list[3]
+                    )
+                    / denominator1,
+                    (-lambda_list[1] * lambda_list[2] * lambda_list[3]) / denominator1,
+                ],
+                [
+                    1 / denominator2,
+                    (-lambda_list[0] - lambda_list[2] - lambda_list[3]) / denominator2,
+                    (
+                        lambda_list[0] * lambda_list[2]
+                        + lambda_list[0] * lambda_list[3]
+                        + lambda_list[2] * lambda_list[3]
+                    )
+                    / denominator2,
+                    (-lambda_list[0] * lambda_list[2] * lambda_list[3]) / denominator2,
+                ],
+                [
+                    1 / denominator3,
+                    (-lambda_list[0] - lambda_list[1] - lambda_list[3]) / denominator3,
+                    (
+                        lambda_list[0] * lambda_list[1]
+                        + lambda_list[0] * lambda_list[3]
+                        + lambda_list[1] * lambda_list[3]
+                    )
+                    / denominator3,
+                    (-lambda_list[0] * lambda_list[1] * lambda_list[3]) / denominator3,
+                ],
+                [
+                    1 / denominator4,
+                    (-lambda_list[0] - lambda_list[1] - lambda_list[2]) / denominator4,
+                    (
+                        lambda_list[0] * lambda_list[1]
+                        + lambda_list[0] * lambda_list[2]
+                        + lambda_list[1] * lambda_list[2]
+                    )
+                    / denominator4,
+                    (-lambda_list[0] * lambda_list[1] * lambda_list[2]) / denominator4,
+                ],
+            ]
 
     def get_coefficients_fn(self, order, interval_start, interval_end, lambda_list, tau):
         assert order in [1, 2, 3, 4]
-        assert order == len(lambda_list), 'the length of lambda list must be equal to the order'
+        assert order == len(lambda_list), "the length of lambda list must be equal to the order"
         coefficients = []
         lagrange_coefficient = self.lagrange_polynomial_coefficient(order - 1, lambda_list)
         for i in range(order):
             coefficient = 0
             for j in range(order):
                 if self.predict_x0:
-
                     coefficient += lagrange_coefficient[i][j] * self.get_coefficients_exponential_positive(
-                        order - 1 - j, interval_start, interval_end, tau)
+                        order - 1 - j, interval_start, interval_end, tau
+                    )
                 else:
                     coefficient += lagrange_coefficient[i][j] * self.get_coefficients_exponential_negative(
-                        order - 1 - j, interval_start, interval_end)
+                        order - 1 - j, interval_start, interval_end
+                    )
             coefficients.append(coefficient)
-        assert len(coefficients) == order, 'the length of coefficients does not match the order'
+        assert len(coefficients) == order, "the length of coefficients does not match the order"
         return coefficients
 
     def stochastic_adams_bashforth_update(
-            self,
-            model_output: torch.FloatTensor,
-            prev_timestep: int,
-            sample: torch.FloatTensor,
-            noise: torch.FloatTensor,
-            order: int,
-            tau: torch.FloatTensor,
+        self,
+        model_output: torch.FloatTensor,
+        prev_timestep: int,
+        sample: torch.FloatTensor,
+        noise: torch.FloatTensor,
+        order: int,
+        tau: torch.FloatTensor,
     ) -> torch.FloatTensor:
         """
         One step for the SA-Predictor.
@@ -608,35 +669,45 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         x = sample
 
         if self.predict_x0:
-            if order == 2:  ## if order = 2 we do a modification that does not influence the convergence order similar to unipc. Note: This is used only for few steps sampling.
+            if (
+                order == 2
+            ):  ## if order = 2 we do a modification that does not influence the convergence order similar to unipc. Note: This is used only for few steps sampling.
                 # The added term is O(h^3). Empirically we find it will slightly improve the image quality.
                 # ODE case
                 # gradient_coefficients[0] += 1.0 * torch.exp(lambda_t) * (h ** 2 / 2 - (h - 1 + torch.exp(-h))) / (ns.marginal_lambda(t_prev_list[-1]) - ns.marginal_lambda(t_prev_list[-2]))
                 # gradient_coefficients[1] -= 1.0 * torch.exp(lambda_t) * (h ** 2 / 2 - (h - 1 + torch.exp(-h))) / (ns.marginal_lambda(t_prev_list[-1]) - ns.marginal_lambda(t_prev_list[-2]))
-                gradient_coefficients[0] += 1.0 * torch.exp((1 + tau ** 2) * lambda_t) * (
-                            h ** 2 / 2 - (h * (1 + tau ** 2) - 1 + torch.exp((1 + tau ** 2) * (-h))) / (
-                                (1 + tau ** 2) ** 2)) / (self.lambda_t[timestep_list[-1]] - self.lambda_t[
-                    timestep_list[-2]])
-                gradient_coefficients[1] -= 1.0 * torch.exp((1 + tau ** 2) * lambda_t) * (
-                            h ** 2 / 2 - (h * (1 + tau ** 2) - 1 + torch.exp((1 + tau ** 2) * (-h))) / (
-                                (1 + tau ** 2) ** 2)) / (self.lambda_t[timestep_list[-1]] - self.lambda_t[
-                    timestep_list[-2]])
+                gradient_coefficients[0] += (
+                    1.0
+                    * torch.exp((1 + tau**2) * lambda_t)
+                    * (h**2 / 2 - (h * (1 + tau**2) - 1 + torch.exp((1 + tau**2) * (-h))) / ((1 + tau**2) ** 2))
+                    / (self.lambda_t[timestep_list[-1]] - self.lambda_t[timestep_list[-2]])
+                )
+                gradient_coefficients[1] -= (
+                    1.0
+                    * torch.exp((1 + tau**2) * lambda_t)
+                    * (h**2 / 2 - (h * (1 + tau**2) - 1 + torch.exp((1 + tau**2) * (-h))) / ((1 + tau**2) ** 2))
+                    / (self.lambda_t[timestep_list[-1]] - self.lambda_t[timestep_list[-2]])
+                )
 
         for i in range(order):
             if self.predict_x0:
-
-                gradient_part += (1 + tau ** 2) * sigma_t * torch.exp(- tau ** 2 * lambda_t) * gradient_coefficients[
-                    i] * model_output_list[-(i + 1)]
+                gradient_part += (
+                    (1 + tau**2)
+                    * sigma_t
+                    * torch.exp(-(tau**2) * lambda_t)
+                    * gradient_coefficients[i]
+                    * model_output_list[-(i + 1)]
+                )
             else:
-                gradient_part += -(1 + tau ** 2) * alpha_t * gradient_coefficients[i] * model_output_list[-(i + 1)]
+                gradient_part += -(1 + tau**2) * alpha_t * gradient_coefficients[i] * model_output_list[-(i + 1)]
 
         if self.predict_x0:
-            noise_part = sigma_t * torch.sqrt(1 - torch.exp(-2 * tau ** 2 * h)) * noise
+            noise_part = sigma_t * torch.sqrt(1 - torch.exp(-2 * tau**2 * h)) * noise
         else:
             noise_part = tau * sigma_t * torch.sqrt(torch.exp(2 * h) - 1) * noise
 
         if self.predict_x0:
-            x_t = torch.exp(-tau ** 2 * h) * (sigma_t / sigma_s0) * x + gradient_part + noise_part
+            x_t = torch.exp(-(tau**2) * h) * (sigma_t / sigma_s0) * x + gradient_part + noise_part
         else:
             x_t = (alpha_t / alpha_s0) * x + gradient_part + noise_part
 
@@ -644,14 +715,14 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         return x_t
 
     def stochastic_adams_moulton_update(
-            self,
-            this_model_output: torch.FloatTensor,
-            this_timestep: int,
-            last_sample: torch.FloatTensor,
-            last_noise: torch.FloatTensor,
-            this_sample: torch.FloatTensor,
-            order: int,
-            tau: torch.FloatTensor,
+        self,
+        this_model_output: torch.FloatTensor,
+        this_timestep: int,
+        last_sample: torch.FloatTensor,
+        last_noise: torch.FloatTensor,
+        this_sample: torch.FloatTensor,
+        order: int,
+        tau: torch.FloatTensor,
     ) -> torch.FloatTensor:
         """
         One step for the SA-Corrector.
@@ -694,32 +765,43 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         x = last_sample
 
         if self.predict_x0:
-            if order == 2:  ## if order = 2 we do a modification that does not influence the convergence order similar to UniPC. Note: This is used only for few steps sampling.
+            if (
+                order == 2
+            ):  ## if order = 2 we do a modification that does not influence the convergence order similar to UniPC. Note: This is used only for few steps sampling.
                 # The added term is O(h^3). Empirically we find it will slightly improve the image quality.
                 # ODE case
                 # gradient_coefficients[0] += 1.0 * torch.exp(lambda_t) * (h / 2 - (h - 1 + torch.exp(-h)) / h)
                 # gradient_coefficients[1] -= 1.0 * torch.exp(lambda_t) * (h / 2 - (h - 1 + torch.exp(-h)) / h)
-                gradient_coefficients[0] += 1.0 * torch.exp((1 + tau ** 2) * lambda_t) * (
-                            h / 2 - (h * (1 + tau ** 2) - 1 + torch.exp((1 + tau ** 2) * (-h))) / (
-                                (1 + tau ** 2) ** 2 * h))
-                gradient_coefficients[1] -= 1.0 * torch.exp((1 + tau ** 2) * lambda_t) * (
-                            h / 2 - (h * (1 + tau ** 2) - 1 + torch.exp((1 + tau ** 2) * (-h))) / (
-                                (1 + tau ** 2) ** 2 * h))
+                gradient_coefficients[0] += (
+                    1.0
+                    * torch.exp((1 + tau**2) * lambda_t)
+                    * (h / 2 - (h * (1 + tau**2) - 1 + torch.exp((1 + tau**2) * (-h))) / ((1 + tau**2) ** 2 * h))
+                )
+                gradient_coefficients[1] -= (
+                    1.0
+                    * torch.exp((1 + tau**2) * lambda_t)
+                    * (h / 2 - (h * (1 + tau**2) - 1 + torch.exp((1 + tau**2) * (-h))) / ((1 + tau**2) ** 2 * h))
+                )
 
         for i in range(order):
             if self.predict_x0:
-                gradient_part += (1 + tau ** 2) * sigma_t * torch.exp(- tau ** 2 * lambda_t) * gradient_coefficients[
-                    i] * model_prev_list[-(i + 1)]
+                gradient_part += (
+                    (1 + tau**2)
+                    * sigma_t
+                    * torch.exp(-(tau**2) * lambda_t)
+                    * gradient_coefficients[i]
+                    * model_prev_list[-(i + 1)]
+                )
             else:
-                gradient_part += -(1 + tau ** 2) * alpha_t * gradient_coefficients[i] * model_prev_list[-(i + 1)]
+                gradient_part += -(1 + tau**2) * alpha_t * gradient_coefficients[i] * model_prev_list[-(i + 1)]
 
         if self.predict_x0:
-            noise_part = sigma_t * torch.sqrt(1 - torch.exp(-2 * tau ** 2 * h)) * last_noise
+            noise_part = sigma_t * torch.sqrt(1 - torch.exp(-2 * tau**2 * h)) * last_noise
         else:
             noise_part = tau * sigma_t * torch.sqrt(torch.exp(2 * h) - 1) * last_noise
 
         if self.predict_x0:
-            x_t = torch.exp(-tau ** 2 * h) * (sigma_t / sigma_s0) * x + gradient_part + noise_part
+            x_t = torch.exp(-(tau**2) * h) * (sigma_t / sigma_s0) * x + gradient_part + noise_part
         else:
             x_t = (alpha_t / alpha_s0) * x + gradient_part + noise_part
 
@@ -727,12 +809,12 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         return x_t
 
     def step(
-            self,
-            model_output: torch.FloatTensor,
-            timestep: int,
-            sample: torch.FloatTensor,
-            generator=None,
-            return_dict: bool = True,
+        self,
+        model_output: torch.FloatTensor,
+        timestep: int,
+        sample: torch.FloatTensor,
+        generator=None,
+        return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the sample with
@@ -769,9 +851,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = step_index.item()
 
-        use_corrector = (
-                step_index > 0 and self.last_sample is not None
-        )
+        use_corrector = step_index > 0 and self.last_sample is not None
 
         model_output_convert = self.convert_model_output(model_output, timestep, sample)
 

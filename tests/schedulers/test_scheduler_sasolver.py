@@ -68,7 +68,7 @@ class SASolverSchedulerTest(SchedulerCommonTest):
             assert abs(result_sum.item() - 329.20001220703125) < 1e-2
             assert abs(result_mean.item() - 0.4286458492279053) < 1e-3
         else:
-            print('None')
+            print("None")
 
     def test_full_loop_with_v_prediction(self):
         scheduler_class = self.scheduler_classes[0]
@@ -163,4 +163,4 @@ class SASolverSchedulerTest(SchedulerCommonTest):
             assert abs(result_sum.item() - 840.1239624023438) < 1e-2
             assert abs(result_mean.item() - 1.0939114093780518) < 1e-2
         else:
-            print('None')
+            print("None")
