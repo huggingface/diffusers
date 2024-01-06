@@ -949,8 +949,10 @@ class RAVEPipeline(
         guess_mode: bool,
         generator: Optional[torch.Generator] = None,
     ):
-        grids = []
-        control_grids = []
+        num_frames_per_grid = grid_size**2
+        total_frames = num_frames_per_grid * latents.size(0)
+        grid_frames = []
+        control_grid_frames = []
 
         for grid, control_grid in zip(latents, control_video):
             grid = grid.unsqueeze(0)
@@ -964,30 +966,24 @@ class RAVEPipeline(
             grid = torch.cat(grid.chunk(grid_size, dim=2), dim=0)
             control_grid = torch.cat(control_grid.chunk(grid_size, dim=2), dim=0)
 
-            grids.append(grid)
-            control_grids.append(control_grid)
+            grid_frames.append(grid)
+            control_grid_frames.append(control_grid)
 
-        latents = torch.cat(grids, dim=0)
-        control_video = torch.cat(control_grids, dim=0)
-
+        grid_frames = torch.cat(grid_frames)
+        control_grid_frames = torch.cat(control_grid_frames)
+        grid_frames_ = grid_frames.clone()
+        control_grid_frames_ = control_grid_frames.clone()
         rand_indices = torch.randperm(original_num_frames, generator=generator)
 
-        shuffled_latents = [None] * original_num_frames
-        shuffled_control_video = [None] * original_num_frames
-
         for i in range(original_num_frames):
-            shuffled_latents[rand_indices[i]] = latents[indices[i]].unsqueeze(0)
-            shuffled_control_video[rand_indices[i]] = control_video[indices[i]].unsqueeze(0)
+            grid_frames[rand_indices[i]] = grid_frames_[indices[i]]
+            control_grid_frames[rand_indices[i]] = control_grid_frames_[indices[i]]
 
-        shuffled_latents = torch.cat(shuffled_latents, dim=0)
-        shuffled_control_video = torch.cat(shuffled_control_video, dim=0)
+        shuffled_latents = []
+        shuffled_control_video = []
 
-        num_frames_per_grid = grid_size**2
-        grids = []
-        control_grids = []
-
-        for i in range(0, original_num_frames, num_frames_per_grid):
-            current_l = shuffled_latents[i : i + num_frames_per_grid]
+        for i in range(0, total_frames, num_frames_per_grid):
+            current_l = grid_frames[i : i + num_frames_per_grid]
             result_l = []
 
             for j in range(grid_size):
@@ -999,7 +995,7 @@ class RAVEPipeline(
                 result_l.append(intermediate_result)
             result_l = torch.cat(result_l, dim=1)
 
-            current_c = shuffled_control_video[i : i + num_frames_per_grid]
+            current_c = control_grid_frames[i : i + num_frames_per_grid]
             result_c = []
 
             for j in range(grid_size):
@@ -1011,11 +1007,11 @@ class RAVEPipeline(
                 result_c.append(intermediate_result)
             result_c = torch.cat(result_c, dim=1)
 
-            grids.append(result_l.unsqueeze(0))
-            control_grids.append(result_c.unsqueeze(0))
+            shuffled_latents.append(result_l.unsqueeze(0))
+            shuffled_control_video.append(result_c.unsqueeze(0))
 
-        shuffled_latents = torch.cat(grids, dim=0)
-        shuffled_control_video = torch.cat(control_grids, dim=0)
+        shuffled_latents = torch.cat(shuffled_latents, dim=0)
+        shuffled_control_video = torch.cat(shuffled_control_video, dim=0)
 
         if do_classifier_free_guidance and not guess_mode:
             shuffled_control_video = torch.cat([shuffled_control_video] * 2)
