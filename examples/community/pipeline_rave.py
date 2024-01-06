@@ -179,7 +179,7 @@ def prepare_image(image):
 
 @dataclass
 class RAVEPipelineOutput(BaseOutput):
-    videos: Union[List[List[Image.Image]], np.ndarray]
+    frames: Union[List[List[Image.Image]], np.ndarray]
 
 
 class RAVEPipeline(
@@ -1359,8 +1359,6 @@ class RAVEPipeline(
 
         latents = torch.cat(latents, dim=0)
 
-        print(video.shape, latents.shape, control_video.shape)
-
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
@@ -1384,7 +1382,7 @@ class RAVEPipeline(
             total=(num_frames + denoise_batch_size - 1) // denoise_batch_size
         ) as denoise_progress_bar:
             for denoise_batch_index in range(0, num_frames, denoise_batch_size):
-                current_latents = latents[denoise_batch_size : denoise_batch_index + denoise_batch_size]
+                current_latents = latents[denoise_batch_index : denoise_batch_index + denoise_batch_size]
                 processed_latents = self._batch_denoise_loop(
                     prompt_embeds=prompt_embeds,
                     negative_prompt_embeds=negative_prompt_embeds,
@@ -1437,4 +1435,4 @@ class RAVEPipeline(
         if not return_dict:
             return (video,)
 
-        return RAVEPipelineOutput(videos=video)
+        return RAVEPipelineOutput(frames=video)
