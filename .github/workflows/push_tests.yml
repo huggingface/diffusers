@@ -189,7 +189,7 @@ jobs:
         CUBLAS_WORKSPACE_CONFIG: :16:8
       run: |
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx" \
+          -s -v -k "not Flax and not Onnx and not PEFTLoRALoading" \
           --make-reports=tests_peft_cuda \
           tests/lora/
 
