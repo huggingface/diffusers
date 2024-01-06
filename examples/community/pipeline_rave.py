@@ -938,105 +938,89 @@ class RAVEPipeline(
     def num_timesteps(self):
         return self._num_timesteps
 
-    def _batch_denoise_loop(
+    def _shuffle_latents(
         self,
-        prompt_embeds,
-        negative_prompt_embeds,
-        latents,
-        control_video,
-        guidance_scale,
-        timesteps,
-        num_inference_steps,
-        guess_mode,
-        controlnet_keep,
-        controlnet_conditioning_scale,
-        added_cond_kwargs,
-        extra_step_kwargs,
-        num_warmup_steps,
-        callback,
-        callback_steps,
-        callback_on_step_end,
-        callback_on_step_end_tensor_inputs,
+        latents: torch.FloatTensor,
+        control_video: torch.FloatTensor,
+        grid_size: int,
+        original_num_frames: int,
+        indices: List[int],
+        do_classifier_free_guidance: bool,
+        guess_mode: bool,
+        generator: Optional[torch.Generator] = None,
     ):
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+        grids = []
+        control_grids = []
 
-                # controlnet(s) inference
-                if guess_mode and self.do_classifier_free_guidance:
-                    # Infer ControlNet only for the conditional batch.
-                    control_model_input = latents
-                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
-                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
-                else:
-                    control_model_input = latent_model_input
-                    controlnet_prompt_embeds = prompt_embeds
+        for grid, control_grid in zip(latents, control_video):
+            grid = grid.unsqueeze(0)
+            control_grid = control_grid.unsqueeze(0)
 
-                if isinstance(controlnet_keep[i], list):
-                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
-                else:
-                    controlnet_cond_scale = controlnet_conditioning_scale
-                    if isinstance(controlnet_cond_scale, list):
-                        controlnet_cond_scale = controlnet_cond_scale[0]
-                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
+            # Flatten across width dimension
+            grid = torch.cat(grid.chunk(grid_size, dim=3), dim=0)
+            control_grid = torch.cat(control_grid.chunk(grid_size, dim=3), dim=0)
 
-                down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    control_model_input,
-                    t,
-                    encoder_hidden_states=controlnet_prompt_embeds,
-                    controlnet_cond=control_video,
-                    conditioning_scale=cond_scale,
-                    guess_mode=guess_mode,
-                    return_dict=False,
-                )
+            # Flatten across height dimension
+            grid = torch.cat(grid.chunk(grid_size, dim=2), dim=0)
+            control_grid = torch.cat(control_grid.chunk(grid_size, dim=2), dim=0)
 
-                if guess_mode and self.do_classifier_free_guidance:
-                    # Infered ControlNet only for the conditional batch.
-                    # To apply the output of ControlNet to both the unconditional and conditional batches,
-                    # add 0 to the unconditional batch to keep it unchanged.
-                    down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
-                    mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
+            grids.append(grid)
+            control_grids.append(control_grid)
 
-                # predict the noise residual
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
-                    down_block_additional_residuals=down_block_res_samples,
-                    mid_block_additional_residual=mid_block_res_sample,
-                    added_cond_kwargs=added_cond_kwargs,
-                    return_dict=False,
-                )[0]
+        latents = torch.cat(grids, dim=0)
+        control_video = torch.cat(control_grids, dim=0)
 
-                # perform guidance
-                if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+        rand_indices = torch.randperm(original_num_frames, generator=generator)
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+        shuffled_latents = [None] * original_num_frames
+        shuffled_control_video = [None] * original_num_frames
 
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+        for i in range(original_num_frames):
+            shuffled_latents[rand_indices[i]] = latents[indices[i]].unsqueeze(0)
+            shuffled_control_video[rand_indices[i]] = control_video[indices[i]].unsqueeze(0)
 
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+        shuffled_latents = torch.cat(shuffled_latents, dim=0)
+        shuffled_control_video = torch.cat(shuffled_control_video, dim=0)
 
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
+        num_frames_per_grid = grid_size**2
+        grids = []
+        control_grids = []
 
-        return latents
+        for i in range(0, original_num_frames, num_frames_per_grid):
+            current_l = shuffled_latents[i : i + num_frames_per_grid]
+            result_l = []
+
+            for j in range(grid_size):
+                intermediate_result = []
+                for k in range(grid_size):
+                    index = j * grid_size + k
+                    intermediate_result.append(current_l[index])
+                intermediate_result = torch.cat(intermediate_result, dim=2)
+                result_l.append(intermediate_result)
+            result_l = torch.cat(result_l, dim=1)
+
+            current_c = shuffled_control_video[i : i + num_frames_per_grid]
+            result_c = []
+
+            for j in range(grid_size):
+                intermediate_result = []
+                for k in range(grid_size):
+                    index = j * grid_size + k
+                    intermediate_result.append(current_c[index])
+                intermediate_result = torch.cat(intermediate_result, dim=2)
+                result_c.append(intermediate_result)
+            result_c = torch.cat(result_c, dim=1)
+
+            grids.append(result_l.unsqueeze(0))
+            control_grids.append(result_c.unsqueeze(0))
+
+        shuffled_latents = torch.cat(grids, dim=0)
+        shuffled_control_video = torch.cat(control_grids, dim=0)
+
+        if do_classifier_free_guidance and not guess_mode:
+            shuffled_control_video = torch.cat([shuffled_control_video] * 2)
+
+        return shuffled_latents, shuffled_control_video, rand_indices
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -1075,7 +1059,7 @@ class RAVEPipeline(
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         # RAVE parameters
         grid_size: int = 2,
-        denoise_batch_size: int = 16,
+        use_shuffling: bool = True,
         vae_batch_size: int = 4,
         **kwargs,
     ):
@@ -1204,6 +1188,7 @@ class RAVEPipeline(
 
         width = width or video[0].size[0]
         height = height or video[0].size[1]
+        original_num_frames = len(video)
 
         # Hardcode restriction for the moment
         num_videos_per_prompt = 1
@@ -1376,36 +1361,97 @@ class RAVEPipeline(
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        result_latents = []
+        indices = torch.arange(original_num_frames)
 
-        with self.progress_bar(
-            total=(num_frames + denoise_batch_size - 1) // denoise_batch_size
-        ) as denoise_progress_bar:
-            for denoise_batch_index in range(0, num_frames, denoise_batch_size):
-                current_latents = latents[denoise_batch_index : denoise_batch_index + denoise_batch_size]
-                processed_latents = self._batch_denoise_loop(
-                    prompt_embeds=prompt_embeds,
-                    negative_prompt_embeds=negative_prompt_embeds,
-                    latents=current_latents,
-                    control_video=control_video,
-                    guidance_scale=guidance_scale,
-                    timesteps=timesteps,
-                    num_inference_steps=num_inference_steps,
+        with self.progress_bar(total=num_inference_steps) as progress_bar:
+            for i, t in enumerate(timesteps):
+                if use_shuffling:
+                    latents, control_video, indices = self._shuffle_latents(
+                        latents=latents,
+                        control_video=control_video,
+                        grid_size=grid_size,
+                        original_num_frames=original_num_frames,
+                        indices=indices,
+                        do_classifier_free_guidance=self.do_classifier_free_guidance,
+                        guess_mode=guess_mode,
+                        generator=generator,
+                    )
+
+                # expand the latents if we are doing classifier free guidance
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+                # controlnet(s) inference
+                if guess_mode and self.do_classifier_free_guidance:
+                    # Infer ControlNet only for the conditional batch.
+                    control_model_input = latents
+                    control_model_input = self.scheduler.scale_model_input(control_model_input, t)
+                    controlnet_prompt_embeds = prompt_embeds.chunk(2)[1]
+                else:
+                    control_model_input = latent_model_input
+                    controlnet_prompt_embeds = prompt_embeds
+
+                if isinstance(controlnet_keep[i], list):
+                    cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                else:
+                    controlnet_cond_scale = controlnet_conditioning_scale
+                    if isinstance(controlnet_cond_scale, list):
+                        controlnet_cond_scale = controlnet_cond_scale[0]
+                    cond_scale = controlnet_cond_scale * controlnet_keep[i]
+
+                down_block_res_samples, mid_block_res_sample = self.controlnet(
+                    control_model_input,
+                    t,
+                    encoder_hidden_states=controlnet_prompt_embeds,
+                    controlnet_cond=control_video,
+                    conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
-                    controlnet_keep=controlnet_keep,
-                    controlnet_conditioning_scale=controlnet_conditioning_scale,
-                    added_cond_kwargs=added_cond_kwargs,
-                    extra_step_kwargs=extra_step_kwargs,
-                    num_warmup_steps=num_warmup_steps,
-                    callback=callback,
-                    callback_steps=callback_steps,
-                    callback_on_step_end=callback_on_step_end,
-                    callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+                    return_dict=False,
                 )
-                result_latents.append(processed_latents)
-                denoise_progress_bar.update()
 
-        latents = torch.cat(result_latents, dim=0)
+                if guess_mode and self.do_classifier_free_guidance:
+                    # Infered ControlNet only for the conditional batch.
+                    # To apply the output of ControlNet to both the unconditional and conditional batches,
+                    # add 0 to the unconditional batch to keep it unchanged.
+                    down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
+                    mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
+
+                # predict the noise residual
+                noise_pred = self.unet(
+                    latent_model_input,
+                    t,
+                    encoder_hidden_states=prompt_embeds,
+                    cross_attention_kwargs=self.cross_attention_kwargs,
+                    down_block_additional_residuals=down_block_res_samples,
+                    mid_block_additional_residual=mid_block_res_sample,
+                    added_cond_kwargs=added_cond_kwargs,
+                    return_dict=False,
+                )[0]
+
+                # perform guidance
+                if self.do_classifier_free_guidance:
+                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                # compute the previous noisy sample x_t -> x_t-1
+                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+                    if callback is not None and i % callback_steps == 0:
+                        step_idx = i // getattr(self.scheduler, "order", 1)
+                        callback(step_idx, t, latents)
 
         # If we do sequential model offloading, let's offload unet and controlnet
         # manually for max memory savings
@@ -1414,25 +1460,25 @@ class RAVEPipeline(
             self.controlnet.to("cpu")
             torch.cuda.empty_cache()
 
-        if not output_type == "latent":
-            video = []
-            for i in range(0, num_frames, vae_batch_size):
-                current_latent = latents[i : i + vae_batch_size]
-                current_frames = self.vae.decode(
-                    current_latent / self.vae.config.scaling_factor, return_dict=False, generator=generator
-                )[0]
-                video.append(current_frames)
-            video = torch.cat(video, dim=0)
-        else:
-            video = latents
+        if output_type == "latent":
+            return RAVEPipelineOutput(frames=latents) if return_dict else (latents,)
+
+        video = []
+        for i in range(0, num_frames, vae_batch_size):
+            current_latent = latents[i : i + vae_batch_size]
+            current_frames = self.vae.decode(
+                current_latent / self.vae.config.scaling_factor, return_dict=False, generator=generator
+            )[0]
+            video.append(current_frames)
+        video = torch.cat(video, dim=0)
 
         video = self.image_processor.postprocess(video, output_type=output_type)
-        video = [frame for grid in video for frame in image_split(grid, grid_size, grid_size)]
+        shuffled_video = [frame for grid in video for frame in image_split(grid, grid_size, grid_size)]
+        shuffled_video = shuffled_video[:original_num_frames]
+
+        video = [shuffled_video[indices[i]] for i in range(original_num_frames)]
 
         # Offload all models
         self.maybe_free_model_hooks()
 
-        if not return_dict:
-            return (video,)
-
-        return RAVEPipelineOutput(frames=video)
+        return RAVEPipelineOutput(frames=video) if return_dict else (video,)
