@@ -146,9 +146,10 @@ class IPAdapterMixin:
                 self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
             elif subfolder is None:
                 logger.warning(
-                    "Cannot load an image encoder because `subfolder` is None. "
-                    "If you do not load an image_encoder, you must extract the"
+                    "Cannot load an image encoder because `subfolder` is None."
+                    " If you do not load an image_encoder, you must extract the"
                     " image embeddings from the input image and pass them as image_embeds to the pipeline."
+                    " This behaviour is intended only for the IP Adapter FaceID model."
                 )
             else:
                 raise ValueError("`image_encoder` cannot be None when using IP Adapters.")

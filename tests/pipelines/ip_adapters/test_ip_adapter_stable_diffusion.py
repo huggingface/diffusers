@@ -248,6 +248,25 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         ]
         assert processors == [True] * len(processors)
 
+    def test_unload_faceid(self):
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter("h94/IP-Adapter-FaceID", subfolder=None, weight_name="ip-adapter-faceid_sd15.bin")
+        pipeline.set_ip_adapter_scale(0.7)
+
+        pipeline.unload_ip_adapter()
+        pipeline.unload_lora_weights()
+
+        assert getattr(pipeline, "image_encoder") is None
+        assert getattr(pipeline, "feature_extractor") is None
+        processors = [
+            isinstance(attn_proc, (AttnProcessor, AttnProcessor2_0))
+            for name, attn_proc in pipeline.unet.attn_processors.items()
+        ]
+        assert processors == [True] * len(processors)
+
 
 @slow
 @require_torch_gpu

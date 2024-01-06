@@ -774,11 +774,10 @@ class UNet2DConditionLoadersMixin:
             AttnProcessor2_0,
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
-            LoRAAttnProcessor,
-            LoRAAttnProcessor2_0,
             LoRAIPAdapterAttnProcessor,
             LoRAIPAdapterAttnProcessor2_0,
         )
+        from ..models.lora import LoRALinearLayer
 
         use_lora = False
         if "proj.weight" in state_dict["image_proj"]:
@@ -802,7 +801,7 @@ class UNet2DConditionLoadersMixin:
 
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
-        key_id = 1
+        key_id = 1 if not use_lora else 0
         for name in self.attn_processors.keys():
             cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
             if name.startswith("mid_block"):
@@ -814,22 +813,67 @@ class UNet2DConditionLoadersMixin:
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = self.config.block_out_channels[block_id]
             if cross_attention_dim is None or "motion_modules" in name:
+                attn_processor_class = (
+                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                )
+                attn_procs[name] = attn_processor_class()
                 if use_lora:
-                    attn_processor_class = (
-                        LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
+                    rank = state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"].shape[0]
+                    attn_module = self
+                    for n in name.split(".")[:-1]:
+                        attn_module = getattr(attn_module, n)
+                    # Set the `lora_layer` attribute of the attention-related matrices.
+                    attn_module.to_q.set_lora_layer(
+                        LoRALinearLayer(
+                            in_features=attn_module.to_q.in_features,
+                            out_features=attn_module.to_q.out_features,
+                            rank=rank,
+                        )
                     )
-                    attn_procs[name] = attn_processor_class(
-                        hidden_size=hidden_size,
-                        cross_attention_dim=cross_attention_dim,
-                        rank=128,
-                    ).to(self.device, dtype=self.dtype)
-                else:
-                    attn_processor_class = (
-                        AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                    attn_module.to_k.set_lora_layer(
+                        LoRALinearLayer(
+                            in_features=attn_module.to_k.in_features,
+                            out_features=attn_module.to_k.out_features,
+                            rank=rank,
+                        )
                     )
-                    attn_procs[name] = attn_processor_class()
+                    attn_module.to_v.set_lora_layer(
+                        LoRALinearLayer(
+                            in_features=attn_module.to_v.in_features,
+                            out_features=attn_module.to_v.out_features,
+                            rank=rank,
+                        )
+                    )
+                    attn_module.to_out[0].set_lora_layer(
+                        LoRALinearLayer(
+                            in_features=attn_module.to_out[0].in_features,
+                            out_features=attn_module.to_out[0].out_features,
+                            rank=rank,
+                        )
+                    )
+
+                    value_dict = {}
+                    for k, module in attn_module.named_children():
+                        index = "."
+                        if not hasattr(module, "set_lora_layer"):
+                            index = ".0."
+                            module = module[0]
+                        lora_layer = getattr(module, "lora_layer")
+                        for lora_name, w in lora_layer.state_dict().items():
+                            value_dict.update(
+                                {
+                                    f"{k}{index}lora_layer.{lora_name}": state_dict["ip_adapter"][
+                                        f"{key_id}.{k}_lora.{lora_name}"
+                                    ]
+                                }
+                            )
+
+                    attn_module.load_state_dict(value_dict, strict=False)
+                    attn_module.to(dtype=self.dtype, device=self.device)
+                    key_id += 1
             else:
                 if use_lora:
+                    rank = state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"].shape[0]
                     attn_processor_class = (
                         LoRAIPAdapterAttnProcessor2_0
                         if hasattr(F, "scaled_dot_product_attention")
@@ -839,7 +883,7 @@ class UNet2DConditionLoadersMixin:
                         hidden_size=hidden_size,
                         cross_attention_dim=cross_attention_dim,
                         scale=1.0,
-                        rank=128,
+                        rank=rank,
                         num_tokens=num_image_text_embeds,
                     ).to(dtype=self.dtype, device=self.device)
 
@@ -861,7 +905,7 @@ class UNet2DConditionLoadersMixin:
                     value_dict.update({f"{k}": state_dict["ip_adapter"][f"{key_id}.{k}"]})
 
                 attn_procs[name].load_state_dict(value_dict)
-                key_id += 2
+                key_id += 2 if not use_lora else 1
 
         self.set_attn_processor(attn_procs)
 
