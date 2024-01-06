@@ -29,7 +29,6 @@ import numpy as np
 import PIL
 import requests
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
@@ -45,9 +44,9 @@ from transformers import CLIPTextModel, CLIPTokenizer
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInstructPix2PixPipeline, UNet2DConditionModel
+from diffusers.models.lora import LoRALinearLayer
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel
-from diffusers.models.lora import LoRALinearLayer
 from diffusers.utils import check_min_version, deprecate, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -581,7 +580,7 @@ def main():
 
     # train on only unet_lora_parameters
     optimizer = optimizer_cls(
-        unet_lora_parameters, 
+        unet_lora_parameters,
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
         weight_decay=args.adam_weight_decay,
