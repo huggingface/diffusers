@@ -487,7 +487,6 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         guidance_scale = guidance_scale.to(device, latents.dtype)
         guidance_scale = guidance_scale.repeat(batch_size * num_videos_per_prompt, 1)
         guidance_scale = _append_dims(guidance_scale, latents.ndim)
-        print(f"guidance scale: {guidance_scale}")
 
         self._guidance_scale = guidance_scale
 
