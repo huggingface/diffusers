@@ -37,11 +37,11 @@ source .env/bin/activate
 
 You should also install 🤗 Transformers because 🤗 Diffusers relies on its models:
 
+Note - PyTorch only supports Python 3.8 - 3.11 on Windows.
 <frameworkcontent>
 <pt>
 ```bash
 pip install diffusers["torch"] transformers
-Note - PyTorch doesn't support Python 3.12 on Windows. Please use Python 3.11 instead.
 ```
 </pt>
 <jax>
