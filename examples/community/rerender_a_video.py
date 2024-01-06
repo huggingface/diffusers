@@ -367,6 +367,25 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
 
         self.unet.set_attn_processor(attn_processor_dict)
 
+        flow_model = GMFlow(
+            feature_channels=128,
+            num_scales=1,
+            upsample_factor=8,
+            num_head=1,
+            attention_type="swin",
+            ffn_dim_expansion=4,
+            num_transformer_layers=6,
+        ).to("cuda")
+
+        checkpoint = torch.load(
+            "https://huggingface.co/Anonymous-sub/Rerender/resolve/main/models/gmflow_sintel-0c07dcb3.pth",
+            map_location=lambda storage, loc: storage,
+        )
+        weights = checkpoint["model"] if "model" in checkpoint else checkpoint
+        flow_model.load_state_dict(weights, strict=False)
+        flow_model.eval()
+        self.flow_model = flow_model
+
     # Modified from src/diffusers/pipelines/controlnet/pipeline_controlnet.StableDiffusionControlNetImg2ImgPipeline.check_inputs
     def check_inputs(
         self,
@@ -691,21 +710,6 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         """
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
-        flow_model = GMFlow(
-            feature_channels=128,
-            num_scales=1,
-            upsample_factor=8,
-            num_head=1,
-            attention_type="swin",
-            ffn_dim_expansion=4,
-            num_transformer_layers=6,
-        ).to("cuda")
-
-        checkpoint = torch.load("/path/to/gmflow_sintel-0c07dcb3.pth", map_location=lambda storage, loc: storage)
-        weights = checkpoint["model"] if "model" in checkpoint else checkpoint
-        flow_model.load_state_dict(weights, strict=False)
-        flow_model.eval()
-
         # align format for control guidance
         if not isinstance(control_guidance_start, list) and isinstance(control_guidance_end, list):
             control_guidance_start = len(control_guidance_end) * [control_guidance_start]
@@ -925,13 +929,13 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             prev_image = self.image_processor.preprocess(prev_image).to(dtype=torch.float32)
 
             warped_0, bwd_occ_0, bwd_flow_0 = get_warped_and_mask(
-                flow_model, first_image, image[0], first_result, False
+                self.flow_model, first_image, image[0], first_result, False
             )
             blend_mask_0 = blur(F.max_pool2d(bwd_occ_0, kernel_size=9, stride=1, padding=4))
             blend_mask_0 = torch.clamp(blend_mask_0 + bwd_occ_0, 0, 1)
 
             warped_pre, bwd_occ_pre, bwd_flow_pre = get_warped_and_mask(
-                flow_model, prev_image[0], image[0], prev_result, False
+                self.flow_model, prev_image[0], image[0], prev_result, False
             )
             blend_mask_pre = blur(F.max_pool2d(bwd_occ_pre, kernel_size=9, stride=1, padding=4))
             blend_mask_pre = torch.clamp(blend_mask_pre + bwd_occ_pre, 0, 1)
