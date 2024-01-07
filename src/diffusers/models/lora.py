@@ -356,15 +356,8 @@ class LoRACompatibleConv(nn.Conv2d):
             # make sure to the functional Conv2D function as otherwise torch.compile's graph will break
             # see: https://github.com/huggingface/diffusers/pull/4315
             if self.padding_mode != "zeros":
-                return F.conv2d(
-                    F.pad(hidden_states, self._reversed_padding_repeated_twice, mode=self.padding_mode),
-                    self.weight,
-                    self.bias,
-                    self.stride,
-                    (0, 0),
-                    self.dilation,
-                    self.groups,
-                )
+                hidden_states = F.pad(hidden_states, self._reversed_padding_repeated_twice, mode=self.padding_mode)
+                self.padding = (0, 0)
             return F.conv2d(
                 hidden_states, self.weight, self.bias, self.stride, self.padding, self.dilation, self.groups
             )
