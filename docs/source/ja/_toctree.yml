@@ -14,7 +14,7 @@
   - local: tutorials/autopipeline
     title: AutoPipeline
   - local: tutorials/basic_training
-    title: diffusionモデルのトレーニング
+    title: 拡散モデルのトレーニング
   - local: tutorials/using_peft_for_inference
     title: PEFTによる推論
   title: チュートリアル

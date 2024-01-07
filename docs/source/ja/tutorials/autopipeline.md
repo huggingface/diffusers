@@ -12,7 +12,17 @@ specific language governing permissions and limitations under the License.
 
 # AutoPipeline
 
-🤗 Diffusers is able to complete many different tasks, and you can often reuse the same pretrained weights for multiple tasks such as text-to-image, image-to-image, and inpainting. If you're new to the library and diffusion models though, it may be difficult to know which pipeline to use for a task. For example, if you're using the [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint for text-to-image, you might not know that you could also use it for image-to-image and inpainting by loading the checkpoint with the [`StableDiffusionImg2ImgPipeline`] and [`StableDiffusionInpaintPipeline`] classes respectively.
+🤗 Diffusers is able to complete many different tasks, and you can often reuse the same pretrained weights for multiple tasks such as text-to-image, image-to-image, and inpainting. 
+
+🤗 Diffusers は様々なタスクをこなすことができ、テキストから画像、画像から画像、画像の修復など、複数のタスクに同じ事前学習された重みを再利用することができます。
+
+If you're new to the library and diffusion models though, it may be difficult to know which pipeline to use for a task. 
+
+しかし、ライブラリーや拡散モデルに慣れていない場合、あるタスクにどのパイプラインを使えばいいのかわからないかもしれません。
+
+For example, if you're using the [runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5) checkpoint for text-to-image, you might not know that you could also use it for image-to-image and inpainting by loading the checkpoint with the [`StableDiffusionImg2ImgPipeline`] and [`StableDiffusionInpaintPipeline`] classes respectively.
+
+例えば、[runwayml/stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)のチェックポイントをテキストから画像に変換するために使用している場合、StableDiffusionImg2ImgPipelineクラスとStableDiffusionInpaintPipelineクラスでそれぞれチェックポイントをロードすることで、画像から画像や画像の修復にも使用できることを知らないかもしれません。
 
 The `AutoPipeline` class is designed to simplify the variety of pipelines in 🤗 Diffusers. It is a generic, *task-first* pipeline that lets you focus on the task. The `AutoPipeline` automatically detects the correct pipeline class to use, which makes it easier to load a checkpoint for a task without knowing the specific pipeline class name.
 
