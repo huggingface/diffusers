@@ -824,7 +824,9 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         # Improve numerical stability for small number of steps
         lower_order_final = (self.step_index == len(self.timesteps) - 1) and (
-            self.config.euler_at_final or (self.config.lower_order_final and len(self.timesteps) < 15)
+            self.config.euler_at_final
+            or (self.config.lower_order_final and len(self.timesteps) < 15)
+            or self.config.use_karras_sigmas
         )
         lower_order_second = (
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
