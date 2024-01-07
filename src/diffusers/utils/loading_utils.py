@@ -33,5 +33,5 @@ def load_image(image: Union[str, PIL.Image.Image]) -> PIL.Image.Image:
             "Incorrect format used for image. Should be an url linking to an image, a local path, or a PIL image."
         )
     image = PIL.ImageOps.exif_transpose(image)
-    image = image.convert("RGB")
+
     return image
