@@ -22,9 +22,9 @@ specific language governing permissions and limitations under the License.
 
 このライブラリには3つの主要コンポーネントがあります:
 
-- 最先端の[拡散パイプライン](api/pipelines/overview)で数行のコードで生成が可能です。
-- 交換可能な[ノイズスケジューラ](api/schedulers/overview)で生成速度と品質のトレードオフのバランスをとれます。
-- 事前に訓練された[モデル](api/models)は、ビルディングブロックとして使用することができ、スケジューラと組み合わせることで、独自のエンドツーエンドの拡散システムを作成することができます。
+- 数行のコードで推論可能な最先端の[拡散パイプライン](api/pipelines/overview)。Diffusersには多くのパイプラインがあります。利用可能なパイプラインを網羅したリストと、それらが解決するタスクについては、パイプラインの[概要](https://huggingface.co/docs/diffusers/api/pipelines/overview)の表をご覧ください。
+- 生成速度と品質のトレードオフのバランスを取る交換可能な[ノイズスケジューラ](api/schedulers/overview)
+- ビルディングブロックとして使用することができ、スケジューラと組み合わせることで、エンドツーエンドの拡散モデルを構築可能な事前学習済み[モデル](api/models)
 
 <div class="mt-10">
   <div class="w-full flex flex-col space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-y-4 md:gap-x-5">
