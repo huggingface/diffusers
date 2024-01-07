@@ -10,7 +10,7 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Overview
+# 概要
 
 🧨 Diffusers には生成タスクのための多くのパイプライン、モデル、スケジューラがあります。 これらのコンポーネントをできる限りシンプルに読み込むために、私たちは単一で統一されたメソッドである - `from_pretrained()` - を提供します。 このメソッドは、Hugging Face [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) またはローカルマシンから、これらのコンポーネントのいずれかを読み込みます。パイプラインやモデルを読み込むたびに、最新のファイルが自動的にダウンロードされキャッシュされることで、ファイルを再ダウンロードすることなく、すぐに再利用することができます。
 
