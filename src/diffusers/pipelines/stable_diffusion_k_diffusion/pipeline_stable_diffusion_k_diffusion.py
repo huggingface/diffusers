@@ -142,9 +142,7 @@ class StableDiffusionKDiffusionPipeline(DiffusionPipeline, TextualInversionLoade
                 if "sample_" in s:
                     valid_samplers.append(s)
 
-            raise ValueError(
-                f"Invalid scheduler type {scheduler_type}. Please choose one of {valid_samplers}."
-            )
+            raise ValueError(f"Invalid scheduler type {scheduler_type}. Please choose one of {valid_samplers}.")
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(

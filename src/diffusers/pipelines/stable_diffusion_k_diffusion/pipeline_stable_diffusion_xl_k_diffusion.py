@@ -180,7 +180,7 @@ class StableDiffusionXLKDiffusionPipeline(
             self.k_diffusion_model = CompVisVDenoiser(model)
         else:
             self.k_diffusion_model = CompVisDenoiser(model)
-    
+
     # Copied from diffusers.pipelines.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.StableDiffusionKDiffusionPipeline.set_scheduler
     def set_scheduler(self, scheduler_type: str):
         library = importlib.import_module("k_diffusion")
@@ -193,9 +193,7 @@ class StableDiffusionXLKDiffusionPipeline(
                 if "sample_" in s:
                     valid_samplers.append(s)
 
-            raise ValueError(
-                f"Invalid scheduler type {scheduler_type}. Please choose one of {valid_samplers}."
-            )
+            raise ValueError(f"Invalid scheduler type {scheduler_type}. Please choose one of {valid_samplers}.")
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
