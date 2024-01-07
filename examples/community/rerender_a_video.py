@@ -357,7 +357,6 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
         self.attn_state = AttnState()
-
         attn_processor_dict = {}
         for k in unet.attn_processors.keys():
             if k.startswith("up"):
@@ -377,7 +376,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             num_transformer_layers=6,
         ).to("cuda")
 
-        checkpoint = torch.load(
+        checkpoint = torch.utils.model_zoo.load_url(
             "https://huggingface.co/Anonymous-sub/Rerender/resolve/main/models/gmflow_sintel-0c07dcb3.pth",
             map_location=lambda storage, loc: storage,
         )
