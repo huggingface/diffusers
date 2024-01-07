@@ -1551,7 +1551,7 @@ def main(args):
         raise ValueError(
             f"Controlnet loaded as datatype {accelerator.unwrap_model(unet).dtype}. {low_precision_error_string}"
         )
-    
+
     # 9. Add LoRA to the student U-Net, only the LoRA projection matrix will be updated by the optimizer.
     if args.lora_target_modules is not None:
         lora_target_modules = [module_key.strip() for module_key in args.lora_target_modules.split(",")]
@@ -1617,7 +1617,7 @@ def main(args):
             if accelerator.is_main_process:
                 if args.use_ema:
                     ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
-                
+
                 unet_ = accelerator.unwrap_model(unet)
                 lora_state_dict = get_peft_model_state_dict(unet_, adapter_name="default")
                 StableDiffusionXLPipeline.save_lora_weights(os.path.join(output_dir, "unet_lora"), lora_state_dict)
@@ -1636,14 +1636,15 @@ def main(args):
                 ema_unet.load_state_dict(load_model.state_dict())
                 ema_unet.to(accelerator.device)
                 del load_model
-            
+
             # load the LoRA into the model
             unet_ = accelerator.unwrap_model(unet)
             unet_.load_adapter(input_dir, "default", is_trainable=True)
 
             for i in range(len(models)):
                 # pop models so that they are not loaded again
-                model = models.pop()
+                # model = models.pop()
+                models.pop()
 
                 # load diffusers style into model
                 # load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
