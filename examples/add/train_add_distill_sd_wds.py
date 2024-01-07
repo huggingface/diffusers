@@ -1111,6 +1111,15 @@ def parse_args():
             " Encoding or decoding the whole batch at once may run into OOM issues."
         ),
     )
+    parser.add_argument(
+        "--allow_nonzero_terminal_snr",
+        action="store_true",
+        help=(
+            "Option to turn off enforcing zero terminal SNR. The ADD paper states that they enforce zero terminal SNR"
+            " during training, but this may lead to numerical instability issues during training at the last training"
+            " timestep T (`noise_scheduler.config.num_train_timesteps - 1`)."
+        ),
+    )
     # ----Exponential Moving Average (EMA)----
     parser.add_argument(
         "--use_ema", action="store_true", help="Whether to also maintain an EMA version of the student U-Net weights."
@@ -1294,7 +1303,7 @@ def main(args):
     teacher_scheduler = DDPMScheduler.from_pretrained(
         args.pretrained_teacher_model, subfolder="scheduler", revision=args.teacher_revision
     )
-    if not teacher_scheduler.config.rescale_betas_zero_snr:
+    if not teacher_scheduler.config.rescale_betas_zero_snr and not args.allow_nonzero_terminal_snr:
         teacher_scheduler.config["rescale_betas_zero_snr"] = True
     noise_scheduler = DDPMScheduler(**teacher_scheduler.config)
 
