@@ -60,12 +60,13 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import StableDiffusionXLPipeline
+        >>> from diffusers import StableDiffusionXLKDiffusionPipeline
 
-        >>> pipe = StableDiffusionXLPipeline.from_pretrained(
+        >>> pipe = StableDiffusionXLKDiffusionPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
         ... )
         >>> pipe = pipe.to("cuda")
+        >>> pipe.set_scheduler("sample_dpmpp_2m_sde")
 
         >>> prompt = "a photo of an astronaut riding a horse on mars"
         >>> image = pipe(prompt).images[0]
