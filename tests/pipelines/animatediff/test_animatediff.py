@@ -251,7 +251,6 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             spatial_stop_frequency=0.25,
             temporal_stop_frequency=0.25,
             generator=free_init_generator,
-            return_intermediate_results=False,
         )
         inputs_enable_free_init = self.get_dummy_inputs(torch_device)
         frames_enable_free_init = pipe(**inputs_enable_free_init).frames[0]
