@@ -249,11 +249,11 @@ class ResnetBlock2D(nn.Module):
         super().__init__()
         if time_embedding_norm == "ada_group":
             raise ValueError(
-                "Passing `ada_group` as `time_embedding_norm` is deprecated, please create `ResnetBlockCondNorm2D` instead",
+                "This class cannot be used with `time_embedding_norm==ada_group`, please use `ResnetBlockCondNorm2D` instead",
             )
         if time_embedding_norm == "spatial":
             raise ValueError(
-                "Passing `spatial` as `time_embedding_norm` is deprecated, please create `ResnetBlockCondNorm2D` instead",
+                "This class cannot be used with `time_embedding_norm==spatial`, please use `ResnetBlockCondNorm2D` instead",
             )
 
         self.pre_norm = True
