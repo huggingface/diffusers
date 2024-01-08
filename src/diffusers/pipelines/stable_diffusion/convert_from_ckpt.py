@@ -21,6 +21,7 @@ from typing import Dict, Optional, Union
 
 import requests
 import torch
+import yaml
 from transformers import (
     AutoFeatureExtractor,
     BertTokenizerFast,
@@ -50,8 +51,7 @@ from ...schedulers import (
     PNDMScheduler,
     UnCLIPScheduler,
 )
-from ...utils import is_accelerate_available, is_omegaconf_available, logging
-from ...utils.import_utils import BACKENDS_MAPPING
+from ...utils import is_accelerate_available, logging
 from ..latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..paint_by_example import PaintByExampleImageEncoder
 from ..pipeline_utils import DiffusionPipeline
@@ -1245,11 +1245,6 @@ def download_from_original_stable_diffusion_ckpt(
     if prediction_type == "v-prediction":
         prediction_type = "v_prediction"
 
-    if not is_omegaconf_available():
-        raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
-
-    from omegaconf import OmegaConf
-
     if isinstance(checkpoint_path_or_dict, str):
         if from_safetensors:
             from safetensors.torch import load_file as safe_load
@@ -1318,7 +1313,7 @@ def download_from_original_stable_diffusion_ckpt(
         if config_url is not None:
             original_config_file = BytesIO(requests.get(config_url).content)
 
-    original_config = OmegaConf.load(original_config_file)
+    original_config = yaml.safe_load(original_config_file)
 
     # Convert the text model.
     if (
@@ -1803,11 +1798,6 @@ def download_controlnet_from_original_ckpt(
     use_linear_projection: Optional[bool] = None,
     cross_attention_dim: Optional[bool] = None,
 ) -> DiffusionPipeline:
-    if not is_omegaconf_available():
-        raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
-
-    from omegaconf import OmegaConf
-
     if from_safetensors:
         from safetensors import safe_open
 
@@ -1827,7 +1817,7 @@ def download_controlnet_from_original_ckpt(
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
 
-    original_config = OmegaConf.load(original_config_file)
+    original_config = yaml.safe_load(original_config_file)
 
     if num_in_channels is not None:
         original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
