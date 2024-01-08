@@ -60,15 +60,13 @@ For more information about community pipelines, take a look at the [Community pi
 
 ## Community components
 
-If your pipeline has custom components that Diffusers doesn't support already, you need to accompany the Python modules that implement them. These customized components could be VAE, UNet, scheduler, etc. For the text encoder, we rely on `transformers` anyway. So, that should be handled separately (more info here). The pipeline code itself can be customized as well.
+Community components allow users to build pipelines that may have customized components that are not a part of Diffusers. If your pipeline has custom components that Diffusers doesn't already support, you need to provide their implementations as Python modules. These customized components could be a VAE, UNet, and scheduler. In most cases, the text encoder is imported from the Transformers library. The pipeline code itself can also be customized.
 
-Community components allow users to build pipelines that may have customized components that are not part of Diffusers. This section shows how users should use community components to build a community pipeline.
+This section shows how users should use community components to build a community pipeline.
 
-You'll use the [showlab/show-1-base](https://huggingface.co/showlab/show-1-base) pipeline checkpoint as an example here. Here, you have a custom UNet and a customized pipeline (`TextToVideoIFPipeline`). For convenience, let's call the UNet `ShowOneUNet3DConditionModel`.
+You'll use the [showlab/show-1-base](https://huggingface.co/showlab/show-1-base) pipeline checkpoint as an example. So, let's start loading the components:
 
-"showlab/show-1-base" already provides the checkpoints in the Diffusers format, which is a great starting point. So, let's start loading up the components which are already well-supported:
-
-1. **Text encoder**
+1. Import and load the text encoder from Transformers:
 
 ```python
 from transformers import T5Tokenizer, T5EncoderModel
@@ -78,7 +76,7 @@ tokenizer = T5Tokenizer.from_pretrained(pipe_id, subfolder="tokenizer")
 text_encoder = T5EncoderModel.from_pretrained(pipe_id, subfolder="text_encoder")
 ```
 
-2. **Scheduler**
+2. Load a scheduler:
 
 ```python
 from diffusers import DPMSolverMultistepScheduler
@@ -86,7 +84,7 @@ from diffusers import DPMSolverMultistepScheduler
 scheduler = DPMSolverMultistepScheduler.from_pretrained(pipe_id, subfolder="scheduler")
 ```
 
-3. **Image processor**
+3. Load an image processor:
 
 ```python
 from transformers import CLIPFeatureExtractor
@@ -94,9 +92,15 @@ from transformers import CLIPFeatureExtractor
 feature_extractor = CLIPFeatureExtractor.from_pretrained(pipe_id, subfolder="feature_extractor")
 ```
 
-Now, you need to implement the custom UNet. The implementation is available [here](https://github.com/showlab/Show-1/blob/main/showone/models/unet_3d_condition.py). So, let's create a Python script called `showone_unet_3d_condition.py` and copy over the implementation, changing the `UNet3DConditionModel` classname to `ShowOneUNet3DConditionModel` to avoid any conflicts with Diffusers. This is because Diffusers already has one `UNet3DConditionModel`. We put all the components needed to implement the class in `showone_unet_3d_condition.py` only. You can find the entire file [here](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py).
+<Tip warning={true}>
 
-Once this is done, we can initialize the UNet:
+In steps 4 and 5, the custom [UNet](https://github.com/showlab/Show-1/blob/main/showone/models/unet_3d_condition.py) and [pipeline](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py) implementation must match the format shown in their files for this example to work.
+
+</Tip>
+
+4. Now you'll load a [custom UNet](https://github.com/showlab/Show-1/blob/main/showone/models/unet_3d_condition.py), which in this example, has already been implemented in the `showone_unet_3d_condition.py` [script](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py) for your convenience. You'll notice the `UNet3DConditionModel` class name is changed to `ShowOneUNet3DConditionModel` because [`UNet3DConditionModel`] already exists in Diffusers. Any components needed for the `ShowOneUNet3DConditionModel` class should be placed in the `showone_unet_3d_condition.py` script.
+
+Once this is done, you can initialize the UNet:
 
 ```python
 from showone_unet_3d_condition import ShowOneUNet3DConditionModel
@@ -104,26 +108,26 @@ from showone_unet_3d_condition import ShowOneUNet3DConditionModel
 unet = ShowOneUNet3DConditionModel.from_pretrained(pipe_id, subfolder="unet")
 ```
 
-Then implement the custom `TextToVideoIFPipeline` in another Python script: `pipeline_t2v_base_pixel.py`. This is already available [here](https://github.com/showlab/Show-1/blob/main/showone/pipelines/pipeline_t2v_base_pixel.py). 
+5. Finally, you'll load the custom pipeline code. For this example, it has already been created for you in the `pipeline_t2v_base_pixel.py` [script](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/pipeline_t2v_base_pixel.py). This script contains a custom `TextToVideoIFPipeline` class for generating videos from text. Just like the custom UNet, any code needed for the custom pipeline to work should go in the `pipeline_t2v_base_pixel.py` script. 
 
-Now that you have all the components, initialize the `TextToVideoIFPipeline`:
+Once everything is in place, you can initialize the `TextToVideoIFPipeline` with the `ShowOneUNet3DConditionModel`:
 
 ```python
 from pipeline_t2v_base_pixel import TextToVideoIFPipeline
 import torch
 
 pipeline = TextToVideoIFPipeline(
-    unet=unet, 
-    text_encoder=text_encoder, 
-    tokenizer=tokenizer, 
-    scheduler=scheduler, 
+    unet=unet,
+    text_encoder=text_encoder,
+    tokenizer=tokenizer,
+    scheduler=scheduler,
     feature_extractor=feature_extractor
 )
 pipeline = pipeline.to(device="cuda")
 pipeline.torch_dtype = torch.float16
 ```
 
-Push to the pipeline to the Hub to share with the community:
+Push the pipeline to the Hub to share with the community!
 
 ```python
 pipeline.push_to_hub("custom-t2v-pipeline")
@@ -131,11 +135,11 @@ pipeline.push_to_hub("custom-t2v-pipeline")
 
 After the pipeline is successfully pushed, you need a couple of changes:
 
-1. In `model_index.json` file, change the `_class_name` attribute. It should be like [so](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/model_index.json#L2).
-2. Upload `showone_unet_3d_condition.py` to the `unet` directory ([example](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py)).
-3. Upload `pipeline_t2v_base_pixel.py` to the pipeline base directory ([example](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py)).
+1. Change the `_class_name` attribute in [`model_index.json`](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/model_index.json#L2) to `"pipeline_t2v_base_pixel"` and `"TextToVideoIFPipeline"`.
+2. Upload `showone_unet_3d_condition.py` to the `unet` [directory](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py).
+3. Upload `pipeline_t2v_base_pixel.py` to the pipeline base [directory](https://huggingface.co/sayakpaul/show-1-base-with-code/blob/main/unet/showone_unet_3d_condition.py).
 
-To run inference, just do:
+To run inference, simply add the `trust_remote_code` argument while initializing the pipeline to handle all the "magic" behind the scenes.
 
 ```python
 from diffusers import DiffusionPipeline
@@ -163,4 +167,23 @@ video_frames = pipeline(
 ).frames
 ```
 
-Here, notice the use of the `trust_remote_code` argument while initializing the pipeline. It is responsible for handling all the "magic" behind the scenes.
+As an additional reference example, you can refer to the repository structure of [stabilityai/japanese-stable-diffusion-xl](https://huggingface.co/stabilityai/japanese-stable-diffusion-xl/), that makes use of the `trust_remote_code` feature:
+
+```python
+
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained(
+    "stabilityai/japanese-stable-diffusion-xl", trust_remote_code=True
+)
+pipeline.to("cuda")
+
+# if using torch < 2.0
+# pipeline.enable_xformers_memory_efficient_attention()
+
+prompt = "柴犬、カラフルアート"
+
+image = pipeline(prompt=prompt).images[0]
+
+```

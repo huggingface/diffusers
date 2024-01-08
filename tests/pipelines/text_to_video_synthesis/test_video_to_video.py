@@ -70,15 +70,16 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet3DConditionModel(
-            block_out_channels=(32, 64, 64, 64),
-            layers_per_block=2,
+            block_out_channels=(4, 8),
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
-            down_block_types=("CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "CrossAttnDownBlock3D", "DownBlock3D"),
-            up_block_types=("UpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D", "CrossAttnUpBlock3D"),
+            down_block_types=("CrossAttnDownBlock3D", "DownBlock3D"),
+            up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
             cross_attention_dim=32,
             attention_head_dim=4,
+            norm_num_groups=2,
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -89,13 +90,18 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=[32, 64],
+            block_out_channels=[
+                8,
+            ],
             in_channels=3,
             out_channels=3,
-            down_block_types=["DownEncoderBlock2D", "DownEncoderBlock2D"],
-            up_block_types=["UpDecoderBlock2D", "UpDecoderBlock2D"],
+            down_block_types=[
+                "DownEncoderBlock2D",
+            ],
+            up_block_types=["UpDecoderBlock2D"],
             latent_channels=4,
-            sample_size=128,
+            sample_size=32,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
@@ -154,7 +160,7 @@ class VideoToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         image_slice = frames[0][-3:, -3:, -1]
 
         assert frames[0].shape == (32, 32, 3)
-        expected_slice = np.array([106, 117, 113, 174, 137, 112, 148, 151, 131])
+        expected_slice = np.array([162.0, 136.0, 132.0, 140.0, 139.0, 137.0, 169.0, 134.0, 132.0])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

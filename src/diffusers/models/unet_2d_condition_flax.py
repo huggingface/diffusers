@@ -100,18 +100,18 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     sample_size: int = 32
     in_channels: int = 4
     out_channels: int = 4
-    down_block_types: Tuple[str] = (
+    down_block_types: Tuple[str, ...] = (
         "CrossAttnDownBlock2D",
         "CrossAttnDownBlock2D",
         "CrossAttnDownBlock2D",
         "DownBlock2D",
     )
-    up_block_types: Tuple[str] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
+    up_block_types: Tuple[str, ...] = ("UpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D", "CrossAttnUpBlock2D")
     only_cross_attention: Union[bool, Tuple[bool]] = False
-    block_out_channels: Tuple[int] = (320, 640, 1280, 1280)
+    block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280)
     layers_per_block: int = 2
-    attention_head_dim: Union[int, Tuple[int]] = 8
-    num_attention_heads: Optional[Union[int, Tuple[int]]] = None
+    attention_head_dim: Union[int, Tuple[int, ...]] = 8
+    num_attention_heads: Optional[Union[int, Tuple[int, ...]]] = None
     cross_attention_dim: int = 1280
     dropout: float = 0.0
     use_linear_projection: bool = False
@@ -120,7 +120,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
     freq_shift: int = 0
     use_memory_efficient_attention: bool = False
     split_head_dim: bool = False
-    transformer_layers_per_block: Union[int, Tuple[int]] = 1
+    transformer_layers_per_block: Union[int, Tuple[int, ...]] = 1
     addition_embed_type: Optional[str] = None
     addition_time_embed_dim: Optional[int] = None
     addition_embed_type_num_heads: int = 64
@@ -158,7 +158,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             }
         return self.init(rngs, sample, timesteps, encoder_hidden_states, added_cond_kwargs)["params"]
 
-    def setup(self):
+    def setup(self) -> None:
         block_out_channels = self.block_out_channels
         time_embed_dim = block_out_channels[0] * 4
 
@@ -320,15 +320,15 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
 
     def __call__(
         self,
-        sample,
-        timesteps,
-        encoder_hidden_states,
+        sample: jnp.ndarray,
+        timesteps: Union[jnp.ndarray, float, int],
+        encoder_hidden_states: jnp.ndarray,
         added_cond_kwargs: Optional[Union[Dict, FrozenDict]] = None,
-        down_block_additional_residuals=None,
-        mid_block_additional_residual=None,
+        down_block_additional_residuals: Optional[Tuple[jnp.ndarray, ...]] = None,
+        mid_block_additional_residual: Optional[jnp.ndarray] = None,
         return_dict: bool = True,
         train: bool = False,
-    ) -> Union[FlaxUNet2DConditionOutput, Tuple]:
+    ) -> Union[FlaxUNet2DConditionOutput, Tuple[jnp.ndarray]]:
         r"""
         Args:
             sample (`jnp.ndarray`): (batch, channel, height, width) noisy inputs tensor

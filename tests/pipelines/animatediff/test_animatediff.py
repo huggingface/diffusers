@@ -14,7 +14,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNetMotionModel,
 )
-from diffusers.utils import logging
+from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import numpy_cosine_similarity_distance, require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
@@ -99,6 +99,8 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "motion_adapter": motion_adapter,
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
@@ -230,6 +232,35 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs.pop("prompt")
         inputs["prompt_embeds"] = torch.randn((1, 4, 32), device=torch_device)
         pipe(**inputs)
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_xformers_available(),
+        reason="XFormers attention is only available with CUDA and `xformers` installed",
+    )
+    def test_xformers_attention_forwardGenerator_pass(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_without_offload = pipe(**inputs).frames[0]
+        output_without_offload = (
+            output_without_offload.cpu() if torch.is_tensor(output_without_offload) else output_without_offload
+        )
+
+        pipe.enable_xformers_memory_efficient_attention()
+        inputs = self.get_dummy_inputs(torch_device)
+        output_with_offload = pipe(**inputs).frames[0]
+        output_with_offload = (
+            output_with_offload.cpu() if torch.is_tensor(output_with_offload) else output_without_offload
+        )
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
+        self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
 
 
 @slow

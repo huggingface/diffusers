@@ -25,6 +25,8 @@ Community pipelines allow you to get creative and build your own unique pipeline
 To load a community pipeline, use the `custom_pipeline` argument in [`DiffusionPipeline`] to specify one of the files in [diffusers/examples/community](https://github.com/huggingface/diffusers/tree/main/examples/community):
 
 ```py
+from diffusers import DiffusionPipeline
+
 pipe = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4", custom_pipeline="filename_in_the_community_folder", use_safetensors=True
 )
@@ -39,7 +41,6 @@ You can learn more about community pipelines in the how to [load community pipel
 The multilingual Stable Diffusion pipeline uses a pretrained [XLM-RoBERTa](https://huggingface.co/papluca/xlm-roberta-base-language-detection) to identify a language and the [mBART-large-50](https://huggingface.co/facebook/mbart-large-50-many-to-one-mmt) model to handle the translation. This allows you to generate images from text in 20 languages.
 
 ```py
-from PIL import Image
 import torch
 from diffusers import DiffusionPipeline
 from diffusers.utils import make_image_grid
@@ -59,29 +60,28 @@ language_detection_pipeline = pipeline("text-classification",
                                        device=device_dict[device])
 
 # add model for language translation
-trans_tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-one-mmt")
-trans_model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50-many-to-one-mmt").to(device)
+translation_tokenizer = MBart50TokenizerFast.from_pretrained("facebook/mbart-large-50-many-to-one-mmt")
+translation_model = MBartForConditionalGeneration.from_pretrained("facebook/mbart-large-50-many-to-one-mmt").to(device)
 
 diffuser_pipeline = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     custom_pipeline="multilingual_stable_diffusion",
     detection_pipeline=language_detection_pipeline,
-    translation_model=trans_model,
-    translation_tokenizer=trans_tokenizer,
+    translation_model=translation_model,
+    translation_tokenizer=translation_tokenizer,
     torch_dtype=torch.float16,
 )
 
 diffuser_pipeline.enable_attention_slicing()
 diffuser_pipeline = diffuser_pipeline.to(device)
 
-prompt = ["a photograph of an astronaut riding a horse", 
+prompt = ["a photograph of an astronaut riding a horse",
           "Una casa en la playa",
           "Ein Hund, der Orange isst",
           "Un restaurant parisien"]
 
 images = diffuser_pipeline(prompt).images
-grid = make_image_grid(images, rows=2, cols=2)
-grid
+make_image_grid(images, rows=2, cols=2)
 ```
 
 <div class="flex justify-center">
@@ -94,23 +94,23 @@ grid
 
 ```py
 from diffusers import DiffusionPipeline, DDIMScheduler
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 
 pipeline = DiffusionPipeline.from_pretrained(
     "CompVis/stable-diffusion-v1-4",
     custom_pipeline="magic_mix",
-    scheduler = DDIMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler"),
+    scheduler=DDIMScheduler.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="scheduler"),
 ).to('cuda')
 
 img = load_image("https://user-images.githubusercontent.com/59410571/209578593-141467c7-d831-4792-8b9a-b17dc5e47816.jpg")
-mix_img = pipeline(img, prompt="bed", kmin = 0.3, kmax = 0.5, mix_factor = 0.5)
-mix_img
+mix_img = pipeline(img, prompt="bed", kmin=0.3, kmax=0.5, mix_factor=0.5)
+make_image_grid([img, mix_img], rows=1, cols=2)
 ```
 
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://user-images.githubusercontent.com/59410571/209578593-141467c7-d831-4792-8b9a-b17dc5e47816.jpg" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">image prompt</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">original image</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://user-images.githubusercontent.com/59410571/209578602-70f323fa-05b7-4dd6-b055-e40683e37914.jpg" />

@@ -37,7 +37,7 @@ class SchedulerType(Enum):
     PIECEWISE_CONSTANT = "piecewise_constant"
 
 
-def get_constant_schedule(optimizer: Optimizer, last_epoch: int = -1):
+def get_constant_schedule(optimizer: Optimizer, last_epoch: int = -1) -> LambdaLR:
     """
     Create a schedule with a constant learning rate, using the learning rate set in optimizer.
 
@@ -53,7 +53,7 @@ def get_constant_schedule(optimizer: Optimizer, last_epoch: int = -1):
     return LambdaLR(optimizer, lambda _: 1, last_epoch=last_epoch)
 
 
-def get_constant_schedule_with_warmup(optimizer: Optimizer, num_warmup_steps: int, last_epoch: int = -1):
+def get_constant_schedule_with_warmup(optimizer: Optimizer, num_warmup_steps: int, last_epoch: int = -1) -> LambdaLR:
     """
     Create a schedule with a constant learning rate preceded by a warmup period during which the learning rate
     increases linearly between 0 and the initial lr set in the optimizer.
@@ -78,7 +78,7 @@ def get_constant_schedule_with_warmup(optimizer: Optimizer, num_warmup_steps: in
     return LambdaLR(optimizer, lr_lambda, last_epoch=last_epoch)
 
 
-def get_piecewise_constant_schedule(optimizer: Optimizer, step_rules: str, last_epoch: int = -1):
+def get_piecewise_constant_schedule(optimizer: Optimizer, step_rules: str, last_epoch: int = -1) -> LambdaLR:
     """
     Create a schedule with a constant learning rate, using the learning rate set in optimizer.
 
@@ -120,7 +120,9 @@ def get_piecewise_constant_schedule(optimizer: Optimizer, step_rules: str, last_
     return LambdaLR(optimizer, rules_func, last_epoch=last_epoch)
 
 
-def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, last_epoch=-1):
+def get_linear_schedule_with_warmup(
+    optimizer: Optimizer, num_warmup_steps: int, num_training_steps: int, last_epoch: int = -1
+) -> LambdaLR:
     """
     Create a schedule with a learning rate that decreases linearly from the initial lr set in the optimizer to 0, after
     a warmup period during which it increases linearly from 0 to the initial lr set in the optimizer.
@@ -151,7 +153,7 @@ def get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_st
 
 def get_cosine_schedule_with_warmup(
     optimizer: Optimizer, num_warmup_steps: int, num_training_steps: int, num_cycles: float = 0.5, last_epoch: int = -1
-):
+) -> LambdaLR:
     """
     Create a schedule with a learning rate that decreases following the values of the cosine function between the
     initial lr set in the optimizer to 0, after a warmup period during which it increases linearly between 0 and the
@@ -185,7 +187,7 @@ def get_cosine_schedule_with_warmup(
 
 def get_cosine_with_hard_restarts_schedule_with_warmup(
     optimizer: Optimizer, num_warmup_steps: int, num_training_steps: int, num_cycles: int = 1, last_epoch: int = -1
-):
+) -> LambdaLR:
     """
     Create a schedule with a learning rate that decreases following the values of the cosine function between the
     initial lr set in the optimizer to 0, with several hard restarts, after a warmup period during which it increases
@@ -219,8 +221,13 @@ def get_cosine_with_hard_restarts_schedule_with_warmup(
 
 
 def get_polynomial_decay_schedule_with_warmup(
-    optimizer, num_warmup_steps, num_training_steps, lr_end=1e-7, power=1.0, last_epoch=-1
-):
+    optimizer: Optimizer,
+    num_warmup_steps: int,
+    num_training_steps: int,
+    lr_end: float = 1e-7,
+    power: float = 1.0,
+    last_epoch: int = -1,
+) -> LambdaLR:
     """
     Create a schedule with a learning rate that decreases as a polynomial decay from the initial lr set in the
     optimizer to end lr defined by *lr_end*, after a warmup period during which it increases linearly from 0 to the
@@ -288,7 +295,7 @@ def get_scheduler(
     num_cycles: int = 1,
     power: float = 1.0,
     last_epoch: int = -1,
-):
+) -> LambdaLR:
     """
     Unified API to get any scheduler from its name.
 

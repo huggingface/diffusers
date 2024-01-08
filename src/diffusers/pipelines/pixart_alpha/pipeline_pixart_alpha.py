@@ -19,6 +19,7 @@ import urllib.parse as ul
 from typing import Callable, List, Optional, Tuple, Union
 
 import torch
+import torch.nn.functional as F
 from transformers import T5EncoderModel, T5Tokenizer
 
 from ...image_processor import VaeImageProcessor
@@ -26,6 +27,7 @@ from ...models import AutoencoderKL, Transformer2DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
+    deprecate,
     is_bs4_available,
     is_ftfy_available,
     logging,
@@ -43,7 +45,6 @@ if is_bs4_available():
 if is_ftfy_available():
     import ftfy
 
-
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -59,6 +60,123 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(prompt).images[0]
         ```
 """
+
+ASPECT_RATIO_1024_BIN = {
+    "0.25": [512.0, 2048.0],
+    "0.28": [512.0, 1856.0],
+    "0.32": [576.0, 1792.0],
+    "0.33": [576.0, 1728.0],
+    "0.35": [576.0, 1664.0],
+    "0.4": [640.0, 1600.0],
+    "0.42": [640.0, 1536.0],
+    "0.48": [704.0, 1472.0],
+    "0.5": [704.0, 1408.0],
+    "0.52": [704.0, 1344.0],
+    "0.57": [768.0, 1344.0],
+    "0.6": [768.0, 1280.0],
+    "0.68": [832.0, 1216.0],
+    "0.72": [832.0, 1152.0],
+    "0.78": [896.0, 1152.0],
+    "0.82": [896.0, 1088.0],
+    "0.88": [960.0, 1088.0],
+    "0.94": [960.0, 1024.0],
+    "1.0": [1024.0, 1024.0],
+    "1.07": [1024.0, 960.0],
+    "1.13": [1088.0, 960.0],
+    "1.21": [1088.0, 896.0],
+    "1.29": [1152.0, 896.0],
+    "1.38": [1152.0, 832.0],
+    "1.46": [1216.0, 832.0],
+    "1.67": [1280.0, 768.0],
+    "1.75": [1344.0, 768.0],
+    "2.0": [1408.0, 704.0],
+    "2.09": [1472.0, 704.0],
+    "2.4": [1536.0, 640.0],
+    "2.5": [1600.0, 640.0],
+    "3.0": [1728.0, 576.0],
+    "4.0": [2048.0, 512.0],
+}
+
+ASPECT_RATIO_512_BIN = {
+    "0.25": [256.0, 1024.0],
+    "0.28": [256.0, 928.0],
+    "0.32": [288.0, 896.0],
+    "0.33": [288.0, 864.0],
+    "0.35": [288.0, 832.0],
+    "0.4": [320.0, 800.0],
+    "0.42": [320.0, 768.0],
+    "0.48": [352.0, 736.0],
+    "0.5": [352.0, 704.0],
+    "0.52": [352.0, 672.0],
+    "0.57": [384.0, 672.0],
+    "0.6": [384.0, 640.0],
+    "0.68": [416.0, 608.0],
+    "0.72": [416.0, 576.0],
+    "0.78": [448.0, 576.0],
+    "0.82": [448.0, 544.0],
+    "0.88": [480.0, 544.0],
+    "0.94": [480.0, 512.0],
+    "1.0": [512.0, 512.0],
+    "1.07": [512.0, 480.0],
+    "1.13": [544.0, 480.0],
+    "1.21": [544.0, 448.0],
+    "1.29": [576.0, 448.0],
+    "1.38": [576.0, 416.0],
+    "1.46": [608.0, 416.0],
+    "1.67": [640.0, 384.0],
+    "1.75": [672.0, 384.0],
+    "2.0": [704.0, 352.0],
+    "2.09": [736.0, 352.0],
+    "2.4": [768.0, 320.0],
+    "2.5": [800.0, 320.0],
+    "3.0": [864.0, 288.0],
+    "4.0": [1024.0, 256.0],
+}
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    timesteps: Optional[List[int]] = None,
+    **kwargs,
+):
+    """
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used,
+            `timesteps` must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`List[int]`, *optional*):
+                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
+                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
+                must be `None`.
+
+    Returns:
+        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    else:
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
 
 
 class PixArtAlphaPipeline(DiffusionPipeline):
@@ -83,8 +201,21 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
+
     bad_punct_regex = re.compile(
-        r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
+        r"["
+        + "#®•©™&@·º½¾¿¡§~"
+        + r"\)"
+        + r"\("
+        + r"\]"
+        + r"\["
+        + r"\}"
+        + r"\{"
+        + r"\|"
+        + "\\"
+        + r"\/"
+        + r"\*"
+        + r"]{1,}"
     )  # noqa
 
     _optional_components = ["tokenizer", "text_encoder"]
@@ -126,8 +257,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         device: Optional[torch.device] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.FloatTensor] = None,
+        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
-        mask_feature: bool = True,
+        **kwargs,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -153,10 +286,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 string.
             clean_caption (bool, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
-            mask_feature: (bool, defaults to `True`):
-                If `True`, the function will mask the text embeddings.
         """
-        embeds_initially_provided = prompt_embeds is not None and negative_prompt_embeds is not None
+
+        if "mask_feature" in kwargs:
+            deprecation_message = "The use of `mask_feature` is deprecated. It is no longer used in any computation and that doesn't affect the end results. It will be removed in a future version."
+            deprecate("mask_feature", "1.0.0", deprecation_message, standard_warn=False)
 
         if device is None:
             device = self._execution_device
@@ -193,13 +327,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                     f" {max_length} tokens: {removed_text}"
                 )
 
-            attention_mask = text_inputs.attention_mask.to(device)
-            prompt_embeds_attention_mask = attention_mask
+            prompt_attention_mask = text_inputs.attention_mask
+            prompt_attention_mask = prompt_attention_mask.to(device)
 
-            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask)
+            prompt_embeds = self.text_encoder(text_input_ids.to(device), attention_mask=prompt_attention_mask)
             prompt_embeds = prompt_embeds[0]
-        else:
-            prompt_embeds_attention_mask = torch.ones_like(prompt_embeds)
 
         if self.text_encoder is not None:
             dtype = self.text_encoder.dtype
@@ -214,8 +346,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # duplicate text embeddings and attention mask for each generation per prompt, using mps friendly method
         prompt_embeds = prompt_embeds.repeat(1, num_images_per_prompt, 1)
         prompt_embeds = prompt_embeds.view(bs_embed * num_images_per_prompt, seq_len, -1)
-        prompt_embeds_attention_mask = prompt_embeds_attention_mask.view(bs_embed, -1)
-        prompt_embeds_attention_mask = prompt_embeds_attention_mask.repeat(num_images_per_prompt, 1)
+        prompt_attention_mask = prompt_attention_mask.view(bs_embed, -1)
+        prompt_attention_mask = prompt_attention_mask.repeat(num_images_per_prompt, 1)
 
         # get unconditional embeddings for classifier free guidance
         if do_classifier_free_guidance and negative_prompt_embeds is None:
@@ -231,11 +363,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 add_special_tokens=True,
                 return_tensors="pt",
             )
-            attention_mask = uncond_input.attention_mask.to(device)
+            negative_prompt_attention_mask = uncond_input.attention_mask
+            negative_prompt_attention_mask = negative_prompt_attention_mask.to(device)
 
             negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
-                attention_mask=attention_mask,
+                uncond_input.input_ids.to(device), attention_mask=negative_prompt_attention_mask
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
@@ -248,23 +380,13 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
+            negative_prompt_attention_mask = negative_prompt_attention_mask.view(bs_embed, -1)
+            negative_prompt_attention_mask = negative_prompt_attention_mask.repeat(num_images_per_prompt, 1)
         else:
             negative_prompt_embeds = None
+            negative_prompt_attention_mask = None
 
-        # Perform additional masking.
-        if mask_feature and not embeds_initially_provided:
-            prompt_embeds = prompt_embeds.unsqueeze(1)
-            masked_prompt_embeds, keep_indices = self.mask_text_embeddings(prompt_embeds, prompt_embeds_attention_mask)
-            masked_prompt_embeds = masked_prompt_embeds.squeeze(1)
-            masked_negative_prompt_embeds = (
-                negative_prompt_embeds[:, :keep_indices, :] if negative_prompt_embeds is not None else None
-            )
-            return masked_prompt_embeds, masked_negative_prompt_embeds
-
-        return prompt_embeds, negative_prompt_embeds
+        return prompt_embeds, prompt_attention_mask, negative_prompt_embeds, negative_prompt_attention_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
@@ -293,6 +415,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback_steps,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        prompt_attention_mask=None,
+        negative_prompt_attention_mask=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -329,12 +453,24 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
             )
 
+        if prompt_embeds is not None and prompt_attention_mask is None:
+            raise ValueError("Must provide `prompt_attention_mask` when specifying `prompt_embeds`.")
+
+        if negative_prompt_embeds is not None and negative_prompt_attention_mask is None:
+            raise ValueError("Must provide `negative_prompt_attention_mask` when specifying `negative_prompt_embeds`.")
+
         if prompt_embeds is not None and negative_prompt_embeds is not None:
             if prompt_embeds.shape != negative_prompt_embeds.shape:
                 raise ValueError(
                     "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
+                )
+            if prompt_attention_mask.shape != negative_prompt_attention_mask.shape:
+                raise ValueError(
+                    "`prompt_attention_mask` and `negative_prompt_attention_mask` must have the same shape when passed directly, but"
+                    f" got: `prompt_attention_mask` {prompt_attention_mask.shape} != `negative_prompt_attention_mask`"
+                    f" {negative_prompt_attention_mask.shape}."
                 )
 
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline._text_preprocessing
@@ -495,6 +631,38 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    @staticmethod
+    def classify_height_width_bin(height: int, width: int, ratios: dict) -> Tuple[int, int]:
+        """Returns binned height and width."""
+        ar = float(height / width)
+        closest_ratio = min(ratios.keys(), key=lambda ratio: abs(float(ratio) - ar))
+        default_hw = ratios[closest_ratio]
+        return int(default_hw[0]), int(default_hw[1])
+
+    @staticmethod
+    def resize_and_crop_tensor(samples: torch.Tensor, new_width: int, new_height: int) -> torch.Tensor:
+        orig_height, orig_width = samples.shape[2], samples.shape[3]
+
+        # Check if resizing is needed
+        if orig_height != new_height or orig_width != new_width:
+            ratio = max(new_height / orig_height, new_width / orig_width)
+            resized_width = int(orig_width * ratio)
+            resized_height = int(orig_height * ratio)
+
+            # Resize
+            samples = F.interpolate(
+                samples, size=(resized_height, resized_width), mode="bilinear", align_corners=False
+            )
+
+            # Center Crop
+            start_x = (resized_width - new_width) // 2
+            end_x = start_x + new_width
+            start_y = (resized_height - new_height) // 2
+            end_y = start_y + new_height
+            samples = samples[:, :, start_y:end_y, start_x:end_x]
+
+        return samples
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -511,13 +679,16 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_attention_mask: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         clean_caption: bool = True,
-        mask_feature: bool = True,
+        use_resolution_binning: bool = True,
+        **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
         Function invoked when calling the pipeline for generation.
@@ -536,7 +707,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
-            guidance_scale (`float`, *optional*, defaults to 7.0):
+            guidance_scale (`float`, *optional*, defaults to 4.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
@@ -561,9 +732,12 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            prompt_attention_mask (`torch.FloatTensor`, *optional*): Pre-generated attention mask for text embeddings.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. For PixArt-Alpha this negative prompt should be "". If not
                 provided, negative_prompt_embeds will be generated from `negative_prompt` input argument.
+            negative_prompt_attention_mask (`torch.FloatTensor`, *optional*):
+                Pre-generated attention mask for negative text embeddings.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -579,7 +753,10 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 Whether or not to clean the caption before creating embeddings. Requires `beautifulsoup4` and `ftfy` to
                 be installed. If the dependencies are not installed, the embeddings will be created from the raw
                 prompt.
-            mask_feature (`bool` defaults to `True`): If set to `True`, the text embeddings will be masked.
+            use_resolution_binning (`bool` defaults to `True`):
+                If set to `True`, the requested height and width are first mapped to the closest resolutions using
+                `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
+                the requested resolution. Useful for generating non-square images.
 
         Examples:
 
@@ -588,11 +765,29 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 If `return_dict` is `True`, [`~pipelines.ImagePipelineOutput`] is returned, otherwise a `tuple` is
                 returned where the first element is a list with the generated images
         """
+        if "mask_feature" in kwargs:
+            deprecation_message = "The use of `mask_feature` is deprecated. It is no longer used in any computation and that doesn't affect the end results. It will be removed in a future version."
+            deprecate("mask_feature", "1.0.0", deprecation_message, standard_warn=False)
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
+        if use_resolution_binning:
+            aspect_ratio_bin = (
+                ASPECT_RATIO_1024_BIN if self.transformer.config.sample_size == 128 else ASPECT_RATIO_512_BIN
+            )
+            orig_height, orig_width = height, width
+            height, width = self.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
+
         self.check_inputs(
-            prompt, height, width, negative_prompt, callback_steps, prompt_embeds, negative_prompt_embeds
+            prompt,
+            height,
+            width,
+            negative_prompt,
+            callback_steps,
+            prompt_embeds,
+            negative_prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_attention_mask,
         )
 
         # 2. Default height and width to transformer
@@ -611,7 +806,12 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         do_classifier_free_guidance = guidance_scale > 1.0
 
         # 3. Encode input prompt
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        (
+            prompt_embeds,
+            prompt_attention_mask,
+            negative_prompt_embeds,
+            negative_prompt_attention_mask,
+        ) = self.encode_prompt(
             prompt,
             do_classifier_free_guidance,
             negative_prompt=negative_prompt,
@@ -619,15 +819,16 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             device=device,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            prompt_attention_mask=prompt_attention_mask,
+            negative_prompt_attention_mask=negative_prompt_attention_mask,
             clean_caption=clean_caption,
-            mask_feature=mask_feature,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
+            prompt_attention_mask = torch.cat([negative_prompt_attention_mask, prompt_attention_mask], dim=0)
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
 
         # 5. Prepare latents.
         latent_channels = self.transformer.config.in_channels
@@ -652,6 +853,11 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             aspect_ratio = torch.tensor([float(height / width)]).repeat(batch_size * num_images_per_prompt, 1)
             resolution = resolution.to(dtype=prompt_embeds.dtype, device=device)
             aspect_ratio = aspect_ratio.to(dtype=prompt_embeds.dtype, device=device)
+
+            if do_classifier_free_guidance:
+                resolution = torch.cat([resolution, resolution], dim=0)
+                aspect_ratio = torch.cat([aspect_ratio, aspect_ratio], dim=0)
+
             added_cond_kwargs = {"resolution": resolution, "aspect_ratio": aspect_ratio}
 
         # 7. Denoising loop
@@ -681,6 +887,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 noise_pred = self.transformer(
                     latent_model_input,
                     encoder_hidden_states=prompt_embeds,
+                    encoder_attention_mask=prompt_attention_mask,
                     timestep=current_timestep,
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
@@ -709,6 +916,8 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         if not output_type == "latent":
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            if use_resolution_binning:
+                image = self.resize_and_crop_tensor(image, orig_width, orig_height)
         else:
             image = latents
 

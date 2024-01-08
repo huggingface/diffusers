@@ -43,6 +43,7 @@ class DiTPipeline(DiffusionPipeline):
         scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
+
     model_cpu_offload_seq = "transformer->vae"
 
     def __init__(

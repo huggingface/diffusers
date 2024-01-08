@@ -12,17 +12,58 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+# IMPORTANT:                                                      #
+###################################################################
+# ----------------------------------------------------------------#
+# This file is deprecated and will be removed soon                #
+# (as soon as PEFT will become a required dependency for LoRA)    #
+# ----------------------------------------------------------------#
+###################################################################
+
 from typing import Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..loaders import PatchedLoraProjection, text_encoder_attn_modules, text_encoder_mlp_modules
 from ..utils import logging
+from ..utils.import_utils import is_transformers_available
+
+
+if is_transformers_available():
+    from transformers import CLIPTextModel, CLIPTextModelWithProjection
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+def text_encoder_attn_modules(text_encoder):
+    attn_modules = []
+
+    if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
+        for i, layer in enumerate(text_encoder.text_model.encoder.layers):
+            name = f"text_model.encoder.layers.{i}.self_attn"
+            mod = layer.self_attn
+            attn_modules.append((name, mod))
+    else:
+        raise ValueError(f"do not know how to get attention modules for: {text_encoder.__class__.__name__}")
+
+    return attn_modules
+
+
+def text_encoder_mlp_modules(text_encoder):
+    mlp_modules = []
+
+    if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
+        for i, layer in enumerate(text_encoder.text_model.encoder.layers):
+            mlp_mod = layer.mlp
+            name = f"text_model.encoder.layers.{i}.mlp"
+            mlp_modules.append((name, mlp_mod))
+    else:
+        raise ValueError(f"do not know how to get mlp modules for: {text_encoder.__class__.__name__}")
+
+    return mlp_modules
 
 
 def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
@@ -37,6 +78,95 @@ def adjust_lora_scale_text_encoder(text_encoder, lora_scale: float = 1.0):
         if isinstance(mlp_module.fc1, PatchedLoraProjection):
             mlp_module.fc1.lora_scale = lora_scale
             mlp_module.fc2.lora_scale = lora_scale
+
+
+class PatchedLoraProjection(torch.nn.Module):
+    def __init__(self, regular_linear_layer, lora_scale=1, network_alpha=None, rank=4, dtype=None):
+        super().__init__()
+        from ..models.lora import LoRALinearLayer
+
+        self.regular_linear_layer = regular_linear_layer
+
+        device = self.regular_linear_layer.weight.device
+
+        if dtype is None:
+            dtype = self.regular_linear_layer.weight.dtype
+
+        self.lora_linear_layer = LoRALinearLayer(
+            self.regular_linear_layer.in_features,
+            self.regular_linear_layer.out_features,
+            network_alpha=network_alpha,
+            device=device,
+            dtype=dtype,
+            rank=rank,
+        )
+
+        self.lora_scale = lora_scale
+
+    # overwrite PyTorch's `state_dict` to be sure that only the 'regular_linear_layer' weights are saved
+    # when saving the whole text encoder model and when LoRA is unloaded or fused
+    def state_dict(self, *args, destination=None, prefix="", keep_vars=False):
+        if self.lora_linear_layer is None:
+            return self.regular_linear_layer.state_dict(
+                *args, destination=destination, prefix=prefix, keep_vars=keep_vars
+            )
+
+        return super().state_dict(*args, destination=destination, prefix=prefix, keep_vars=keep_vars)
+
+    def _fuse_lora(self, lora_scale=1.0, safe_fusing=False):
+        if self.lora_linear_layer is None:
+            return
+
+        dtype, device = self.regular_linear_layer.weight.data.dtype, self.regular_linear_layer.weight.data.device
+
+        w_orig = self.regular_linear_layer.weight.data.float()
+        w_up = self.lora_linear_layer.up.weight.data.float()
+        w_down = self.lora_linear_layer.down.weight.data.float()
+
+        if self.lora_linear_layer.network_alpha is not None:
+            w_up = w_up * self.lora_linear_layer.network_alpha / self.lora_linear_layer.rank
+
+        fused_weight = w_orig + (lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
+
+        if safe_fusing and torch.isnan(fused_weight).any().item():
+            raise ValueError(
+                "This LoRA weight seems to be broken. "
+                f"Encountered NaN values when trying to fuse LoRA weights for {self}."
+                "LoRA weights will not be fused."
+            )
+
+        self.regular_linear_layer.weight.data = fused_weight.to(device=device, dtype=dtype)
+
+        # we can drop the lora layer now
+        self.lora_linear_layer = None
+
+        # offload the up and down matrices to CPU to not blow the memory
+        self.w_up = w_up.cpu()
+        self.w_down = w_down.cpu()
+        self.lora_scale = lora_scale
+
+    def _unfuse_lora(self):
+        if not (getattr(self, "w_up", None) is not None and getattr(self, "w_down", None) is not None):
+            return
+
+        fused_weight = self.regular_linear_layer.weight.data
+        dtype, device = fused_weight.dtype, fused_weight.device
+
+        w_up = self.w_up.to(device=device).float()
+        w_down = self.w_down.to(device).float()
+
+        unfused_weight = fused_weight.float() - (self.lora_scale * torch.bmm(w_up[None, :], w_down[None, :])[0])
+        self.regular_linear_layer.weight.data = unfused_weight.to(device=device, dtype=dtype)
+
+        self.w_up = None
+        self.w_down = None
+
+    def forward(self, input):
+        if self.lora_scale is None:
+            self.lora_scale = 1.0
+        if self.lora_linear_layer is None:
+            return self.regular_linear_layer(input)
+        return self.regular_linear_layer(input) + (self.lora_scale * self.lora_linear_layer(input))
 
 
 class LoRALinearLayer(nn.Module):

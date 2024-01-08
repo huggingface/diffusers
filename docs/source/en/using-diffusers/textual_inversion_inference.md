@@ -95,7 +95,7 @@ state_dict
 ```
 
 There are two tensors, `"clip_g"` and `"clip_l"`.
-`"clip_g"` corresponds to the bigger text encoder in SDXL and refers to 
+`"clip_g"` corresponds to the bigger text encoder in SDXL and refers to
 `pipe.text_encoder_2` and `"clip_l"` refers to `pipe.text_encoder`.
 
 Now you can load each tensor separately by passing them along with the correct text encoder and tokenizer

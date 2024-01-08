@@ -10,66 +10,37 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# 🧨 Diffusers Training Examples
+# Overview
 
-Diffusers training examples are a collection of scripts to demonstrate how to effectively use the `diffusers` library
-for a variety of use cases.
+🤗 Diffusers provides a collection of training scripts for you to train your own diffusion models. You can find all of our training scripts in [diffusers/examples](https://github.com/huggingface/diffusers/tree/main/examples).
 
-**Note**: If you are looking for **official** examples on how to use `diffusers` for inference, 
-please have a look at [src/diffusers/pipelines](https://github.com/huggingface/diffusers/tree/main/src/diffusers/pipelines)
+Each training script is:
 
-Our examples aspire to be **self-contained**, **easy-to-tweak**, **beginner-friendly** and for **one-purpose-only**.
-More specifically, this means:
+- **Self-contained**: the training script does not depend on any local files, and all packages required to run the script are installed from the `requirements.txt` file.
+- **Easy-to-tweak**: the training scripts are an example of how to train a diffusion model for a specific task and won't work out-of-the-box for every training scenario. You'll likely need to adapt the training script for your specific use-case. To help you with that, we've fully exposed the data preprocessing code and the training loop so you can modify it for your own use.
+- **Beginner-friendly**: the training scripts are designed to be beginner-friendly and easy to understand, rather than including the latest state-of-the-art methods to get the best and most competitive results. Any training methods we consider too complex are purposefully left out.
+- **Single-purpose**: each training script is expressly designed for only one task to keep it readable and understandable.
 
-- **Self-contained**: An example script shall only depend on "pip-install-able" Python packages that can be found in a `requirements.txt` file. Example scripts shall **not** depend on any local files. This means that one can simply download an example script, *e.g.* [train_unconditional.py](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/train_unconditional.py), install the required dependencies, *e.g.* [requirements.txt](https://github.com/huggingface/diffusers/blob/main/examples/unconditional_image_generation/requirements.txt) and execute the example script.
-- **Easy-to-tweak**: While we strive to present as many use cases as possible, the example scripts are just that - examples. It is expected that they won't work out-of-the box on your specific problem and that you will be required to change a few lines of code to adapt them to your needs. To help you with that, most of the examples fully expose the preprocessing of the data and the training loop to allow you to tweak and edit them as required.
-- **Beginner-friendly**: We do not aim for providing state-of-the-art training scripts for the newest models, but rather examples that can be used as a way to better understand diffusion models and how to use them with the `diffusers` library. We often purposefully leave out certain state-of-the-art methods if we consider them too complex for beginners.
-- **One-purpose-only**: Examples should show one task and one task only. Even if a task is from a modeling 
-point of view very similar, *e.g.* image super-resolution and image modification tend to use the same model and training method, we want examples to showcase only one task to keep them as readable and easy-to-understand as possible.
+Our current collection of training scripts include:
 
-We provide **official** examples that cover the most popular tasks of diffusion models.
-*Official* examples are **actively** maintained by the `diffusers` maintainers and we try to rigorously follow our example philosophy as defined above. 
-If you feel like another important example should exist, we are more than happy to welcome a [Feature Request](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=) or directly a [Pull Request](https://github.com/huggingface/diffusers/compare) from you!
+| Training | SDXL-support | LoRA-support | Flax-support |
+|---|---|---|---|
+| [unconditional image generation](https://github.com/huggingface/diffusers/tree/main/examples/unconditional_image_generation) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb) |  |  |  |
+| [text-to-image](https://github.com/huggingface/diffusers/tree/main/examples/text_to_image) | 👍 | 👍 | 👍 |
+| [textual inversion](https://github.com/huggingface/diffusers/tree/main/examples/textual_inversion) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb) |  |  | 👍 |
+| [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_training.ipynb) | 👍 | 👍 | 👍 |
+| [ControlNet](https://github.com/huggingface/diffusers/tree/main/examples/controlnet) | 👍 |  | 👍 |
+| [InstructPix2Pix](https://github.com/huggingface/diffusers/tree/main/examples/instruct_pix2pix) | 👍 |  |  |
+| [Custom Diffusion](https://github.com/huggingface/diffusers/tree/main/examples/custom_diffusion) |  |  |  |
+| [T2I-Adapters](https://github.com/huggingface/diffusers/tree/main/examples/t2i_adapter) | 👍 |  |  |
+| [Kandinsky 2.2](https://github.com/huggingface/diffusers/tree/main/examples/kandinsky2_2/text_to_image) |  | 👍 |  |
+| [Wuerstchen](https://github.com/huggingface/diffusers/tree/main/examples/wuerstchen/text_to_image) |  | 👍 |  |
 
-Training examples show how to pretrain or fine-tune diffusion models for a variety of tasks. Currently we support:
+These examples are **actively** maintained, so please feel free to open an issue if they aren't working as expected. If you feel like another training example should be included, you're more than welcome to start a [Feature Request](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&template=feature_request.md&title=) to discuss your feature idea with us and whether it meets our criteria of being self-contained, easy-to-tweak, beginner-friendly, and single-purpose.
 
-- [Unconditional Training](./unconditional_training)
-- [Text-to-Image Training](./text2image)<sup>*</sup>
-- [Text Inversion](./text_inversion)
-- [Dreambooth](./dreambooth)<sup>*</sup>
-- [LoRA Support](./lora)<sup>*</sup>
-- [ControlNet](./controlnet)<sup>*</sup>
-- [InstructPix2Pix](./instructpix2pix)<sup>*</sup>
-- [Custom Diffusion](./custom_diffusion)
-- [T2I-Adapters](./t2i_adapters)<sup>*</sup>
+## Install
 
-<sup>*</sup>: Supports [Stable Diffusion XL](../api/pipelines/stable_diffusion/stable_diffusion_xl).
-
-If possible, please [install xFormers](../optimization/xformers) for memory efficient attention. This could help make your training faster and less memory intensive.
-
-| Task | 🤗 Accelerate | 🤗 Datasets | Colab
-|---|---|:---:|:---:|
-| [**Unconditional Image Generation**](./unconditional_training) | ✅ | ✅ | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/training_example.ipynb)
-| [**Text-to-Image fine-tuning**](./text2image) | ✅ | ✅ | 
-| [**Textual Inversion**](./text_inversion) | ✅ | - | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb)
-| [**Dreambooth**](./dreambooth) | ✅ | - | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_dreambooth_training.ipynb)
-| [**Training with LoRA**](./lora) | ✅ | - | - |
-| [**ControlNet**](./controlnet) | ✅ | ✅ | - |
-| [**InstructPix2Pix**](./instructpix2pix) | ✅ | ✅ | - |
-| [**Custom Diffusion**](./custom_diffusion) | ✅ | ✅ | - |
-| [**T2I Adapters**](./t2i_adapters) | ✅ | ✅ | - |
-
-## Community
-
-In addition, we provide **community** examples, which are examples added and maintained by our community.
-Community examples can consist of both *training* examples or *inference* pipelines.
-For such examples, we are more lenient regarding the philosophy defined above and also cannot guarantee to provide maintenance for every issue.
-Examples that are useful for the community, but are either not yet deemed popular or not yet following our above philosophy should go into the [community examples](https://github.com/huggingface/diffusers/tree/main/examples/community) folder. The community folder therefore includes training examples and inference pipelines.
-**Note**: Community examples can be a [great first contribution](https://github.com/huggingface/diffusers/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) to show to the community how you like to use `diffusers` 🪄.
-
-## Important note
-
-To make sure you can successfully run the latest versions of the example scripts, you have to **install the library from source** and install some example-specific requirements. To do this, execute the following steps in a new virtual environment:
+Make sure you can successfully run the latest versions of the example scripts by installing the library from source in a new virtual environment:
 
 ```bash
 git clone https://github.com/huggingface/diffusers
@@ -77,8 +48,16 @@ cd diffusers
 pip install .
 ```
 
-Then cd in the example folder of your choice and run
+Then navigate to the folder of the training script (for example, [DreamBooth](https://github.com/huggingface/diffusers/tree/main/examples/dreambooth)) and install the `requirements.txt` file. Some training scripts have a specific requirement file for SDXL, LoRA or Flax. If you're using one of these scripts, make sure you install its corresponding requirements file.
 
 ```bash
+cd examples/dreambooth
 pip install -r requirements.txt
+# to train SDXL with DreamBooth
+pip install -r requirements_sdxl.txt
 ```
+
+To speedup training and reduce memory-usage, we recommend:
+
+- using PyTorch 2.0 or higher to automatically use [scaled dot product attention](../optimization/torch2.0#scaled-dot-product-attention) during training (you don't need to make any changes to the training code)
+- installing [xFormers](../optimization/xformers) to enable memory-efficient attention

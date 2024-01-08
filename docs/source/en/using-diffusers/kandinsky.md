@@ -1,3 +1,15 @@
+<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
+the License. You may obtain a copy of the License at
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
+an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+-->
+
 # Kandinsky
 
 [[open-in-colab]]
@@ -8,18 +20,24 @@ The Kandinsky models are a series of multilingual text-to-image generation model
 
 [Kandinsky 2.2](../api/pipelines/kandinsky_v22) improves on the previous model by replacing the image encoder of the image prior model with a larger CLIP-ViT-G model to improve quality. The image prior model was also retrained on images with different resolutions and aspect ratios to generate higher-resolution images and different image sizes.
 
+[Kandinsky 3](../api/pipelines/kandinsky3) simplifies the architecture and shifts away from the two-stage generation process involving the prior model and diffusion model. Instead, Kandinsky 3 uses [Flan-UL2](https://huggingface.co/google/flan-ul2) to encode text, a UNet with [BigGan-deep](https://hf.co/papers/1809.11096) blocks, and [Sber-MoVQGAN](https://github.com/ai-forever/MoVQGAN) to decode the latents into images. Text understanding and generated image quality are primarily achieved by using a larger text encoder and UNet.
+
 This guide will show you how to use the Kandinsky models for text-to-image, image-to-image, inpainting, interpolation, and more.
 
 Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install transformers accelerate safetensors
+#!pip install -q diffusers transformers accelerate
 ```
 
 <Tip warning={true}>
 
 Kandinsky 2.1 and 2.2 usage is very similar! The only difference is Kandinsky 2.2 doesn't accept `prompt` as an input when decoding the latents. Instead, Kandinsky 2.2 only accepts `image_embeds` during decoding.
+
+<br>
+
+Kandinsky 3 has a more concise architecture and it doesn't require a prior model. This means it's usage is identical to other diffusion models like [Stable Diffusion XL](sdxl).
 
 </Tip>
 
@@ -46,6 +64,7 @@ Now pass all the prompts and embeddings to the [`KandinskyPipeline`] to generate
 
 ```py
 image = pipeline(prompt, image_embeds=image_embeds, negative_prompt=negative_prompt, negative_image_embeds=negative_image_embeds, height=768, width=768).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -71,11 +90,29 @@ Pass the `image_embeds` and `negative_image_embeds` to the [`KandinskyV22Pipelin
 
 ```py
 image = pipeline(image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768).images[0]
+image
 ```
 
 <div class="flex justify-center">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-text-to-image.png"/>
 </div>
+
+</hfoption>
+<hfoption id="Kandinsky 3">
+
+Kandinsky 3 doesn't require a prior model so you can directly load the [`Kandinsky3Pipeline`] and pass a prompt to generate an image:
+
+```py
+from diffusers import Kandinsky3Pipeline
+import torch
+
+pipeline = Kandinsky3Pipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+pipeline.enable_model_cpu_offload()
+
+prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
+image = pipeline(prompt).images[0]
+image
+```
 
 </hfoption>
 </hfoptions>
@@ -91,13 +128,14 @@ Use the [`AutoPipelineForText2Image`] to automatically call the combined pipelin
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
 negative_prompt = "low quality, bad quality"
 
-image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale=1.0, guidance_scale = 4.0, height=768, width=768).images[0]
+image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale=1.0, guidance_scale=4.0, height=768, width=768).images[0]
+image
 ```
 
 </hfoption>
@@ -107,13 +145,14 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_
 from diffusers import AutoPipelineForText2Image
 import torch
 
-pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
 negative_prompt = "low quality, bad quality"
 
-image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale=1.0, guidance_scale = 4.0, height=768, width=768).images[0]
+image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_scale=1.0, guidance_scale=4.0, height=768, width=768).images[0]
+image
 ```
 
 </hfoption>
@@ -121,7 +160,7 @@ image = pipeline(prompt=prompt, negative_prompt=negative_prompt, prior_guidance_
 
 ## Image-to-image
 
-For image-to-image, pass the initial image and text prompt to condition the image with to the pipeline. Start by loading the prior pipeline:
+For image-to-image, pass the initial image and text prompt to condition the image to the pipeline. Start by loading the prior pipeline:
 
 <hfoptions id="image-to-image">
 <hfoption id="Kandinsky 2.1">
@@ -146,19 +185,30 @@ pipeline = KandinskyV22Img2ImgPipeline.from_pretrained("kandinsky-community/kand
 ```
 
 </hfoption>
+<hfoption id="Kandinsky 3">
+
+Kandinsky 3 doesn't require a prior model so you can directly load the image-to-image pipeline:
+
+```py
+from diffusers import Kandinsky3Img2ImgPipeline
+from diffusers.utils import load_image
+import torch
+
+pipeline = Kandinsky3Img2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+pipeline.enable_model_cpu_offload()
+```
+
+</hfoption>
 </hfoptions>
 
 Download an image to condition on:
 
 ```py
-from PIL import Image
-import requests
-from io import BytesIO
+from diffusers.utils import load_image
 
 # download image
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
-response = requests.get(url)
-original_image = Image.open(BytesIO(response.content)).convert("RGB")
+original_image = load_image(url)
 original_image = original_image.resize((768, 512))
 ```
 
@@ -181,7 +231,10 @@ Now pass the original image, and all the prompts and embeddings to the pipeline 
 <hfoption id="Kandinsky 2.1">
 
 ```py
-image = pipeline(prompt, negative_prompt=negative_prompt, image=original_image, image_embeds=image_emebds, negative_image_embeds=negative_image_embeds, height=768, width=768, strength=0.3).images[0]
+from diffusers.utils import make_image_grid
+
+image = pipeline(prompt, negative_prompt=negative_prompt, image=original_image, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768, strength=0.3).images[0]
+make_image_grid([original_image.resize((512, 512)), image.resize((512, 512))], rows=1, cols=2)
 ```
 
 <div class="flex justify-center">
@@ -192,12 +245,23 @@ image = pipeline(prompt, negative_prompt=negative_prompt, image=original_image, 
 <hfoption id="Kandinsky 2.2">
 
 ```py
-image = pipeline(image=original_image, image_embeds=image_emebds, negative_image_embeds=negative_image_embeds, height=768, width=768, strength=0.3).images[0]
+from diffusers.utils import make_image_grid
+
+image = pipeline(image=original_image, image_embeds=image_embeds, negative_image_embeds=negative_image_embeds, height=768, width=768, strength=0.3).images[0]
+make_image_grid([original_image.resize((512, 512)), image.resize((512, 512))], rows=1, cols=2)
 ```
 
 <div class="flex justify-center">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-image-to-image.png"/>
 </div>
+
+</hfoption>
+<hfoption id="Kandinsky 3">
+
+```py
+image = pipeline(prompt, negative_prompt=negative_prompt, image=image, strength=0.75, num_inference_steps=25).images[0]
+image
+```
 
 </hfoption>
 </hfoptions>
@@ -211,25 +275,22 @@ Use the [`AutoPipelineForImage2Image`] to automatically call the combined pipeli
 
 ```py
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid, load_image
 import torch
-import requests
-from io import BytesIO
-from PIL import Image
-import os
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16, use_safetensors=True)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
- 
-response = requests.get(url)
-original_image = Image.open(BytesIO(response.content)).convert("RGB")
+original_image = load_image(url)
+
 original_image.thumbnail((768, 768))
 
-image = pipeline(prompt=prompt, image=original_image, strength=0.3).images[0]
+image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=original_image, strength=0.3).images[0]
+make_image_grid([original_image.resize((512, 512)), image.resize((512, 512))], rows=1, cols=2)
 ```
 
 </hfoption>
@@ -237,25 +298,22 @@ image = pipeline(prompt=prompt, image=original_image, strength=0.3).images[0]
 
 ```py
 from diffusers import AutoPipelineForImage2Image
+from diffusers.utils import make_image_grid, load_image
 import torch
-import requests
-from io import BytesIO
-from PIL import Image
-import os
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
 prompt = "A fantasy landscape, Cinematic lighting"
 negative_prompt = "low quality, bad quality"
 
 url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/assets/stable-samples/img2img/sketch-mountains-input.jpg"
- 
-response = requests.get(url)
-original_image = Image.open(BytesIO(response.content)).convert("RGB")
+original_image = load_image(url)
+
 original_image.thumbnail((768, 768))
 
-image = pipeline(prompt=prompt, image=original_image, strength=0.3).images[0]
+image = pipeline(prompt=prompt, negative_prompt=negative_prompt, image=original_image, strength=0.3).images[0]
+make_image_grid([original_image.resize((512, 512)), image.resize((512, 512))], rows=1, cols=2)
 ```
 
 </hfoption>
@@ -265,7 +323,7 @@ image = pipeline(prompt=prompt, image=original_image, strength=0.3).images[0]
 
 <Tip warning={true}>
 
-⚠️ The Kandinsky models uses ⬜️ **white pixels** to represent the masked area now instead of black pixels. If you are using [`KandinskyInpaintPipeline`] in production, you need to change the mask to use white pixels:
+⚠️ The Kandinsky models use ⬜️ **white pixels** to represent the masked area now instead of black pixels. If you are using [`KandinskyInpaintPipeline`] in production, you need to change the mask to use white pixels:
 
 ```py
 # For PIL input
@@ -285,9 +343,10 @@ For inpainting, you'll need the original image, a mask of the area to replace in
 
 ```py
 from diffusers import KandinskyInpaintPipeline, KandinskyPriorPipeline
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 import torch
 import numpy as np
+from PIL import Image
 
 prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 pipeline = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
@@ -298,9 +357,10 @@ pipeline = KandinskyInpaintPipeline.from_pretrained("kandinsky-community/kandins
 
 ```py
 from diffusers import KandinskyV22InpaintPipeline, KandinskyV22PriorPipeline
-from diffusers.utils import load_image
+from diffusers.utils import load_image, make_image_grid
 import torch
 import numpy as np
+from PIL import Image
 
 prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 pipeline = KandinskyV22InpaintPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
@@ -331,7 +391,9 @@ Now pass the initial image, mask, and prompt and embeddings to the pipeline to g
 <hfoption id="Kandinsky 2.1">
 
 ```py
-image = pipeline(prompt, image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
+output_image = pipeline(prompt, image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
+mask = Image.fromarray((mask*255).astype('uint8'), 'L')
+make_image_grid([init_image, mask, output_image], rows=1, cols=3)
 ```
 
 <div class="flex justify-center">
@@ -342,7 +404,9 @@ image = pipeline(prompt, image=init_image, mask_image=mask, **prior_output, heig
 <hfoption id="Kandinsky 2.2">
 
 ```py
-image = pipeline(image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
+output_image = pipeline(image=init_image, mask_image=mask, **prior_output, height=768, width=768, num_inference_steps=150).images[0]
+mask = Image.fromarray((mask*255).astype('uint8'), 'L')
+make_image_grid([init_image, mask, output_image], rows=1, cols=3)
 ```
 
 <div class="flex justify-center">
@@ -359,14 +423,23 @@ You can also use the end-to-end [`KandinskyInpaintCombinedPipeline`] and [`Kandi
 
 ```py
 import torch
+import numpy as np
+from PIL import Image
 from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
 
 pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-1-inpaint", torch_dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
+init_image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
+mask = np.zeros((768, 768), dtype=np.float32)
+# mask area above cat's head
+mask[:250, 250:-250] = 1
 prompt = "a hat"
 
-image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
+output_image = pipe(prompt=prompt, image=init_image, mask_image=mask).images[0]
+mask = Image.fromarray((mask*255).astype('uint8'), 'L')
+make_image_grid([init_image, mask, output_image], rows=1, cols=3)
 ```
 
 </hfoption>
@@ -374,14 +447,23 @@ image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
 
 ```py
 import torch
+import numpy as np
+from PIL import Image
 from diffusers import AutoPipelineForInpainting
+from diffusers.utils import load_image, make_image_grid
 
 pipe = AutoPipelineForInpainting.from_pretrained("kandinsky-community/kandinsky-2-2-decoder-inpaint", torch_dtype=torch.float16)
 pipe.enable_model_cpu_offload()
 
+init_image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
+mask = np.zeros((768, 768), dtype=np.float32)
+# mask area above cat's head
+mask[:250, 250:-250] = 1
 prompt = "a hat"
 
-image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
+output_image = pipe(prompt=prompt, image=original_image, mask_image=mask).images[0]
+mask = Image.fromarray((mask*255).astype('uint8'), 'L')
+make_image_grid([init_image, mask, output_image], rows=1, cols=3)
 ```
 
 </hfoption>
@@ -396,13 +478,13 @@ Interpolation allows you to explore the latent space between the image and text 
 
 ```py
 from diffusers import KandinskyPriorPipeline, KandinskyPipeline
-from diffusers.utils import load_image
-import PIL
+from diffusers.utils import load_image, make_image_grid
 import torch
 
 prior_pipeline = KandinskyPriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-1-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 img_1 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
 img_2 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/starry_night.jpeg")
+make_image_grid([img_1.resize((512,512)), img_2.resize((512,512))], rows=1, cols=2)
 ```
 
 </hfoption>
@@ -410,13 +492,13 @@ img_2 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffuser
 
 ```py
 from diffusers import KandinskyV22PriorPipeline, KandinskyV22Pipeline
-from diffusers.utils import load_image
-import PIL
+from diffusers.utils import load_image, make_image_grid
 import torch
 
 prior_pipeline = KandinskyV22PriorPipeline.from_pretrained("kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True).to("cuda")
 img_1 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/cat.png")
 img_2 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky/starry_night.jpeg")
+make_image_grid([img_1.resize((512,512)), img_2.resize((512,512))], rows=1, cols=2)
 ```
 
 </hfoption>
@@ -436,7 +518,7 @@ img_2 = load_image("https://huggingface.co/datasets/hf-internal-testing/diffuser
 Specify the text or images to interpolate, and set the weights for each text or image. Experiment with the weights to see how they affect the interpolation!
 
 ```py
-images_texts = ["a cat", img1, img2]
+images_texts = ["a cat", img_1, img_2]
 weights = [0.3, 0.3, 0.4]
 ```
 
@@ -499,6 +581,7 @@ from diffusers.utils import load_image
 img = load_image(
     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/cat.png"
 ).resize((768, 768))
+img
 ```
 
 <div class="flex justify-center">
@@ -512,8 +595,6 @@ import torch
 import numpy as np
 
 from transformers import pipeline
-from diffusers.utils import load_image
-
 
 def make_hint(image, depth_estimator):
     image = depth_estimator(image)["depth"]
@@ -523,7 +604,6 @@ def make_hint(image, depth_estimator):
     detected_map = torch.from_numpy(image).float() / 255.0
     hint = detected_map.permute(2, 0, 1)
     return hint
-
 
 depth_estimator = pipeline("depth-estimation")
 hint = make_hint(img, depth_estimator).unsqueeze(0).half().to("cuda")
@@ -538,10 +618,10 @@ from diffusers import KandinskyV22PriorPipeline, KandinskyV22ControlnetPipeline
 
 prior_pipeline = KandinskyV22PriorPipeline.from_pretrained(
     "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16, use_safetensors=True
-)to("cuda")
+).to("cuda")
 
 pipeline = KandinskyV22ControlnetPipeline.from_pretrained(
-    "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16, use_safetensors=True
+    "kandinsky-community/kandinsky-2-2-controlnet-depth", torch_dtype=torch.float16
 ).to("cuda")
 ```
 
@@ -549,11 +629,11 @@ Generate the image embeddings from a prompt and negative prompt:
 
 ```py
 prompt = "A robot, 4k photo"
-
 negative_prior_prompt = "lowres, text, error, cropped, worst quality, low quality, jpeg artifacts, ugly, duplicate, morbid, mutilated, out of frame, extra fingers, mutated hands, poorly drawn hands, poorly drawn face, mutation, deformed, blurry, dehydrated, bad anatomy, bad proportions, extra limbs, cloned face, disfigured, gross proportions, malformed limbs, missing arms, missing legs, extra arms, extra legs, fused fingers, too many fingers, long neck, username, watermark, signature"
 
 generator = torch.Generator(device="cuda").manual_seed(43)
-image_emb, zero_image_emb = pipe_prior(
+
+image_emb, zero_image_emb = prior_pipeline(
     prompt=prompt, negative_prompt=negative_prior_prompt, generator=generator
 ).to_tuple()
 ```
@@ -587,9 +667,8 @@ from diffusers.utils import load_image
 from transformers import pipeline
 
 img = load_image(
-    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main" "/kandinskyv22/cat.png"
+    "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinskyv22/cat.png"
 ).resize((768, 768))
-
 
 def make_hint(image, depth_estimator):
     image = depth_estimator(image)["depth"]
@@ -599,7 +678,6 @@ def make_hint(image, depth_estimator):
     detected_map = torch.from_numpy(image).float() / 255.0
     hint = detected_map.permute(2, 0, 1)
     return hint
-
 
 depth_estimator = pipeline("depth-estimation")
 hint = make_hint(img, depth_estimator).unsqueeze(0).half().to("cuda")
@@ -625,15 +703,15 @@ negative_prior_prompt = "lowres, text, error, cropped, worst quality, low qualit
 
 generator = torch.Generator(device="cuda").manual_seed(43)
 
-img_emb = pipe_prior(prompt=prompt, image=img, strength=0.85, generator=generator)
-negative_emb = pipe_prior(prompt=negative_prior_prompt, image=img, strength=1, generator=generator)
+img_emb = prior_pipeline(prompt=prompt, image=img, strength=0.85, generator=generator)
+negative_emb = prior_pipeline(prompt=negative_prior_prompt, image=img, strength=1, generator=generator)
 ```
 
 Now you can run the [`KandinskyV22ControlnetImg2ImgPipeline`] to generate an image from the initial image and the image embeddings:
 
 ```py
 image = pipeline(image=img, strength=0.5, image_embeds=img_emb.image_embeds, negative_image_embeds=negative_emb.image_embeds, hint=hint, num_inference_steps=50, generator=generator, height=768, width=768).images[0]
-image
+make_image_grid([img.resize((512, 512)), image.resize((512, 512))], rows=1, cols=2)
 ```
 
 <div class="flex justify-center">
@@ -644,7 +722,7 @@ image
 
 Kandinsky is unique because it requires a prior pipeline to generate the mappings, and a second pipeline to decode the latents into an image. Optimization efforts should be focused on the second pipeline because that is where the bulk of the computation is done. Here are some tips to improve Kandinsky during inference.
 
-1. Enable [xFormers](https://moon-ci-docs.huggingface.co/optimization/xformers) if you're using PyTorch < 2.0:
+1. Enable [xFormers](../optimization/xformers) if you're using PyTorch < 2.0:
 
 ```diff
   from diffusers import DiffusionPipeline
@@ -654,14 +732,11 @@ Kandinsky is unique because it requires a prior pipeline to generate the mapping
 + pipe.enable_xformers_memory_efficient_attention()
 ```
 
-2. Enable `torch.compile` if you're using PyTorch 2.0 to automatically use scaled dot-product attention (SDPA):
+2. Enable `torch.compile` if you're using PyTorch >= 2.0 to automatically use scaled dot-product attention (SDPA):
 
 ```diff
   pipe.unet.to(memory_format=torch.channels_last)
-+ pipe.unet = torch.compile(pipe.unet, mode="reduced-overhead", fullgraph=True)
-
-  pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", torch_dtype=torch.float16)
-+ pipe.enable_xformers_memory_efficient_attention()
++ pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
 This is the same as explicitly setting the attention processor to use [`~models.attention_processor.AttnAddedKVProcessor2_0`]:
@@ -685,7 +760,8 @@ pipe.unet.set_attn_processor(AttnAddedKVProcessor2_0())
 4. By default, the text-to-image pipeline uses the [`DDIMScheduler`] but you can replace it with another scheduler like [`DDPMScheduler`] to see how that affects the tradeoff between inference speed and image quality:
 
 ```py
-from diffusers import DDPMSCheduler
+from diffusers import DDPMScheduler
+from diffusers import DiffusionPipeline
 
 scheduler = DDPMScheduler.from_pretrained("kandinsky-community/kandinsky-2-1", subfolder="ddpm_scheduler")
 pipe = DiffusionPipeline.from_pretrained("kandinsky-community/kandinsky-2-1", scheduler=scheduler, torch_dtype=torch.float16, use_safetensors=True).to("cuda")

@@ -1,5 +1,5 @@
-name: "\U0001F31F New model/pipeline/scheduler addition"
-description: Submit a proposal/request to implement a new diffusion model / pipeline / scheduler
+name: "\U0001F31F New Model/Pipeline/Scheduler Addition"
+description: Submit a proposal/request to implement a new diffusion model/pipeline/scheduler
 labels: [ "New model/pipeline/scheduler" ]
 
 body:
@@ -19,7 +19,7 @@ body:
       description: |
           Please note that if the model implementation isn't available or if the weights aren't open-source, we are less likely to implement it in `diffusers`.
       options:
-        - label: "The model implementation is available"
+        - label: "The model implementation is available."
         - label: "The model weights are available (Only relevant if addition is not a scheduler)."
 
   - type: textarea

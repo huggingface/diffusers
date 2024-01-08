@@ -9,7 +9,7 @@ specific language governing permissions and limitations under the License.
 
 # Kandinsky 2.1
 
-Kandinsky 2.1 is created by [Arseniy Shakhmatov](https://github.com/cene555), [Anton Razzhigaev](https://github.com/razzant), [Aleksandr Nikolich](https://github.com/AlexWortega), [Igor Pavlov](https://github.com/boomb0om), [Andrey Kuznetsov](https://github.com/kuznetsoffandrey) and [Denis Dimitrov](https://github.com/denndimitrov).
+Kandinsky 2.1 is created by [Arseniy Shakhmatov](https://github.com/cene555), [Anton Razzhigaev](https://github.com/razzant), [Aleksandr Nikolich](https://github.com/AlexWortega), [Vladimir Arkhipkin](https://github.com/oriBetelgeuse), [Igor Pavlov](https://github.com/boomb0om), [Andrey Kuznetsov](https://github.com/kuznetsoffandrey), and [Denis Dimitrov](https://github.com/denndimitrov).
 
 The description from it's GitHub page is:
 
@@ -23,13 +23,19 @@ Check out the [Kandinsky Community](https://huggingface.co/kandinsky-community) 
 
 </Tip>
 
+<Tip>
+
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
+
 ## KandinskyPriorPipeline
 
 [[autodoc]] KandinskyPriorPipeline
 	- all
 	- __call__
 	- interpolate
-	
+
 ## KandinskyPipeline
 
 [[autodoc]] KandinskyPipeline

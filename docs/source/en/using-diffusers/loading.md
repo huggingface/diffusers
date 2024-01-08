@@ -232,7 +232,7 @@ TODO(Patrick) - Make sure to uncomment this part as soon as things are deprecate
 
 #### Using `revision` to load pipeline variants is deprecated
 
-Previously the `revision` argument of [`DiffusionPipeline.from_pretrained`] was heavily used to 
+Previously the `revision` argument of [`DiffusionPipeline.from_pretrained`] was heavily used to
 load model variants, e.g.:
 
 ```python
@@ -247,7 +247,7 @@ The above example is therefore deprecated and won't be supported anymore for `di
 
 <Tip warning={true}>
 
-If you load diffusers pipelines or models with `revision="fp16"` or `revision="non_ema"`, 
+If you load diffusers pipelines or models with `revision="fp16"` or `revision="non_ema"`,
 please make sure to update the code and use `variant="fp16"` or `variation="non_ema"` respectively
 instead.
 

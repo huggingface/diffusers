@@ -25,7 +25,8 @@ from pathlib import Path
 from typing import Dict, Optional, Union
 from urllib import request
 
-from huggingface_hub import HfFolder, cached_download, hf_hub_download, model_info
+from huggingface_hub import cached_download, hf_hub_download, model_info
+from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
 from .. import __version__
@@ -87,9 +88,9 @@ def get_relative_imports(module_file):
         content = f.read()
 
     # Imports of the form `import .xxx`
-    relative_imports = re.findall("^\s*import\s+\.(\S+)\s*$", content, flags=re.MULTILINE)
+    relative_imports = re.findall(r"^\s*import\s+\.(\S+)\s*$", content, flags=re.MULTILINE)
     # Imports of the form `from .xxx import yyy`
-    relative_imports += re.findall("^\s*from\s+\.(\S+)\s+import", content, flags=re.MULTILINE)
+    relative_imports += re.findall(r"^\s*from\s+\.(\S+)\s+import", content, flags=re.MULTILINE)
     # Unique-ify
     return list(set(relative_imports))
 
@@ -131,9 +132,9 @@ def check_imports(filename):
         content = f.read()
 
     # Imports of the form `import xxx`
-    imports = re.findall("^\s*import\s+(\S+)\s*$", content, flags=re.MULTILINE)
+    imports = re.findall(r"^\s*import\s+(\S+)\s*$", content, flags=re.MULTILINE)
     # Imports of the form `from xxx import yyy`
-    imports += re.findall("^\s*from\s+(\S+)\s+import", content, flags=re.MULTILINE)
+    imports += re.findall(r"^\s*from\s+(\S+)\s+import", content, flags=re.MULTILINE)
     # Only keep the top-level module
     imports = [imp.split(".")[0] for imp in imports if not imp.startswith(".")]
 
@@ -194,6 +195,7 @@ def find_pipeline_class(loaded_module):
     return pipeline_class
 
 
+@validate_hf_hub_args
 def get_cached_module_file(
     pretrained_model_name_or_path: Union[str, os.PathLike],
     module_file: str,
@@ -201,7 +203,7 @@ def get_cached_module_file(
     force_download: bool = False,
     resume_download: bool = False,
     proxies: Optional[Dict[str, str]] = None,
-    use_auth_token: Optional[Union[bool, str]] = None,
+    token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
 ):
@@ -232,7 +234,7 @@ def get_cached_module_file(
         proxies (`Dict[str, str]`, *optional*):
             A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
             'http://hostname': 'foo.bar:4012'}.` The proxies are used on each request.
-        use_auth_token (`str` or *bool*, *optional*):
+        token (`str` or *bool*, *optional*):
             The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
             when running `transformers-cli login` (stored in `~/.huggingface`).
         revision (`str`, *optional*, defaults to `"main"`):
@@ -244,7 +246,7 @@ def get_cached_module_file(
 
     <Tip>
 
-    You may pass a token in `use_auth_token` if you are not logged in (`huggingface-cli long`) and want to use private
+    You may pass a token in `token` if you are not logged in (`huggingface-cli login`) and want to use private
     or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
@@ -289,7 +291,7 @@ def get_cached_module_file(
                 proxies=proxies,
                 resume_download=resume_download,
                 local_files_only=local_files_only,
-                use_auth_token=False,
+                token=False,
             )
             submodule = "git"
             module_file = pretrained_model_name_or_path + ".py"
@@ -307,7 +309,7 @@ def get_cached_module_file(
                 proxies=proxies,
                 resume_download=resume_download,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
             )
             submodule = os.path.join("local", "--".join(pretrained_model_name_or_path.split("/")))
         except EnvironmentError:
@@ -332,13 +334,6 @@ def get_cached_module_file(
     else:
         # Get the commit hash
         # TODO: we will get this info in the etag soon, so retrieve it from there and not here.
-        if isinstance(use_auth_token, str):
-            token = use_auth_token
-        elif use_auth_token is True:
-            token = HfFolder.get_token()
-        else:
-            token = None
-
         commit_hash = model_info(pretrained_model_name_or_path, revision=revision, token=token).sha
 
         # The module file will end up being placed in a subfolder with the git hash of the repo. This way we get the
@@ -359,13 +354,14 @@ def get_cached_module_file(
                     force_download=force_download,
                     resume_download=resume_download,
                     proxies=proxies,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     revision=revision,
                     local_files_only=local_files_only,
                 )
     return os.path.join(full_submodule, module_file)
 
 
+@validate_hf_hub_args
 def get_class_from_dynamic_module(
     pretrained_model_name_or_path: Union[str, os.PathLike],
     module_file: str,
@@ -374,7 +370,7 @@ def get_class_from_dynamic_module(
     force_download: bool = False,
     resume_download: bool = False,
     proxies: Optional[Dict[str, str]] = None,
-    use_auth_token: Optional[Union[bool, str]] = None,
+    token: Optional[Union[bool, str]] = None,
     revision: Optional[str] = None,
     local_files_only: bool = False,
     **kwargs,
@@ -414,7 +410,7 @@ def get_class_from_dynamic_module(
         proxies (`Dict[str, str]`, *optional*):
             A dictionary of proxy servers to use by protocol or endpoint, e.g., `{'http': 'foo.bar:3128',
             'http://hostname': 'foo.bar:4012'}.` The proxies are used on each request.
-        use_auth_token (`str` or `bool`, *optional*):
+        token (`str` or `bool`, *optional*):
             The token to use as HTTP bearer authorization for remote files. If `True`, will use the token generated
             when running `transformers-cli login` (stored in `~/.huggingface`).
         revision (`str`, *optional*, defaults to `"main"`):
@@ -426,7 +422,7 @@ def get_class_from_dynamic_module(
 
     <Tip>
 
-    You may pass a token in `use_auth_token` if you are not logged in (`huggingface-cli long`) and want to use private
+    You may pass a token in `token` if you are not logged in (`huggingface-cli login`) and want to use private
     or [gated models](https://huggingface.co/docs/hub/models-gated#gated-models).
 
     </Tip>
@@ -449,7 +445,7 @@ def get_class_from_dynamic_module(
         force_download=force_download,
         resume_download=resume_download,
         proxies=proxies,
-        use_auth_token=use_auth_token,
+        token=token,
         revision=revision,
         local_files_only=local_files_only,
     )

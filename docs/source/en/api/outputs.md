@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # Outputs
 
-All models outputs are subclasses of [`~utils.BaseOutput`], data structures containing all the information returned by the model. The outputs can also be used as tuples or dictionaries.
+All model outputs are subclasses of [`~utils.BaseOutput`], data structures containing all the information returned by the model. The outputs can also be used as tuples or dictionaries.
 
 For example:
 

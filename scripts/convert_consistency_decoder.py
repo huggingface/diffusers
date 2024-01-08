@@ -1,4 +1,3 @@
-import hashlib
 import math
 import os
 import urllib
@@ -8,13 +7,14 @@ from argparse import ArgumentParser
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from huggingface_hub.utils import insecure_hashlib
 from safetensors.torch import load_file as stl
 from tqdm import tqdm
 
 from diffusers import AutoencoderKL, ConsistencyDecoderVAE, DiffusionPipeline, StableDiffusionPipeline, UNet2DModel
+from diffusers.models.autoencoders.vae import Encoder
 from diffusers.models.embeddings import TimestepEmbedding
 from diffusers.models.unet_2d_blocks import ResnetDownsampleBlock2D, ResnetUpsampleBlock2D, UNetMidBlock2D
-from diffusers.models.vae import Encoder
 
 
 args = ArgumentParser()
@@ -51,7 +51,7 @@ def _download(url: str, root: str):
         raise RuntimeError(f"{download_target} exists and is not a regular file")
 
     if os.path.isfile(download_target):
-        if hashlib.sha256(open(download_target, "rb").read()).hexdigest() == expected_sha256:
+        if insecure_hashlib.sha256(open(download_target, "rb").read()).hexdigest() == expected_sha256:
             return download_target
         else:
             warnings.warn(f"{download_target} exists, but the SHA256 checksum does not match; re-downloading the file")
@@ -72,7 +72,7 @@ def _download(url: str, root: str):
                 output.write(buffer)
                 loop.update(len(buffer))
 
-    if hashlib.sha256(open(download_target, "rb").read()).hexdigest() != expected_sha256:
+    if insecure_hashlib.sha256(open(download_target, "rb").read()).hexdigest() != expected_sha256:
         raise RuntimeError("Model has been downloaded but the SHA256 checksum does not not match")
 
     return download_target

@@ -1,4 +1,4 @@
-__version__ = "0.24.0.dev0"
+__version__ = "0.26.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -76,9 +76,11 @@ else:
         [
             "AsymmetricAutoencoderKL",
             "AutoencoderKL",
+            "AutoencoderKLTemporalDecoder",
             "AutoencoderTiny",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
+            "Kandinsky3UNet",
             "ModelMixin",
             "MotionAdapter",
             "MultiAdapter",
@@ -91,9 +93,12 @@ else:
             "UNet2DModel",
             "UNet3DConditionModel",
             "UNetMotionModel",
+            "UNetSpatioTemporalConditionModel",
+            "UVit2DModel",
             "VQModel",
         ]
     )
+
     _import_structure["optimization"] = [
         "get_constant_schedule",
         "get_constant_schedule_with_warmup",
@@ -103,7 +108,6 @@ else:
         "get_polynomial_decay_schedule_with_warmup",
         "get_scheduler",
     ]
-
     _import_structure["pipelines"].extend(
         [
             "AudioPipelineOutput",
@@ -127,6 +131,7 @@ else:
     )
     _import_structure["schedulers"].extend(
         [
+            "AmusedScheduler",
             "CMStochasticIterativeScheduler",
             "DDIMInverseScheduler",
             "DDIMParallelScheduler",
@@ -198,6 +203,9 @@ else:
         [
             "AltDiffusionImg2ImgPipeline",
             "AltDiffusionPipeline",
+            "AmusedImg2ImgPipeline",
+            "AmusedInpaintPipeline",
+            "AmusedPipeline",
             "AnimateDiffPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
@@ -214,6 +222,8 @@ else:
             "IFPipeline",
             "IFSuperResolutionPipeline",
             "ImageTextPipelineOutput",
+            "Kandinsky3Img2ImgPipeline",
+            "Kandinsky3Pipeline",
             "KandinskyCombinedPipeline",
             "KandinskyImg2ImgCombinedPipeline",
             "KandinskyImg2ImgPipeline",
@@ -274,8 +284,10 @@ else:
             "StableDiffusionXLPipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
+            "StableVideoDiffusionPipeline",
             "TextToVideoSDPipeline",
             "TextToVideoZeroPipeline",
+            "TextToVideoZeroSDXLPipeline",
             "UnCLIPImageVariationPipeline",
             "UnCLIPPipeline",
             "UniDiffuserModel",
@@ -446,9 +458,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .models import (
             AsymmetricAutoencoderKL,
             AutoencoderKL,
+            AutoencoderKLTemporalDecoder,
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             ControlNetModel,
+            Kandinsky3UNet,
             ModelMixin,
             MotionAdapter,
             MultiAdapter,
@@ -461,6 +475,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             UNet2DModel,
             UNet3DConditionModel,
             UNetMotionModel,
+            UNetSpatioTemporalConditionModel,
+            UVit2DModel,
             VQModel,
         )
         from .optimization import (
@@ -495,6 +511,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ScoreSdeVePipeline,
         )
         from .schedulers import (
+            AmusedScheduler,
             CMStochasticIterativeScheduler,
             DDIMInverseScheduler,
             DDIMParallelScheduler,
@@ -549,6 +566,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipelines import (
             AltDiffusionImg2ImgPipeline,
             AltDiffusionPipeline,
+            AmusedImg2ImgPipeline,
+            AmusedInpaintPipeline,
+            AmusedPipeline,
             AnimateDiffPipeline,
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
@@ -563,6 +583,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             IFPipeline,
             IFSuperResolutionPipeline,
             ImageTextPipelineOutput,
+            Kandinsky3Img2ImgPipeline,
+            Kandinsky3Pipeline,
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
             KandinskyImg2ImgPipeline,
@@ -623,8 +645,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLPipeline,
             StableUnCLIPImg2ImgPipeline,
             StableUnCLIPPipeline,
+            StableVideoDiffusionPipeline,
             TextToVideoSDPipeline,
             TextToVideoZeroPipeline,
+            TextToVideoZeroSDXLPipeline,
             UnCLIPImageVariationPipeline,
             UnCLIPPipeline,
             UniDiffuserModel,

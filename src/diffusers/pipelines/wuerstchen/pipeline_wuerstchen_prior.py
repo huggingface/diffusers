@@ -69,6 +69,10 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+
     Args:
         prior ([`Prior`]):
             The canonical unCLIP prior to approximate the image embedding from the text embedding.
@@ -349,7 +353,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 

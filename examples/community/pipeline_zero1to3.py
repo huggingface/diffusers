@@ -94,6 +94,7 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
         cc_projection ([`CCProjection`]):
             Projection layer to project the concated CLIP features and pose embeddings to the original CLIP feature size.
     """
+
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
@@ -658,7 +659,8 @@ class Zero1to3StableDiffusionPipeline(DiffusionPipeline):
 
         if isinstance(generator, list):
             init_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.mode(generator[i]) for i in range(batch_size)  # sample
+                self.vae.encode(image[i : i + 1]).latent_dist.mode(generator[i])
+                for i in range(batch_size)  # sample
             ]
             init_latents = torch.cat(init_latents, dim=0)
         else:

@@ -127,6 +127,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=None,
+            image_encoder=None,
             requires_safety_checker=False,
         )
         sd_pipe = sd_pipe.to(device)
@@ -176,6 +177,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=None,
+            image_encoder=None,
             requires_safety_checker=False,
         )
         sd_pipe = sd_pipe.to(device)
@@ -236,6 +238,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=None,
+            image_encoder=None,
             requires_safety_checker=False,
         )
         sd_pipe = sd_pipe.to(torch_device)

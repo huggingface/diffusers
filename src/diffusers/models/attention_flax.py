@@ -110,7 +110,10 @@ def jax_memory_efficient_attention(
         )
 
     _, res = jax.lax.scan(
-        f=chunk_scanner, init=0, xs=None, length=math.ceil(num_q / query_chunk_size)  # start counter  # stop counter
+        f=chunk_scanner,
+        init=0,
+        xs=None,
+        length=math.ceil(num_q / query_chunk_size),  # start counter  # stop counter
     )
 
     return jnp.concatenate(res, axis=-3)  # fuse the chunked result back
@@ -138,6 +141,7 @@ class FlaxAttention(nn.Module):
             Parameters `dtype`
 
     """
+
     query_dim: int
     heads: int = 8
     dim_head: int = 64
@@ -262,6 +266,7 @@ class FlaxBasicTransformerBlock(nn.Module):
             Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
             enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
     """
+
     dim: int
     n_heads: int
     d_head: int
@@ -347,6 +352,7 @@ class FlaxTransformer2DModel(nn.Module):
             Whether to split the head dimension into a new axis for the self-attention computation. In most cases,
             enabling this flag should speed up the computation for Stable Diffusion 2.x and Stable Diffusion XL.
     """
+
     in_channels: int
     n_heads: int
     d_head: int
@@ -442,6 +448,7 @@ class FlaxFeedForward(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
+
     dim: int
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32
@@ -471,6 +478,7 @@ class FlaxGEGLU(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
+
     dim: int
     dropout: float = 0.0
     dtype: jnp.dtype = jnp.float32

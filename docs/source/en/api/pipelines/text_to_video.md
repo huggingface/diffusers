@@ -12,27 +12,27 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-🧪 This pipeline is for research purposes only. 
+🧪 This pipeline is for research purposes only.
 
 </Tip>
 
 # Text-to-video
 
-[VideoFusion: Decomposed Diffusion Models for High-Quality Video Generation](https://huggingface.co/papers/2303.08320) is by Zhengxiong Luo, Dayou Chen, Yingya Zhang, Yan Huang, Liang Wang, Yujun Shen, Deli Zhao, Jingren Zhou, Tieniu Tan.
+[ModelScope Text-to-Video Technical Report](https://arxiv.org/abs/2308.06571) is by Jiuniu Wang, Hangjie Yuan, Dayou Chen, Yingya Zhang, Xiang Wang, Shiwei Zhang.
 
 The abstract from the paper is:
 
-*A diffusion probabilistic model (DPM), which constructs a forward diffusion process by gradually adding noise to data points and learns the reverse denoising process to generate new samples, has been shown to handle complex data distribution. Despite its recent success in image synthesis, applying DPMs to video generation is still challenging due to high-dimensional data spaces. Previous methods usually adopt a standard diffusion process, where frames in the same video clip are destroyed with independent noises, ignoring the content redundancy and temporal correlation. This work presents a decomposed diffusion process via resolving the per-frame noise into a base noise that is shared among all frames and a residual noise that varies along the time axis. The denoising pipeline employs two jointly-learned networks to match the noise decomposition accordingly. Experiments on various datasets confirm that our approach, termed as VideoFusion, surpasses both GAN-based and diffusion-based alternatives in high-quality video generation. We further show that our decomposed formulation can benefit from pre-trained image diffusion models and well-support text-conditioned video creation.*
+*This paper introduces ModelScopeT2V, a text-to-video synthesis model that evolves from a text-to-image synthesis model (i.e., Stable Diffusion). ModelScopeT2V incorporates spatio-temporal blocks to ensure consistent frame generation and smooth movement transitions. The model could adapt to varying frame numbers during training and inference, rendering it suitable for both image-text and video-text datasets. ModelScopeT2V brings together three components (i.e., VQGAN, a text encoder, and a denoising UNet), totally comprising 1.7 billion parameters, in which 0.5 billion parameters are dedicated to temporal capabilities. The model demonstrates superior performance over state-of-the-art methods across three evaluation metrics. The code and an online demo are available at https://modelscope.cn/models/damo/text-to-video-synthesis/summary.*
 
 You can find additional information about Text-to-Video on the [project page](https://modelscope.cn/models/damo/text-to-video-synthesis/summary), [original codebase](https://github.com/modelscope/modelscope/), and try it out in a [demo](https://huggingface.co/spaces/damo-vilab/modelscope-text-to-video-synthesis). Official checkpoints can be found at [damo-vilab](https://huggingface.co/damo-vilab) and [cerspense](https://huggingface.co/cerspense).
 
-## Usage example 
+## Usage example
 
 ### `text-to-video-ms-1.7b`
 
 Let's start by generating a short video with the default length of 16 frames (2s at 8 fps):
 
-```python 
+```python
 import torch
 from diffusers import DiffusionPipeline
 from diffusers.utils import export_to_video
@@ -88,7 +88,7 @@ video_path = export_to_video(video_frames)
 video_path
 ```
 
-Here are some sample outputs: 
+Here are some sample outputs:
 
 <table>
     <tr>
@@ -118,8 +118,9 @@ which can then be upscaled using [`VideoToVideoSDPipeline`] and [`cerspense/zero
 
 ```py
 import torch
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 from diffusers.utils import export_to_video
+from PIL import Image
 
 pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dtype=torch.float16)
 pipe.enable_model_cpu_offload()
@@ -152,7 +153,7 @@ video_path = export_to_video(video_frames)
 video_path
 ```
 
-Here are some sample outputs: 
+Here are some sample outputs:
 
 <table>
     <tr>
@@ -165,6 +166,12 @@ Here are some sample outputs:
         </center></td>
     </tr>
 </table>
+
+<Tip>
+
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
 
 ## TextToVideoSDPipeline
 [[autodoc]] TextToVideoSDPipeline

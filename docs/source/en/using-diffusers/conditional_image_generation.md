@@ -226,7 +226,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 	"runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
 ).to("cuda")
 image = pipeline(
-	prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", 
+	prompt="Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
 	negative_prompt="ugly, deformed, disfigured, poor details, bad anatomy",
 ).images[0]
 image
@@ -258,7 +258,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 ).to("cuda")
 generator = torch.Generator(device="cuda").manual_seed(30)
 image = pipeline(
-	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k", 
+	"Astronaut in a jungle, cold color palette, muted colors, detailed, 8k",
 	generator=generator,
 ).images[0]
 image

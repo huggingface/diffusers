@@ -10,11 +10,19 @@ an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express o
 specific language governing permissions and limitations under the License.
 -->
 
-# Using callback
+# Pipeline callbacks
 
-[[open-in-colab]]
+The denoising loop of a pipeline can be modified with custom defined functions using the `callback_on_step_end` parameter. This can be really useful for *dynamically* adjusting certain pipeline attributes, or modifying tensor variables. The flexibility of callbacks opens up some interesting use-cases such as changing the prompt embeddings at each timestep, assigning different weights to the prompt embeddings, and editing the guidance scale.
 
-Most 🤗 Diffusers pipelines now accept a `callback_on_step_end` argument that allows you to change the default behavior of denoising loop with custom defined functions. Here is an example of a callback function we can write to disable classifier-free guidance after 40% of inference steps to save compute with a minimum tradeoff in performance.
+This guide will show you how to use the `callback_on_step_end` parameter to disable classifier-free guidance (CFG) after 40% of the inference steps to save compute with minimal cost to performance.
+
+The callback function should have the following arguments:
+
+* `pipe` (or the pipeline instance) provides access to useful properties such as `num_timestep` and `guidance_scale`. You can modify these properties by updating the underlying attributes. For this example, you'll disable CFG by setting `pipe._guidance_scale=0.0`.
+* `step_index` and `timestep` tell you where you are in the denoising loop. Use `step_index` to turn off CFG after reaching 40% of `num_timestep`.
+* `callback_kwargs` is a dict that contains tensor variables you can modify during the denoising loop. It only includes variables specified in the `callback_on_step_end_tensor_inputs` argument, which is passed to the pipeline's `__call__` method. Different pipelines may use different sets of variables, so please check a pipeline's `_callback_tensor_inputs` attribute for the list of variables you can modify. Some common variables include `latents` and `prompt_embeds`. For this function, change the batch size of `prompt_embeds` after setting `guidance_scale=0.0` in order for it to work properly.
+
+Your callback function should look something like this:
 
 ```python
 def callback_dynamic_cfg(pipe, step_index, timestep, callback_kwargs):
@@ -29,14 +37,9 @@ def callback_dynamic_cfg(pipe, step_index, timestep, callback_kwargs):
         return callback_kwargs
 ```
 
-Your callback function has below arguments:
-* `pipe` is the pipeline instance, which provides access to useful properties such as `num_timestep` and `guidance_scale`. You can modify these properties by updating the underlying attributes. In this example, we disable CFG by setting `pipe._guidance_scale` to be `0`.
-* `step_index` and `timestep` tell you where you are in the denoising loop. In our example, we use `step_index` to decide when to turn off CFG.
-* `callback_kwargs` is a dict that contains tensor variables you can modify during the denoising loop. It only includes variables specified in the `callback_on_step_end_tensor_inputs` argument passed to the pipeline's `__call__` method. Different pipelines may use different sets of variables so please check the pipeline class's `_callback_tensor_inputs` attribute for the list of variables that you can modify. Common variables include `latents` and `prompt_embeds`. In our example, we need to adjust the batch size of `prompt_embeds` after setting `guidance_scale` to be `0` in order for it to work properly.
+Now, you can pass the callback function to the `callback_on_step_end` parameter and the `prompt_embeds` to `callback_on_step_end_tensor_inputs`.
 
-You can pass the callback function as `callback_on_step_end` argument to the pipeline along with `callback_on_step_end_tensor_inputs`.
-
-```python
+```py
 import torch
 from diffusers import StableDiffusionPipeline
 
@@ -51,10 +54,51 @@ out = pipe(prompt, generator=generator, callback_on_step_end=callback_custom_cfg
 out.images[0].save("out_custom_cfg.png")
 ```
 
-Your callback function will be executed at the end of each denoising step and modify pipeline attributes and tensor variables for the next denoising step. We successfully added the "dynamic CFG" feature to the stable diffusion pipeline without having to modify the code at all.
+The callback function is executed at the end of each denoising step, and modifies the pipeline attributes and tensor variables for the next denoising step.
+
+With callbacks, you can implement features such as dynamic CFG without having to modify the underlying code at all!
 
 <Tip>
 
-Currently we only support `callback_on_step_end`. If you have a solid use case and require a callback function with a different execution point, please open a [Feature Request](https://github.com/huggingface/diffusers/issues/new?assignees=&labels=&projects=&template=feature_request.md&title=) so we can add it!
+🤗 Diffusers currently only supports `callback_on_step_end`, but feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) if you have a cool use-case and require a callback function with a different execution point!
 
 </Tip>
+
+
+## Using Callbacks to interrupt the Diffusion Process
+
+The following Pipelines support interrupting the diffusion process via callback
+
+- [StableDiffusionPipeline](../api/pipelines/stable_diffusion/overview.md)
+- [StableDiffusionImg2ImgPipeline](..api/pipelines/stable_diffusion/img2img.md)
+- [StableDiffusionInpaintPipeline](..api/pipelines/stable_diffusion/inpaint.md)
+- [StableDiffusionXLPipeline](../api/pipelines/stable_diffusion/stable_diffusion_xl.md)
+- [StableDiffusionXLImg2ImgPipeline](../api/pipelines/stable_diffusion/stable_diffusion_xl.md)
+- [StableDiffusionXLInpaintPipeline](../api/pipelines/stable_diffusion/stable_diffusion_xl.md)
+
+Interrupting the diffusion process is particularly useful when building UIs that work with Diffusers because it allows users to stop the generation process if they're unhappy with the intermediate results. You can incorporate this into your pipeline with a callback.
+
+This callback function should take the following arguments: `pipe`, `i`, `t`, and `callback_kwargs` (this must be returned). Set the pipeline's `_interrupt` attribute to `True` to stop the diffusion process after a certain number of steps. You are also free to implement your own custom stopping logic inside the callback.
+
+In this example, the diffusion process is stopped after 10 steps even though `num_inference_steps` is set to 50.
+
+```python
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe.enable_model_cpu_offload()
+num_inference_steps = 50
+
+def interrupt_callback(pipe, i, t, callback_kwargs):
+    stop_idx = 10
+    if i == stop_idx:
+        pipe._interrupt = True
+
+    return callback_kwargs
+
+pipe(
+    "A photo of a cat",
+    num_inference_steps=num_inference_steps,
+    callback_on_step_end=interrupt_callback,
+)
+```
