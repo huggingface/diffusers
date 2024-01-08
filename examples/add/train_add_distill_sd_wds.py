@@ -1303,9 +1303,8 @@ def main(args):
     teacher_scheduler = DDPMScheduler.from_pretrained(
         args.pretrained_teacher_model, subfolder="scheduler", revision=args.teacher_revision
     )
-    if not teacher_scheduler.config.rescale_betas_zero_snr and not args.allow_nonzero_terminal_snr:
-        teacher_scheduler.config["rescale_betas_zero_snr"] = True
-    noise_scheduler = DDPMScheduler(**teacher_scheduler.config)
+    enforce_zero_snr = teacher_scheduler.config.rescale_betas_zero_snr if args.allow_nonzero_terminal_snr else True
+    noise_scheduler = DDPMScheduler.from_config(teacher_scheduler.config, rescale_betas_zero_snr=enforce_zero_snr)
 
     # DDPMScheduler calculates the alpha and sigma noise schedules (based on the alpha bars) for us
     # Note that the ADD paper parameterizes alpha and sigma as x_t = alpha_t * x_0 + sigma_t * eps
