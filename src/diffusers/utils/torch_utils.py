@@ -63,6 +63,7 @@ def randn_tensor(
                     f" slighly speed up this function by passing a generator that was created on the {device} device."
                 )
         elif gen_device_type != device.type and gen_device_type == "cuda":
+            print(f"gen_device_type: {gen_device_type} device.type: {device.type}")
             raise ValueError(f"Cannot generate a {device} tensor from a generator of type {gen_device_type}.")
 
     # make sure generator list of length 1 is treated like a non-list
