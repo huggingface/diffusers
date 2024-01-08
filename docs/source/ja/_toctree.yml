@@ -11,10 +11,4 @@
 - sections:
   - local: tutorials/tutorial_overview
     title: 概要
-  - local: tutorials/autopipeline
-    title: AutoPipeline
-  - local: tutorials/basic_training
-    title: 拡散モデルのトレーニング
-  - local: tutorials/using_peft_for_inference
-    title: PEFTによる推論
   title: チュートリアル
