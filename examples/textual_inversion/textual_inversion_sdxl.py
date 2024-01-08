@@ -19,7 +19,6 @@ import math
 import os
 import random
 import shutil
-import warnings
 from pathlib import Path
 
 import numpy as np
@@ -48,7 +47,6 @@ from diffusers import (
     DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
-    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
