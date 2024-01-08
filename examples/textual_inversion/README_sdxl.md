@@ -24,4 +24,4 @@ accelerate launch textual_inversion_sdxl.py \
   --output_dir="./textual_inversion_cat_sdxl"
 ```
 
-We only enbled training the first text encoder because of the precision issue, we will enable training the second text encoder once we fixed the problem.
+We only enabled training the first text encoder because of the precision issue, we will enable training the second text encoder once we fixed the problem.
