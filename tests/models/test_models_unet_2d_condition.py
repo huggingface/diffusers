@@ -26,7 +26,7 @@ from pytest import mark
 
 from diffusers import UNet2DConditionModel
 from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, IPAdapterAttnProcessor
-from diffusers.models.embeddings import ImageProjection, Resampler
+from diffusers.models.embeddings import ImageProjection, IPAdapterPlusImageProjection
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
@@ -133,7 +133,7 @@ def create_ip_adapter_plus_state_dict(model):
 
     # "image_proj" (ImageProjection layer weights)
     cross_attention_dim = model.config["cross_attention_dim"]
-    image_projection = Resampler(
+    image_projection = IPAdapterPlusImageProjection(
         embed_dims=cross_attention_dim, output_dims=cross_attention_dim, dim_head=32, heads=2, num_queries=4
     )
 
