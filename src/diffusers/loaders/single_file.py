@@ -17,17 +17,11 @@ from pathlib import Path
 
 import requests
 import torch
+import yaml
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..utils import (
-    deprecate,
-    is_accelerate_available,
-    is_omegaconf_available,
-    is_transformers_available,
-    logging,
-)
-from ..utils.import_utils import BACKENDS_MAPPING
+from ..utils import deprecate, is_accelerate_available, is_transformers_available, logging
 
 
 if is_transformers_available():
@@ -370,11 +364,6 @@ class FromOriginalVAEMixin:
         model = AutoencoderKL.from_single_file(url)
         ```
         """
-        if not is_omegaconf_available():
-            raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
-
-        from omegaconf import OmegaConf
-
         from ..models import AutoencoderKL
 
         # import here to avoid circular dependency
@@ -452,7 +441,7 @@ class FromOriginalVAEMixin:
             config_url = "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml"
             config_file = BytesIO(requests.get(config_url).content)
 
-        original_config = OmegaConf.load(config_file)
+        original_config = yaml.safe_load(config_file)
 
         # default to sd-v1-5
         image_size = image_size or 512
