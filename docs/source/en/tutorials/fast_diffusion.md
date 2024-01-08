@@ -31,7 +31,7 @@ pip install -U transformers accelerate peft
 Install [PyTorch nightly](https://pytorch.org/) to benefit from the latest and fastest kernels:
 
 ```bash
-pip3 install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cpu
+pip3 install --pre torch --index-url https://download.pytorch.org/whl/nightly/cu121
 ```
 
 <Tip>
@@ -44,7 +44,7 @@ If you're interested in the full benchmarking code, take a look at [huggingface/
 
 ## Baseline
 
-Let's start with a baseline. Disable reduced precision and [scaled dot product attention (SDPA)](../optimization/torch2.0#scaled-dot-product-attention):
+Let's start with a baseline. Disable reduced precision and the [`scaled_dot_product_attention` (SDPA)](../optimization/torch2.0#scaled-dot-product-attention) function which is automatically used by Diffusers:
 
 ```python
 from diffusers import StableDiffusionXLPipeline
@@ -106,9 +106,9 @@ In our later experiments with float16, recent versions of torchao do not incur n
 
 Take a look at the [Speed up inference](../optimization/fp16) guide to learn more about running inference with reduced precision.
 
-## Scaled dot product attention
+## SDPA
 
-Attention blocks are intensive to run. But with PyTorch's [scaled dot product attention](../optimization/torch2.0#scaled-dot-product-attention), it is a lot more efficient.
+Attention blocks are intensive to run. But with PyTorch's [`scaled_dot_product_attention`](../optimization/torch2.0#scaled-dot-product-attention) function, it is a lot more efficient. This function is used by default in Diffusers so you don't need to make any changes to the code.
 
 ```python
 from diffusers import StableDiffusionXLPipeline
@@ -130,7 +130,7 @@ Scaled dot product attention improves the latency from 4.63 seconds to 3.31 seco
 
 ## torch.compile
 
-PyTorch 2 includes `torch.compile` which uses fast and optimized kernels for the UNet and VAE. First, configure a few compiler flags (refer to the [full list](https://github.com/pytorch/pytorch/blob/main/torch/_inductor/config.py) for more options):
+PyTorch 2 includes `torch.compile` which uses fast and optimized kernels. In Diffusers, the UNet and VAE are usually compiled because these are the most compute-intensive modules. First, configure a few compiler flags (refer to the [full list](https://github.com/pytorch/pytorch/blob/main/torch/_inductor/config.py) for more options):
 
 ```python
 from diffusers import StableDiffusionXLPipeline
