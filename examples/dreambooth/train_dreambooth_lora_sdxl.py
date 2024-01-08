@@ -780,8 +780,7 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
             text_input_ids = text_input_ids_list[i]
 
         prompt_embeds = text_encoder(
-            text_input_ids.to(text_encoder.device),
-            output_hidden_states=True, return_dict=False
+            text_input_ids.to(text_encoder.device), output_hidden_states=True, return_dict=False
         )
 
         # We are only ALWAYS interested in the pooled output of the final text encoder
@@ -1429,7 +1428,7 @@ def main(args):
                         timesteps,
                         prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
-                        return_dict=False
+                        return_dict=False,
                     )[0]
                 else:
                     unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
@@ -1444,7 +1443,11 @@ def main(args):
                     )
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions, return_dict=False
+                        noisy_model_input,
+                        timesteps,
+                        prompt_embeds_input,
+                        added_cond_kwargs=unet_added_conditions,
+                        return_dict=False,
                     )[0]
 
                 # Get the target for loss depending on the prediction type
