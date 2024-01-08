@@ -48,6 +48,7 @@ from diffusers import (
     DDPMScheduler,
     DiffusionPipeline,
     DPMSolverMultistepScheduler,
+    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
@@ -111,18 +112,15 @@ These are textual inversion adaption weights for {base_model}. You can find some
         f.write(yaml + model_card)
 
 
-def log_validation(
-    text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch
-):
+def log_validation(text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
     )
-    # create pipeline (note: unet and vae are loaded again in float32)
     pipeline = DiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         text_encoder=accelerator.unwrap_model(text_encoder_1),
-        text_encoder_2=accelerator.unwrap_model(text_encoder_2),
+        text_encoder_2=text_encoder_2,
         tokenizer=tokenizer_1,
         tokenizer_2=tokenizer_2,
         unet=unet,
@@ -361,7 +359,7 @@ def parse_args():
     parser.add_argument(
         "--validation_prompt",
         type=str,
-        default=None,
+        default="A <cat-toy> backpack",
         help="A prompt that is used during validation to verify that the model is learning.",
     )
     parser.add_argument(
@@ -376,16 +374,6 @@ def parse_args():
         default=100,
         help=(
             "Run validation every X steps. Validation consists of running the prompt"
-            " `args.validation_prompt` multiple times: `args.num_validation_images`"
-            " and logging the images."
-        ),
-    )
-    parser.add_argument(
-        "--validation_epochs",
-        type=int,
-        default=None,
-        help=(
-            "Deprecated in favor of validation_steps. Run validation every X epochs. Validation consists of running the prompt"
             " `args.validation_prompt` multiple times: `args.num_validation_images`"
             " and logging the images."
         ),
@@ -417,11 +405,6 @@ def parse_args():
     )
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
-    )
-    parser.add_argument(
-        "--no_safe_serialization",
-        action="store_true",
-        help="If specified save the checkpoint not in `safetensors` format, but in original PyTorch format instead.",
     )
 
     args = parser.parse_args()
@@ -529,6 +512,7 @@ class TextualInversionDataset(Dataset):
 
         self.templates = imagenet_style_templates_small if learnable_property == "style" else imagenet_templates_small
         self.flip_transform = transforms.RandomHorizontalFlip(p=self.flip_p)
+        self.crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
 
     def __len__(self):
         return self._length
@@ -542,6 +526,18 @@ class TextualInversionDataset(Dataset):
 
         placeholder_string = self.placeholder_token
         text = random.choice(self.templates).format(placeholder_string)
+
+        example["original_size"] = (image.height, image.width)
+
+        if self.center_crop:
+            y1 = max(0, int(round((image.height - self.size) / 2.0)))
+            x1 = max(0, int(round((image.width - self.size) / 2.0)))
+            image = self.crop(image)
+        else:
+            y1, x1, h, w = self.crop.get_params(image, (self.size, self.size))
+            image = transforms.functional.crop(image, y1, x1, h, w)
+
+        example["crop_top_left"] = (y1, x1)
 
         example["input_ids_1"] = self.tokenizer_1(
             text,
@@ -564,13 +560,7 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            (
-                h,
-                w,
-            ) = (
-                img.shape[0],
-                img.shape[1],
-            )
+            (h, w,) = (img.shape[0], img.shape[1],)
             img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
 
         image = Image.fromarray(img)
@@ -646,6 +636,7 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
+
     # Add the placeholder token in tokenizer_1
     placeholder_tokens = [args.placeholder_token]
 
@@ -686,21 +677,14 @@ def main():
     # Freeze vae and unet
     vae.requires_grad_(False)
     unet.requires_grad_(False)
+    text_encoder_2.requires_grad_(False)
     # Freeze all parameters except for the token embeddings in text encoder
     text_encoder_1.text_model.encoder.requires_grad_(False)
     text_encoder_1.text_model.final_layer_norm.requires_grad_(False)
     text_encoder_1.text_model.embeddings.position_embedding.requires_grad_(False)
-    text_encoder_2.text_model.encoder.requires_grad_(False)
-    text_encoder_2.text_model.final_layer_norm.requires_grad_(False)
-    text_encoder_2.text_model.embeddings.position_embedding.requires_grad_(False)
 
     if args.gradient_checkpointing:
-        # Keep unet in train mode if we are using gradient checkpointing to save memory.
-        # The dropout cannot be != 0 so it doesn't matter if we are in eval or train mode.
-        unet.train()
         text_encoder_1.gradient_checkpointing_enable()
-        text_encoder_2.gradient_checkpointing_enable()
-        unet.enable_gradient_checkpointing()
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -749,15 +733,6 @@ def main():
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=args.train_batch_size, shuffle=True, num_workers=args.dataloader_num_workers
     )
-    if args.validation_epochs is not None:
-        warnings.warn(
-            f"FutureWarning: You are doing logging with validation_epochs={args.validation_epochs}."
-            " Deprecated validation_epochs in favor of `validation_steps`"
-            f"Setting `args.validation_steps` to {args.validation_epochs * len(train_dataset)}",
-            FutureWarning,
-            stacklevel=2,
-        )
-        args.validation_steps = args.validation_epochs * len(train_dataset)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -791,7 +766,7 @@ def main():
     # Move vae and unet and text_encoder_2 to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)
     vae.to(accelerator.device, dtype=weight_dtype)
-    text_encoder_2 = text_encoder_2.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_2.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -876,27 +851,18 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states_1 = (
-                    text_encoder_1(batch["input_ids_1"], output_hidden_states=True)
-                    .hidden_states[-2]
-                    .to(dtype=weight_dtype)
-                )
-                encoder_output_2 = text_encoder_2(
-                    batch["input_ids_2"].reshape(batch["input_ids_1"].shape[0], -1), output_hidden_states=True
-                )
+                encoder_hidden_states_1 = text_encoder_1(batch["input_ids_1"], output_hidden_states=True).hidden_states[-2].to(dtype=weight_dtype)
+                encoder_output_2 = text_encoder_2(batch["input_ids_2"].reshape(batch["input_ids_1"].shape[0], -1), output_hidden_states=True)
                 encoder_hidden_states_2 = encoder_output_2.hidden_states[-2].to(dtype=weight_dtype)
-                sample_size = unet.config.sample_size * (2 ** (len(vae.config.block_out_channels) - 1))
-                original_size = (sample_size, sample_size)
-                add_time_ids = torch.tensor(
-                    [list(original_size + (0, 0) + original_size)], dtype=weight_dtype, device=accelerator.device
-                )
+                original_size = [(batch["original_size"][0][i].item(), batch["original_size"][1][i].item()) for i in range(args.train_batch_size)]
+                crop_top_left = [(batch["crop_top_left"][0][i].item(), batch["crop_top_left"][1][i].item()) for i in range(args.train_batch_size)]
+                target_size = (args.resolution, args.resolution)
+                add_time_ids = torch.cat([torch.tensor(original_size[i] + crop_top_left[i] + target_size) for i in range(args.train_batch_size)]).to(accelerator.device, dtype=weight_dtype)
                 added_cond_kwargs = {"text_embeds": encoder_output_2[0], "time_ids": add_time_ids}
                 encoder_hidden_states = torch.cat([encoder_hidden_states_1, encoder_hidden_states_2], dim=-1)
 
                 # Predict the noise residual
-                model_pred = unet(
-                    noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
-                ).sample
+                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -929,11 +895,7 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.save_steps == 0:
-                    weight_name = (
-                        f"learned_embeds-steps-{global_step}.bin"
-                        if args.no_safe_serialization
-                        else f"learned_embeds-steps-{global_step}.safetensors"
-                    )
+                    weight_name = (f"learned_embeds-steps-{global_step}.safetensors")
                     save_path = os.path.join(args.output_dir, weight_name)
                     save_progress(
                         text_encoder_1,
@@ -941,7 +903,7 @@ def main():
                         accelerator,
                         args,
                         save_path,
-                        safe_serialization=not args.no_safe_serialization,
+                        safe_serialization=True,
                     )
 
                 if accelerator.is_main_process:
@@ -972,16 +934,7 @@ def main():
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         images = log_validation(
-                            text_encoder_1,
-                            text_encoder_2,
-                            tokenizer_1,
-                            tokenizer_2,
-                            unet,
-                            vae,
-                            args,
-                            accelerator,
-                            weight_dtype,
-                            epoch,
+                            text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch
                         )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler_1.get_last_lr()[0]}
@@ -993,6 +946,10 @@ def main():
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
+        images = log_validation(
+                    text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch
+                )
+
         if args.push_to_hub and not args.save_as_full_pipeline:
             logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
             save_full_model = True
@@ -1002,7 +959,7 @@ def main():
             pipeline = DiffusionPipeline.from_pretrained(
                 args.pretrained_model_name_or_path,
                 text_encoder=accelerator.unwrap_model(text_encoder_1),
-                text_encoder_2=accelerator.unwrap_model(text_encoder_2),
+                text_encoder_2=text_encoder_2,
                 vae=vae,
                 unet=unet,
                 tokenizer=tokenizer_1,
@@ -1010,7 +967,7 @@ def main():
             )
             pipeline.save_pretrained(args.output_dir)
         # Save the newly trained embeddings
-        weight_name = "learned_embeds.bin" if args.no_safe_serialization else "learned_embeds.safetensors"
+        weight_name = "learned_embeds.safetensors"
         save_path = os.path.join(args.output_dir, weight_name)
         save_progress(
             text_encoder_1,
@@ -1018,7 +975,7 @@ def main():
             accelerator,
             args,
             save_path,
-            safe_serialization=not args.no_safe_serialization,
+            safe_serialization=True,
         )
 
         if args.push_to_hub:
@@ -1034,6 +991,9 @@ def main():
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
+
+        for i in range(len(images)):
+            images[i].save(f"cat-backpack_sdxl_test_{i}.png")
 
     accelerator.end_training()
 
