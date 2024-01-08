@@ -38,7 +38,7 @@ members/contributors who may be interested in your PR.
 
 Core library:
 
-- Schedulers: @williamberman and @patrickvonplaten
+- Schedulers: @yiyixuxu and @patrickvonplaten
 - Pipelines:  @patrickvonplaten and @sayakpaul
 - Training examples: @sayakpaul and @patrickvonplaten
 - Docs: @stevhliu and @yiyixuxu
