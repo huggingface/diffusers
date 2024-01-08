@@ -781,12 +781,12 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
 
         prompt_embeds = text_encoder(
             text_input_ids.to(text_encoder.device),
-            output_hidden_states=True,
+            output_hidden_states=True, return_dict=False
         )
 
         # We are only ALWAYS interested in the pooled output of the final text encoder
         pooled_prompt_embeds = prompt_embeds[0]
-        prompt_embeds = prompt_embeds.hidden_states[-2]
+        prompt_embeds = prompt_embeds[-1][-2]
         bs_embed, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
         prompt_embeds_list.append(prompt_embeds)
