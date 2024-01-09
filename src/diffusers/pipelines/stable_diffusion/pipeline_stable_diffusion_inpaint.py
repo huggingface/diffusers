@@ -642,6 +642,7 @@ class StableDiffusionInpaintPipeline(
         width,
         strength,
         callback_steps,
+        output_type,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -693,9 +694,9 @@ class StableDiffusionInpaintPipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
         if padding_mask_crop is not None:
-            if self.unet.config.in_channels != 4:
+            if self.unet.config.in_channels != 4 and self.unet.config.in_channels != 9:
                 raise ValueError(
-                    f"The UNet should have 4 input channels for inpainting mask crop, but has"
+                    f"The UNet should have 4 or 9 input channels for inpainting mask crop, but has"
                     f" {self.unet.config.in_channels} input channels."
                 )
             if not isinstance(image, PIL.Image.Image):
@@ -707,6 +708,8 @@ class StableDiffusionInpaintPipeline(
                     f"The mask image should be a PIL image when inpainting mask crop, but is of type"
                     f" {type(mask_image)}."
                 )
+            if output_type != "pil":
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
 
     def prepare_latents(
         self,
@@ -1166,6 +1169,7 @@ class StableDiffusionInpaintPipeline(
             width,
             strength,
             callback_steps,
+            output_type,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
