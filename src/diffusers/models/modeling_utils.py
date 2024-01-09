@@ -99,7 +99,7 @@ def get_parameter_dtype(parameter: torch.nn.Module) -> torch.dtype:
 
 
 # Adapted from `transformers` (see modeling_utils.py)
-def _determine_device_map_from_string(model: "ModelMixin", device_map, max_memory, torch_dtype):
+def _determine_device_map(model: "ModelMixin", device_map, max_memory, torch_dtype):
     if isinstance(device_map, str):
         no_split_modules = model._get_no_split_modules(device_map)
         device_map_kwargs = {"no_split_module_classes": no_split_modules}
@@ -730,7 +730,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 else:  # else let accelerate handle loading and dispatching.
                     # Load weights and dispatch according to the device_map
                     # by default the device_map is None and the weights are loaded on the CPU
-                    device_map = _determine_device_map_from_string(model, device_map, max_memory, torch_dtype)
+                    device_map = _determine_device_map(model, device_map, max_memory, torch_dtype)
                     try:
                         accelerate.load_checkpoint_and_dispatch(
                             model,
