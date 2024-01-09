@@ -161,8 +161,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         num_videos_per_prompt,
         do_classifier_free_guidance,
     ):
-        if device is not None:
-            image = image.to(device=device)
+        image = image.to(device=device)
         image_latents = self.vae.encode(image).latent_dist.mode()
 
         if do_classifier_free_guidance:
@@ -440,7 +439,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         image_latents = self._encode_vae_image(
             image,
-            device=None,
+            device=device,
             num_videos_per_prompt=num_videos_per_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
         )
