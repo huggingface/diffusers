@@ -606,7 +606,6 @@ class StableDiffusionControlNetPipeline(
 
         # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
-        # TODO: Move this to `check_image`, and make this apply to `ControlNetModel`?
         if isinstance(self.controlnet, MultiControlNetModel):
             if isinstance(prompt, list):
                 logger.warning(
@@ -634,12 +633,10 @@ class StableDiffusionControlNetPipeline(
         # When `image` is a nested list:
         # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
         if isinstance(image, list) and any(isinstance(i_, list) for i_ in image):
-            logger.warning(
-                "You have passed a nested list for `image`. This will be interpreted as multiple image conditioning."
-            )
-            if len(image) != num_images_per_prompt:
+            prompt_batch_size = len(prompt) if isinstance(prompt, list) else 1
+            if len(image) != prompt_batch_size:
                 raise ValueError(
-                    f"Number of images per prompt: {num_images_per_prompt} must be the same as the number of images per batch: {len(image)}."
+                    f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {len(image)}, prompt batch size: {prompt_batch_size}"
                 )
             # Check image, this does not apply to the `check_image` logic
             for i, image_ in enumerate(image):
@@ -759,65 +756,33 @@ class StableDiffusionControlNetPipeline(
 
     def prepare_image(
         self,
-        image: PipelineImageInput,
-        width: Optional[int],
-        height: Optional[int],
-        batch_size: int,
-        num_images_per_prompt: int,
-        device: torch.device,
-        dtype: torch.dtype,
-        do_classifier_free_guidance: bool = False,
-        guess_mode: bool = False,
-    ) -> torch.Tensor:
-        # Using the same image condition for a single batch
-        if not isinstance(image, list):
-            image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
-            image_batch_size = image.shape[0]
+        image,
+        width,
+        height,
+        batch_size,
+        num_images_per_prompt,
+        device,
+        dtype,
+        do_classifier_free_guidance=False,
+        guess_mode=False,
+    ):
+        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        image_batch_size = image.shape[0]
 
-            if image_batch_size == 1:
-                repeat_by = batch_size
-            else:
-                # image batch size is the same as prompt batch size
-                repeat_by = num_images_per_prompt
-
-            image = image.repeat_interleave(repeat_by, dim=0)
-
-            image = image.to(device=device, dtype=dtype)
-
-            if do_classifier_free_guidance and not guess_mode:
-                image = torch.cat([image] * 2)
-
-            return image
-        # Using different image conditions for a single batch
+        if image_batch_size == 1:
+            repeat_by = batch_size
         else:
-            # This should have been checked in `check_inputs`
-            assert len(image) == num_images_per_prompt
+            # image batch size is the same as prompt batch size
+            repeat_by = num_images_per_prompt
 
-            images = []
-            for image_ in image:
-                image_ = self.control_image_processor.preprocess(image_, height=height, width=width).to(
-                    dtype=torch.float32
-                )
-                images.append(image_)
+        image = image.repeat_interleave(repeat_by, dim=0)
 
-            image_batch_size = images[0].shape[0]
-            if image_batch_size == 1:
-                repeat_by = batch_size
-            else:
-                # image batch size is the same as prompt batch size
-                repeat_by = num_images_per_prompt
+        image = image.to(device=device, dtype=dtype)
 
-            images *= repeat_by // num_images_per_prompt
+        if do_classifier_free_guidance and not guess_mode:
+            image = torch.cat([image] * 2)
 
-            image = torch.stack(images, dim=0)
-            image = torch.transpose(image, 0, 1)
-            image = torch.reshape(image, image.shape[1:])
-            image = image.to(device=device, dtype=dtype)
-
-            if do_classifier_free_guidance and not guess_mode:
-                image = torch.cat([image] * 2)
-
-            return image
+        return image
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
@@ -1168,7 +1133,7 @@ class StableDiffusionControlNetPipeline(
 
             for image_ in image:
                 image_ = self.prepare_image(
-                    image=image_,  # image_ can also be a list of images
+                    image=image_,
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
