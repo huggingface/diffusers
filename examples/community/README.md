@@ -3134,7 +3134,6 @@ import torch
 
 
 pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float32, custom_pipeline="instaflow_one_step")
-pipe.do_lora() ### use dreambooth lora for better quality
 pipe.to("cuda")  ### if GPU is not available, comment this line
 prompt = "A hyper-realistic photo of a cute cat."
 
