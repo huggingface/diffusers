@@ -681,6 +681,11 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
+        if timesteps.dtype not in [torch.int16, torch.int32, torch.int64]:
+            raise ValueError(
+                f"{self.__class__.__name__} does not support using a scheduler of type {self.scheduler.__class__.__name__}. Please make sure to use one of 'DDIMScheduler, PNDMScheduler, DDPMScheduler, DEISMultistepScheduler, UniPCMultistepScheduler, DPMSolverMultistepScheduler, DPMSolverSinlgestepScheduler'."
+            )
+
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
@@ -830,14 +835,14 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, TextualInversionLoaderMixin,
         degraded_latents = degraded_latents * attn_mask + original_latents * (1 - attn_mask)
 
         # Noise it again to match the noise level
-        degraded_latents = self.scheduler.add_noise(degraded_latents, noise=eps, timesteps=t)
+        degraded_latents = self.scheduler.add_noise(degraded_latents, noise=eps, timesteps=t[None])
 
         return degraded_latents
 
     # Modified from diffusers.schedulers.scheduling_ddim.DDIMScheduler.step
     # Note: there are some schedulers that clip or do not return x_0 (PNDMScheduler, DDIMScheduler, etc.)
     def pred_x0(self, sample, model_output, timestep):
-        alpha_prod_t = self.scheduler.alphas_cumprod[timestep]
+        alpha_prod_t = self.scheduler.alphas_cumprod[timestep].to(sample.device)
 
         beta_prod_t = 1 - alpha_prod_t
         if self.scheduler.config.prediction_type == "epsilon":
