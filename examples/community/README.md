@@ -3113,7 +3113,6 @@ import torch
 
 
 pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float32, custom_pipeline="instaflow_one_step")
-pipe.do_lora() ### use dreambooth lora for better quality
 pipe.to("cuda")  ### if GPU is not available, comment this line
 prompt = "A hyper-realistic photo of a cute cat."
 
@@ -3122,11 +3121,9 @@ images = pipe(prompt=prompt,
             guidance_scale=0.0).images
 images[0].save("./image.png")
 ```
-![image8](https://github.com/huggingface/diffusers/assets/43698245/2bcd7fcd-cfb8-46ce-8e3a-f6490bfba24c)
+![image1](https://github.com/ayushtues/diffusers/assets/43698245/1f3706f7-3b5b-4808-bfa0-ed6ce8ad5669)
 
-
-### Instaflow Pipeline
-InstaFlow is an ultra-fast, one-step image generator that achieves image quality close to Stable Diffusion, significantly reducing the demand of computational resources. This efficiency is made possible through a recent [Rectified Flow](https://github.com/gnobitab/RectifiedFlow) technique, which trains probability flows with straight trajectories, hence inherently requiring only a single step for fast inference.
+You can also combine it with LORA out of the box, like https://huggingface.co/artificialguybr/logo-redmond-1-5v-logo-lora-for-liberteredmond-sd-1-5, to unlock cool use cases in single step!
 
 ```python
 from diffusers import DiffusionPipeline
@@ -3135,15 +3132,14 @@ import torch
 
 pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float32, custom_pipeline="instaflow_one_step")
 pipe.to("cuda")  ### if GPU is not available, comment this line
-prompt = "A hyper-realistic photo of a cute cat."
-
+pipe.load_lora_weights("artificialguybr/logo-redmond-1-5v-logo-lora-for-liberteredmond-sd-1-5")
+prompt = "logo, A logo for a fitness app, dynamic running figure, energetic colors (red, orange) ),LogoRedAF ,"
 images = pipe(prompt=prompt,
             num_inference_steps=1,
             guidance_scale=0.0).images
 images[0].save("./image.png")
 ```
-![image8](https://github.com/huggingface/diffusers/assets/43698245/2bcd7fcd-cfb8-46ce-8e3a-f6490bfba24c)
-
+![image0](https://github.com/ayushtues/diffusers/assets/43698245/e896a42f-cdae-40bc-9307-947e6c0636c4)
 
 ### Null-Text Inversion pipeline
 
