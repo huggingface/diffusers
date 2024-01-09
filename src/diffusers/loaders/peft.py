@@ -20,15 +20,13 @@ from ..utils import MIN_PEFT_VERSION, check_peft_version, is_peft_available
 class PeftAdapterMixin:
     """
     A class containing all functions for loading and using adapters weights that are supported in PEFT library. For
-    more details about adapters and injecting them on a transformer-based model, check out the documentation of PEFT
-    library: https://huggingface.co/docs/peft/index.
+    more details about adapters and injecting them in a transformer-based model, check out the PEFT [documentation](https://huggingface.co/docs/peft/index).
 
-
-    With this mixin, if the correct PEFT version is installed, it is possible to:
+    Install the latest version of PEFT, and use this mixin to:
 
     - Attach new adapters in the model.
-    - Attach multiple adapters and iteratively activate / deactivate them.
-    - Activate / deactivate all adapters from the model.
+    - Attach multiple adapters and iteratively activate/deactivate them.
+    - Activate/deactivate all adapters from the model.
     - Get a list of the active adapters.
     """
 
@@ -77,11 +75,11 @@ class PeftAdapterMixin:
         Sets a specific adapter by forcing the model to only use that adapter and disables the other adapters.
 
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
+        [documentation](https://huggingface.co/docs/peft).
 
         Args:
             adapter_name (Union[str, List[str]])):
-                The list of adapters to set or the adapter name in case of single adapter.
+                The list of adapters to set or the adapter name in the case of a single adapter.
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
@@ -126,7 +124,7 @@ class PeftAdapterMixin:
         Disable all adapters attached to the model and fallback to inference with the base model only.
 
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
+        [documentation](https://huggingface.co/docs/peft).
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
@@ -145,11 +143,11 @@ class PeftAdapterMixin:
 
     def enable_adapters(self) -> None:
         """
-        Enable adapters that are attached to the model. The model will use `self.active_adapters()` to retrieve the
+        Enable adapters that are attached to the model. The model uses `self.active_adapters()` to retrieve the
         list of adapters to enable.
 
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
+        [documentation](https://huggingface.co/docs/peft).
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
@@ -171,7 +169,7 @@ class PeftAdapterMixin:
         Gets the current list of active adapters of the model.
 
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
+        [documentation](https://huggingface.co/docs/peft).
         """
         check_peft_version(min_version=MIN_PEFT_VERSION)
 
