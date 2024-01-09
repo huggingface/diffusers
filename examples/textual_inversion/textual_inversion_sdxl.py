@@ -110,7 +110,19 @@ These are textual inversion adaption weights for {base_model}. You can find some
         f.write(yaml + model_card)
 
 
-def log_validation(text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch, is_final_validation=False):
+def log_validation(
+    text_encoder_1,
+    text_encoder_2,
+    tokenizer_1,
+    tokenizer_2,
+    unet,
+    vae,
+    args,
+    accelerator,
+    weight_dtype,
+    epoch,
+    is_final_validation=False,
+):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
@@ -561,7 +573,13 @@ class TextualInversionDataset(Dataset):
 
         if self.center_crop:
             crop = min(img.shape[0], img.shape[1])
-            (h, w,) = (img.shape[0], img.shape[1],)
+            (
+                h,
+                w,
+            ) = (
+                img.shape[0],
+                img.shape[1],
+            )
             img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
 
         image = Image.fromarray(img)
@@ -636,7 +654,6 @@ def main():
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
-
 
     # Add the placeholder token in tokenizer_1
     placeholder_tokens = [args.placeholder_token]
@@ -865,18 +882,37 @@ def main():
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # Get the text embedding for conditioning
-                encoder_hidden_states_1 = text_encoder_1(batch["input_ids_1"], output_hidden_states=True).hidden_states[-2].to(dtype=weight_dtype)
-                encoder_output_2 = text_encoder_2(batch["input_ids_2"].reshape(batch["input_ids_1"].shape[0], -1), output_hidden_states=True)
+                encoder_hidden_states_1 = (
+                    text_encoder_1(batch["input_ids_1"], output_hidden_states=True)
+                    .hidden_states[-2]
+                    .to(dtype=weight_dtype)
+                )
+                encoder_output_2 = text_encoder_2(
+                    batch["input_ids_2"].reshape(batch["input_ids_1"].shape[0], -1), output_hidden_states=True
+                )
                 encoder_hidden_states_2 = encoder_output_2.hidden_states[-2].to(dtype=weight_dtype)
-                original_size = [(batch["original_size"][0][i].item(), batch["original_size"][1][i].item()) for i in range(args.train_batch_size)]
-                crop_top_left = [(batch["crop_top_left"][0][i].item(), batch["crop_top_left"][1][i].item()) for i in range(args.train_batch_size)]
+                original_size = [
+                    (batch["original_size"][0][i].item(), batch["original_size"][1][i].item())
+                    for i in range(args.train_batch_size)
+                ]
+                crop_top_left = [
+                    (batch["crop_top_left"][0][i].item(), batch["crop_top_left"][1][i].item())
+                    for i in range(args.train_batch_size)
+                ]
                 target_size = (args.resolution, args.resolution)
-                add_time_ids = torch.cat([torch.tensor(original_size[i] + crop_top_left[i] + target_size) for i in range(args.train_batch_size)]).to(accelerator.device, dtype=weight_dtype)
+                add_time_ids = torch.cat(
+                    [
+                        torch.tensor(original_size[i] + crop_top_left[i] + target_size)
+                        for i in range(args.train_batch_size)
+                    ]
+                ).to(accelerator.device, dtype=weight_dtype)
                 added_cond_kwargs = {"text_embeds": encoder_output_2[0], "time_ids": add_time_ids}
                 encoder_hidden_states = torch.cat([encoder_hidden_states_1, encoder_hidden_states_2], dim=-1)
 
                 # Predict the noise residual
-                model_pred = unet(noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs).sample
+                model_pred = unet(
+                    noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs
+                ).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -909,7 +945,7 @@ def main():
                 progress_bar.update(1)
                 global_step += 1
                 if global_step % args.save_steps == 0:
-                    weight_name = (f"learned_embeds-steps-{global_step}.safetensors")
+                    weight_name = f"learned_embeds-steps-{global_step}.safetensors"
                     save_path = os.path.join(args.output_dir, weight_name)
                     save_progress(
                         text_encoder_1,
@@ -948,7 +984,16 @@ def main():
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         images = log_validation(
-                            text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch
+                            text_encoder_1,
+                            text_encoder_2,
+                            tokenizer_1,
+                            tokenizer_2,
+                            unet,
+                            vae,
+                            args,
+                            accelerator,
+                            weight_dtype,
+                            epoch,
                         )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -962,8 +1007,18 @@ def main():
     if accelerator.is_main_process:
         if args.validation_prompt:
             images = log_validation(
-                        text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch, is_final_validation=True
-                    )
+                text_encoder_1,
+                text_encoder_2,
+                tokenizer_1,
+                tokenizer_2,
+                unet,
+                vae,
+                args,
+                accelerator,
+                weight_dtype,
+                epoch,
+                is_final_validation=True,
+            )
 
         if args.push_to_hub and not args.save_as_full_pipeline:
             logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
