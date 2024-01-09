@@ -11,6 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Based on [Style Aligned Image Generation via Shared Attention](https://arxiv.org/abs/2312.02133).
+# Authors: Amir Hertz, Andrey Voynov, Shlomi Fruchter, Daniel Cohen-Or
+# Project Page: https://style-aligned-gen.github.io/
+# Code: https://github.com/google/style-aligned
+#
+# Adapted to Diffusers by [Aryan V S](https://github.com/a-r-r-o-w/).
 
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -153,9 +160,7 @@ class SharedAttentionProcessor(AttnProcessor2_0):
         shared_score_scale: float = 1.0,
         shared_score_shift: float = 0.0,
     ):
-        r"""
-        Shared Attention Processor as proposed in the StyleAligned paper.
-        """
+        r"""Shared Attention Processor as proposed in the StyleAligned paper."""
         super().__init__()
         self.share_attention = share_attention
         self.adain_queries = adain_queries
@@ -219,12 +224,7 @@ class SharedAttentionProcessor(AttnProcessor2_0):
             key = concat_first(key, -2, scale=self.shared_score_scale)
             value = concat_first(value, -2)
             if self.shared_score_shift != 0:
-                hidden_states = self.shifted_scaled_dot_product_attention(
-                    attn,
-                    query,
-                    key,
-                    value,
-                )
+                hidden_states = self.shifted_scaled_dot_product_attention(attn, query, key, value)
             else:
                 hidden_states = F.scaled_dot_product_attention(
                     query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
@@ -1189,6 +1189,7 @@ class StyleAlignedSDXLPipeline(
         shared_score_shift: float,
         only_self_level: float,
     ):
+        r"""Helper method to enable usage of Shared Attention Processor."""
         attn_procs = {}
         num_self_layers = len([name for name in self.unet.attn_processors.keys() if "attn1" in name])
 
@@ -1215,6 +1216,10 @@ class StyleAlignedSDXLPipeline(
         self.unet.set_attn_processor(attn_procs)
 
     def _disable_shared_attention_processors(self):
+        r"""
+        Helper method to disable usage of the Shared Attention Processor. All processors
+        are reset to the default Attention Processor for pytorch versions above 2.0.
+        """
         attn_procs = {}
 
         for i, name in enumerate(self.unet.attn_processors.keys()):
@@ -1223,6 +1228,8 @@ class StyleAlignedSDXLPipeline(
         self.unet.set_attn_processor(attn_procs)
 
     def _register_shared_norm(self, share_group_norm: bool = True, share_layer_norm: bool = True):
+        r"""Helper method to register shared group/layer normalization layers."""
+
         def register_norm_forward(norm_layer: Union[nn.GroupNorm, nn.LayerNorm]) -> Union[nn.GroupNorm, nn.LayerNorm]:
             if not hasattr(norm_layer, "orig_forward"):
                 setattr(norm_layer, "orig_forward", norm_layer.forward)
@@ -1258,6 +1265,7 @@ class StyleAlignedSDXLPipeline(
 
     @property
     def style_aligned_enabled(self):
+        r"""Returns whether StyleAligned has been enabled in the pipeline or not."""
         return hasattr(self, "_style_aligned_norm_layer") and self._style_aligned_norm_layers is not None
 
     def enable_style_aligned(
@@ -1273,6 +1281,28 @@ class StyleAlignedSDXLPipeline(
         shared_score_shift: float = 0.0,
         only_self_level: float = 0.0,
     ):
+        r"""
+        Enables the StyleAligned mechanism as in https://arxiv.org/abs/2312.02133.
+
+        Args:
+            share_group_norm (`bool`, defaults to `True`):
+                Whether or not to use shared group normalization layers.
+            share_layer_norm (`bool`, defaults to `True`):
+                Whether or not to use shared layer normalization layers.
+            share_attention (`bool`, defaults to `True`):
+                Whether or not to use attention sharing between batch images.
+            adain_queries (`bool`, defaults to `True`):
+                Whether or not to apply the AdaIn operation on attention queries.
+            adain_keys (`bool`, defaults to `True`):
+                Whether or not to apply the AdaIn operation on attention keys.
+            adain_values (`bool`, defaults to `False`):
+                Whether or not to apply the AdaIn operation on attention values.
+            full_attention_share (`bool`, defaults to `False`):
+                Whether or not to use full attention sharing between all images in a batch. Can
+                lead to content leakage within each batch and some loss in diversity.
+            shared_score_scale (`float`, defaults to `1.0`):
+                Scale for shared attention.
+        """
         self._style_aligned_norm_layers = self._register_shared_norm(share_group_norm, share_layer_norm)
         self._enable_shared_attention_processors(
             share_attention=share_attention,
@@ -1286,14 +1316,13 @@ class StyleAlignedSDXLPipeline(
         )
 
     def disable_style_aligned(self):
-        if not self.style_aligned_enabled:
-            return
+        r"""Disables the StyleAligned mechanism if it had been previously enabled."""
+        if self.style_aligned_enabled:
+            for layer in self._style_aligned_norm_layers:
+                layer.forward = layer.orig_forward
 
-        for layer in self._style_aligned_norm_layers:
-            layer.forward = layer.orig_forward
-
-        self._style_aligned_norm_layers = None
-        self._disable_shared_attention_processors()
+            self._style_aligned_norm_layers = None
+            self._disable_shared_attention_processors()
 
     def fuse_qkv_projections(self, unet: bool = True, vae: bool = True):
         """
