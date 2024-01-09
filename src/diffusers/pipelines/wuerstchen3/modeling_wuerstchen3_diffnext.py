@@ -63,6 +63,7 @@ class WuerstchenV3DiffNeXt(WuerstchenV3Unet):
             dropout=dropout,
             self_attn=self_attn,
             t_conds=t_conds,
+            switch_level=None,
         )
 
     def forward(self, x, r, effnet, clip_text_pooled, pixels=None, **kwargs):
