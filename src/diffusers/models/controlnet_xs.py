@@ -135,9 +135,10 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
     def __init__(
         self,
         channels_from_base_model: List[int],
+        conditioning_channels: int = 3,
+        conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
         time_embedding_input_dim: int = 320,
         time_embedding_dim: int = 1280,
-        time_embedding_mix: float = 1.0,
         learn_embedding: bool = False,
         base_model_channel_sizes: Dict[str, List[Tuple[int]]] = {
             "down": [
@@ -166,10 +167,11 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         },
         addition_embed_type = None,
         addition_time_embed_dim = None,
-        attention_head_dim = [5, 10, 20, 20], 
-        block_out_channels = [320, 640, 1280, 1280],
+        attention_head_dim = [5, 10, 20, 20],
+        block_out_channels = [32, 64, 128],
+        base_block_out_channels = [320, 640, 1280],
         cross_attention_dim = 1024,
-        down_block_types = ['CrossAttnDownBlock2D', 'CrossAttnDownBlock2D', 'CrossAttnDownBlock2D', 'DownBlock2D'],
+        down_block_types = ['CrossAttnDownBlock2D', 'CrossAttnDownBlock2D', 'DownBlock2D'],
         projection_class_embeddings_input_dim = None,
         sample_size = 96,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
@@ -231,6 +233,19 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         blocks_time_embed_dim = time_embed_dim
 
         # down
+        def get_extra_channel(block_no, subblock_no):
+            """Determine channel size for extra info from base - todo"""
+            if block_no==0:
+                # in 1st block: all same - todo
+                return base_block_out_channels[0]
+            else:
+                if subblock_no==0:
+                    # in 2nd+ block: in 1st subblock, no change yet - todo
+                    return base_block_out_channels[block_no-1]
+                else:
+                    # in 2nd+ block: in 2nd+ subblock, resnet has double channels -> change - todo
+                    return base_block_out_channels[block_no]
+
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
@@ -240,7 +255,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             self.down_subblocks.append(DownSubBlock2D(
                 has_resnet=True,
                 has_crossattn=use_crossattention,
-                in_channels=input_channel + 0, # todo add channels from base model
+                in_channels=input_channel + get_extra_channel(block_no=i, subblock_no=0),
                 out_channels=output_channel,
                 temb_channels=blocks_time_embed_dim,
                 transformer_layers_per_block=transformer_layers_per_block[i],
@@ -251,7 +266,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             self.down_subblocks.append(DownSubBlock2D(
                 has_resnet=True,
                 has_crossattn=use_crossattention,
-                in_channels=output_channel + 0, # todo add channels from base model
+                in_channels=output_channel + get_extra_channel(block_no=i, subblock_no=1),
                 out_channels=output_channel,
                 temb_channels=blocks_time_embed_dim,
                 transformer_layers_per_block=transformer_layers_per_block[i],
@@ -259,11 +274,12 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 cross_attention_dim=cross_attention_dim,
                 upcast_attention=upcast_attention
             ))
-            self.down_subblocks.append(DownSubBlock2D(
-                has_downsampler=True,
-                in_channels=output_channel + 0, # todo add channels from base model
-                out_channels=output_channel,
-            ))
+            if i<len(down_block_types)-1:
+                self.down_subblocks.append(DownSubBlock2D(
+                    has_downsampler=True,
+                    in_channels=output_channel + get_extra_channel(block_no=i, subblock_no=3),
+                    out_channels=output_channel,
+                ))
 
         # mid
         self.mid_block = UNetMidBlock2DCrossAttn(
@@ -284,6 +300,32 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             attention_type="default",
         )
 
+        # adhust group norms
+        def adjust_group_norms(norm, max_num_group: int = 32):
+            def find_denominator(number, start):
+                if start >= number:
+                    return number
+                while start != 0:
+                    residual = number % start
+                    if residual == 0:
+                        return start
+                    start -= 1
+
+            if norm.num_groups < max_num_group:
+                norm.num_groups = find_denominator(norm.num_channels, start=max_num_group)
+
+        for subblock in self.down_subblocks:
+            if subblock.resnet is not None:
+                adjust_group_norms(subblock.resnet.norm1)
+                adjust_group_norms(subblock.resnet.norm2)
+            if subblock.attention is not None:
+                adjust_group_norms(subblock.attention.norm)
+        for resnet in self.mid_block.resnets:
+                adjust_group_norms(resnet.norm1)
+                adjust_group_norms(resnet.norm2)    
+        for attn in self.mid_block.attentions:
+            adjust_group_norms(attn.norm)
+
         # todo: connections
         # 3 - Gather Channel Sizes
         self.ch_inout_ctrl = ControlNetXSModel._gather_subblock_sizes(self.control_model, base_or_control="control")
@@ -293,9 +335,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         self.down_zero_convs_out = nn.ModuleList([])
         self.down_zero_convs_in = nn.ModuleList([])
         self.middle_block_out = nn.ModuleList([])
-        self.middle_block_in = nn.ModuleList([])
         self.up_zero_convs_out = nn.ModuleList([])
-        self.up_zero_convs_in = nn.ModuleList([])
 
         for ch_io_base in self.ch_inout_base["down"]:
             self.down_zero_convs_in.append(self._make_zero_conv(in_channels=ch_io_base[1], out_channels=ch_io_base[1]))
@@ -316,133 +356,16 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 self._make_zero_conv(self.ch_inout_ctrl["down"][-(i + 1)][1], self.ch_inout_base["up"][i - 1][1])
             )
 
+        # 5 - Create conditioning hint embedding
+        self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
+            conditioning_embedding_channels=block_out_channels[0],
+            block_out_channels=conditioning_embedding_out_channels,
+            conditioning_channels=conditioning_channels,
+        )
 
-    def forward(self, sample, encoder_hidden_states, added_cond_kwargs = {}):
-        #raise ValueError("A ControlNetXSAddonModel cannot be run by itself. Pass it into a ControlNetXSModel model instead.")
 
-        timestep = 980
-        cross_attention_kwargs = {}
-        timestep_cond = None
-
-        # # # unet.forward for testing
-
-        # 1. time
-        timesteps = timestep
-        if not torch.is_tensor(timesteps):
-            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if is_mps else torch.float64
-            else:
-                dtype = torch.int32 if is_mps else torch.int64
-            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
-        elif len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(sample.device)
-
-        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        timesteps = timesteps.expand(sample.shape[0])
-
-        t_emb = self.time_proj(timesteps)
-
-        # `Timesteps` does not contain any weights and will always return f32 tensors
-        # but time_embedding might actually be running in fp16. so we need to cast here.
-        # there might be better ways to encapsulate this.
-        t_emb = t_emb.to(dtype=sample.dtype)
-
-        emb = self.time_embedding(t_emb, timestep_cond)
-        aug_emb = None
-
-        if self.class_embedding is not None:
-            if class_labels is None:
-                raise ValueError("class_labels should be provided when num_class_embeds > 0")
-
-            if self.config.class_embed_type == "timestep":
-                class_labels = self.time_proj(class_labels)
-
-                # `Timesteps` does not contain any weights and will always return f32 tensors
-                # there might be better ways to encapsulate this.
-                class_labels = class_labels.to(dtype=sample.dtype)
-
-            class_emb = self.class_embedding(class_labels).to(dtype=sample.dtype)
-
-            if self.config.class_embeddings_concat:
-                emb = torch.cat([emb, class_emb], dim=-1)
-            else:
-                emb = emb + class_emb
-
-        if self.config.addition_embed_type == "text":
-            aug_emb = self.add_embedding(encoder_hidden_states)
-        elif self.config.addition_embed_type == "text_time":
-            # SDXL - style
-            if "text_embeds" not in added_cond_kwargs:
-                raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
-                )
-            text_embeds = added_cond_kwargs.get("text_embeds")
-            if "time_ids" not in added_cond_kwargs:
-                raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
-                )
-            time_ids = added_cond_kwargs.get("time_ids")
-            time_embeds = self.add_time_proj(time_ids.flatten())
-            time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
-            add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
-            add_embeds = add_embeds.to(emb.dtype)
-            aug_emb = self.add_embedding(add_embeds)
-
-        emb = emb + aug_emb if aug_emb is not None else emb
-
-        if self.time_embed_act is not None:
-            emb = self.time_embed_act(emb)
-
-        if self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "text_proj":
-            encoder_hidden_states = self.encoder_hid_proj(encoder_hidden_states)
-
-        elif self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
-            if "image_embeds" not in added_cond_kwargs:
-                raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
-                )
-            image_embeds = added_cond_kwargs.get("image_embeds")
-            image_embeds = self.encoder_hid_proj(image_embeds).to(encoder_hidden_states.dtype)
-            encoder_hidden_states = torch.cat([encoder_hidden_states, image_embeds], dim=1)
-
-        # 2. pre-process
-        sample = self.conv_in(sample)
-
-        # 3. down
-        down_block_res_samples = (sample,)
-        for downsample_block in self.down_blocks:
-            if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
-                # For t2i-adapter CrossAttnDownBlock2D
-                additional_residuals = {}
-
-                sample, res_samples = downsample_block(
-                    hidden_states=sample,
-                    temb=emb,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    **additional_residuals,
-                )
-            else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=1.0)
-
-            down_block_res_samples += res_samples
-
-        # 4. mid
-        if self.mid_block is not None:
-            if hasattr(self.mid_block, "has_cross_attention") and self.mid_block.has_cross_attention:
-                sample = self.mid_block(
-                    sample,
-                    emb,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                )
-            else:
-                sample = self.mid_block(sample, emb)
-
-        return sample
+    def forward(self, *args, **kwargs):
+        raise ValueError("A ControlNetXSAddonModel cannot be run by itself. Pass it into a ControlNetXSModel model instead.")
 
 
 class ControlNetXSModel(ModelMixin, ConfigMixin):
@@ -567,8 +490,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        conditioning_channels: int = 3,
-        conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
         controlnet_conditioning_channel_order: str = "rgb",
         time_embedding_input_dim: int = 320,
         time_embedding_dim: int = 1280,
@@ -629,13 +550,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             use_linear_projection=True,
             upcast_attention=upcast_attention,
             time_embedding_dim=time_embedding_dim,
-        )
-
-        # 5 - Create conditioning hint embedding
-        self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
-            conditioning_embedding_channels=block_out_channels[0],
-            block_out_channels=conditioning_embedding_out_channels,
-            conditioning_channels=conditioning_channels,
         )
 
     @classmethod
@@ -1051,7 +965,6 @@ def zero_module(module):
     return module
 
 
-
 class DownSubBlock2D(nn.Module):
     def __init__(
         self,
@@ -1110,8 +1023,6 @@ class DownSubBlock2D(nn.Module):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
-        # todo
-
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
 
         if self.training and self.gradient_checkpointing:
@@ -1124,30 +1035,38 @@ class DownSubBlock2D(nn.Module):
 
                 return custom_forward
 
-            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-            hidden_states = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.resnet),
-                hidden_states,
-                temb,
-                **ckpt_kwargs,
-            )
-            hidden_states = self.attn(
-                hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
-                attention_mask=attention_mask,
-                encoder_attention_mask=encoder_attention_mask,
-                return_dict=False,
-            )[0]
+            if self.resnet is not None:
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(self.resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+            if self.attention is not None:
+                hidden_states = self.attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
+                    return_dict=False,
+                )[0]
+            if self.downsampler is not None:
+                hidden_states = self.downsampler(hidden_states)
         else:
-            hidden_states = self.resnet(hidden_states, temb, scale=lora_scale)
-            hidden_states = self.attn(
-                hidden_states,
-                encoder_hidden_states=encoder_hidden_states,
-                cross_attention_kwargs=cross_attention_kwargs,
-                attention_mask=attention_mask,
-                encoder_attention_mask=encoder_attention_mask,
-                return_dict=False,
-            )[0]
+            if self.resnet is not None:
+                hidden_states = self.resnet(hidden_states, temb, scale=lora_scale)
+            if self.attention is not None:
+                hidden_states = self.attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
+                    return_dict=False,
+                )[0]
+            if self.downsampler is not None:
+                hidden_states = self.downsampler(hidden_states)
 
         return hidden_states
