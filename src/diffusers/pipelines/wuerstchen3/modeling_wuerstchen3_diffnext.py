@@ -43,6 +43,7 @@ class WuerstchenV3DiffNeXt(WuerstchenV3Unet):
         dropout=[0, 0, 0.1, 0.1],
         self_attn=True,
         t_conds=["sca"],
+        switch_level=None,
     ):
         super().__init__(
             c_in=c_in,
@@ -63,7 +64,7 @@ class WuerstchenV3DiffNeXt(WuerstchenV3Unet):
             dropout=dropout,
             self_attn=self_attn,
             t_conds=t_conds,
-            switch_level=None,
+            switch_level=switch_level,
         )
 
     def forward(self, x, r, effnet, clip_text_pooled, pixels=None, **kwargs):
