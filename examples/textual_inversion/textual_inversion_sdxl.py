@@ -110,7 +110,7 @@ These are textual inversion adaption weights for {base_model}. You can find some
         f.write(yaml + model_card)
 
 
-def log_validation(text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch):
+def log_validation(text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch, is_final_validation=False):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
@@ -139,14 +139,15 @@ def log_validation(text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, une
         image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
         images.append(image)
 
+    tracker_key = "test" if is_final_validation else "validation"
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+            tracker.writer.add_images(tracker_key, np_images, epoch, dataformats="NHWC")
         if tracker.name == "wandb":
             tracker.log(
                 {
-                    "validation": [
+                    tracker_key: [
                         wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
                     ]
                 }
@@ -959,9 +960,10 @@ def main():
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        images = log_validation(
-                    text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch
-                )
+        if args.validation_prompt:
+            images = log_validation(
+                        text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch, is_final_validation=True
+                    )
 
         if args.push_to_hub and not args.save_as_full_pipeline:
             logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
@@ -1004,9 +1006,6 @@ def main():
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
-
-        for i in range(len(images)):
-            images[i].save(f"cat-backpack_sdxl_test_{i}.png")
 
     accelerator.end_training()
 
