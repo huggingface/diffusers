@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -153,6 +153,9 @@ class SharedAttentionProcessor(AttnProcessor2_0):
         shared_score_scale: float = 1.0,
         shared_score_shift: float = 0.0,
     ):
+        r"""
+        Shared Attention Processor as proposed in the StyleAligned paper.
+        """
         super().__init__()
         self.share_attention = share_attention
         self.adain_queries = adain_queries
@@ -161,6 +164,14 @@ class SharedAttentionProcessor(AttnProcessor2_0):
         self.full_attention_share = full_attention_share
         self.shared_score_scale = shared_score_scale
         self.shared_score_shift = shared_score_shift
+
+    def shifted_scaled_dot_product_attention(
+        self, attn: Attention, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor
+    ) -> torch.Tensor:
+        logits = torch.einsum("bhqd,bhkd->bhqk", query, key) * attn.scale
+        logits[:, :, :, query.shape[2] :] += self.shared_score_shift
+        probs = logits.softmax(-1)
+        return torch.einsum("bhqk,bhkd->bhqd", probs, value)
 
     def shared_call(
         self,
@@ -348,6 +359,9 @@ class StyleAlignedSDXLPipeline(
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
+
+    This pipeline also adds experimental support for [StyleAligned](https://arxiv.org/abs/2312.02133). It can
+    be enabled/disabled using `.enable_style_aligned()` or `.disable_style_aligned()` respectively.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
