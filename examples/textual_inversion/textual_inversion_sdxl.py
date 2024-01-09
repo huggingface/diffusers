@@ -571,17 +571,6 @@ class TextualInversionDataset(Dataset):
         # default to score-sde preprocessing
         img = np.array(image).astype(np.uint8)
 
-        if self.center_crop:
-            crop = min(img.shape[0], img.shape[1])
-            (
-                h,
-                w,
-            ) = (
-                img.shape[0],
-                img.shape[1],
-            )
-            img = img[(h - crop) // 2 : (h + crop) // 2, (w - crop) // 2 : (w + crop) // 2]
-
         image = Image.fromarray(img)
         image = image.resize((self.size, self.size), resample=self.interpolation)
 
