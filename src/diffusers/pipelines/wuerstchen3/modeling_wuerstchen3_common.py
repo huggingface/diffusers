@@ -196,10 +196,11 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
         nn.init.normal_(self.clip_txt_mapper.weight, std=0.02) if hasattr(self, "clip_txt_mapper") else None
         nn.init.normal_(self.clip_img_mapper.weight, std=0.02) if hasattr(self, "clip_img_mapper") else None
 
-        if self.effnet_mapper is not None:
+        if hasattr(self, "effnet_mapper"):
             nn.init.normal_(self.effnet_mapper[0].weight, std=0.02)  # conditionings
             nn.init.normal_(self.effnet_mapper[2].weight, std=0.02)  # conditionings
-        if self.pixels_mapper is not None:
+        
+        if hasattr(self, "pixels_mapper"):
             nn.init.normal_(self.pixels_mapper[0].weight, std=0.02)  # conditionings
             nn.init.normal_(self.pixels_mapper[2].weight, std=0.02)  # conditionings
 
