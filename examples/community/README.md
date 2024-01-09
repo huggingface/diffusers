@@ -3245,6 +3245,6 @@ images = pipe(
     generator=torch.Generator().manual_seed(42),
 ).images
 
-# Disable StyleAligned if you do not wish to use it
+# Disable StyleAligned if you do not wish to use it anymore
 pipe.disable_style_aligned()
 ```

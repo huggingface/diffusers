@@ -82,16 +82,55 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> import torch
-        >>> from diffusers import StableDiffusionXLPipeline
+        >>> from typing import List
 
-        >>> pipe = StableDiffusionXLPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
-        ... )
+        >>> import torch
+        >>> from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+        >>> from PIL import Image
+
+        >>> model_id = "a-r-r-o-w/dreamshaper-xl-turbo"
+        >>> pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, variant="fp16", custom_pipeline="pipeline_sdxl_style_aligned")
         >>> pipe = pipe.to("cuda")
 
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
+        # Enable memory saving techniques
+        >>> pipe.enable_vae_slicing()
+        >>> pipe.enable_vae_tiling()
+
+        >>> prompt = [
+        ...     "a toy train. macro photo. 3d game asset",
+        ...     "a toy airplane. macro photo. 3d game asset",
+        ...     "a toy bicycle. macro photo. 3d game asset",
+        ...     "a toy car. macro photo. 3d game asset",
+        ... ]
+        >>> negative_prompt = "low quality, worst quality, "
+
+        >>> # Enable StyleAligned
+        >>> pipe.enable_style_aligned(
+        ...     share_group_norm=False,
+        ...     share_layer_norm=False,
+        ...     share_attention=True,
+        ...     adain_queries=True,
+        ...     adain_keys=True,
+        ...     adain_values=False,
+        ...     full_attention_share=False,
+        ...     shared_score_scale=1.0,
+        ...     shared_score_shift=0.0,
+        ...     only_self_level=0.0,
+        >>> )
+
+        >>> # Run inference
+        >>> images = pipe(
+        ...     prompt=prompt,
+        ...     negative_prompt=negative_prompt,
+        ...     guidance_scale=2,
+        ...     height=1024,
+        ...     width=1024,
+        ...     num_inference_steps=10,
+        ...     generator=torch.Generator().manual_seed(42),
+        >>> ).images
+
+        >>> # Disable StyleAligned if you do not wish to use it anymore
+        >>> pipe.disable_style_aligned()
         ```
 """
 
