@@ -77,11 +77,6 @@ if is_torch_xla_available():
 else:
     XLA_AVAILABLE = False
 
-try:
-    import einops
-except ModuleNotFoundError:
-    print("Please install the required package `einops` using `pip install einops`")
-
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 EXAMPLE_DOC_STRING = """
@@ -261,7 +256,9 @@ class SharedAttentionProcessor(AttnProcessor2_0):
     ):
         if self.full_attention_share:
             b, n, d = hidden_states.shape
-            hidden_states = einops.rearrange(hidden_states, "(k b) n d -> k (b n) d", k=2)
+            k = 2
+            hidden_states = hidden_states.view(k, b, n, d).permute(0, 1, 3, 2).contiguous().view(-1, n, d)
+            # hidden_states = einops.rearrange(hidden_states, "(k b) n d -> k (b n) d", k=2)
             hidden_states = super().__call__(
                 attn,
                 hidden_states,
@@ -269,7 +266,8 @@ class SharedAttentionProcessor(AttnProcessor2_0):
                 attention_mask=attention_mask,
                 **kwargs,
             )
-            hidden_states = einops.rearrange(hidden_states, "k (b n) d -> (k b) n d", n=n)
+            hidden_states = hidden_states.view(k, b, n, d).permute(0, 1, 3, 2).contiguous().view(-1, n, d)
+            # hidden_states = einops.rearrange(hidden_states, "k (b n) d -> (k b) n d", n=n)
         else:
             hidden_states = self.shared_call(attn, hidden_states, hidden_states, attention_mask, **kwargs)
 
@@ -1266,7 +1264,7 @@ class StyleAlignedSDXLPipeline(
     @property
     def style_aligned_enabled(self):
         r"""Returns whether StyleAligned has been enabled in the pipeline or not."""
-        return hasattr(self, "_style_aligned_norm_layer") and self._style_aligned_norm_layers is not None
+        return hasattr(self, "_style_aligned_norm_layers") and self._style_aligned_norm_layers is not None
 
     def enable_style_aligned(
         self,
