@@ -56,7 +56,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 | AnimateDiff ControlNet Pipeline                                                                                                    | Combines AnimateDiff with precise motion control using ControlNets                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff ControlNet Pipeline](#animatediff-controlnet-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SKboYeGjEQmQPWoFC0aLYpBlYdHXkvAu?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) and [Edoardo Botta](https://github.com/EdoardoBotta) |
 |   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
 |   Null-Text Inversion Pipeline  | Implement [Null-text Inversion for Editing Real Images using Guided Diffusion Models](https://arxiv.org/abs/2211.09794) as a pipeline.                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Null-Text Inversion](https://github.com/google/prompt-to-prompt/)      | - |              [Junsheng Luan](https://github.com/Junsheng121) |
-
+|   Rerender A Video Pipeline                                                                                                    | Implementation of [[SIGGRAPH Asia 2023] Rerender A Video: Zero-Shot Text-Guided Video-to-Video Translation](https://arxiv.org/abs/2306.07954)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Rerender A Video Pipeline](#Rerender_A_Video)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -3185,5 +3185,91 @@ pipeline = NullTextPipeline.from_pretrained(model_path, scheduler = scheduler, t
 #Saves the inverted_latent to save time
 inverted_latent, uncond = pipeline.invert(input_image, invert_prompt, num_inner_steps=10, early_stop_epsilon= 1e-5, num_inference_steps = steps)
 pipeline(prompt, uncond, inverted_latent, guidance_scale=7.5, num_inference_steps=steps).images[0].save(input_image+".output.jpg")
+```
+### Rerender_A_Video
 
+This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender_A_Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `examples/community/rerender_a_video.py`:
+
+```py
+gmflow_dir = "/path/to/gmflow"
+```
+
+After that, you can run the pipeline with:
+
+```py
+from diffusers import ControlNetModel, AutoencoderKL, DDIMScheduler
+from diffusers.utils import export_to_video
+import numpy as np
+import torch
+
+import cv2
+from PIL import Image
+
+def video_to_frame(video_path: str, interval: int):
+    vidcap = cv2.VideoCapture(video_path)
+    success = True
+
+    count = 0
+    res = []
+    while success:
+        count += 1
+        success, image = vidcap.read()
+        if count % interval != 1:
+            continue
+        if image is not None:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            res.append(image)
+
+    vidcap.release()
+    return res
+
+input_video_path = 'path/to/video'
+input_interval = 10
+frames = video_to_frame(
+    input_video_path, input_interval)
+
+control_frames = []
+# get canny image
+for frame in frames:
+    np_image = cv2.Canny(frame, 50, 100)
+    np_image = np_image[:, :, None]
+    np_image = np.concatenate([np_image, np_image, np_image], axis=2)
+    canny_image = Image.fromarray(np_image)
+    control_frames.append(canny_image)
+
+# You can use any ControlNet here
+controlnet = ControlNetModel.from_pretrained(
+    "lllyasviel/sd-controlnet-canny").to('cuda')
+
+# You can use any fintuned SD here
+pipe = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", controlnet=controlnet, custom_pipeline='rerender_a_video').to('cuda')
+
+# Optional: you can download vae-ft-mse-840000-ema-pruned.ckpt to enhance the results
+# pipe.vae = AutoencoderKL.from_single_file(
+#     "path/to/vae-ft-mse-840000-ema-pruned.ckpt").to('cuda')
+
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+
+generator = torch.manual_seed(0)
+frames = [Image.fromarray(frame) for frame in frames]
+output_frames = pipe(
+    "a beautiful woman in CG style, best quality, extremely detailed",
+
+    frames,
+    control_frames,
+    num_inference_steps=20,
+    strength=0.75,
+    controlnet_conditioning_scale=0.7,
+    generator=generator,
+    warp_start=0.0,
+    warp_end=0.1,
+    mask_start=0.5,
+    mask_end=0.8,
+    mask_strength=0.5,
+    negative_prompt='longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality'
+).frames
+
+export_to_video(
+    output_frames, "/path/to/video.mp4", 5)
 ```
