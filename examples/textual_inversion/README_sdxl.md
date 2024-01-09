@@ -1,6 +1,5 @@
 ## Textual Inversion fine-tuning example for SDXL
 
-The `textual_inversion.py` do not support training stable-diffusion-XL as it has two text encoders, you can training SDXL by the following command:
 ```
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
 export DATA_DIR="./cat"
@@ -12,7 +11,7 @@ accelerate launch textual_inversion_sdxl.py \
   --placeholder_token="<cat-toy>" \
   --initializer_token="toy" \
   --mixed_precision="bf16" \
-  --resolution=1024 \
+  --resolution=768 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
   --max_train_steps=500 \
@@ -24,4 +23,4 @@ accelerate launch textual_inversion_sdxl.py \
   --output_dir="./textual_inversion_cat_sdxl"
 ```
 
-We only enabled training the first text encoder because of the precision issue, we will enable training the second text encoder once we fixed the problem.
+For now, only training of the first text encoder is supported. 

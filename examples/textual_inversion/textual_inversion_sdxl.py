@@ -304,6 +304,9 @@ def parse_args():
             "Number of subprocesses to use for data loading. 0 means that the data will be loaded in the main process."
         ),
     )
+    parser.add_argument(
+        "--use_8bit_adam", action="store_true", help="Whether or not to use 8-bit Adam from bitsandbytes."
+    )
     parser.add_argument("--adam_beta1", type=float, default=0.9, help="The beta1 parameter for the Adam optimizer.")
     parser.add_argument("--adam_beta2", type=float, default=0.999, help="The beta2 parameter for the Adam optimizer.")
     parser.add_argument("--adam_weight_decay", type=float, default=1e-2, help="Weight decay to use.")
@@ -707,7 +710,19 @@ def main():
         )
 
     # Initialize the optimizer
-    optimizer_1 = torch.optim.AdamW(
+    if args.use_8bit_adam:
+        try:
+            import bitsandbytes as bnb
+        except ImportError:
+            raise ImportError(
+                "To use 8-bit Adam, please install the bitsandbytes library: `pip install bitsandbytes`."
+            )
+
+        optimizer_class = bnb.optim.AdamW8bit
+    else:
+        optimizer_class = torch.optim.AdamW
+
+    optimizer = optimizer_class(
         text_encoder_1.get_input_embeddings().parameters(),  # only optimize the embeddings
         lr=args.learning_rate,
         betas=(args.adam_beta1, args.adam_beta2),
@@ -715,13 +730,14 @@ def main():
         eps=args.adam_epsilon,
     )
 
+    placeholder_token = " ".join(tokenizer_1.convert_ids_to_tokens(placeholder_token_ids))
     # Dataset and DataLoaders creation:
     train_dataset = TextualInversionDataset(
         data_root=args.train_data_dir,
         tokenizer_1=tokenizer_1,
         tokenizer_2=tokenizer_2,
         size=args.resolution,
-        placeholder_token=(" ".join(tokenizer_1.convert_ids_to_tokens(placeholder_token_ids))),
+        placeholder_token=placeholder_token,
         repeats=args.repeats,
         learnable_property=args.learnable_property,
         center_crop=args.center_crop,
@@ -738,9 +754,9 @@ def main():
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
 
-    lr_scheduler_1 = get_scheduler(
+    lr_scheduler = get_scheduler(
         args.lr_scheduler,
-        optimizer=optimizer_1,
+        optimizer=optimizer,
         num_warmup_steps=args.lr_warmup_steps * accelerator.num_processes,
         num_training_steps=args.max_train_steps * accelerator.num_processes,
         num_cycles=args.lr_num_cycles,
@@ -748,8 +764,8 @@ def main():
 
     text_encoder_1.train()
     # Prepare everything with our `accelerator`.
-    text_encoder_1, optimizer_1, train_dataloader, lr_scheduler_1 = accelerator.prepare(
-        text_encoder_1, optimizer_1, train_dataloader, lr_scheduler_1
+    text_encoder_1, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
+        text_encoder_1, optimizer, train_dataloader, lr_scheduler
     )
 
     # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
@@ -873,9 +889,9 @@ def main():
 
                 accelerator.backward(loss)
 
-                optimizer_1.step()
-                lr_scheduler_1.step()
-                optimizer_1.zero_grad()
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
 
                 # Let's make sure we don't update any embedding weights besides the newly added token
                 index_no_updates = torch.ones((len(tokenizer_1),), dtype=torch.bool)
@@ -934,7 +950,7 @@ def main():
                             text_encoder_1, text_encoder_2, tokenizer_1, tokenizer_2, unet, vae, args, accelerator, weight_dtype, epoch
                         )
 
-            logs = {"loss": loss.detach().item(), "lr": lr_scheduler_1.get_last_lr()[0]}
+            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
