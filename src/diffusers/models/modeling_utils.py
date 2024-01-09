@@ -32,12 +32,10 @@ from .. import __version__
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
-    MIN_PEFT_VERSION,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     _add_variant,
     _get_model_file,
-    check_peft_version,
     deprecate,
     is_accelerate_available,
     is_torch_version,
@@ -221,7 +219,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
     _supports_gradient_checkpointing = False
     _keys_to_ignore_on_load_unexpected = None
-    _hf_peft_config_loaded = False
     _no_split_modules = None
 
     def __init__(self):
@@ -327,182 +324,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         Disable memory efficient attention from [xFormers](https://facebookresearch.github.io/xformers/).
         """
         self.set_use_memory_efficient_attention_xformers(False)
-
-    def add_adapter(self, adapter_config, adapter_name: str = "default") -> None:
-        r"""
-        Adds a new adapter to the current model for training. If no adapter name is passed, a default name is assigned
-        to the adapter to follow the convention of the PEFT library.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them in the PEFT
-        [documentation](https://huggingface.co/docs/peft).
-
-        Args:
-            adapter_config (`[~peft.PeftConfig]`):
-                The configuration of the adapter to add; supported adapters are non-prefix tuning and adaption prompt
-                methods.
-            adapter_name (`str`, *optional*, defaults to `"default"`):
-                The name of the adapter to add. If no name is passed, a default name is assigned to the adapter.
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        from peft import PeftConfig, inject_adapter_in_model
-
-        if not self._hf_peft_config_loaded:
-            self._hf_peft_config_loaded = True
-        elif adapter_name in self.peft_config:
-            raise ValueError(f"Adapter with name {adapter_name} already exists. Please use a different name.")
-
-        if not isinstance(adapter_config, PeftConfig):
-            raise ValueError(
-                f"adapter_config should be an instance of PeftConfig. Got {type(adapter_config)} instead."
-            )
-
-        # Unlike transformers, here we don't need to retrieve the name_or_path of the unet as the loading logic is
-        # handled by the `load_lora_layers` or `LoraLoaderMixin`. Therefore we set it to `None` here.
-        adapter_config.base_model_name_or_path = None
-        inject_adapter_in_model(adapter_config, self, adapter_name)
-        self.set_adapter(adapter_name)
-
-    def set_adapter(self, adapter_name: Union[str, List[str]]) -> None:
-        """
-        Sets a specific adapter by forcing the model to only use that adapter and disables the other adapters.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
-
-        Args:
-            adapter_name (Union[str, List[str]])):
-                The list of adapters to set or the adapter name in case of single adapter.
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        if not self._hf_peft_config_loaded:
-            raise ValueError("No adapter loaded. Please load an adapter first.")
-
-        if isinstance(adapter_name, str):
-            adapter_name = [adapter_name]
-
-        missing = set(adapter_name) - set(self.peft_config)
-        if len(missing) > 0:
-            raise ValueError(
-                f"Following adapter(s) could not be found: {', '.join(missing)}. Make sure you are passing the correct adapter name(s)."
-                f" current loaded adapters are: {list(self.peft_config.keys())}"
-            )
-
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        _adapters_has_been_set = False
-
-        for _, module in self.named_modules():
-            if isinstance(module, BaseTunerLayer):
-                if hasattr(module, "set_adapter"):
-                    module.set_adapter(adapter_name)
-                # Previous versions of PEFT does not support multi-adapter inference
-                elif not hasattr(module, "set_adapter") and len(adapter_name) != 1:
-                    raise ValueError(
-                        "You are trying to set multiple adapters and you have a PEFT version that does not support multi-adapter inference. Please upgrade to the latest version of PEFT."
-                        " `pip install -U peft` or `pip install -U git+https://github.com/huggingface/peft.git`"
-                    )
-                else:
-                    module.active_adapter = adapter_name
-                _adapters_has_been_set = True
-
-        if not _adapters_has_been_set:
-            raise ValueError(
-                "Did not succeeded in setting the adapter. Please make sure you are using a model that supports adapters."
-            )
-
-    def disable_adapters(self) -> None:
-        r"""
-        Disable all adapters attached to the model and fallback to inference with the base model only.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        if not self._hf_peft_config_loaded:
-            raise ValueError("No adapter loaded. Please load an adapter first.")
-
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        for _, module in self.named_modules():
-            if isinstance(module, BaseTunerLayer):
-                if hasattr(module, "enable_adapters"):
-                    module.enable_adapters(enabled=False)
-                else:
-                    # support for older PEFT versions
-                    module.disable_adapters = True
-
-    def enable_adapters(self) -> None:
-        """
-        Enable adapters that are attached to the model. The model will use `self.active_adapters()` to retrieve the
-        list of adapters to enable.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        if not self._hf_peft_config_loaded:
-            raise ValueError("No adapter loaded. Please load an adapter first.")
-
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        for _, module in self.named_modules():
-            if isinstance(module, BaseTunerLayer):
-                if hasattr(module, "enable_adapters"):
-                    module.enable_adapters(enabled=True)
-                else:
-                    # support for older PEFT versions
-                    module.disable_adapters = False
-
-    def active_adapters(self) -> List[str]:
-        """
-        Gets the current list of active adapters of the model.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        if not self._hf_peft_config_loaded:
-            raise ValueError("No adapter loaded. Please load an adapter first.")
-
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        for _, module in self.named_modules():
-            if isinstance(module, BaseTunerLayer):
-                return module.active_adapter
-
-    def _get_no_split_modules(self, device_map: str):
-        """
-        Get the modules of the model that should not be spit when using device_map. We iterate through the modules to
-        get the underlying `_no_split_modules`.
-
-        Args:
-            device_map (`str`):
-                The device map value. Options are ["auto", "balanced", "balanced_low_0", "sequential"]
-
-        Returns:
-            `List[str]`: List of modules that should not be split
-        """
-        _no_split_modules = set()
-        modules_to_check = [self]
-        while len(modules_to_check) > 0:
-            module = modules_to_check.pop(-1)
-            # if the module does not appear in _no_split_modules, we also check the children
-            if module.__class__.__name__ not in _no_split_modules:
-                if isinstance(module, ModelMixin):
-                    if module._no_split_modules is None:
-                        raise ValueError(
-                            f"{module.__class__.__name__} does not support `device_map='{device_map}'`. To implement support, the model "
-                            "class needs to implement the `_no_split_modules` attribute."
-                        )
-                    else:
-                        _no_split_modules = _no_split_modules | set(module._no_split_modules)
-                modules_to_check += list(module.children())
-        return list(_no_split_modules)
 
     def save_pretrained(
         self,

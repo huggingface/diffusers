@@ -22,7 +22,7 @@ import torch.utils.checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
-from ..utils import BaseOutput, logging
+from ..utils import BaseOutput, deprecate, logging
 from .activations import get_activation
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -375,9 +375,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
-    ):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -401,9 +399,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
-                    module.set_processor(processor, _remove_lora=_remove_lora)
+                    module.set_processor(processor)
                 else:
-                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
+                    module.set_processor(processor.pop(f"{name}.processor"))
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -465,7 +463,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
                 f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
             )
 
-        self.set_attn_processor(processor, _remove_lora=True)
+        self.set_attn_processor(processor)
 
     def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
         if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
@@ -504,6 +502,18 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             for k in freeu_keys:
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
+
+    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.unload_lora
+    def unload_lora(self):
+        """Unloads LoRA weights."""
+        deprecate(
+            "unload_lora",
+            "0.28.0",
+            "Calling `unload_lora()` is deprecated and will be removed in a future version. Please install `peft` and then call `disable_adapters().",
+        )
+        for module in self.modules():
+            if hasattr(module, "set_lora_layer"):
+                module.set_lora_layer(None)
 
     def forward(
         self,

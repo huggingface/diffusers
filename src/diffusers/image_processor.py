@@ -33,14 +33,7 @@ PipelineImageInput = Union[
     List[torch.FloatTensor],
 ]
 
-PipelineDepthInput = Union[
-    PIL.Image.Image,
-    np.ndarray,
-    torch.FloatTensor,
-    List[PIL.Image.Image],
-    List[np.ndarray],
-    List[torch.FloatTensor],
-]
+PipelineDepthInput = PipelineImageInput
 
 
 class VaeImageProcessor(ConfigMixin):
@@ -169,7 +162,7 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def blur(image: PIL.Image.Image, blur_factor: int = 4) -> PIL.Image.Image:
         """
-        Blurs an image.
+        Applies Gaussian blur to an image.
         """
         image = image.filter(ImageFilter.GaussianBlur(blur_factor))
 
@@ -402,6 +395,7 @@ class VaeImageProcessor(ConfigMixin):
         """
         image[image < 0.5] = 0
         image[image >= 0.5] = 1
+
         return image
 
     def get_default_height_width(
@@ -634,7 +628,9 @@ class VaeImageProcessor(ConfigMixin):
         init_image_masked = init_image_masked.convert("RGBA")
 
         if crop_coords is not None:
-            x, y, w, h = crop_coords
+            x, y, x2, y2 = crop_coords
+            w = x2 - x
+            h = y2 - y
             base_image = PIL.Image.new("RGBA", (width, height))
             image = self.resize(image, height=h, width=w, resize_mode="crop")
             base_image.paste(image, (x, y))

@@ -21,6 +21,7 @@ from torch import nn
 from torch.utils.checkpoint import checkpoint
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..loaders import PeftAdapterMixin
 from .attention import BasicTransformerBlock, SkipFFTransformerBlock
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -35,7 +36,7 @@ from .normalization import GlobalResponseNorm, RMSNorm
 from .resnet import Downsample2D, Upsample2D
 
 
-class UVit2DModel(ModelMixin, ConfigMixin):
+class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -237,9 +238,7 @@ class UVit2DModel(ModelMixin, ConfigMixin):
         return processors
 
     # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
-    ):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -263,9 +262,9 @@ class UVit2DModel(ModelMixin, ConfigMixin):
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
-                    module.set_processor(processor, _remove_lora=_remove_lora)
+                    module.set_processor(processor)
                 else:
-                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
+                    module.set_processor(processor.pop(f"{name}.processor"))
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -287,7 +286,7 @@ class UVit2DModel(ModelMixin, ConfigMixin):
                 f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
             )
 
-        self.set_attn_processor(processor, _remove_lora=True)
+        self.set_attn_processor(processor)
 
 
 class UVit2DConvEmbed(nn.Module):
