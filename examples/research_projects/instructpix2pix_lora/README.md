@@ -68,3 +68,8 @@ Here are some rough statistics about the training model using this script
 <p align="center">
     <img src="https://github.com/Aiden-Frost/Efficiently-teaching-counting-and-cartoonization-to-InstructPix2Pix.-/blob/main/diffusers_result_assets/results.png?raw=true" alt="instructpix2pix-inputs" width=600/>
 </p>
+
+## References 
+
+InstructPix2Pix - https://github.com/timothybrooks/instruct-pix2pix
+Dataset and example training script - https://huggingface.co/blog/instruction-tuning-sd
