@@ -56,8 +56,9 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.torch_utils import is_compiled_module
 from diffusers.utils.peft_utils import delete_adapter_layers
+from diffusers.utils.torch_utils import is_compiled_module
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.26.0.dev0")
@@ -1000,7 +1001,7 @@ def main(args):
 
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
-        model = model._orig_mod if is_compiled_module(model) else model 
+        model = model._orig_mod if is_compiled_module(model) else model
         return model
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
@@ -1065,17 +1066,24 @@ def main(args):
         if args.train_text_encoder:
             text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
             LoraLoaderMixin.load_lora_into_text_encoder(
-                text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_, _config=text_lora_config
+                text_encoder_state_dict,
+                network_alphas=network_alphas,
+                text_encoder=text_encoder_one_,
+                _config=text_lora_config,
             )
             delete_adapter_layers(text_encoder_one_, "default_1")
-        
+
             text_encoder_2_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder_2." in k}
             LoraLoaderMixin.load_lora_into_text_encoder(
-                text_encoder_2_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_, _config=text_lora_config
+                text_encoder_2_state_dict,
+                network_alphas=network_alphas,
+                text_encoder=text_encoder_two_,
+                _config=text_lora_config,
             )
             delete_adapter_layers(text_encoder_two_, "default_1")
 
-        # Make sure the trainable params are in float32.
+        # Make sure the trainable params are in float32. This is again needed since the base models
+        # are in `weight_dtype`.
         if args.mixed_precision == "fp16":
             models = [unet_]
             if args.train_text_encoder:
@@ -1521,12 +1529,8 @@ def main(args):
                         if args.train_text_encoder
                         else unet_lora_parameters
                     )
-                    params_to_clip_dtype = {param.dtype for param in params_to_clip}
-                    print(f"params_to_clip_dtype: {params_to_clip_dtype}")
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
-                
-                params_to_optimize_dtype = {param.dtype for param in params_to_optimize[0]["params"]}
-                print(f"params_to_optimize_dtype: {params_to_optimize_dtype}")
+
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -1649,7 +1653,7 @@ def main(args):
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
         unet = unwrap_model(unet)
-        unet = unet.to(torch.float32) 
+        unet = unet.to(torch.float32)
         unet_lora_layers = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
         if args.train_text_encoder:
