@@ -3307,7 +3307,7 @@ pipeline = DiffusionPipeline.from_pretrained(
     torch_dtype=torch.float16,
     scheduler=noise_scheduler,
     vae=vae,
-    custom_pipeline="./forked/diffusers/examples/community/ip_adapter_face_id.py"
+    custom_pipeline="ip_adapter_face_id"
 )
 pipeline.load_ip_adapter_face_id("h94/IP-Adapter-FaceID", "ip-adapter-faceid_sd15.bin")
 pipeline.to("cuda")

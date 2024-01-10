@@ -14,12 +14,12 @@
 
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
-from safetensors import safe_open
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from packaging import version
+from safetensors import safe_open
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers.configuration_utils import FrozenDict
@@ -27,20 +27,20 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.attention_processor import FusedAttnProcessor2_0
-from diffusers.models.lora import adjust_lora_scale_text_encoder, LoRALinearLayer
+from diffusers.models.lora import LoRALinearLayer, adjust_lora_scale_text_encoder
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
-    _get_model_file,
     USE_PEFT_BACKEND,
+    _get_model_file,
     deprecate,
     logging,
     scale_lora_layers,
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -555,7 +555,7 @@ class IPAdapterFaceIDStableDiffusionPipeline(
             revision=revision,
             subfolder=subfolder,
             user_agent=user_agent,
-            )
+        )
         if weight_name.endswith(".safetensors"):
             state_dict = {"image_proj": {}, "ip_adapter": {}}
             with safe_open(model_file, framework="pt", device="cpu") as f:
@@ -1438,7 +1438,7 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Add image embeds for IP-Adapter
-        added_cond_kwargs ={"image_embeds": image_embeds} if image_embeds is not None else None
+        added_cond_kwargs = {"image_embeds": image_embeds} if image_embeds is not None else None
 
         # 6.2 Optionally get Guidance Scale Embedding
         timestep_cond = None
