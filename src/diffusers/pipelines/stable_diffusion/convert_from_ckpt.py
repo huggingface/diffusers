@@ -254,22 +254,22 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     down_block_types = []
     resolution = 1
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnDownBlock2D" if resolution in unet_params.attention_resolutions else "DownBlock2D"
+        block_type = "CrossAttnDownBlock2D" if resolution in unet_params["attention_resolutions"] else "DownBlock2D"
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
             resolution *= 2
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnUpBlock2D" if resolution in unet_params.attention_resolutions else "UpBlock2D"
+        block_type = "CrossAttnUpBlock2D" if resolution in unet_params["attention_resolutions"] else "UpBlock2D"
         up_block_types.append(block_type)
         resolution //= 2
 
-    if unet_params.transformer_depth is not None:
+    if unet_params["transformer_depth"] is not None:
         transformer_layers_per_block = (
-            unet_params.transformer_depth
-            if isinstance(unet_params.transformer_depth, int)
-            else list(unet_params.transformer_depth)
+            unet_params["transformer_depth"]
+            if isinstance(unet_params["transformer_depth"], int)
+            else list(unet_params["transformer_depth"])
         )
     else:
         transformer_layers_per_block = 1
