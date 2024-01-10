@@ -64,19 +64,15 @@ With callbacks, you can implement features such as dynamic CFG without having to
 
 </Tip>
 
-
-## Using Callbacks to interrupt the Diffusion Process
-
-The following Pipelines support interrupting the diffusion process via callback
-
-- [StableDiffusionPipeline](../api/pipelines/stable_diffusion/overview.md)
-- [StableDiffusionImg2ImgPipeline](..api/pipelines/stable_diffusion/img2img.md)
-- [StableDiffusionInpaintPipeline](..api/pipelines/stable_diffusion/inpaint.md)
-- [StableDiffusionXLPipeline](../api/pipelines/stable_diffusion/stable_diffusion_xl.md)
-- [StableDiffusionXLImg2ImgPipeline](../api/pipelines/stable_diffusion/stable_diffusion_xl.md)
-- [StableDiffusionXLInpaintPipeline](../api/pipelines/stable_diffusion/stable_diffusion_xl.md)
+## Interrupt the diffusion process
 
 Interrupting the diffusion process is particularly useful when building UIs that work with Diffusers because it allows users to stop the generation process if they're unhappy with the intermediate results. You can incorporate this into your pipeline with a callback.
+
+<Tip>
+
+The interruption callback is supported for text-to-image, image-to-image, and inpainting for the [StableDiffusionPipeline](../api/pipelines/stable_diffusion/overview) and [StableDiffusionXLPipeline](../api/pipelines/stable_diffusion/stable_diffusion_xl).
+
+</Tip>
 
 This callback function should take the following arguments: `pipe`, `i`, `t`, and `callback_kwargs` (this must be returned). Set the pipeline's `_interrupt` attribute to `True` to stop the diffusion process after a certain number of steps. You are also free to implement your own custom stopping logic inside the callback.
 
