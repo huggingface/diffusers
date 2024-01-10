@@ -452,10 +452,10 @@ class FromOriginalVAEMixin:
         if scaling_factor is None:
             if (
                 "model" in original_config
-                and "params" in original_config.model
-                and "scale_factor" in original_config.model.params
+                and "params" in original_config["model"]
+                and "scale_factor" in original_config["model"]["params"]
             ):
-                vae_scaling_factor = original_config.model.params.scale_factor
+                vae_scaling_factor = original_config["model"]["params"]["scale_factor"]
             else:
                 vae_scaling_factor = 0.18215  # default SD scaling factor
 
