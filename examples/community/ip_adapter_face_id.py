@@ -14,47 +14,328 @@
 
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
+from safetensors import safe_open
 
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from ...configuration_utils import FrozenDict
-from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from ...models.attention_processor import FusedAttnProcessor2_0
-from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import (
+from diffusers.configuration_utils import FrozenDict
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.models.attention_processor import FusedAttnProcessor2_0
+from diffusers.models.lora import adjust_lora_scale_text_encoder, LoRALinearLayer
+from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.utils import (
+    _get_model_file,
     USE_PEFT_BACKEND,
     deprecate,
     logging,
-    replace_example_docstring,
     scale_lora_layers,
     unscale_lora_layers,
 )
-from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
-from .pipeline_output import StableDiffusionPipelineOutput
-from .safety_checker import StableDiffusionSafetyChecker
+from diffusers.utils.torch_utils import randn_tensor
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
-EXAMPLE_DOC_STRING = """
-    Examples:
-        ```py
-        >>> import torch
-        >>> from diffusers import StableDiffusionPipeline
 
-        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-        >>> pipe = pipe.to("cuda")
+class LoRAIPAdapterAttnProcessor(nn.Module):
+    r"""
+    Attention processor for IP-Adapater.
+    Args:
+        hidden_size (`int`):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+        network_alpha (`int`, *optional*):
+            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
+        lora_scale (`float`, defaults to 1.0):
+            the weight scale of LoRA.
+        scale (`float`, defaults to 1.0):
+            the weight scale of image prompt.
+        num_tokens (`int`, defaults to 4 when do ip_adapter_plus it should be 16):
+            The context length of the image features.
+    """
 
-        >>> prompt = "a photo of an astronaut riding a horse on mars"
-        >>> image = pipe(prompt).images[0]
-        ```
-"""
+    def __init__(
+        self,
+        hidden_size,
+        cross_attention_dim=None,
+        rank=4,
+        network_alpha=None,
+        lora_scale=1.0,
+        scale=1.0,
+        num_tokens=4,
+    ):
+        super().__init__()
+
+        self.rank = rank
+        self.lora_scale = lora_scale
+
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+        self.scale = scale
+        self.num_tokens = num_tokens
+
+        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+        attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states) + self.lora_scale * self.to_q_lora(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        else:
+            # get encoder_hidden_states, ip_hidden_states
+            end_pos = encoder_hidden_states.shape[1] - self.num_tokens
+            encoder_hidden_states, ip_hidden_states = (
+                encoder_hidden_states[:, :end_pos, :],
+                encoder_hidden_states[:, end_pos:, :],
+            )
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states) + self.lora_scale * self.to_k_lora(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states) + self.lora_scale * self.to_v_lora(encoder_hidden_states)
+
+        query = attn.head_to_batch_dim(query)
+        key = attn.head_to_batch_dim(key)
+        value = attn.head_to_batch_dim(value)
+
+        attention_probs = attn.get_attention_scores(query, key, attention_mask)
+        hidden_states = torch.bmm(attention_probs, value)
+        hidden_states = attn.batch_to_head_dim(hidden_states)
+
+        # for ip-adapter
+        ip_key = self.to_k_ip(ip_hidden_states)
+        ip_value = self.to_v_ip(ip_hidden_states)
+
+        ip_key = attn.head_to_batch_dim(ip_key)
+        ip_value = attn.head_to_batch_dim(ip_value)
+
+        ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
+        ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
+        ip_hidden_states = attn.batch_to_head_dim(ip_hidden_states)
+
+        hidden_states = hidden_states + self.scale * ip_hidden_states
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states) + self.lora_scale * self.to_out_lora(hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class LoRAIPAdapterAttnProcessor2_0(nn.Module):
+    r"""
+    Attention processor for IP-Adapater for PyTorch 2.0.
+    Args:
+        hidden_size (`int`):
+            The hidden size of the attention layer.
+        cross_attention_dim (`int`):
+            The number of channels in the `encoder_hidden_states`.
+        rank (`int`, defaults to 4):
+            The dimension of the LoRA update matrices.
+        network_alpha (`int`, *optional*):
+            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
+        lora_scale (`float`, defaults to 1.0):
+            the weight scale of LoRA.
+        scale (`float`, defaults to 1.0):
+            the weight scale of image prompt.
+        num_tokens (`int`, defaults to 4 when do ip_adapter_plus it should be 16):
+            The context length of the image features.
+    """
+
+    def __init__(
+        self,
+        hidden_size,
+        cross_attention_dim=None,
+        rank=4,
+        network_alpha=None,
+        lora_scale=1.0,
+        scale=1.0,
+        num_tokens=4,
+    ):
+        super().__init__()
+
+        self.rank = rank
+        self.lora_scale = lora_scale
+
+        self.to_q_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+        self.to_k_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_v_lora = LoRALinearLayer(cross_attention_dim or hidden_size, hidden_size, rank, network_alpha)
+        self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
+
+        self.hidden_size = hidden_size
+        self.cross_attention_dim = cross_attention_dim
+        self.scale = scale
+        self.num_tokens = num_tokens
+
+        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+
+    def __call__(
+        self,
+        attn,
+        hidden_states,
+        encoder_hidden_states=None,
+        attention_mask=None,
+        temb=None,
+    ):
+        residual = hidden_states
+
+        if attn.spatial_norm is not None:
+            hidden_states = attn.spatial_norm(hidden_states, temb)
+
+        input_ndim = hidden_states.ndim
+
+        if input_ndim == 4:
+            batch_size, channel, height, width = hidden_states.shape
+            hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
+
+        if attention_mask is not None:
+            attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
+            # scaled_dot_product_attention expects attention_mask shape to be
+            # (batch, heads, source_length, target_length)
+            attention_mask = attention_mask.view(batch_size, attn.heads, -1, attention_mask.shape[-1])
+
+        if attn.group_norm is not None:
+            hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
+
+        query = attn.to_q(hidden_states) + self.lora_scale * self.to_q_lora(hidden_states)
+
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        else:
+            # get encoder_hidden_states, ip_hidden_states
+            end_pos = encoder_hidden_states.shape[1] - self.num_tokens
+            encoder_hidden_states, ip_hidden_states = (
+                encoder_hidden_states[:, :end_pos, :],
+                encoder_hidden_states[:, end_pos:, :],
+            )
+            if attn.norm_cross:
+                encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
+
+        key = attn.to_k(encoder_hidden_states) + self.lora_scale * self.to_k_lora(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states) + self.lora_scale * self.to_v_lora(encoder_hidden_states)
+
+        inner_dim = key.shape[-1]
+        head_dim = inner_dim // attn.heads
+
+        query = query.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        key = key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        value = value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        hidden_states = F.scaled_dot_product_attention(
+            query, key, value, attn_mask=attention_mask, dropout_p=0.0, is_causal=False
+        )
+
+        hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        hidden_states = hidden_states.to(query.dtype)
+
+        # for ip-adapter
+        ip_key = self.to_k_ip(ip_hidden_states)
+        ip_value = self.to_v_ip(ip_hidden_states)
+
+        ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+        ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+
+        # the output of sdp = (batch, num_heads, seq_len, head_dim)
+        # TODO: add support for attn.scale when we move to Torch 2.1
+        ip_hidden_states = F.scaled_dot_product_attention(
+            query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
+        )
+
+        ip_hidden_states = ip_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+        ip_hidden_states = ip_hidden_states.to(query.dtype)
+
+        hidden_states = hidden_states + self.scale * ip_hidden_states
+
+        # linear proj
+        hidden_states = attn.to_out[0](hidden_states) + self.lora_scale * self.to_out_lora(hidden_states)
+        # dropout
+        hidden_states = attn.to_out[1](hidden_states)
+
+        if input_ndim == 4:
+            hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
+
+        if attn.residual_connection:
+            hidden_states = hidden_states + residual
+
+        hidden_states = hidden_states / attn.rescale_output_factor
+
+        return hidden_states
+
+
+class IPAdapterFullImageProjection(nn.Module):
+    def __init__(self, image_embed_dim=1024, cross_attention_dim=1024, mult=1, num_tokens=1):
+        super().__init__()
+        from diffusers.models.attention import FeedForward
+
+        self.num_tokens = num_tokens
+        self.cross_attention_dim = cross_attention_dim
+        self.ff = FeedForward(image_embed_dim, cross_attention_dim * num_tokens, mult=mult, activation_fn="gelu")
+        self.norm = nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds: torch.FloatTensor):
+        x = self.ff(image_embeds)
+        x = x.reshape(-1, self.num_tokens, self.cross_attention_dim)
+        return self.norm(x)
 
 
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
@@ -115,7 +396,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class StableDiffusionPipeline(
+class IPAdapterFaceIDStableDiffusionPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
 ):
     r"""
@@ -247,6 +528,186 @@ class StableDiffusionPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+
+    def load_ip_adapter_face_id(self, pretrained_model_name_or_path_or_dict, weight_name, **kwargs):
+        cache_dir = kwargs.pop("cache_dir", None)
+        force_download = kwargs.pop("force_download", False)
+        resume_download = kwargs.pop("resume_download", False)
+        proxies = kwargs.pop("proxies", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
+        revision = kwargs.pop("revision", None)
+        subfolder = kwargs.pop("subfolder", None)
+
+        user_agent = {
+            "file_type": "attn_procs_weights",
+            "framework": "pytorch",
+        }
+        model_file = _get_model_file(
+            pretrained_model_name_or_path_or_dict,
+            weights_name=weight_name,
+            cache_dir=cache_dir,
+            force_download=force_download,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+            subfolder=subfolder,
+            user_agent=user_agent,
+            )
+        if weight_name.endswith(".safetensors"):
+            state_dict = {"image_proj": {}, "ip_adapter": {}}
+            with safe_open(model_file, framework="pt", device="cpu") as f:
+                for key in f.keys():
+                    if key.startswith("image_proj."):
+                        state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
+                    elif key.startswith("ip_adapter."):
+                        state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
+        else:
+            state_dict = torch.load(model_file, map_location="cpu")
+        self._load_ip_adapter_weights(state_dict)
+
+    def convert_ip_adapter_image_proj_to_diffusers(self, state_dict):
+        updated_state_dict = {}
+        clip_embeddings_dim_in = state_dict["proj.0.weight"].shape[1]
+        clip_embeddings_dim_out = state_dict["proj.0.weight"].shape[0]
+        multiplier = clip_embeddings_dim_out // clip_embeddings_dim_in
+        norm_layer = "norm.weight"
+        cross_attention_dim = state_dict[norm_layer].shape[0]
+        num_tokens = state_dict["proj.2.weight"].shape[0] // cross_attention_dim
+
+        image_projection = IPAdapterFullImageProjection(
+            cross_attention_dim=cross_attention_dim,
+            image_embed_dim=clip_embeddings_dim_in,
+            mult=multiplier,
+            num_tokens=num_tokens,
+        )
+
+        for key, value in state_dict.items():
+            diffusers_name = key.replace("proj.0", "ff.net.0.proj")
+            diffusers_name = diffusers_name.replace("proj.2", "ff.net.2")
+            updated_state_dict[diffusers_name] = value
+
+        image_projection.load_state_dict(updated_state_dict)
+        return image_projection
+
+    def _load_ip_adapter_weights(self, state_dict):
+        from diffusers.models.attention_processor import (
+            AttnProcessor,
+            AttnProcessor2_0,
+        )
+
+        num_image_text_embeds = 4
+
+        self.unet.encoder_hid_proj = None
+
+        # set ip-adapter cross-attention processors & load state_dict
+        attn_procs = {}
+        key_id = 0
+        for name in self.unet.attn_processors.keys():
+            cross_attention_dim = None if name.endswith("attn1.processor") else self.unet.config.cross_attention_dim
+            if name.startswith("mid_block"):
+                hidden_size = self.unet.config.block_out_channels[-1]
+            elif name.startswith("up_blocks"):
+                block_id = int(name[len("up_blocks.")])
+                hidden_size = list(reversed(self.unet.config.block_out_channels))[block_id]
+            elif name.startswith("down_blocks"):
+                block_id = int(name[len("down_blocks.")])
+                hidden_size = self.unet.config.block_out_channels[block_id]
+            if cross_attention_dim is None or "motion_modules" in name:
+                attn_processor_class = (
+                    AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
+                )
+                attn_procs[name] = attn_processor_class()
+                rank = state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"].shape[0]
+                attn_module = self.unet
+                for n in name.split(".")[:-1]:
+                    attn_module = getattr(attn_module, n)
+                # Set the `lora_layer` attribute of the attention-related matrices.
+                attn_module.to_q.set_lora_layer(
+                    LoRALinearLayer(
+                        in_features=attn_module.to_q.in_features,
+                        out_features=attn_module.to_q.out_features,
+                        rank=rank,
+                    )
+                )
+                attn_module.to_k.set_lora_layer(
+                    LoRALinearLayer(
+                        in_features=attn_module.to_k.in_features,
+                        out_features=attn_module.to_k.out_features,
+                        rank=rank,
+                    )
+                )
+                attn_module.to_v.set_lora_layer(
+                    LoRALinearLayer(
+                        in_features=attn_module.to_v.in_features,
+                        out_features=attn_module.to_v.out_features,
+                        rank=rank,
+                    )
+                )
+                attn_module.to_out[0].set_lora_layer(
+                    LoRALinearLayer(
+                        in_features=attn_module.to_out[0].in_features,
+                        out_features=attn_module.to_out[0].out_features,
+                        rank=rank,
+                    )
+                )
+
+                value_dict = {}
+                for k, module in attn_module.named_children():
+                    index = "."
+                    if not hasattr(module, "set_lora_layer"):
+                        index = ".0."
+                        module = module[0]
+                    lora_layer = getattr(module, "lora_layer")
+                    for lora_name, w in lora_layer.state_dict().items():
+                        value_dict.update(
+                            {
+                                f"{k}{index}lora_layer.{lora_name}": state_dict["ip_adapter"][
+                                    f"{key_id}.{k}_lora.{lora_name}"
+                                ]
+                            }
+                        )
+
+                attn_module.load_state_dict(value_dict, strict=False)
+                attn_module.to(dtype=self.dtype, device=self.device)
+                key_id += 1
+            else:
+                rank = state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"].shape[0]
+                attn_processor_class = (
+                    LoRAIPAdapterAttnProcessor2_0
+                    if hasattr(F, "scaled_dot_product_attention")
+                    else LoRAIPAdapterAttnProcessor
+                )
+                attn_procs[name] = attn_processor_class(
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    scale=1.0,
+                    rank=rank,
+                    num_tokens=num_image_text_embeds,
+                ).to(dtype=self.dtype, device=self.device)
+
+                value_dict = {}
+                for k, w in attn_procs[name].state_dict().items():
+                    value_dict.update({f"{k}": state_dict["ip_adapter"][f"{key_id}.{k}"]})
+
+                attn_procs[name].load_state_dict(value_dict)
+                key_id += 1
+
+        self.unet.set_attn_processor(attn_procs)
+
+        # convert IP-Adapter Image Projection layers to diffusers
+        image_projection = self.convert_ip_adapter_image_proj_to_diffusers(state_dict["image_proj"])
+
+        self.unet.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
+        self.unet.config.encoder_hid_dim_type = "ip_image_proj"
+
+    def set_ip_adapter_scale(self, scale):
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        for attn_processor in unet.attn_processors.values():
+            if isinstance(attn_processor, (LoRAIPAdapterAttnProcessor, LoRAIPAdapterAttnProcessor2_0)):
+                attn_processor.scale = scale
 
     def enable_vae_slicing(self):
         r"""
@@ -773,7 +1234,6 @@ class StableDiffusionPipeline(
         return self._interrupt
 
     @torch.no_grad()
-    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -789,7 +1249,7 @@ class StableDiffusionPipeline(
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
+        image_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -840,6 +1300,8 @@ class StableDiffusionPipeline(
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+            image_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated image embeddings.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
@@ -948,11 +1410,11 @@ class StableDiffusionPipeline(
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+        if image_embeds is not None:
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0).to(
+                device=device, dtype=prompt_embeds.dtype
             )
+            negative_image_embeds = torch.zeros_like(image_embeds)
             if self.do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
@@ -976,7 +1438,7 @@ class StableDiffusionPipeline(
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 6.1 Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+        added_cond_kwargs ={"image_embeds": image_embeds} if image_embeds is not None else None
 
         # 6.2 Optionally get Guidance Scale Embedding
         timestep_cond = None

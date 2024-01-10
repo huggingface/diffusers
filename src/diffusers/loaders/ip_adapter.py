@@ -34,8 +34,6 @@ if is_transformers_available():
     from ..models.attention_processor import (
         IPAdapterAttnProcessor,
         IPAdapterAttnProcessor2_0,
-        LoRAIPAdapterAttnProcessor,
-        LoRAIPAdapterAttnProcessor2_0,
     )
 
 logger = logging.get_logger(__name__)
@@ -136,7 +134,7 @@ class IPAdapterMixin:
 
         # load CLIP image encoder here if it has not been registered to the pipeline yet
         if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
-            if not isinstance(pretrained_model_name_or_path_or_dict, dict) and subfolder is not None:
+            if not isinstance(pretrained_model_name_or_path_or_dict, dict):
                 logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
                 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
                     pretrained_model_name_or_path_or_dict,
@@ -144,13 +142,6 @@ class IPAdapterMixin:
                 ).to(self.device, dtype=self.dtype)
                 self.image_encoder = image_encoder
                 self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
-            elif subfolder is None:
-                logger.warning(
-                    "Cannot load an image encoder because `subfolder` is None."
-                    " If you do not load an image_encoder, you must extract the"
-                    " image embeddings from the input image and pass them as image_embeds to the pipeline."
-                    " This behaviour is intended only for the IP Adapter FaceID model."
-                )
             else:
                 raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
 
@@ -166,15 +157,7 @@ class IPAdapterMixin:
     def set_ip_adapter_scale(self, scale):
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         for attn_processor in unet.attn_processors.values():
-            if isinstance(
-                attn_processor,
-                (
-                    IPAdapterAttnProcessor,
-                    IPAdapterAttnProcessor2_0,
-                    LoRAIPAdapterAttnProcessor,
-                    LoRAIPAdapterAttnProcessor2_0,
-                ),
-            ):
+            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = scale
 
     def unload_ip_adapter(self):
