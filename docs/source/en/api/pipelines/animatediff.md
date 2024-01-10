@@ -155,6 +155,47 @@ frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
 ```
 
+Here are some sample outputs:
+
+<table>
+    <tr>
+      <th align=center>Source Video</th>
+      <th align=center>Output Video</th>
+    </tr>
+    <tr>
+        <td align=center>
+          raccoon playing a guitar
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif"
+              alt="racoon playing a guitar"
+              style="width: 300px;" />
+        </td>
+        <td align=center>
+          panda playing a guitar
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-output-1.gif"
+              alt="panda playing a guitar"
+              style="width: 300px;" />
+        </td>
+    </tr>
+    <tr>
+        <td align=center>
+          closeup of margot robbie, fireworks in the background, high quality
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-2.gif"
+              alt="closeup of margot robbie, fireworks in the background, high quality"
+              style="width: 300px;" />
+        </td>
+        <td align=center>
+          closeup of tony stark, robert downey jr, fireworks
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-output-2.gif"
+              alt="closeup of tony stark, robert downey jr, fireworks"
+              style="width: 300px;" />
+        </td>
+    </tr>
+</table>
+
 ## Using Motion LoRAs
 
 Motion LoRAs are a collection of LoRAs that work with the `guoyww/animatediff-motion-adapter-v1-5-2` checkpoint. These LoRAs are responsible for adding specific types of motion to the animations.
@@ -313,19 +354,3 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 ## AnimateDiffPipelineOutput
 
 [[autodoc]] pipelines.animatediff.AnimateDiffPipelineOutput
-
-## AnimateDiffVideoToVideoPipeline
-
-[[autodoc]] AnimateDiffVideoToVideoPipeline
-	- all
-	- __call__
-    - enable_freeu
-    - disable_freeu
-    - enable_vae_slicing
-    - disable_vae_slicing
-    - enable_vae_tiling
-    - disable_vae_tiling
-
-## AnimateDiffVideoToVideoPipelineOutput
-
-[[autodoc]] pipelines.animatediff.AnimateDiffVideoToVideoPipelineOutput
