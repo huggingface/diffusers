@@ -1381,7 +1381,10 @@ def download_from_original_stable_diffusion_ckpt(
             checkpoint, original_config, path, image_size, upcast_attention, extract_ema
         )
 
-    num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", None) or 1000
+    if "timesteps" in original_config["model"]["params"]:
+        num_train_timesteps = original_config["model"]["params"]["timesteps"]
+    else:
+        num_train_timesteps = 1000
 
     if model_type in ["SDXL", "SDXL-Refiner"]:
         scheduler_dict = {
@@ -1400,8 +1403,15 @@ def download_from_original_stable_diffusion_ckpt(
         scheduler = EulerDiscreteScheduler.from_config(scheduler_dict)
         scheduler_type = "euler"
     else:
-        beta_start = getattr(original_config["model"]["params"], "linear_start", None) or 0.02
-        beta_end = getattr(original_config["model"]["params"], "linear_end", None) or 0.085
+        if "linear_start" in original_config["model"]["params"]:
+            beta_start = original_config["model"]["params"]["linear_start"]
+        else:
+            beta_start = 0.02
+       
+        if "linear_end" in original_config["model"]["params"]:
+            beta_end = original_config["model"]["params"]["linear_end"]
+        else:
+            beta_end = 0.085
         scheduler = DDIMScheduler(
             beta_end=beta_end,
             beta_schedule="scaled_linear",
