@@ -8,6 +8,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
+| Marigold Monocular Depth Estimation                                                                                                   | A universal monocular depth estimator, utilizing Stable Diffusion, delivering sharp predictions in the wild. (See the [project page](https://marigoldmonodepth.github.io) and [full codebase](https://github.com/prs-eth/marigold) for more details.)                                                                                                                                                                                                                                                        | [Marigold Depth Estimation](#marigold-depth-estimation)                                   | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/toshas/marigold) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/12G8reD13DdpMie5ZQlaFNo2WCGeNUH-u?usp=sharing) | [Bingxin Ke](https://github.com/markkua) and [Anton Obukhov](https://github.com/toshas) |
 | LLM-grounded Diffusion (LMD+)                                                                                                         | LMD greatly improves the prompt following ability of text-to-image generation models by introducing an LLM as a front-end prompt parser and layout planner. [Project page.](https://llm-grounded-diffusion.github.io/) [See our full codebase (also with diffusers).](https://github.com/TonyLianLong/LLM-groundedDiffusion)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [LLM-grounded Diffusion (LMD+)](#llm-grounded-diffusion)                             | [Huggingface Demo](https://huggingface.co/spaces/longlian/llm-grounded-diffusion) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SXzMSeAB-LJYISb2yrUOdypLz4OYWUKj) |                [Long (Tony) Lian](https://tonylian.com/) |
 | CLIP Guided Stable Diffusion                                                                                                          | Doing CLIP guidance for text to image generation with Stable Diffusion                                                                                                                                                                                                                                                                                                                                                                                                                                   | [CLIP Guided Stable Diffusion](#clip-guided-stable-diffusion)                             | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/CLIP_Guided_Stable_diffusion_with_diffusers.ipynb) |                [Suraj Patil](https://github.com/patil-suraj/) |
 | One Step U-Net (Dummy)                                                                                                                | Example showcasing of how to use Community Pipelines (see https://github.com/huggingface/diffusers/issues/841)                                                                                                                                                                                                                                                                                                                                                                                           | [One Step U-Net](#one-step-unet)                                                          | -                                                                                                                                                                                                                  |    [Patrick von Platen](https://github.com/patrickvonplaten/) |
@@ -20,6 +21,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | Seed Resizing Stable Diffusion                                                                                                        | Stable Diffusion Pipeline that supports resizing an image and retaining the concepts of the 512 by 512 generation.                                                                                                                                                                                                                                                                                                                                                                                       | [Seed Resizing](#seed-resizing)                                                           | -                                                                                                                                                                                                                  |                      [Mark Rich](https://github.com/MarkRich) |
 | Imagic Stable Diffusion                                                                                                               | Stable Diffusion Pipeline that enables writing a text prompt to edit an existing image                                                                                                                                                                                                                                                                                                                                                                                                                   | [Imagic Stable Diffusion](#imagic-stable-diffusion)                                       | -                                                                                                                                                                                                                  |                      [Mark Rich](https://github.com/MarkRich) |
 | Multilingual Stable Diffusion                                                                                                         | Stable Diffusion Pipeline that supports prompts in 50 different languages.                                                                                                                                                                                                                                                                                                                                                                                                                               | [Multilingual Stable Diffusion](#multilingual-stable-diffusion-pipeline)                  | -                                                                                                                                                                                                                  |          [Juan Carlos Piñeros](https://github.com/juancopi81) |
+| GlueGen Stable Diffusion                                                                                                         | Stable Diffusion Pipeline that supports prompts in different languages using GlueGen adapter.                                                                                                                                                                                                                                                                                                                                                                                                                               | [GlueGen Stable Diffusion](#gluegen-stable-diffusion-pipeline)                  | -                                                                                                                                                                                                                  |          [Phạm Hồng Vinh](https://github.com/rootonchair) |
 | Image to Image Inpainting Stable Diffusion                                                                                            | Stable Diffusion Pipeline that enables the overlaying of two images and subsequent inpainting                                                                                                                                                                                                                                                                                                                                                                                                            | [Image to Image Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion) | -                                                                                                                                                                                                                  |                    [Alex McKinney](https://github.com/vvvm23) |
 | Text Based Inpainting Stable Diffusion                                                                                                | Stable Diffusion Inpainting Pipeline that enables passing a text prompt to generate the mask for inpainting                                                                                                                                                                                                                                                                                                                                                                                              | [Text Based Inpainting Stable Diffusion](#image-to-image-inpainting-stable-diffusion)     | -                                                                                                                                                                                                                  |                   [Dhruv Karan](https://github.com/unography) |
 | Bit Diffusion                                                                                                                         | Diffusion on discrete data                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [Bit Diffusion](#bit-diffusion)                                                           | -  |                       [Stuti R.](https://github.com/kingstut) |
@@ -41,17 +43,20 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | TensorRT Stable Diffusion Inpainting Pipeline                                                                                                    | Accelerates the Stable Diffusion Inpainting Pipeline using TensorRT                                                                                                                                                                                                                                                                                                                                                                                                                                      | [TensorRT Stable Diffusion Inpainting Pipeline](#tensorrt-inpainting-stable-diffusion-pipeline)      | - |              [Asfiya Baig](https://github.com/asfiyab-nvidia) |
 |   IADB Pipeline                                                                                                    | Implementation of [Iterative α-(de)Blending: a Minimalist Deterministic Diffusion Model](https://arxiv.org/abs/2305.03486)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [IADB Pipeline](#iadb-pipeline)      | - |              [Thomas Chambon](https://github.com/tchambon)
 |   Zero1to3 Pipeline                                                                                                    | Implementation of [Zero-1-to-3: Zero-shot One Image to 3D Object](https://arxiv.org/abs/2303.11328)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Zero1to3 Pipeline](#Zero1to3-pipeline)      | - |              [Xin Kong](https://github.com/kxhit) |
-Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | - | [Andrew Zhu](https://xhinker.medium.com/) |
+| Stable Diffusion XL Long Weighted Prompt Pipeline | A pipeline support unlimited length of prompt and negative prompt, use A1111 style of prompt weighting | [Stable Diffusion XL Long Weighted Prompt Pipeline](#stable-diffusion-xl-long-weighted-prompt-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1LsqilswLR40XLLcp6XFOl5nKb_wOe26W?usp=sharing) | [Andrew Zhu](https://xhinker.medium.com/) |
 FABRIC - Stable Diffusion with feedback Pipeline | pipeline supports feedback from liked and disliked images | [Stable Diffusion Fabric Pipeline](#stable-diffusion-fabric-pipeline) | - | [Shauray Singh](https://shauray8.github.io/about_shauray/) |
 sketch inpaint - Inpainting with non-inpaint Stable Diffusion | sketch inpaint much like in automatic1111 | [Masked Im2Im Stable Diffusion Pipeline](#stable-diffusion-masked-im2im) | - | [Anatoly Belikov](https://github.com/noskill) |
 prompt-to-prompt | change parts of a prompt and retain image structure (see [paper page](https://prompt-to-prompt.github.io/)) | [Prompt2Prompt Pipeline](#prompt2prompt-pipeline) | - | [Umer H. Adil](https://twitter.com/UmerHAdil) |
 |   Latent Consistency Pipeline                                                                                                    | Implementation of [Latent Consistency Models: Synthesizing High-Resolution Images with Few-Step Inference](https://arxiv.org/abs/2310.04378)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Latent Consistency Pipeline](#latent-consistency-pipeline)      | - |              [Simian Luo](https://github.com/luosiallen) |
 |   Latent Consistency Img2img Pipeline                                                                                                    | Img2img pipeline for Latent Consistency Models                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Img2Img Pipeline](#latent-consistency-img2img-pipeline)      | - |              [Logan Zoellner](https://github.com/nagolinc) |
 |   Latent Consistency Interpolation Pipeline                                                                                                    | Interpolate the latent space of Latent Consistency Models with multiple prompts                                                                                                                                                                                                                                                                                                                                                                                                                                    | [Latent Consistency Interpolation Pipeline](#latent-consistency-interpolation-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1pK3NrLWJSiJsBynLns1K1-IDTW9zbPvl?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
+| SDE Drag Pipeline                                                                                                                         | The pipeline supports drag editing of images using stochastic differential equations                                                                                                                                                                                                                                                                                                                                                                                                                | [SDE Drag Pipeline](#sde-drag-pipeline)                                                     | - | [NieShen](https://github.com/NieShenRuc) [Fengqi Zhu](https://github.com/Monohydroxides) |
 |   Regional Prompting Pipeline                                                                                               | Assign multiple prompts for different regions                                                                                                                                                                                                                                                                                                                                                    |  [Regional Prompting Pipeline](#regional-prompting-pipeline) | - | [hako-mikan](https://github.com/hako-mikan) |
 | LDM3D-sr (LDM3D upscaler)                                                                                                             | Upscale low resolution RGB and depth inputs to high resolution                                                                                                                                                                                                                                                                                                                                                                                                                              | [StableDiffusionUpscaleLDM3D Pipeline](https://github.com/estelleafl/diffusers/tree/ldm3d_upscaler_community/examples/community#stablediffusionupscaleldm3d-pipeline)                                                                             | -                                                                                                                                                                                                             |                                                        [Estelle Aflalo](https://github.com/estelleafl) |
 | AnimateDiff ControlNet Pipeline                                                                                                    | Combines AnimateDiff with precise motion control using ControlNets                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff ControlNet Pipeline](#animatediff-controlnet-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SKboYeGjEQmQPWoFC0aLYpBlYdHXkvAu?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) and [Edoardo Botta](https://github.com/EdoardoBotta) |
 |   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
+|   Null-Text Inversion Pipeline  | Implement [Null-text Inversion for Editing Real Images using Guided Diffusion Models](https://arxiv.org/abs/2211.09794) as a pipeline.                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Null-Text Inversion](https://github.com/google/prompt-to-prompt/)      | - |              [Junsheng Luan](https://github.com/Junsheng121) |
+|   Rerender A Video Pipeline                                                                                                    | Implementation of [[SIGGRAPH Asia 2023] Rerender A Video: Zero-Shot Text-Guided Video-to-Video Translation](https://arxiv.org/abs/2306.07954)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Rerender A Video Pipeline](#Rerender_A_Video)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -59,6 +64,53 @@ pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", custo
 ```
 
 ## Example usages
+
+### Marigold Depth Estimation
+
+Marigold is a universal monocular depth estimator that delivers accurate and sharp predictions in the wild. Based on Stable Diffusion, it is trained exclusively with synthetic depth data and excels in zero-shot adaptation to real-world imagery. This pipeline is an official implementation of the inference process. More details can be found on our [project page](https://marigoldmonodepth.github.io) and [full codebase](https://github.com/prs-eth/marigold) (also implemented with diffusers).
+
+![Marigold Teaser](https://marigoldmonodepth.github.io/images/teaser_collage_compressed.jpg)
+
+This depth estimation pipeline processes a single input image through multiple diffusion denoising stages to estimate depth maps. These maps are subsequently merged to produce the final output. Below is an example code snippet, including optional arguments:
+
+```python
+import numpy as np
+from PIL import Image
+from diffusers import DiffusionPipeline
+from diffusers.utils import load_image
+
+pipe = DiffusionPipeline.from_pretrained(
+    "Bingxin/Marigold",
+    custom_pipeline="marigold_depth_estimation"
+    # torch_dtype=torch.float16,                # (optional) Run with half-precision (16-bit float).
+)
+
+pipe.to("cuda")
+
+img_path_or_url = "https://share.phys.ethz.ch/~pf/bingkedata/marigold/pipeline_example.jpg"
+image: Image.Image = load_image(img_path_or_url)
+
+pipeline_output = pipe(
+    image,                  # Input image.
+    # denoising_steps=10,     # (optional) Number of denoising steps of each inference pass. Default: 10.
+    # ensemble_size=10,       # (optional) Number of inference passes in the ensemble. Default: 10.
+    # processing_res=768,     # (optional) Maximum resolution of processing. If set to 0: will not resize at all. Defaults to 768.
+    # match_input_res=True,   # (optional) Resize depth prediction to match input resolution.
+    # batch_size=0,           # (optional) Inference batch size, no bigger than `num_ensemble`. If set to 0, the script will automatically decide the proper batch size. Defaults to 0.
+    # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral".
+    # show_progress_bar=True, # (optional) If true, will show progress bars of the inference progress.
+)
+
+depth: np.ndarray = pipeline_output.depth_np                    # Predicted depth map
+depth_colored: Image.Image = pipeline_output.depth_colored      # Colorized prediction
+
+# Save as uint16 PNG
+depth_uint16 = (depth * 65535.0).astype(np.uint16)
+Image.fromarray(depth_uint16).save("./depth_map.png", mode="I;16")
+
+# Save colorized depth map
+depth_colored.save("./depth_colored.png")
+```
 
 ### LLM-grounded Diffusion
 
@@ -688,6 +740,49 @@ grid = image_grid(images, rows=2, cols=2)
 
 This example produces the following images:
 ![image](https://user-images.githubusercontent.com/4313860/198328706-295824a4-9856-4ce5-8e66-278ceb42fd29.png)
+
+### GlueGen Stable Diffusion Pipeline
+GlueGen is a minimal adapter that allow alignment between any encoder (Text Encoder of different language, Multilingual Roberta, AudioClip) and CLIP text encoder used in standard Stable Diffusion model. This method allows easy language adaptation to available english Stable Diffusion checkpoints without the need of an image captioning dataset as well as long training hours. 
+
+Make sure you downloaded `gluenet_French_clip_overnorm_over3_noln.ckpt` for French (there are also pre-trained weights for Chinese, Italian, Japanese, Spanish or train your own) at [GlueGen's official repo](https://github.com/salesforce/GlueGen/tree/main)
+
+```python
+from PIL import Image
+
+import torch
+
+from transformers import AutoModel, AutoTokenizer
+
+from diffusers import DiffusionPipeline
+
+if __name__ == "__main__":
+    device = "cuda"
+
+    lm_model_id = "xlm-roberta-large"
+    token_max_length = 77
+
+    text_encoder = AutoModel.from_pretrained(lm_model_id)
+    tokenizer = AutoTokenizer.from_pretrained(lm_model_id, model_max_length=token_max_length, use_fast=False)
+
+    tensor_norm = torch.Tensor([[43.8203],[28.3668],[27.9345],[28.0084],[28.2958],[28.2576],[28.3373],[28.2695],[28.4097],[28.2790],[28.2825],[28.2807],[28.2775],[28.2708],[28.2682],[28.2624],[28.2589],[28.2611],[28.2616],[28.2639],[28.2613],[28.2566],[28.2615],[28.2665],[28.2799],[28.2885],[28.2852],[28.2863],[28.2780],[28.2818],[28.2764],[28.2532],[28.2412],[28.2336],[28.2514],[28.2734],[28.2763],[28.2977],[28.2971],[28.2948],[28.2818],[28.2676],[28.2831],[28.2890],[28.2979],[28.2999],[28.3117],[28.3363],[28.3554],[28.3626],[28.3589],[28.3597],[28.3543],[28.3660],[28.3731],[28.3717],[28.3812],[28.3753],[28.3810],[28.3777],[28.3693],[28.3713],[28.3670],[28.3691],[28.3679],[28.3624],[28.3703],[28.3703],[28.3720],[28.3594],[28.3576],[28.3562],[28.3438],[28.3376],[28.3389],[28.3433],[28.3191]])
+
+    pipeline = DiffusionPipeline.from_pretrained(
+        "runwayml/stable-diffusion-v1-5",
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        custom_pipeline="gluegen"
+    ).to(device)
+    pipeline.load_language_adapter("gluenet_French_clip_overnorm_over3_noln.ckpt", num_token=token_max_length, dim=1024, dim_out=768, tensor_norm=tensor_norm)
+
+    prompt = "une voiture sur la plage" 
+
+    generator = torch.Generator(device=device).manual_seed(42) 
+    image = pipeline(prompt, generator=generator).images[0]
+    image.save("gluegen_output_fr.png")
+```
+Which will produce:
+
+![output_image](https://github.com/rootonchair/diffusers/assets/23548268/db43ffb6-8667-47c1-8872-26f85dc0a57f)
 
 ### Image to Image Inpainting Stable Diffusion
 
@@ -1618,10 +1713,11 @@ This approach is using (optional) CoCa model to avoid writing image description.
 
 This SDXL pipeline support unlimited length prompt and negative prompt, compatible with A1111 prompt weighted style.
 
-You can provide both `prompt` and `prompt_2`. if only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline.
+You can provide both `prompt` and `prompt_2`. If only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline. 
 
 ```python
 from diffusers import DiffusionPipeline
+from diffusers.utils import load_image
 import torch
 
 pipe = DiffusionPipeline.from_pretrained(
@@ -1632,24 +1728,51 @@ pipe = DiffusionPipeline.from_pretrained(
     , custom_pipeline   = "lpw_stable_diffusion_xl",
 )
 
-prompt = "photo of a cute (white) cat running on the grass"*20
-prompt2 = "chasing (birds:1.5)"*20
+prompt = "photo of a cute (white) cat running on the grass" * 20
+prompt2 = "chasing (birds:1.5)" * 20
 prompt = f"{prompt},{prompt2}"
 neg_prompt = "blur, low quality, carton, animate"
 
 pipe.to("cuda")
-images = pipe(
-    prompt                  = prompt
-    , negative_prompt       = neg_prompt
-).images[0]
+
+# text2img
+t2i_images = pipe(
+    prompt=prompt,
+    negative_prompt=neg_prompt,
+).images # alternatively, you can call the .text2img() function
+
+# img2img
+input_image = load_image("/path/to/local/image.png") # or URL to your input image
+i2i_images = pipe.img2img(
+  prompt=prompt,
+  negative_prompt=neg_prompt,
+  image=input_image,
+  strength=0.8, # higher strength will result in more variation compared to original image
+).images
+
+# inpaint
+input_mask = load_image("/path/to/local/mask.png") # or URL to your input inpainting mask
+inpaint_images = pipe.inpaint(
+  prompt="photo of a cute (black) cat running on the grass" * 20,
+  negative_prompt=neg_prompt,
+  image=input_image,
+  mask=input_mask,
+  strength=0.6, # higher strength will result in more variation compared to original image
+).images
 
 pipe.to("cpu")
 torch.cuda.empty_cache()
-images
+
+from IPython.display import display # assuming you are using this code in a notebook
+display(t2i_images[0])
+display(i2i_images[0])
+display(inpaint_images[0])
 ```
 
 In the above code, the `prompt2` is appended to the `prompt`, which is more than 77 tokens. "birds" are showing up in the result.
 ![Stable Diffusion XL Long Weighted Prompt Pipeline sample](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/sdxl_long_weighted_prompt.png)
+
+For more results, checkout [PR #6114](https://github.com/huggingface/diffusers/pull/6114).
 
 ## Example Images Mixing (with CoCa)
 ```python
@@ -2986,3 +3109,167 @@ def image_grid(imgs, save_path=None):
 image_grid(images, save_path="./outputs/")
 ```
  ![output_example](https://github.com/PRIS-CV/DemoFusion/blob/main/output_example.png)
+
+### SDE Drag pipeline
+
+This pipeline provides drag-and-drop image editing using stochastic differential equations. It enables image editing by inputting prompt, image, mask_image, source_points, and target_points.
+
+![SDE Drag Image](https://github.com/huggingface/diffusers/assets/75928535/bd54f52f-f002-4951-9934-b2a4592771a5)
+
+See [paper](https://arxiv.org/abs/2311.01410), [paper page](https://ml-gsai.github.io/SDE-Drag-demo/), [original repo](https://github.com/ML-GSAI/SDE-Drag) for more infomation.
+
+```py
+import PIL
+import torch
+from diffusers import DDIMScheduler, DiffusionPipeline
+
+# Load the pipeline
+model_path = "runwayml/stable-diffusion-v1-5"
+scheduler = DDIMScheduler.from_pretrained(model_path, subfolder="scheduler")
+pipe = DiffusionPipeline.from_pretrained(model_path, scheduler=scheduler, custom_pipeline="sde_drag")
+pipe.to('cuda')
+
+# To save GPU memory, torch.float16 can be used, but it may compromise image quality.
+# If not training LoRA, please avoid using torch.float16
+# pipe.to(torch.float16)
+
+# Provide prompt, image, mask image, and the starting and target points for drag editing.
+prompt = "prompt of the image"
+image = PIL.Image.open('/path/to/image')
+mask_image = PIL.Image.open('/path/to/mask_image')
+source_points = [[123, 456]]
+target_points = [[234, 567]]
+
+# train_lora is optional, and in most cases, using train_lora can better preserve consistency with the original image.
+pipe.train_lora(prompt, image)
+
+output = pipe(prompt, image, mask_image, source_points, target_points)
+output_image = PIL.Image.fromarray(output)
+output_image.save("./output.png")
+
+```
+
+### Null-Text Inversion pipeline
+
+This pipeline provides null-text inversion for editing real images. It enables null-text optimization, and DDIM reconstruction via w, w/o null-text optimization. No prompt-to-prompt code is implemented as there is a Prompt2PromptPipeline.
+* Reference paper
+    ```@article{hertz2022prompt,
+  title={Prompt-to-prompt image editing with cross attention control},
+  author={Hertz, Amir and Mokady, Ron and Tenenbaum, Jay and Aberman, Kfir and Pritch, Yael and Cohen-Or, Daniel},
+  booktitle={arXiv preprint arXiv:2208.01626},
+  year={2022}
+    ```}
+
+```py
+from diffusers.schedulers import DDIMScheduler
+from examples.community.pipeline_null_text_inversion import NullTextPipeline
+import torch
+
+# Load the pipeline
+device = "cuda"
+# Provide invert_prompt and the image for null-text optimization.
+invert_prompt = "A lying cat"
+input_image = "siamese.jpg"
+steps = 50
+
+# Provide prompt used for generation. Same if reconstruction 
+prompt = "A lying cat"
+# or different if editing.
+prompt = "A lying dog"
+
+#Float32 is essential to a well optimization
+model_path = "runwayml/stable-diffusion-v1-5"
+scheduler = DDIMScheduler(num_train_timesteps=1000, beta_start=0.00085, beta_end=0.0120, beta_schedule="scaled_linear")
+pipeline = NullTextPipeline.from_pretrained(model_path, scheduler = scheduler, torch_dtype=torch.float32).to(device)
+
+#Saves the inverted_latent to save time
+inverted_latent, uncond = pipeline.invert(input_image, invert_prompt, num_inner_steps=10, early_stop_epsilon= 1e-5, num_inference_steps = steps)
+pipeline(prompt, uncond, inverted_latent, guidance_scale=7.5, num_inference_steps=steps).images[0].save(input_image+".output.jpg")
+```
+### Rerender_A_Video
+
+This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender_A_Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `examples/community/rerender_a_video.py`:
+
+```py
+gmflow_dir = "/path/to/gmflow"
+```
+
+After that, you can run the pipeline with:
+
+```py
+from diffusers import ControlNetModel, AutoencoderKL, DDIMScheduler
+from diffusers.utils import export_to_video
+import numpy as np
+import torch
+
+import cv2
+from PIL import Image
+
+def video_to_frame(video_path: str, interval: int):
+    vidcap = cv2.VideoCapture(video_path)
+    success = True
+
+    count = 0
+    res = []
+    while success:
+        count += 1
+        success, image = vidcap.read()
+        if count % interval != 1:
+            continue
+        if image is not None:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            res.append(image)
+
+    vidcap.release()
+    return res
+
+input_video_path = 'path/to/video'
+input_interval = 10
+frames = video_to_frame(
+    input_video_path, input_interval)
+
+control_frames = []
+# get canny image
+for frame in frames:
+    np_image = cv2.Canny(frame, 50, 100)
+    np_image = np_image[:, :, None]
+    np_image = np.concatenate([np_image, np_image, np_image], axis=2)
+    canny_image = Image.fromarray(np_image)
+    control_frames.append(canny_image)
+
+# You can use any ControlNet here
+controlnet = ControlNetModel.from_pretrained(
+    "lllyasviel/sd-controlnet-canny").to('cuda')
+
+# You can use any fintuned SD here
+pipe = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", controlnet=controlnet, custom_pipeline='rerender_a_video').to('cuda')
+
+# Optional: you can download vae-ft-mse-840000-ema-pruned.ckpt to enhance the results
+# pipe.vae = AutoencoderKL.from_single_file(
+#     "path/to/vae-ft-mse-840000-ema-pruned.ckpt").to('cuda')
+
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+
+generator = torch.manual_seed(0)
+frames = [Image.fromarray(frame) for frame in frames]
+output_frames = pipe(
+    "a beautiful woman in CG style, best quality, extremely detailed",
+
+    frames,
+    control_frames,
+    num_inference_steps=20,
+    strength=0.75,
+    controlnet_conditioning_scale=0.7,
+    generator=generator,
+    warp_start=0.0,
+    warp_end=0.1,
+    mask_start=0.5,
+    mask_end=0.8,
+    mask_strength=0.5,
+    negative_prompt='longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality'
+).frames
+
+export_to_video(
+    output_frames, "/path/to/video.mp4", 5)
+```
