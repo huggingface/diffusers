@@ -594,7 +594,13 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         self.ctrl_down_subblocks = ctrl_model.down_subblocks
         self.ctrl_mid_block = ctrl_model.mid_block
 
-        # 2 - Save base model parts
+        # 2 - Save connections
+        self.down_zero_convs_in = ctrl_model.down_zero_convs_in
+        self.down_zero_convs_out = ctrl_model.down_zero_convs_out
+        self.middle_zero_convs_out = ctrl_model.middle_zero_convs_out
+        self.up_zero_convs_out = ctrl_model.up_zero_convs_out
+
+        # 3 - Save base model parts
         self.base_time_proj = base_model.time_proj
         self.base_time_embedding = base_model.time_embedding
         self.base_class_embedding = base_model.class_embedding
@@ -606,7 +612,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         self.base_mid_block = base_model.mid_block
         self.base_up_subblocks = nn.ModuleList()
 
-        # 2.1 - Decompose blocks of base model into subblocks
+        # 3.1 - Decompose blocks of base model into subblocks
         for block in base_model.down_blocks:
             # Each ResNet / Attention pair is a subblock
             resnets = block.resnets
@@ -704,7 +710,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
         # scale control strength
         n_connections = len(self.down_zero_convs_out) + 1 + len(self.up_zero_convs_out)
-        scale_list = torch.full((n_connections,), conditioning_scale)
 
         # prepare attention_mask
         if attention_mask is not None:
@@ -796,37 +801,37 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         h_ctrl = self.ctrl_conv_in(h_ctrl)
         if guided_hint is not None:
             h_ctrl += guided_hint
-        h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)  # D - add ctrl -> base
+        h_base = h_base + self.down_zero_convs_out[0](h_ctrl) * conditioning_scale # D - add ctrl -> base
 
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
 
         # 1 - down
-        for m_base, m_ctrl in zip(self.base_down_subblocks, self.ctrl_down_subblocks):
-            if isinstance(m_base, CrossAttnSubBlock2D):
+        for b, c, b2c, c2b in zip(self.base_down_subblocks, self.ctrl_down_subblocks, self.down_zero_convs_in[:-1], self.down_zero_convs_out[1:]):
+            if isinstance(b, CrossAttnSubBlock2D):
                 additional_params = [temb, cemb, attention_mask, cross_attention_kwargs]
             else:
                 additional_params = []
 
-            h_ctrl = torch.cat([h_ctrl, next(it_down_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
-            h_base = m_base(h_base, *additional_params)  # B - apply base subblock
-            h_ctrl = m_ctrl(h_ctrl, *additional_params)  # C - apply ctrl subblock
-            h_base = h_base + next(it_down_convs_out)(h_ctrl) * next(scales)  # D - add ctrl -> base
+            h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)  # A - concat base -> ctrl
+            h_base = b(h_base, *additional_params)  # B - apply base subblock
+            h_ctrl = c(h_ctrl, *additional_params)  # C - apply ctrl subblock
+            h_base = h_base + c2b(h_ctrl) * conditioning_scale  # D - add ctrl -> base
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
 
         # 2 - mid
-        h_ctrl = torch.cat([h_ctrl, next(it_down_convs_in)(h_base)], dim=1)  # A - concat base -> ctrl
+        h_ctrl = torch.cat([h_ctrl, self.down_zero_convs_in[-1](h_base)], dim=1)  # A - concat base -> ctrl
         for m_base, m_ctrl in zip(self.base_mid_block, self.ctrl_mid_block):
             h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # B - apply base subblock
             h_ctrl = m_ctrl(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # C - apply ctrl subblock
-        h_base = h_base + self.middle_zero_convs_out(h_ctrl) * next(scales)  # D - add ctrl -> base
+        h_base = h_base + self.middle_zero_convs_out(h_ctrl) * conditioning_scale  # D - add ctrl -> base
 
         # 3 - up
-        for m_base in self.base_up_subblocks:
-            h_base = h_base + next(it_up_convs_out)(hs_ctrl.pop()) * next(scales)  # add info from ctrl encoder
+        for b, c2b in zip(self.base_up_subblocks, self.up_zero_convs_out):
+            h_base = h_base + c2b(hs_ctrl.pop()) * conditioning_scale  # add info from ctrl encoder
             h_base = torch.cat([h_base, hs_base.pop()], dim=1)  # concat info from base encoder+ctrl encoder
-            h_base = m_base(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
+            h_base = b(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
 
         h_base = self.base_conv_norm_out(h_base)
         h_base = self.base_conv_act(h_base)
