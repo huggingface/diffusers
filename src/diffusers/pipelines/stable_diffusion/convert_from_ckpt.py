@@ -1407,7 +1407,7 @@ def download_from_original_stable_diffusion_ckpt(
             beta_start = original_config["model"]["params"]["linear_start"]
         else:
             beta_start = 0.02
-       
+
         if "linear_end" in original_config["model"]["params"]:
             beta_end = original_config["model"]["params"]["linear_end"]
         else:
