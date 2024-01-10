@@ -97,7 +97,7 @@ class StableDiffusionXLKDiffusionPipeline(
     IPAdapterMixin,
 ):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion XL.
+    Pipeline for text-to-image generation using Stable Diffusion XL and k-diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
