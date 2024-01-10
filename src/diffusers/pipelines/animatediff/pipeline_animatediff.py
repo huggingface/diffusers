@@ -13,10 +13,8 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
@@ -33,16 +31,10 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import (
-    USE_PEFT_BACKEND,
-    BaseOutput,
-    logging,
-    replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
-)
+from ...utils import USE_PEFT_BACKEND, logging, replace_example_docstring, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from .pipeline_output import AnimateDiffPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -77,11 +69,6 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         outputs.append(batch_output)
 
     return outputs
-
-
-@dataclass
-class AnimateDiffPipelineOutput(BaseOutput):
-    frames: Union[torch.Tensor, np.ndarray]
 
 
 class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):

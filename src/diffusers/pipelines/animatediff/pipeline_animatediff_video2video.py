@@ -13,11 +13,9 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 from types import FunctionType
 from typing import Any, Callable, Dict, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
@@ -34,9 +32,10 @@ from ...schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from .pipeline_output import AnimateDiffPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -54,12 +53,12 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace")
 
         >>> def load_video(file_path):
-        >>>     images = []
-        >>>     vid = imageio.get_reader(file_path)
-        >>>     for i, frame in enumerate(vid):
-        >>>         pil_image = Image.fromarray(frame)
-        >>>         images.append(pil_image)
-        >>>     return images
+        ...     images = []
+        ...     vid = imageio.get_reader(file_path)
+        ...     for i, frame in enumerate(vid):
+        ...         pil_image = Image.fromarray(frame)
+        ...         images.append(pil_image)
+        ...     return images
 
         >>> video = load_video("animation_fireworks.gif")
         >>> output = pipe(video=video, prompt="Closeup of a woman, fireworks in the background", strength=0.7)
@@ -141,11 +140,6 @@ def retrieve_timesteps(
         scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
-
-
-@dataclass
-class AnimateDiffVideoToVideoPipelineOutput(BaseOutput):
-    frames: Union[torch.Tensor, np.ndarray]
 
 
 class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):
@@ -775,7 +769,7 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
                 The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
                 `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`AnimateDiffVideoToVideoPipelineOutput`] instead
+                Whether or not to return a [`AnimateDiffPipelineOutput`] instead
                 of a plain tuple.
             callback (`Callable`, *optional*):
                 A function that calls every `callback_steps` steps during inference. The function is called with the
@@ -792,8 +786,8 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
         Examples:
 
         Returns:
-            [`AnimateDiffVideoToVideoPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`AnimateDiffVideoToVideoPipelineOutput`] is
+            [`AnimateDiffPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`AnimateDiffPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
@@ -919,7 +913,7 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
                         callback(i, t, latents)
 
         if output_type == "latent":
-            return AnimateDiffVideoToVideoPipelineOutput(frames=latents)
+            return AnimateDiffPipelineOutput(frames=latents)
 
         # 9. Post-processing
         video_tensor = self.decode_latents(latents)
@@ -935,4 +929,4 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
         if not return_dict:
             return (video,)
 
-        return AnimateDiffVideoToVideoPipelineOutput(frames=video)
+        return AnimateDiffPipelineOutput(frames=video)
