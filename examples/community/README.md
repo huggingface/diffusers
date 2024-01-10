@@ -3158,7 +3158,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 
-pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float32, custom_pipeline="instaflow_one_step")
+pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float16, custom_pipeline="instaflow_one_step")
 pipe.to("cuda")  ### if GPU is not available, comment this line
 prompt = "A hyper-realistic photo of a cute cat."
 
@@ -3167,7 +3167,7 @@ images = pipe(prompt=prompt,
             guidance_scale=0.0).images
 images[0].save("./image.png")
 ```
-![image1](https://github.com/ayushtues/diffusers/assets/43698245/1f3706f7-3b5b-4808-bfa0-ed6ce8ad5669)
+![image1](https://huggingface.co/datasets/ayushtues/instaflow_images/resolve/main/instaflow_cat.png)
 
 You can also combine it with LORA out of the box, like https://huggingface.co/artificialguybr/logo-redmond-1-5v-logo-lora-for-liberteredmond-sd-1-5, to unlock cool use cases in single step!
 
@@ -3176,7 +3176,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 
-pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float32, custom_pipeline="instaflow_one_step")
+pipe = DiffusionPipeline.from_pretrained("XCLIU/instaflow_0_9B_from_sd_1_5", torch_dtype=torch.float16, custom_pipeline="instaflow_one_step")
 pipe.to("cuda")  ### if GPU is not available, comment this line
 pipe.load_lora_weights("artificialguybr/logo-redmond-1-5v-logo-lora-for-liberteredmond-sd-1-5")
 prompt = "logo, A logo for a fitness app, dynamic running figure, energetic colors (red, orange) ),LogoRedAF ,"
@@ -3185,7 +3185,7 @@ images = pipe(prompt=prompt,
             guidance_scale=0.0).images
 images[0].save("./image.png")
 ```
-![image0](https://github.com/ayushtues/diffusers/assets/43698245/e896a42f-cdae-40bc-9307-947e6c0636c4)
+![image0](https://huggingface.co/datasets/ayushtues/instaflow_images/resolve/main/instaflow_logo.png)
 
 ### Null-Text Inversion pipeline
 
