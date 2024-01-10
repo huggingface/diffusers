@@ -24,7 +24,16 @@ from .activations import get_activation
 from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
 from .dual_transformer_2d import DualTransformer2DModel
 from .normalization import AdaGroupNorm
-from .resnet import Downsample2D, FirDownsample2D, FirUpsample2D, KDownsample2D, KUpsample2D, ResnetBlock2D, Upsample2D
+from .resnet import (
+    Downsample2D,
+    FirDownsample2D,
+    FirUpsample2D,
+    KDownsample2D,
+    KUpsample2D,
+    ResnetBlock2D,
+    ResnetBlockCondNorm2D,
+    Upsample2D,
+)
 from .transformer_2d import Transformer2DModel
 
 
@@ -557,20 +566,35 @@ class UNetMidBlock2D(nn.Module):
             attn_groups = resnet_groups if resnet_time_scale_shift == "default" else None
 
         # there is always at least one resnet
-        resnets = [
-            ResnetBlock2D(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                temb_channels=temb_channels,
-                eps=resnet_eps,
-                groups=resnet_groups,
-                dropout=dropout,
-                time_embedding_norm=resnet_time_scale_shift,
-                non_linearity=resnet_act_fn,
-                output_scale_factor=output_scale_factor,
-                pre_norm=resnet_pre_norm,
-            )
-        ]
+        if resnet_time_scale_shift == "spatial":
+            resnets = [
+                ResnetBlockCondNorm2D(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm="spatial",
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                )
+            ]
+        else:
+            resnets = [
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            ]
         attentions = []
 
         if attention_head_dim is None:
@@ -599,20 +623,35 @@ class UNetMidBlock2D(nn.Module):
             else:
                 attentions.append(None)
 
-            resnets.append(
-                ResnetBlock2D(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
+            if resnet_time_scale_shift == "spatial":
+                resnets.append(
+                    ResnetBlockCondNorm2D(
+                        in_channels=in_channels,
+                        out_channels=in_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm="spatial",
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                    )
                 )
-            )
+            else:
+                resnets.append(
+                    ResnetBlock2D(
+                        in_channels=in_channels,
+                        out_channels=in_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm=resnet_time_scale_shift,
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                        pre_norm=resnet_pre_norm,
+                    )
+                )
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
@@ -1290,20 +1329,35 @@ class DownEncoderBlock2D(nn.Module):
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
-            resnets.append(
-                ResnetBlock2D(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    temb_channels=None,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
+            if resnet_time_scale_shift == "spatial":
+                resnets.append(
+                    ResnetBlockCondNorm2D(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        temb_channels=None,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm="spatial",
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                    )
                 )
-            )
+            else:
+                resnets.append(
+                    ResnetBlock2D(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        temb_channels=None,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm=resnet_time_scale_shift,
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                        pre_norm=resnet_pre_norm,
+                    )
+                )
 
         self.resnets = nn.ModuleList(resnets)
 
@@ -1358,20 +1412,35 @@ class AttnDownEncoderBlock2D(nn.Module):
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
-            resnets.append(
-                ResnetBlock2D(
-                    in_channels=in_channels,
-                    out_channels=out_channels,
-                    temb_channels=None,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
+            if resnet_time_scale_shift == "spatial":
+                resnets.append(
+                    ResnetBlockCondNorm2D(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        temb_channels=None,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm="spatial",
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                    )
                 )
-            )
+            else:
+                resnets.append(
+                    ResnetBlock2D(
+                        in_channels=in_channels,
+                        out_channels=out_channels,
+                        temb_channels=None,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm=resnet_time_scale_shift,
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                        pre_norm=resnet_pre_norm,
+                    )
+                )
             attentions.append(
                 Attention(
                     out_channels,
@@ -1889,7 +1958,7 @@ class KDownBlock2D(nn.Module):
             groups_out = out_channels // resnet_group_size
 
             resnets.append(
-                ResnetBlock2D(
+                ResnetBlockCondNorm2D(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     dropout=dropout,
@@ -1975,7 +2044,7 @@ class KCrossAttnDownBlock2D(nn.Module):
             groups_out = out_channels // resnet_group_size
 
             resnets.append(
-                ResnetBlock2D(
+                ResnetBlockCondNorm2D(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     dropout=dropout,
@@ -2500,20 +2569,35 @@ class UpDecoderBlock2D(nn.Module):
         for i in range(num_layers):
             input_channels = in_channels if i == 0 else out_channels
 
-            resnets.append(
-                ResnetBlock2D(
-                    in_channels=input_channels,
-                    out_channels=out_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
+            if resnet_time_scale_shift == "spatial":
+                resnets.append(
+                    ResnetBlockCondNorm2D(
+                        in_channels=input_channels,
+                        out_channels=out_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm="spatial",
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                    )
                 )
-            )
+            else:
+                resnets.append(
+                    ResnetBlock2D(
+                        in_channels=input_channels,
+                        out_channels=out_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm=resnet_time_scale_shift,
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                        pre_norm=resnet_pre_norm,
+                    )
+                )
 
         self.resnets = nn.ModuleList(resnets)
 
@@ -2568,20 +2652,36 @@ class AttnUpDecoderBlock2D(nn.Module):
         for i in range(num_layers):
             input_channels = in_channels if i == 0 else out_channels
 
-            resnets.append(
-                ResnetBlock2D(
-                    in_channels=input_channels,
-                    out_channels=out_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
+            if resnet_time_scale_shift == "spatial":
+                resnets.append(
+                    ResnetBlockCondNorm2D(
+                        in_channels=input_channels,
+                        out_channels=out_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm="spatial",
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                    )
                 )
-            )
+            else:
+                resnets.append(
+                    ResnetBlock2D(
+                        in_channels=input_channels,
+                        out_channels=out_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm=resnet_time_scale_shift,
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                        pre_norm=resnet_pre_norm,
+                    )
+                )
+
             attentions.append(
                 Attention(
                     out_channels,
@@ -3159,7 +3259,7 @@ class KUpBlock2D(nn.Module):
             groups_out = out_channels // resnet_group_size
 
             resnets.append(
-                ResnetBlock2D(
+                ResnetBlockCondNorm2D(
                     in_channels=in_channels,
                     out_channels=k_out_channels if (i == num_layers - 1) else out_channels,
                     temb_channels=temb_channels,
@@ -3267,7 +3367,7 @@ class KCrossAttnUpBlock2D(nn.Module):
                 conv_2d_out_channels = None
 
             resnets.append(
-                ResnetBlock2D(
+                ResnetBlockCondNorm2D(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     conv_2d_out_channels=conv_2d_out_channels,
