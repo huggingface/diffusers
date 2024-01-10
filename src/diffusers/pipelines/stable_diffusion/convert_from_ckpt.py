@@ -239,7 +239,10 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     if controlnet:
         unet_params = original_config["model"]["params"]["control_stage_config"]["params"]
     else:
-        if "unet_config" in original_config["model"]["params"] and original_config["model"]["params"]["unet_config"] is not None:
+        if (
+            "unet_config" in original_config["model"]["params"]
+            and original_config["model"]["params"]["unet_config"] is not None
+        ):
             unet_params = original_config["model"]["params"]["unet_config"]["params"]
         else:
             unet_params = original_config["model"]["params"]["network_config"]["params"]
