@@ -56,7 +56,8 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-
+from diffusers.utils.torch_utils import is_compiled_module
+from diffusers.utils.peft_utils import delete_adapter_layers
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.26.0.dev0")
@@ -780,12 +781,13 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
             text_input_ids = text_input_ids_list[i]
 
         prompt_embeds = text_encoder(
-            text_input_ids.to(text_encoder.device), output_hidden_states=True, return_dict=False
+            text_input_ids.to(text_encoder.device),
+            output_hidden_states=True,
         )
 
         # We are only ALWAYS interested in the pooled output of the final text encoder
         pooled_prompt_embeds = prompt_embeds[0]
-        prompt_embeds = prompt_embeds[-1][-2]
+        prompt_embeds = prompt_embeds.hidden_states[-2]
         bs_embed, seq_len, _ = prompt_embeds.shape
         prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
         prompt_embeds_list.append(prompt_embeds)
@@ -996,16 +998,10 @@ def main(args):
         text_encoder_one.add_adapter(text_lora_config)
         text_encoder_two.add_adapter(text_lora_config)
 
-    # Make sure the trainable params are in float32.
-    if args.mixed_precision == "fp16":
-        models = [unet]
-        if args.train_text_encoder:
-            models.extend([text_encoder_one, text_encoder_two])
-        for model in models:
-            for param in model.parameters():
-                # only upcast trainable parameters (LoRA) into fp32
-                if param.requires_grad:
-                    param.data = param.to(torch.float32)
+    def unwrap_model(model):
+        model = accelerator.unwrap_model(model)
+        model = model._orig_mod if is_compiled_module(model) else model 
+        return model
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):
@@ -1017,13 +1013,13 @@ def main(args):
             text_encoder_two_lora_layers_to_save = None
 
             for model in models:
-                if isinstance(model, type(accelerator.unwrap_model(unet))):
+                if isinstance(model, type(unwrap_model(unet))):
                     unet_lora_layers_to_save = convert_state_dict_to_diffusers(get_peft_model_state_dict(model))
-                elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
+                elif isinstance(model, type(unwrap_model(text_encoder_one))):
                     text_encoder_one_lora_layers_to_save = convert_state_dict_to_diffusers(
                         get_peft_model_state_dict(model)
                     )
-                elif isinstance(model, type(accelerator.unwrap_model(text_encoder_two))):
+                elif isinstance(model, type(unwrap_model(text_encoder_two))):
                     text_encoder_two_lora_layers_to_save = convert_state_dict_to_diffusers(
                         get_peft_model_state_dict(model)
                     )
@@ -1048,27 +1044,47 @@ def main(args):
         while len(models) > 0:
             model = models.pop()
 
-            if isinstance(model, type(accelerator.unwrap_model(unet))):
+            if isinstance(model, type(unwrap_model(unet))):
                 unet_ = model
-            elif isinstance(model, type(accelerator.unwrap_model(text_encoder_one))):
+            elif isinstance(model, type(unwrap_model(text_encoder_one))):
                 text_encoder_one_ = model
-            elif isinstance(model, type(accelerator.unwrap_model(text_encoder_two))):
+            elif isinstance(model, type(unwrap_model(text_encoder_two))):
                 text_encoder_two_ = model
             else:
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
         lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-        LoraLoaderMixin.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
-
-        text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
-        LoraLoaderMixin.load_lora_into_text_encoder(
-            text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
+        # We pass the config here to ensure parity between `unet_lora_config` and
+        # the `LoraConfig` that's inferred in `load_lora_into_unet`.
+        LoraLoaderMixin.load_lora_into_unet(
+            lora_state_dict, network_alphas=network_alphas, unet=unet_, _config=unet_lora_config
         )
+        # Remove the newly created adapter as we don't need it.
+        delete_adapter_layers(unet_, "default_1")
 
-        text_encoder_2_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder_2." in k}
-        LoraLoaderMixin.load_lora_into_text_encoder(
-            text_encoder_2_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_
-        )
+        if args.train_text_encoder:
+            text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
+            LoraLoaderMixin.load_lora_into_text_encoder(
+                text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_, _config=text_lora_config
+            )
+            delete_adapter_layers(text_encoder_one_, "default_1")
+        
+            text_encoder_2_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder_2." in k}
+            LoraLoaderMixin.load_lora_into_text_encoder(
+                text_encoder_2_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_two_, _config=text_lora_config
+            )
+            delete_adapter_layers(text_encoder_two_, "default_1")
+
+        # Make sure the trainable params are in float32.
+        if args.mixed_precision == "fp16":
+            models = [unet_]
+            if args.train_text_encoder:
+                models.extend([text_encoder_one_, text_encoder_two_])
+            for model in models:
+                for param in model.parameters():
+                    # only upcast trainable parameters (LoRA) into fp32
+                    if param.requires_grad:
+                        param.data = param.to(torch.float32)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1082,6 +1098,17 @@ def main(args):
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
+
+    # Make sure the trainable params are in float32.
+    if args.mixed_precision == "fp16":
+        models = [unet]
+        if args.train_text_encoder:
+            models.extend([text_encoder_one, text_encoder_two])
+        for model in models:
+            for param in model.parameters():
+                # only upcast trainable parameters (LoRA) into fp32
+                if param.requires_grad:
+                    param.data = param.to(torch.float32)
 
     unet_lora_parameters = list(filter(lambda p: p.requires_grad, unet.parameters()))
 
@@ -1428,8 +1455,7 @@ def main(args):
                         timesteps,
                         prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
-                        return_dict=False,
-                    )[0]
+                    ).sample
                 else:
                     unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
@@ -1443,12 +1469,8 @@ def main(args):
                     )
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
-                        noisy_model_input,
-                        timesteps,
-                        prompt_embeds_input,
-                        added_cond_kwargs=unet_added_conditions,
-                        return_dict=False,
-                    )[0]
+                        noisy_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions
+                    ).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -1499,7 +1521,12 @@ def main(args):
                         if args.train_text_encoder
                         else unet_lora_parameters
                     )
+                    params_to_clip_dtype = {param.dtype for param in params_to_clip}
+                    print(f"params_to_clip_dtype: {params_to_clip_dtype}")
                     accelerator.clip_grad_norm_(params_to_clip, args.max_grad_norm)
+                
+                params_to_optimize_dtype = {param.dtype for param in params_to_optimize[0]["params"]}
+                print(f"params_to_optimize_dtype: {params_to_optimize_dtype}")
                 optimizer.step()
                 lr_scheduler.step()
                 optimizer.zero_grad()
@@ -1621,16 +1648,16 @@ def main(args):
     # Save the lora layers
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(unet)
-        unet = unet.to(torch.float32)
+        unet = unwrap_model(unet)
+        unet = unet.to(torch.float32) 
         unet_lora_layers = convert_state_dict_to_diffusers(get_peft_model_state_dict(unet))
 
         if args.train_text_encoder:
-            text_encoder_one = accelerator.unwrap_model(text_encoder_one)
+            text_encoder_one = unwrap_model(text_encoder_one)
             text_encoder_lora_layers = convert_state_dict_to_diffusers(
                 get_peft_model_state_dict(text_encoder_one.to(torch.float32))
             )
-            text_encoder_two = accelerator.unwrap_model(text_encoder_two)
+            text_encoder_two = unwrap_model(text_encoder_two)
             text_encoder_2_lora_layers = convert_state_dict_to_diffusers(
                 get_peft_model_state_dict(text_encoder_two.to(torch.float32))
             )
