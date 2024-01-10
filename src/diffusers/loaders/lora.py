@@ -373,7 +373,7 @@ class LoraLoaderMixin:
 
     @classmethod
     def load_lora_into_unet(
-        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, adapter_name=None, _config=None, _pipeline=None
+        cls, state_dict, network_alphas, unet, low_cpu_mem_usage=None, adapter_name=None, _pipeline=None
     ):
         """
         This will load the LoRA layers specified in `state_dict` into `unet`.
@@ -446,11 +446,8 @@ class LoraLoaderMixin:
                 if "lora_B" in key:
                     rank[key] = val.shape[1]
 
-            if _config is None:
-                lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
-                lora_config = LoraConfig(**lora_config_kwargs)
-            else:
-                lora_config = _config
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
+            lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
             if adapter_name is None:
@@ -493,7 +490,6 @@ class LoraLoaderMixin:
         lora_scale=1.0,
         low_cpu_mem_usage=None,
         adapter_name=None,
-        _config=None,
         _pipeline=None,
     ):
         """
@@ -582,13 +578,10 @@ class LoraLoaderMixin:
                 if USE_PEFT_BACKEND:
                     from peft import LoraConfig
 
-                    if _config is None:
-                        lora_config_kwargs = get_peft_kwargs(
-                            rank, network_alphas, text_encoder_lora_state_dict, is_unet=False
-                        )
-                        lora_config = LoraConfig(**lora_config_kwargs)
-                    else:
-                        lora_config = _config
+                    lora_config_kwargs = get_peft_kwargs(
+                        rank, network_alphas, text_encoder_lora_state_dict, is_unet=False
+                    )
+                    lora_config = LoraConfig(**lora_config_kwargs)
 
                     # adapter_name
                     if adapter_name is None:

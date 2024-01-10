@@ -34,7 +34,7 @@ from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration
 from huggingface_hub import create_repo, upload_folder
 from huggingface_hub.utils import insecure_hashlib
 from packaging import version
-from peft import LoraConfig
+from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
@@ -56,7 +56,7 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.peft_utils import delete_adapter_layers
+from diffusers.utils.state_dict_utils import convert_state_dict_to_peft, convert_unet_state_dict_to_peft
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
@@ -1048,32 +1048,40 @@ def main(args):
                 raise ValueError(f"unexpected save model: {model.__class__}")
 
         lora_state_dict, network_alphas = LoraLoaderMixin.lora_state_dict(input_dir)
-        # We pass the config here to ensure parity between `unet_lora_config` and
-        # the `LoraConfig` that's inferred in `load_lora_into_unet`.
-        LoraLoaderMixin.load_lora_into_unet(
-            lora_state_dict, network_alphas=network_alphas, unet=unet_, _config=unet_lora_config
-        )
-        # Remove the newly created adapter as we don't need it.
-        delete_adapter_layers(unet_, "default_1")
+
+        unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
+        unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
+        incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
+        if incompatible_keys is not None:
+            # check only for unexpected keys
+            unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+            if unexpected_keys:
+                logger.warning(
+                    f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                    f" {unexpected_keys}. "
+                )
 
         if args.train_text_encoder:
-            text_encoder_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder." in k}
-            LoraLoaderMixin.load_lora_into_text_encoder(
-                text_encoder_state_dict,
-                network_alphas=network_alphas,
-                text_encoder=text_encoder_one_,
-                _config=text_lora_config,
+            # Do we need to call `scale_lora_layers()` here?
+            text_encoder_state_dict = {
+                f'{k.replace("text_encoder.", "")}': v
+                for k, v in lora_state_dict.items()
+                if k.startswith("text_encoder.")
+            }
+            text_encoder_state_dict = convert_state_dict_to_peft(
+                convert_state_dict_to_diffusers(text_encoder_state_dict)
             )
-            delete_adapter_layers(text_encoder_one_, "default_1")
+            set_peft_model_state_dict(text_encoder_one_, text_encoder_state_dict, adapter_name="default")
 
-            text_encoder_2_state_dict = {k: v for k, v in lora_state_dict.items() if "text_encoder_2." in k}
-            LoraLoaderMixin.load_lora_into_text_encoder(
-                text_encoder_2_state_dict,
-                network_alphas=network_alphas,
-                text_encoder=text_encoder_two_,
-                _config=text_lora_config,
+            text_encoder_2_state_dict = {
+                f'{k.replace("text_encoder_2.", "")}': v
+                for k, v in lora_state_dict.items()
+                if k.startswith("text_encoder_2.")
+            }
+            text_encoder_2_state_dict = convert_state_dict_to_peft(
+                convert_state_dict_to_diffusers(text_encoder_2_state_dict)
             )
-            delete_adapter_layers(text_encoder_two_, "default_1")
+            set_peft_model_state_dict(text_encoder_two_, text_encoder_2_state_dict, adapter_name="default")
 
         # Make sure the trainable params are in float32. This is again needed since the base models
         # are in `weight_dtype`.
