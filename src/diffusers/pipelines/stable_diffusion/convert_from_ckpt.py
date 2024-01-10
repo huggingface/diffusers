@@ -294,7 +294,9 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
 
     if unet_params["context_dim"] is not None:
         context_dim = (
-            unet_params["context_dim"] if isinstance(unet_params["context_dim"], int) else unet_params["context_dim"][0]
+            unet_params["context_dim"]
+            if isinstance(unet_params["context_dim"], int)
+            else unet_params["context_dim"][0]
         )
 
     if "num_classes" in unet_params:
