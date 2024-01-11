@@ -13,8 +13,9 @@ def load_image(image: Union[str, PIL.Image.Image], convert_method: Callable[[PIL
     Args:
         image (`str` or `PIL.Image.Image`):
             The image to convert to the PIL Image format.
-        convert_method (`function`, optional):
-            A conversion method to apply to the image after loading it. When set to `None` the image will be converted "RGB".
+        convert_method (Callable[[PIL.Image.Image], PIL.Image.Image], optional):
+            A conversion method to apply to the image after loading it.
+            When set to `None` the image will be converted "RGB".
 
     Returns:
         `PIL.Image.Image`:
