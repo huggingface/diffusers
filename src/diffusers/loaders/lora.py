@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import os
 from contextlib import nullcontext
 from typing import Callable, Dict, List, Optional, Union
@@ -59,6 +60,7 @@ logger = logging.get_logger(__name__)
 
 TEXT_ENCODER_NAME = "text_encoder"
 UNET_NAME = "unet"
+TRANSFORMER_NAME = "transformer"
 
 LORA_WEIGHT_NAME = "pytorch_lora_weights.bin"
 LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
@@ -74,6 +76,7 @@ class LoraLoaderMixin:
 
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
+    transformer_name = TRANSFORMER_NAME
     num_fused_loras = 0
 
     def load_lora_weights(
@@ -661,6 +664,89 @@ class LoraLoaderMixin:
                     _pipeline.enable_sequential_cpu_offload()
                 # Unsafe code />
 
+    @classmethod
+    def load_lora_into_transformer(
+        cls, state_dict, network_alphas, transformer, low_cpu_mem_usage=None, adapter_name=None, _pipeline=None
+    ):
+        """
+        This will load the LoRA layers specified in `state_dict` into `transformer`.
+
+        Parameters:
+            state_dict (`dict`):
+                A standard state dict containing the lora layer parameters. The keys can either be indexed directly
+                into the unet or prefixed with an additional `unet` which can be used to distinguish between text
+                encoder lora layers.
+            network_alphas (`Dict[str, float]`):
+                See `LoRALinearLayer` for more details.
+            unet (`UNet2DConditionModel`):
+                The UNet model to load the LoRA layers into.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
+            adapter_name (`str`, *optional*):
+                Adapter name to be used for referencing the loaded adapter model. If not specified, it will use
+                `default_{i}` where i is the total number of adapters being loaded.
+        """
+        low_cpu_mem_usage = low_cpu_mem_usage if low_cpu_mem_usage is not None else _LOW_CPU_MEM_USAGE_DEFAULT
+
+        keys = list(state_dict.keys())
+
+        transformer_keys = [k for k in keys if k.startswith(cls.transformer_name)]
+        state_dict = {
+            k.replace(f"{cls.transformer_name}.", ""): v for k, v in state_dict.items() if k in transformer_keys
+        }
+
+        if network_alphas is not None:
+            alpha_keys = [k for k in network_alphas.keys() if k.startswith(cls.transformer_name)]
+            network_alphas = {
+                k.replace(f"{cls.transformer_name}.", ""): v for k, v in network_alphas.items() if k in alpha_keys
+            }
+
+        if len(state_dict.keys()) > 0:
+            from peft import LoraConfig, inject_adapter_in_model, set_peft_model_state_dict
+
+            if adapter_name in getattr(transformer, "peft_config", {}):
+                raise ValueError(
+                    f"Adapter name {adapter_name} already in use in the transformer - please select a new adapter name."
+                )
+
+            rank = {}
+            for key, val in state_dict.items():
+                if "lora_B" in key:
+                    rank[key] = val.shape[1]
+
+            lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict)
+            lora_config = LoraConfig(**lora_config_kwargs)
+
+            # adapter_name
+            if adapter_name is None:
+                adapter_name = get_adapter_name(transformer)
+
+            # In case the pipeline has been already offloaded to CPU - temporarily remove the hooks
+            # otherwise loading LoRA weights will lead to an error
+            is_model_cpu_offload, is_sequential_cpu_offload = cls._optionally_disable_offloading(_pipeline)
+
+            inject_adapter_in_model(lora_config, transformer, adapter_name=adapter_name)
+            incompatible_keys = set_peft_model_state_dict(transformer, state_dict, adapter_name)
+
+            if incompatible_keys is not None:
+                # check only for unexpected keys
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                        f" {unexpected_keys}. "
+                    )
+
+            # Offload back.
+            if is_model_cpu_offload:
+                _pipeline.enable_model_cpu_offload()
+            elif is_sequential_cpu_offload:
+                _pipeline.enable_sequential_cpu_offload()
+            # Unsafe code />
+
     @property
     def lora_scale(self) -> float:
         # property function that returns the lora scale which can be set at run time by the pipeline.
@@ -786,6 +872,7 @@ class LoraLoaderMixin:
         save_directory: Union[str, os.PathLike],
         unet_lora_layers: Dict[str, Union[torch.nn.Module, torch.Tensor]] = None,
         text_encoder_lora_layers: Dict[str, torch.nn.Module] = None,
+        transformer_lora_layers: Dict[str, torch.nn.Module] = None,
         is_main_process: bool = True,
         weight_name: str = None,
         save_function: Callable = None,
@@ -820,14 +907,19 @@ class LoraLoaderMixin:
             layers_state_dict = {f"{prefix}.{module_name}": param for module_name, param in layers_weights.items()}
             return layers_state_dict
 
-        if not (unet_lora_layers or text_encoder_lora_layers):
-            raise ValueError("You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers`.")
+        if not (unet_lora_layers or text_encoder_lora_layers or transformer_lora_layers):
+            raise ValueError(
+                "You must pass at least one of `unet_lora_layers`, `text_encoder_lora_layers`, or `transformer_lora_layers`."
+            )
 
         if unet_lora_layers:
-            state_dict.update(pack_weights(unet_lora_layers, "unet"))
+            state_dict.update(pack_weights(unet_lora_layers, cls.unet_name))
 
         if text_encoder_lora_layers:
-            state_dict.update(pack_weights(text_encoder_lora_layers, "text_encoder"))
+            state_dict.update(pack_weights(text_encoder_lora_layers, cls.text_encoder_name))
+
+        if transformer_lora_layers:
+            state_dict.update(pack_weights(transformer_lora_layers, "transformer"))
 
         # Save the model
         cls.write_lora_layers(
@@ -884,20 +976,22 @@ class LoraLoaderMixin:
         >>> ...
         ```
         """
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+
         if not USE_PEFT_BACKEND:
             if version.parse(__version__) > version.parse("0.23"):
-                logger.warn(
+                logger.warning(
                     "You are using `unload_lora_weights` to disable and unload lora weights. If you want to iteratively enable and disable adapter weights,"
                     "you can use `pipe.enable_lora()` or `pipe.disable_lora()`. After installing the latest version of PEFT."
                 )
 
-            for _, module in self.unet.named_modules():
+            for _, module in unet.named_modules():
                 if hasattr(module, "set_lora_layer"):
                     module.set_lora_layer(None)
         else:
-            recurse_remove_peft_layers(self.unet)
-            if hasattr(self.unet, "peft_config"):
-                del self.unet.peft_config
+            recurse_remove_peft_layers(unet)
+            if hasattr(unet, "peft_config"):
+                del unet.peft_config
 
         # Safe to call the following regardless of LoRA.
         self._remove_text_encoder_monkey_patch()
@@ -908,6 +1002,7 @@ class LoraLoaderMixin:
         fuse_text_encoder: bool = True,
         lora_scale: float = 1.0,
         safe_fusing: bool = False,
+        adapter_names: Optional[List[str]] = None,
     ):
         r"""
         Fuses the LoRA parameters into the original parameters of the corresponding blocks.
@@ -927,6 +1022,21 @@ class LoraLoaderMixin:
                 Controls how much to influence the outputs with the LoRA parameters.
             safe_fusing (`bool`, defaults to `False`):
                 Whether to check fused weights for NaN values before fusing and if values are NaN not fusing them.
+            adapter_names (`List[str]`, *optional*):
+                Adapter names to be used for fusing. If nothing is passed, all active adapters will be fused.
+
+        Example:
+
+        ```py
+        from diffusers import DiffusionPipeline
+        import torch
+
+        pipeline = DiffusionPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        ).to("cuda")
+        pipeline.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+        pipeline.fuse_lora(lora_scale=0.7)
+        ```
         """
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
@@ -936,24 +1046,44 @@ class LoraLoaderMixin:
                 )
 
         if fuse_unet:
-            self.unet.fuse_lora(lora_scale, safe_fusing=safe_fusing)
+            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+            unet.fuse_lora(lora_scale, safe_fusing=safe_fusing, adapter_names=adapter_names)
 
         if USE_PEFT_BACKEND:
             from peft.tuners.tuners_utils import BaseTunerLayer
 
-            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
-                # TODO(Patrick, Younes): enable "safe" fusing
+            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, adapter_names=None):
+                merge_kwargs = {"safe_merge": safe_fusing}
+
                 for module in text_encoder.modules():
                     if isinstance(module, BaseTunerLayer):
                         if lora_scale != 1.0:
                             module.scale_layer(lora_scale)
 
-                        module.merge()
+                        # For BC with previous PEFT versions, we need to check the signature
+                        # of the `merge` method to see if it supports the `adapter_names` argument.
+                        supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+                        if "adapter_names" in supported_merge_kwargs:
+                            merge_kwargs["adapter_names"] = adapter_names
+                        elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                            raise ValueError(
+                                "The `adapter_names` argument is not supported with your PEFT version. "
+                                "Please upgrade to the latest version of PEFT. `pip install -U peft`"
+                            )
+
+                        module.merge(**merge_kwargs)
 
         else:
             deprecate("fuse_text_encoder_lora", "0.27", LORA_DEPRECATION_MESSAGE)
 
-            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False):
+            def fuse_text_encoder_lora(text_encoder, lora_scale=1.0, safe_fusing=False, **kwargs):
+                if "adapter_names" in kwargs and kwargs["adapter_names"] is not None:
+                    raise ValueError(
+                        "The `adapter_names` argument is not supported in your environment. Please switch to PEFT "
+                        "backend to use this argument by installing latest PEFT and transformers."
+                        " `pip install -U peft transformers`"
+                    )
+
                 for _, attn_module in text_encoder_attn_modules(text_encoder):
                     if isinstance(attn_module.q_proj, PatchedLoraProjection):
                         attn_module.q_proj._fuse_lora(lora_scale, safe_fusing)
@@ -968,9 +1098,9 @@ class LoraLoaderMixin:
 
         if fuse_text_encoder:
             if hasattr(self, "text_encoder"):
-                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing)
+                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing, adapter_names=adapter_names)
             if hasattr(self, "text_encoder_2"):
-                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing)
+                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing, adapter_names=adapter_names)
 
     def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
         r"""
@@ -989,13 +1119,14 @@ class LoraLoaderMixin:
                 Whether to unfuse the text encoder LoRA parameters. If the text encoder wasn't monkey-patched with the
                 LoRA parameters then it won't have any effect.
         """
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         if unfuse_unet:
             if not USE_PEFT_BACKEND:
-                self.unet.unfuse_lora()
+                unet.unfuse_lora()
             else:
                 from peft.tuners.tuners_utils import BaseTunerLayer
 
-                for module in self.unet.modules():
+                for module in unet.modules():
                     if isinstance(module, BaseTunerLayer):
                         module.unmerge()
 
@@ -1111,8 +1242,9 @@ class LoraLoaderMixin:
         adapter_names: Union[List[str], str],
         adapter_weights: Optional[List[float]] = None,
     ):
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         # Handle the UNET
-        self.unet.set_adapters(adapter_names, adapter_weights)
+        unet.set_adapters(adapter_names, adapter_weights)
 
         # Handle the Text Encoder
         if hasattr(self, "text_encoder"):
@@ -1125,7 +1257,8 @@ class LoraLoaderMixin:
             raise ValueError("PEFT backend is required for this method.")
 
         # Disable unet adapters
-        self.unet.disable_lora()
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        unet.disable_lora()
 
         # Disable text encoder adapters
         if hasattr(self, "text_encoder"):
@@ -1138,7 +1271,8 @@ class LoraLoaderMixin:
             raise ValueError("PEFT backend is required for this method.")
 
         # Enable unet adapters
-        self.unet.enable_lora()
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        unet.enable_lora()
 
         # Enable text encoder adapters
         if hasattr(self, "text_encoder"):
@@ -1160,7 +1294,8 @@ class LoraLoaderMixin:
             adapter_names = [adapter_names]
 
         # Delete unet adapters
-        self.unet.delete_adapters(adapter_names)
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        unet.delete_adapters(adapter_names)
 
         for adapter_name in adapter_names:
             # Delete text encoder adapters
@@ -1193,8 +1328,8 @@ class LoraLoaderMixin:
         from peft.tuners.tuners_utils import BaseTunerLayer
 
         active_adapters = []
-
-        for module in self.unet.modules():
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        for module in unet.modules():
             if isinstance(module, BaseTunerLayer):
                 active_adapters = module.active_adapters
                 break
@@ -1218,8 +1353,9 @@ class LoraLoaderMixin:
         if hasattr(self, "text_encoder_2") and hasattr(self.text_encoder_2, "peft_config"):
             set_adapters["text_encoder_2"] = list(self.text_encoder_2.peft_config.keys())
 
-        if hasattr(self, "unet") and hasattr(self.unet, "peft_config"):
-            set_adapters["unet"] = list(self.unet.peft_config.keys())
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        if hasattr(self, self.unet_name) and hasattr(unet, "peft_config"):
+            set_adapters[self.unet_name] = list(self.unet.peft_config.keys())
 
         return set_adapters
 
@@ -1240,7 +1376,8 @@ class LoraLoaderMixin:
         from peft.tuners.tuners_utils import BaseTunerLayer
 
         # Handle the UNET
-        for unet_module in self.unet.modules():
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        for unet_module in unet.modules():
             if isinstance(unet_module, BaseTunerLayer):
                 for adapter_name in adapter_names:
                     unet_module.lora_A[adapter_name].to(device)

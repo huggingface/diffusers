@@ -108,6 +108,7 @@ else:
             "VersatileDiffusionTextToImagePipeline",
         ]
     )
+    _import_structure["amused"] = ["AmusedImg2ImgPipeline", "AmusedInpaintPipeline", "AmusedPipeline"]
     _import_structure["animatediff"] = ["AnimateDiffPipeline"]
     _import_structure["audioldm"] = ["AudioLDMPipeline"]
     _import_structure["audioldm2"] = [
@@ -125,12 +126,6 @@ else:
             "StableDiffusionXLControlNetImg2ImgPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
             "StableDiffusionXLControlNetPipeline",
-        ]
-    )
-    _import_structure["controlnet_xs"].extend(
-        [
-            "StableDiffusionControlNetXSPipeline",
-            "StableDiffusionXLControlNetXSPipeline",
         ]
     )
     _import_structure["deepfloyd_if"] = [
@@ -185,12 +180,11 @@ else:
             "StableDiffusionInpaintPipeline",
             "StableDiffusionInstructPix2PixPipeline",
             "StableDiffusionLatentUpscalePipeline",
-            "StableDiffusionLDM3DPipeline",
-            "StableDiffusionPanoramaPipeline",
             "StableDiffusionPipeline",
             "StableDiffusionUpscalePipeline",
             "StableUnCLIPImg2ImgPipeline",
             "StableUnCLIPPipeline",
+            "StableDiffusionLDM3DPipeline",
         ]
     )
     _import_structure["stable_diffusion_attend_and_excite"] = ["StableDiffusionAttendAndExcitePipeline"]
@@ -210,6 +204,8 @@ else:
         ]
     )
     _import_structure["stable_diffusion_diffedit"] = ["StableDiffusionDiffEditPipeline"]
+    _import_structure["stable_diffusion_ldm3d"] = ["StableDiffusionLDM3DPipeline"]
+    _import_structure["stable_diffusion_panorama"] = ["StableDiffusionPanoramaPipeline"]
     _import_structure["t2i_adapter"] = [
         "StableDiffusionAdapterPipeline",
         "StableDiffusionXLAdapterPipeline",
@@ -269,7 +265,10 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
 else:
-    _import_structure["stable_diffusion_k_diffusion"] = ["StableDiffusionKDiffusionPipeline"]
+    _import_structure["stable_diffusion_k_diffusion"] = [
+        "StableDiffusionKDiffusionPipeline",
+        "StableDiffusionXLKDiffusionPipeline",
+    ]
 try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
@@ -341,6 +340,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ..utils.dummy_torch_and_transformers_objects import *
     else:
+        from .amused import AmusedImg2ImgPipeline, AmusedInpaintPipeline, AmusedPipeline
         from .animatediff import AnimateDiffPipeline
         from .audioldm import AudioLDMPipeline
         from .audioldm2 import (
@@ -357,10 +357,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLControlNetImg2ImgPipeline,
             StableDiffusionXLControlNetInpaintPipeline,
             StableDiffusionXLControlNetPipeline,
-        )
-        from .controlnet_xs import (
-            StableDiffusionControlNetXSPipeline,
-            StableDiffusionXLControlNetXSPipeline,
         )
         from .deepfloyd_if import (
             IFImg2ImgPipeline,
@@ -427,8 +423,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionInpaintPipeline,
             StableDiffusionInstructPix2PixPipeline,
             StableDiffusionLatentUpscalePipeline,
-            StableDiffusionLDM3DPipeline,
-            StableDiffusionPanoramaPipeline,
             StableDiffusionPipeline,
             StableDiffusionUpscalePipeline,
             StableUnCLIPImg2ImgPipeline,
@@ -437,6 +431,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .stable_diffusion_attend_and_excite import StableDiffusionAttendAndExcitePipeline
         from .stable_diffusion_diffedit import StableDiffusionDiffEditPipeline
         from .stable_diffusion_gligen import StableDiffusionGLIGENPipeline, StableDiffusionGLIGENTextImagePipeline
+        from .stable_diffusion_ldm3d import StableDiffusionLDM3DPipeline
+        from .stable_diffusion_panorama import StableDiffusionPanoramaPipeline
         from .stable_diffusion_safe import StableDiffusionPipelineSafe
         from .stable_diffusion_sag import StableDiffusionSAGPipeline
         from .stable_diffusion_xl import (
@@ -498,7 +494,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         except OptionalDependencyNotAvailable:
             from ..utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
         else:
-            from .stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
+            from .stable_diffusion_k_diffusion import (
+                StableDiffusionKDiffusionPipeline,
+                StableDiffusionXLKDiffusionPipeline,
+            )
 
         try:
             if not is_flax_available():

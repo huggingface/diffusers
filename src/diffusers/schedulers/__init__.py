@@ -39,6 +39,7 @@ except OptionalDependencyNotAvailable:
 
 else:
     _import_structure["deprecated"] = ["KarrasVeScheduler", "ScoreSdeVpScheduler"]
+    _import_structure["scheduling_amused"] = ["AmusedScheduler"]
     _import_structure["scheduling_consistency_decoder"] = ["ConsistencyDecoderScheduler"]
     _import_structure["scheduling_consistency_models"] = ["CMStochasticIterativeScheduler"]
     _import_structure["scheduling_ddim"] = ["DDIMScheduler"]
@@ -130,6 +131,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
         from .deprecated import KarrasVeScheduler, ScoreSdeVpScheduler
+        from .scheduling_amused import AmusedScheduler
         from .scheduling_consistency_decoder import ConsistencyDecoderScheduler
         from .scheduling_consistency_models import CMStochasticIterativeScheduler
         from .scheduling_ddim import DDIMScheduler

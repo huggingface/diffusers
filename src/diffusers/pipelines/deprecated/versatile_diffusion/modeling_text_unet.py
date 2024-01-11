@@ -31,6 +31,7 @@ from ....models.embeddings import (
     TimestepEmbedding,
     Timesteps,
 )
+from ....models.resnet import ResnetBlockCondNorm2D
 from ....models.transformer_2d import Transformer2DModel
 from ....models.unet_2d_condition import UNet2DConditionOutput
 from ....utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
@@ -187,7 +188,7 @@ class FourierEmbedder(nn.Module):
         return torch.stack((x.sin(), x.cos()), dim=-1).permute(0, 1, 3, 4, 2).reshape(*x.shape[:2], -1)
 
 
-class PositionNet(nn.Module):
+class GLIGENTextBoundingboxProjection(nn.Module):
     def __init__(self, positive_len, out_dim, feature_type, fourier_freqs=8):
         super().__init__()
         self.positive_len = positive_len
@@ -820,7 +821,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 positive_len = cross_attention_dim[0]
 
             feature_type = "text-only" if attention_type == "gated" else "text-image"
-            self.position_net = PositionNet(
+            self.position_net = GLIGENTextBoundingboxProjection(
                 positive_len=positive_len, out_dim=cross_attention_dim, feature_type=feature_type
             )
 
@@ -848,9 +849,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         return processors
 
-    def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
-    ):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -874,9 +873,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
-                    module.set_processor(processor, _remove_lora=_remove_lora)
+                    module.set_processor(processor)
                 else:
-                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
+                    module.set_processor(processor.pop(f"{name}.processor"))
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -897,7 +896,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
             )
 
-        self.set_attn_processor(processor, _remove_lora=True)
+        self.set_attn_processor(processor)
 
     def set_attention_slice(self, slice_size):
         r"""
@@ -1035,6 +1034,17 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         """
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
+
+    def unload_lora(self):
+        """Unloads LoRA weights."""
+        deprecate(
+            "unload_lora",
+            "0.28.0",
+            "Calling `unload_lora()` is deprecated and will be removed in a future version. Please install `peft` and then call `disable_adapters().",
+        )
+        for module in self.modules():
+            if hasattr(module, "set_lora_layer"):
+                module.set_lora_layer(None)
 
     def forward(
         self,
@@ -2117,20 +2127,35 @@ class UNetMidBlockFlat(nn.Module):
             attn_groups = resnet_groups if resnet_time_scale_shift == "default" else None
 
         # there is always at least one resnet
-        resnets = [
-            ResnetBlockFlat(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                temb_channels=temb_channels,
-                eps=resnet_eps,
-                groups=resnet_groups,
-                dropout=dropout,
-                time_embedding_norm=resnet_time_scale_shift,
-                non_linearity=resnet_act_fn,
-                output_scale_factor=output_scale_factor,
-                pre_norm=resnet_pre_norm,
-            )
-        ]
+        if resnet_time_scale_shift == "spatial":
+            resnets = [
+                ResnetBlockCondNorm2D(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm="spatial",
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                )
+            ]
+        else:
+            resnets = [
+                ResnetBlockFlat(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            ]
         attentions = []
 
         if attention_head_dim is None:
@@ -2159,20 +2184,35 @@ class UNetMidBlockFlat(nn.Module):
             else:
                 attentions.append(None)
 
-            resnets.append(
-                ResnetBlockFlat(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
+            if resnet_time_scale_shift == "spatial":
+                resnets.append(
+                    ResnetBlockCondNorm2D(
+                        in_channels=in_channels,
+                        out_channels=in_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm="spatial",
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                    )
                 )
-            )
+            else:
+                resnets.append(
+                    ResnetBlockFlat(
+                        in_channels=in_channels,
+                        out_channels=in_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm=resnet_time_scale_shift,
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                        pre_norm=resnet_pre_norm,
+                    )
+                )
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)

@@ -21,13 +21,12 @@ from torch import nn
 from torch.nn import functional as F
 from torch.nn.modules.normalization import GroupNorm
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, logging
-from .attention_processor import USE_PEFT_BACKEND, AttentionProcessor
-from .autoencoders import AutoencoderKL
-from .lora import LoRACompatibleConv
-from .modeling_utils import ModelMixin
-from .unet_2d_blocks import (
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.models.attention_processor import USE_PEFT_BACKEND, AttentionProcessor
+from diffusers.models.autoencoders import AutoencoderKL
+from diffusers.models.lora import LoRACompatibleConv
+from diffusers.models.modeling_utils import ModelMixin
+from diffusers.models.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     DownBlock2D,
@@ -37,7 +36,8 @@ from .unet_2d_blocks import (
     UpBlock2D,
     Upsample2D,
 )
-from .unet_2d_condition import UNet2DConditionModel
+from diffusers.models.unet_2d_condition import UNet2DConditionModel
+from diffusers.utils import BaseOutput, logging
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -494,9 +494,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         """
         return self.control_model.attn_processors
 
-    def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
-    ):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -509,7 +507,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 processor. This is strongly recommended when setting trainable attention processors.
 
         """
-        self.control_model.set_attn_processor(processor, _remove_lora)
+        self.control_model.set_attn_processor(processor)
 
     def set_default_attn_processor(self):
         """
