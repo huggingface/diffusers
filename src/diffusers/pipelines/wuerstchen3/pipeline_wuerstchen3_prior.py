@@ -15,9 +15,10 @@
 from math import ceil
 from typing import Callable, Dict, List, Optional, Union
 
+import PIL
 import numpy as np
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...loaders import LoraLoaderMixin
 from ...schedulers import DDPMWuerstchenScheduler
@@ -65,10 +66,6 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         scheduler ([`DDPMWuerstchenScheduler`]):
             A scheduler to be used in combination with `prior` to generate image embedding.
-        latent_mean ('float', *optional*, defaults to 42.0):
-            Mean value for latent diffusers.
-        latent_std ('float', *optional*, defaults to 1.0):
-            Standard value for latent diffusers.
         resolution_multiple ('float', *optional*, defaults to 42.67):
             Default resolution for multiple images generated.
     """
@@ -81,22 +78,22 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
-        text_encoder: CLIPTextModel,
+        text_encoder: CLIPTextModelWithProjection,
+        image_encoder: CLIPVisionModelWithProjection,
         prior: WuerstchenV3Prior,
         scheduler: DDPMWuerstchenScheduler,
-        latent_mean: float = 42.0,
-        latent_std: float = 1.0,
         resolution_multiple: float = 42.67,
     ) -> None:
         super().__init__()
         self.register_modules(
             tokenizer=tokenizer,
             text_encoder=text_encoder,
+            image_encoder=image_encoder,
             prior=prior,
             scheduler=scheduler,
         )
         self.register_to_config(
-            latent_mean=latent_mean, latent_std=latent_std, resolution_multiple=resolution_multiple
+            resolution_multiple=resolution_multiple
         )
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
@@ -119,7 +116,9 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         prompt=None,
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
     ):
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -159,9 +158,13 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 text_input_ids.to(device), attention_mask=attention_mask.to(device)
             )
             prompt_embeds = text_encoder_output.last_hidden_state
+            if prompt_embeds_pooled is None:
+                prompt_embeds_pooled = text_encoder_output.text_embeds.unsqueeze(1)
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
+        prompt_embeds_pooled = prompt_embeds_pooled.to(dtype=self.text_encoder.dtype, device=device)
         prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        prompt_embeds_pooled = prompt_embeds_pooled.repeat_interleave(num_images_per_prompt, dim=0)
 
         if negative_prompt_embeds is None and do_classifier_free_guidance:
             uncond_tokens: List[str]
@@ -195,6 +198,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             )
 
             negative_prompt_embeds = negative_prompt_embeds_text_encoder_output.last_hidden_state
+            negative_prompt_embeds_pooled = negative_prompt_embeds_text_encoder_output.text_embeds.unsqueeze(1)
 
         if do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -202,9 +206,14 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
+
+            seq_len = negative_prompt_embeds_pooled.shape[1]
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.view(batch_size * num_images_per_prompt, seq_len, -1)
             # done duplicates
 
-        return prompt_embeds, negative_prompt_embeds
+        return prompt_embeds, prompt_embeds_pooled, negative_prompt_embeds, negative_prompt_embeds_pooled
 
     def check_inputs(
         self,
@@ -213,7 +222,9 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         num_inference_steps,
         do_classifier_free_guidance,
         prompt_embeds=None,
+        prompt_embeds_pooled=None,
         negative_prompt_embeds=None,
+        negative_prompt_embeds_pooled=None,
     ):
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -241,6 +252,14 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                     f" {negative_prompt_embeds.shape}."
                 )
 
+        if prompt_embeds_pooled is not None and negative_prompt_embeds_pooled is not None:
+            if prompt_embeds_pooled.shape != negative_prompt_embeds_pooled.shape:
+                raise ValueError(
+                    "`prompt_embeds_pooled` and `negative_prompt_embeds_pooled` must have the same shape when passed"
+                    f"directly, but got: `prompt_embeds_pooled` {prompt_embeds_pooled.shape} !="
+                    f"`negative_prompt_embeds_pooled` {negative_prompt_embeds_pooled.shape}."
+                )
+
         if not isinstance(num_inference_steps, int):
             raise TypeError(
                 f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
@@ -264,14 +283,17 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
+        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
         height: int = 1024,
         width: int = 1024,
-        num_inference_steps: int = 60,
+        num_inference_steps: int = 20,
         timesteps: List[float] = None,
-        guidance_scale: float = 8.0,
+        guidance_scale: float = 4.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -309,9 +331,16 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
+                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
+                If not provided, pooled text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
+            negative_prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
+                Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt` input
                 argument.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
@@ -400,18 +429,22 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             num_inference_steps,
             self.do_classifier_free_guidance,
             prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
         )
 
         # 2. Encode caption
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+        prompt_embeds, prompt_embeds_pooled, negative_prompt_embeds, negative_prompt_embeds_pooled = self.encode_prompt(
             prompt=prompt,
             device=device,
             num_images_per_prompt=num_images_per_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
         )
 
         # For classifier free guidance, we need to do two forward passes.
@@ -419,6 +452,9 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         # to avoid doing two forward passes
         text_encoder_hidden_states = (
             torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
+        )
+        text_encoder_pooled = (
+            torch.cat([prompt_embeds_pooled, negative_prompt_embeds_pooled]) if negative_prompt_embeds is not None else prompt_embeds
         )
 
         # 3. Determine latent shape of image embeddings
@@ -449,7 +485,8 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             predicted_image_embedding = self.prior(
                 torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
-                c=text_encoder_hidden_states,
+                clip_text=text_encoder_hidden_states, clip_text_pooled=text_encoder_pooled,
+                clip_img=image_encoder_pooled,
             )
 
             # 8. Check for classifier free guidance and apply it
@@ -482,9 +519,6 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)
                 callback(step_idx, t, latents)
-
-        # 10. Denormalize the latents
-        latents = latents * self.config.latent_mean - self.config.latent_std
 
         # Offload all models
         self.maybe_free_model_hooks()

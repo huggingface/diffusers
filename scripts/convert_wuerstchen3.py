@@ -2,7 +2,7 @@
 import os
 
 import torch
-from transformers import AutoTokenizer, CLIPTextModel, CLIPVisionModelWithProjection
+from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPVisionModelWithProjection
 # from vqgan import VQModel
 
 from diffusers import (
@@ -27,12 +27,12 @@ device = "cpu"
 # vqmodel = PaellaVQModel(num_vq_embeddings=paella_vqmodel.codebook_size, latent_channels=paella_vqmodel.c_latent)
 # vqmodel.load_state_dict(state_dict)
 
-# # Clip Text encoder and tokenizer
-# text_encoder = CLIPTextModel.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
-# tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
+# Clip Text encoder and tokenizer
+text_encoder = CLIPTextModelWithProjection.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", cache_dir="cache")
+tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
-# # Generator
-# clip_image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14").to("cpu")
+# Generator
+image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14").to("cpu")
 
 orig_state_dict = torch.load(os.path.join(model_path, "base_120k.pt"), map_location=device)
 state_dict = {}
@@ -94,14 +94,14 @@ prior_model.load_state_dict(state_dict)
 import pdb
 pdb.set_trace()
 
-# # scheduler
-# scheduler = DDPMWuerstchenScheduler()
-#
-# # Prior pipeline
-# prior_pipeline = WuerstchenPriorPipeline(
-#     prior=prior_model, text_encoder=text_encoder, tokenizer=tokenizer, scheduler=scheduler
-# )
-#
+# scheduler
+scheduler = DDPMWuerstchenScheduler()
+
+# Prior pipeline
+prior_pipeline = WuerstchenV3PriorPipeline(
+    prior=prior_model, text_encoder=text_encoder, image_encoder=image_encoder, tokenizer=tokenizer, scheduler=scheduler
+)
+
 # prior_pipeline.save_pretrained("warp-ai/wuerstchen-prior")
 #
 # decoder_pipeline = WuerstchenDecoderPipeline(
