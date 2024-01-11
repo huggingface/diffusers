@@ -107,10 +107,12 @@ DreamBooth for the text encoder was enabled: {train_text_encoder}.
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
 
+
 def unwrap_model(accelerator, model):
     model = accelerator.unwrap_model(model)
     model = model._orig_mod if is_compiled_module(model) else model
     return model
+
 
 def log_validation(
     text_encoder,
