@@ -45,28 +45,28 @@ class UpDownBlock2d(nn.Module):
 class WuerstchenV3Unet(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
-        self,
-        c_in=16,
-        c_out=16,
-        c_r=64,
-        patch_size=1,
-        c_cond=2048,
-        c_hidden=[2048, 2048],
-        nhead=[32, 32],
-        blocks=[[8, 24], [24, 8]],
-        block_repeat=[[1, 1], [1, 1]],
-        level_config=["CTA", "CTA"],
-        c_clip_text: Optional[int] = 1280,
-        c_clip_text_pooled=1280,
-        c_clip_img: Optional[int] = 768,
-        c_clip_seq=4,
-        c_effnet: Optional[int] = None,
-        c_pixels: Optional[int] = None,
-        kernel_size=3,
-        dropout: List[float] = [0.1, 0.1],
-        self_attn: bool = True,
-        t_conds: List[str] = ["sca", "crp"],
-        switch_level: Optional[List[bool]] = [False],
+            self,
+            c_in=16,
+            c_out=16,
+            c_r=64,
+            patch_size=1,
+            c_cond=2048,
+            c_hidden=[2048, 2048],
+            nhead=[32, 32],
+            blocks=[[8, 24], [24, 8]],
+            block_repeat=[[1, 1], [1, 1]],
+            level_config=["CTA", "CTA"],
+            c_clip_text: Optional[int] = None,
+            c_clip_text_pooled=1280,
+            c_clip_img: Optional[int] = None,
+            c_clip_seq=4,
+            c_effnet: Optional[int] = None,
+            c_pixels: Optional[int] = None,
+            kernel_size=3,
+            dropout: List[float] = [0.1, 0.1],
+            self_attn: bool = True,
+            t_conds: List[str] = ["sca", "crp"],
+            switch_level: Optional[List[bool]] = [False],
     ):
         super().__init__()
         self.c_r = c_r
@@ -102,7 +102,7 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
 
         self.embedding = nn.Sequential(
             nn.PixelUnshuffle(patch_size),
-            nn.Conv2d(c_in * (patch_size**2), c_hidden[0], kernel_size=1),
+            nn.Conv2d(c_in * (patch_size ** 2), c_hidden[0], kernel_size=1),
             WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
         )
 
@@ -179,12 +179,12 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
         # OUTPUT
         self.clf = nn.Sequential(
             WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
-            nn.Conv2d(c_hidden[0], c_out * (patch_size**2), kernel_size=1),
+            nn.Conv2d(c_hidden[0], c_out * (patch_size ** 2), kernel_size=1),
             nn.PixelShuffle(patch_size),
         )
 
         # --- WEIGHT INIT ---
-        self.apply(self._init_weights)  # General init
+        # self.apply(self._init_weights)  # General init
 
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
@@ -199,7 +199,7 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
         if hasattr(self, "effnet_mapper"):
             nn.init.normal_(self.effnet_mapper[0].weight, std=0.02)  # conditionings
             nn.init.normal_(self.effnet_mapper[2].weight, std=0.02)  # conditionings
-        
+
         if hasattr(self, "pixels_mapper"):
             nn.init.normal_(self.pixels_mapper[0].weight, std=0.02)  # conditionings
             nn.init.normal_(self.pixels_mapper[2].weight, std=0.02)  # conditionings

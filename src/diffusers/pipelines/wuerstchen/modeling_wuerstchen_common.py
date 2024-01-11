@@ -55,10 +55,10 @@ class ResBlock(nn.Module):
         conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
-        self.depthwise = conv_cls(c + c_skip, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
+        self.depthwise = conv_cls(c, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
         self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
         self.channelwise = nn.Sequential(
-            linear_cls(c, c * 4), nn.GELU(), GlobalResponseNorm(c * 4), nn.Dropout(dropout), linear_cls(c * 4, c)
+            linear_cls(c + c_skip, c * 4), nn.GELU(), GlobalResponseNorm(c * 4), nn.Dropout(dropout), linear_cls(c * 4, c)
         )
 
     def forward(self, x, x_skip=None):
