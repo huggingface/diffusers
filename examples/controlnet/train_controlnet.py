@@ -1043,7 +1043,7 @@ def main(args):
                         sample.to(dtype=weight_dtype) for sample in down_block_res_samples
                     ],
                     mid_block_additional_residual=mid_block_res_sample.to(dtype=weight_dtype),
-                    return_dict=False
+                    return_dict=False,
                 )[0]
 
                 # Get the target for loss depending on the prediction type
