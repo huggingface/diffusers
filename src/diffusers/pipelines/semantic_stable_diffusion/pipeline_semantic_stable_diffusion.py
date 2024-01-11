@@ -11,14 +11,14 @@ from ...pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyCh
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
 from .pipeline_output import SemanticStableDiffusionPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class SemanticStableDiffusionPipeline(DiffusionPipeline):
+class SemanticStableDiffusionPipeline(DiffusionPipeline, EfficiencyMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with latent editing.
 

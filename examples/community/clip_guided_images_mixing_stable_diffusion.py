@@ -113,16 +113,6 @@ class CLIPGuidedImagesMixingStableDiffusion(DiffusionPipeline):
         set_requires_grad(self.text_encoder, False)
         set_requires_grad(self.clip_model, False)
 
-    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
-        if slice_size == "auto":
-            # half the attention head size is usually a good trade-off between
-            # speed and memory
-            slice_size = self.unet.config.attention_head_dim // 2
-        self.unet.set_attention_slice(slice_size)
-
-    def disable_attention_slicing(self):
-        self.enable_attention_slicing(None)
-
     def freeze_vae(self):
         set_requires_grad(self.vae, False)
 

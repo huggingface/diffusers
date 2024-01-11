@@ -2097,10 +2097,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for module in modules:
             module.set_attention_slice(slice_size)
 
+
 class EfficiencyMixin:
     r"""
     Helper for DiffusionPipeline with vae and unet.(mainly for stable diffusion)
     """
+
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to

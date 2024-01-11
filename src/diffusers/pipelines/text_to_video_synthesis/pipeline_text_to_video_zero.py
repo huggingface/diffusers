@@ -17,7 +17,7 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
 from ..stable_diffusion import StableDiffusionSafetyChecker
 
 
@@ -281,7 +281,7 @@ def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_s
     return warped_latents
 
 
-class TextToVideoZeroPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class TextToVideoZeroPipeline(DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for zero-shot text-to-video generation using Stable Diffusion.
 
