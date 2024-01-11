@@ -1615,94 +1615,30 @@ class RAVEPipeline(
             latents = torch.cat(latents, dim=0)
 
         if is_inversion_mode:
-            # TODO(a-r-r-o-w): refactor denoising loops
-            with self.progress_bar(total=num_inversion_steps) as progress_bar:
-                for i, t in enumerate(inversion_timesteps):
-                    # expand the latents if we are doing classifier free guidance
-                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                    latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
-
-                    # controlnet(s) inference
-                    if guess_mode and self.do_classifier_free_guidance:
-                        # Infer ControlNet only for the conditional batch.
-                        control_model_input = latents
-                        control_model_input = self.inverse_scheduler.scale_model_input(control_model_input, t)
-                        controlnet_prompt_embeds = inversion_prompt_embeds.chunk(2)[1]
-                    else:
-                        control_model_input = latent_model_input
-                        controlnet_prompt_embeds = inversion_prompt_embeds
-
-                    if isinstance(inversion_controlnet_keep[i], list):
-                        cond_scale = [
-                            c * s for c, s in zip(controlnet_conditioning_scale, inversion_controlnet_keep[i])
-                        ]
-                    else:
-                        controlnet_cond_scale = controlnet_conditioning_scale
-                        if isinstance(controlnet_cond_scale, list):
-                            controlnet_cond_scale = controlnet_cond_scale[0]
-                        cond_scale = controlnet_cond_scale * inversion_controlnet_keep[i]
-
-                    down_block_res_samples, mid_block_res_sample = self.controlnet(
-                        control_model_input,
-                        t,
-                        encoder_hidden_states=controlnet_prompt_embeds,
-                        controlnet_cond=inversion_control_video,
-                        conditioning_scale=cond_scale,
-                        guess_mode=guess_mode,
-                        return_dict=False,
-                    )
-
-                    if guess_mode and self.do_classifier_free_guidance:
-                        # Infered ControlNet only for the conditional batch.
-                        # To apply the output of ControlNet to both the unconditional and conditional batches,
-                        # add 0 to the unconditional batch to keep it unchanged.
-                        down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
-                        mid_block_res_sample = torch.cat(
-                            [torch.zeros_like(mid_block_res_sample), mid_block_res_sample]
-                        )
-
-                    # predict the noise residual
-                    noise_pred = self.unet(
-                        latent_model_input,
-                        t,
-                        encoder_hidden_states=inversion_prompt_embeds,
-                        cross_attention_kwargs=self.cross_attention_kwargs,
-                        down_block_additional_residuals=down_block_res_samples,
-                        mid_block_additional_residual=mid_block_res_sample,
-                        added_cond_kwargs=added_cond_kwargs,
-                        return_dict=False,
-                    )[0]
-
-                    # perform guidance
-                    if self.do_classifier_free_guidance:
-                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                    # compute the previous noisy sample x_t -> x_t-1
-                    latents = self.inverse_scheduler.step(
-                        noise_pred, t, latents, **extra_step_kwargs, return_dict=False
-                    )[0]
-
-                    progress_bar.update()
-
-                    # TODO(a-r-r-o-w): Think about how to use this properly since inversion shouldn't call same
-                    #                  callbacks as the ones used in actual generation
-                    # if callback_on_step_end is not None:
-                    #     callback_kwargs = {}
-                    #     for k in callback_on_step_end_tensor_inputs:
-                    #         callback_kwargs[k] = locals()[k]
-                    #     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                    #     latents = callback_outputs.pop("latents", latents)
-                    #     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    #     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-
-                    # # call the callback, if provided
-                    # if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.inverse_scheduler.order == 0):
-                    #     progress_bar.update()
-                    #     if callback is not None and i % callback_steps == 0:
-                    #         step_idx = i // getattr(self.scheduler, "order", 1)
-                    #         callback(step_idx, t, latents)
+            latents, _, _ = self._denoise_loop(
+                scheduler=self.inverse_scheduler,
+                prompt_embeds=inversion_prompt_embeds,
+                negative_prompt_embeds=negative_inversion_prompt_embeds,
+                latents=latents,
+                control_video=inversion_control_video,
+                guidance_scale=guidance_scale,
+                grid_size=grid_size,
+                use_shuffling=False,
+                num_frames=inversion_num_frames,
+                indices=None,
+                timesteps=inversion_timesteps,
+                num_inference_steps=num_inversion_steps,
+                guess_mode=guess_mode,
+                generator=generator,
+                controlnet_keep=inversion_controlnet_keep,
+                controlnet_conditioning_scale=controlnet_conditioning_scale,
+                added_cond_kwargs=added_cond_kwargs,
+                extra_step_kwargs=extra_step_kwargs,
+                callback=inversion_callback,
+                callback_steps=inversion_callback_steps,
+                callback_on_step_end=inversion_callback_on_step_end,
+                callback_on_step_end_tensor_inputs=inversion_callback_on_step_end_tensor_inputs,
+            )
 
             if not apply_inversion_on_grid:
                 video = []
