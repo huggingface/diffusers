@@ -141,11 +141,11 @@ def load_video(file_path: str):
     return images
 
 # load initial video
-video = load_video("/path/to/local/animation_fireworks.gif")
+video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
 
 output = pipe(
     video = video,
-    prompt="closeup of a handsome man, robert downey jr., iron man, fireworks in the background, realistic, high quality",
+    prompt="panda playing a guitar, on a boat, in the ocean, high quality",
     negative_prompt="bad quality, worse quality",
     guidance_scale=7.5,
     num_inference_steps=25,
