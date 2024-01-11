@@ -1551,7 +1551,7 @@ class RAVEPipeline(
         else:
             assert False
 
-        # 5. Prepare timesteps
+        # 6. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
@@ -1576,7 +1576,7 @@ class RAVEPipeline(
             ]
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
-        # 7.2 Create tensor stating which controlnets to keep
+        # 7.3 Create tensor stating which controlnets to keep (inversion)
         inversion_controlnet_keep = []
         for i in range(len(inversion_timesteps)):
             keeps = [
@@ -1585,7 +1585,7 @@ class RAVEPipeline(
             ]
             inversion_controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
-        # 6. Prepare latent variables
+        # 8. Prepare latent variables
         if not is_inversion_mode:
             latents = []
             for i in range(0, num_grid_frames, vae_batch_size):
@@ -1682,7 +1682,7 @@ class RAVEPipeline(
 
         common_denoise_kwargs["latents"] = latents
 
-        # 8. Denoising loop
+        # 9. Denoising loop
         indices = torch.arange(num_video_frames)
         latents, control_grids, indices = self._denoise_loop(
             scheduler=self.scheduler,
@@ -1728,7 +1728,7 @@ class RAVEPipeline(
         shuffled_video = shuffled_video[:num_video_frames]
         video = [shuffled_video[indices[i]] for i in range(num_video_frames)]
 
-        # Offload all models
+        # 10.Offload all models
         self.maybe_free_model_hooks()
 
         return RAVEPipelineOutput(frames=video) if return_dict else (video,)
