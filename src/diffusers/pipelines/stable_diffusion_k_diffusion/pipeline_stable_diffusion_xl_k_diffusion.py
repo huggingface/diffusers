@@ -1,4 +1,4 @@
-# Copyright 2023 TencentARC and The HuggingFace Team. All rights reserved.
+# Copyright 2023 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,38 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union
 
-import numpy as np
-import PIL.Image
 import torch
+from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
+from k_diffusion.sampling import BrownianTreeNoiseSampler, get_sigmas_karras
 from transformers import (
-    CLIPImageProcessor,
     CLIPTextModel,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
-    CLIPVisionModelWithProjection,
 )
 
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...image_processor import VaeImageProcessor
 from ...loaders import (
     FromSingleFileMixin,
     IPAdapterMixin,
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
-from ...models import AutoencoderKL, ImageProjection, MultiAdapter, T2IAdapter, UNet2DConditionModel
+from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
+    FusedAttnProcessor2_0,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
 from ...models.lora import adjust_lora_scale_text_encoder
-from ...schedulers import KarrasDiffusionSchedulers
+from ...schedulers import KarrasDiffusionSchedulers, LMSDiscreteScheduler
 from ...utils import (
-    PIL_INTERPOLATION,
     USE_PEFT_BACKEND,
     logging,
     replace_example_docstring,
@@ -61,134 +60,44 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import T2IAdapter, StableDiffusionXLAdapterPipeline, DDPMScheduler
-        >>> from diffusers.utils import load_image
+        >>> from diffusers import StableDiffusionXLKDiffusionPipeline
 
-        >>> sketch_image = load_image("https://huggingface.co/Adapter/t2iadapter/resolve/main/sketch.png").convert("L")
-
-        >>> model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-
-        >>> adapter = T2IAdapter.from_pretrained(
-        ...     "Adapter/t2iadapter",
-        ...     subfolder="sketch_sdxl_1.0",
-        ...     torch_dtype=torch.float16,
-        ...     adapter_type="full_adapter_xl",
+        >>> pipe = StableDiffusionXLKDiffusionPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
         ... )
-        >>> scheduler = DDPMScheduler.from_pretrained(model_id, subfolder="scheduler")
+        >>> pipe = pipe.to("cuda")
+        >>> pipe.set_scheduler("sample_dpmpp_2m_sde")
 
-        >>> pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-        ...     model_id, adapter=adapter, torch_dtype=torch.float16, variant="fp16", scheduler=scheduler
-        ... ).to("cuda")
-
-        >>> generator = torch.manual_seed(42)
-        >>> sketch_image_out = pipe(
-        ...     prompt="a photo of a dog in real world, high quality",
-        ...     negative_prompt="extra digit, fewer digits, cropped, worst quality, low quality",
-        ...     image=sketch_image,
-        ...     generator=generator,
-        ...     guidance_scale=7.5,
-        ... ).images[0]
+        >>> prompt = "a photo of an astronaut riding a horse on mars"
+        >>> image = pipe(prompt).images[0]
         ```
 """
 
 
-def _preprocess_adapter_image(image, height, width):
-    if isinstance(image, torch.Tensor):
-        return image
-    elif isinstance(image, PIL.Image.Image):
-        image = [image]
+# Copied from diffusers.pipelines.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.ModelWrapper
+class ModelWrapper:
+    def __init__(self, model, alphas_cumprod):
+        self.model = model
+        self.alphas_cumprod = alphas_cumprod
 
-    if isinstance(image[0], PIL.Image.Image):
-        image = [np.array(i.resize((width, height), resample=PIL_INTERPOLATION["lanczos"])) for i in image]
-        image = [
-            i[None, ..., None] if i.ndim == 2 else i[None, ...] for i in image
-        ]  # expand [h, w] or [h, w, c] to [b, h, w, c]
-        image = np.concatenate(image, axis=0)
-        image = np.array(image).astype(np.float32) / 255.0
-        image = image.transpose(0, 3, 1, 2)
-        image = torch.from_numpy(image)
-    elif isinstance(image[0], torch.Tensor):
-        if image[0].ndim == 3:
-            image = torch.stack(image, dim=0)
-        elif image[0].ndim == 4:
-            image = torch.cat(image, dim=0)
-        else:
-            raise ValueError(
-                f"Invalid image tensor! Expecting image tensor with 3 or 4 dimension, but recive: {image[0].ndim}"
-            )
-    return image
+    def apply_model(self, *args, **kwargs):
+        if len(args) == 3:
+            encoder_hidden_states = args[-1]
+            args = args[:2]
+        if kwargs.get("cond", None) is not None:
+            encoder_hidden_states = kwargs.pop("cond")
+        return self.model(*args, encoder_hidden_states=encoder_hidden_states, **kwargs).sample
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
-def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
-    """
-    Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
-    Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf). See Section 3.4
-    """
-    std_text = noise_pred_text.std(dim=list(range(1, noise_pred_text.ndim)), keepdim=True)
-    std_cfg = noise_cfg.std(dim=list(range(1, noise_cfg.ndim)), keepdim=True)
-    # rescale the results from guidance (fixes overexposure)
-    noise_pred_rescaled = noise_cfg * (std_text / std_cfg)
-    # mix with the original results from guidance by factor guidance_rescale to avoid "plain looking" images
-    noise_cfg = guidance_rescale * noise_pred_rescaled + (1 - guidance_rescale) * noise_cfg
-    return noise_cfg
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
-def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    **kwargs,
-):
-    """
-    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
-    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
-
-    Args:
-        scheduler (`SchedulerMixin`):
-            The scheduler to get timesteps from.
-        num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used,
-            `timesteps` must be `None`.
-        device (`str` or `torch.device`, *optional*):
-            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
-                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
-                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
-                must be `None`.
-
-    Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
-        second element is the number of inference steps.
-    """
-    if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accepts_timesteps:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
-
-
-class StableDiffusionXLAdapterPipeline(
+class StableDiffusionXLKDiffusionPipeline(
     DiffusionPipeline,
-    TextualInversionLoaderMixin,
-    StableDiffusionXLLoraLoaderMixin,
-    IPAdapterMixin,
     FromSingleFileMixin,
+    StableDiffusionXLLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+    IPAdapterMixin,
 ):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion augmented with T2I-Adapter
-    https://arxiv.org/abs/2302.08453
+    Pipeline for text-to-image generation using Stable Diffusion XL and k-diffusion.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -201,40 +110,40 @@ class StableDiffusionXLAdapterPipeline(
         - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
-        adapter ([`T2IAdapter`] or [`MultiAdapter`] or `List[T2IAdapter]`):
-            Provides additional conditioning to the unet during the denoising process. If you set multiple Adapter as a
-            list, the outputs from each Adapter are added together to create one combined additional conditioning.
-        adapter_weights (`List[float]`, *optional*, defaults to None):
-            List of floats representing the weight which will be multiply to each adapter's output before adding them
-            together.
         vae ([`AutoencoderKL`]):
             Variational Auto-Encoder (VAE) Model to encode and decode images to and from latent representations.
         text_encoder ([`CLIPTextModel`]):
-            Frozen text-encoder. Stable Diffusion uses the text portion of
+            Frozen text-encoder. Stable Diffusion XL uses the text portion of
             [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModel), specifically
             the [clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) variant.
+        text_encoder_2 ([` CLIPTextModelWithProjection`]):
+            Second frozen text-encoder. Stable Diffusion XL uses the text and pool portion of
+            [CLIP](https://huggingface.co/docs/transformers/model_doc/clip#transformers.CLIPTextModelWithProjection),
+            specifically the
+            [laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)
+            variant.
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
+            [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        tokenizer_2 (`CLIPTokenizer`):
+            Second Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
-        safety_checker ([`StableDiffusionSafetyChecker`]):
-            Classification module that estimates whether generated images could be considered offensive or harmful.
-            Please, refer to the [model card](https://huggingface.co/runwayml/stable-diffusion-v1-5) for details.
-        feature_extractor ([`CLIPFeatureExtractor`]):
-            Model that extracts features from generated images to be used as inputs for the `safety_checker`.
+        force_zeros_for_empty_prompt (`bool`, *optional*, defaults to `"True"`):
+            Whether the negative prompt embeddings shall be forced to always be set to 0. Also see the config of
+            `stabilityai/stable-diffusion-xl-base-1-0`.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->unet->vae"
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
     _optional_components = [
         "tokenizer",
         "tokenizer_2",
         "text_encoder",
         "text_encoder_2",
         "feature_extractor",
-        "image_encoder",
     ]
 
     def __init__(
@@ -245,14 +154,13 @@ class StableDiffusionXLAdapterPipeline(
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        adapter: Union[T2IAdapter, MultiAdapter, List[T2IAdapter]],
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
-        feature_extractor: CLIPImageProcessor = None,
-        image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
 
+        # get correct sigmas from LMS
+        scheduler = LMSDiscreteScheduler.from_config(scheduler.config)
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -260,15 +168,33 @@ class StableDiffusionXLAdapterPipeline(
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
             unet=unet,
-            adapter=adapter,
             scheduler=scheduler,
-            feature_extractor=feature_extractor,
-            image_encoder=image_encoder,
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+
         self.default_sample_size = self.unet.config.sample_size
+
+        model = ModelWrapper(unet, scheduler.alphas_cumprod)
+        if scheduler.config.prediction_type == "v_prediction":
+            self.k_diffusion_model = CompVisVDenoiser(model)
+        else:
+            self.k_diffusion_model = CompVisDenoiser(model)
+
+    # Copied from diffusers.pipelines.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.StableDiffusionKDiffusionPipeline.set_scheduler
+    def set_scheduler(self, scheduler_type: str):
+        library = importlib.import_module("k_diffusion")
+        sampling = getattr(library, "sampling")
+        try:
+            self.sampler = getattr(sampling, scheduler_type)
+        except Exception:
+            valid_samplers = []
+            for s in dir(sampling):
+                if "sample_" in s:
+                    valid_samplers.append(s)
+
+            raise ValueError(f"Invalid scheduler type {scheduler_type}. Please choose one of {valid_samplers}.")
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -538,80 +464,21 @@ class StableDiffusionXLAdapterPipeline(
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(image, return_tensors="pt").pixel_values
-
-        image = image.to(device=device, dtype=dtype)
-        if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_enc_hidden_states = self.image_encoder(
-                torch.zeros_like(image), output_hidden_states=True
-            ).hidden_states[-2]
-            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
-            return image_enc_hidden_states, uncond_image_enc_hidden_states
-        else:
-            image_embeds = self.image_encoder(image).image_embeds
-            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_embeds = torch.zeros_like(image_embeds)
-
-            return image_embeds, uncond_image_embeds
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
-    def prepare_extra_step_kwargs(self, generator, eta):
-        # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
-        # eta (η) is only used with the DDIMScheduler, it will be ignored for other schedulers.
-        # eta corresponds to η in DDIM paper: https://arxiv.org/abs/2010.02502
-        # and should be between [0, 1]
-
-        accepts_eta = "eta" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        extra_step_kwargs = {}
-        if accepts_eta:
-            extra_step_kwargs["eta"] = eta
-
-        # check if the scheduler accepts generator
-        accepts_generator = "generator" in set(inspect.signature(self.scheduler.step).parameters.keys())
-        if accepts_generator:
-            extra_step_kwargs["generator"] = generator
-        return extra_step_kwargs
-
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
         prompt_2,
         height,
         width,
-        callback_steps,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         pooled_prompt_embeds=None,
         negative_pooled_prompt_embeds=None,
-        callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -661,7 +528,6 @@ class StableDiffusionXLAdapterPipeline(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
@@ -669,14 +535,11 @@ class StableDiffusionXLAdapterPipeline(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
                 f" size of {batch_size}. Make sure the batch size matches the length of the generators."
             )
-
         if latents is None:
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
         return latents
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
@@ -698,7 +561,7 @@ class StableDiffusionXLAdapterPipeline(
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
         return add_time_ids
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_upscale.StableDiffusionUpscalePipeline.upcast_vae
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.upcast_vae
     def upcast_vae(self):
         dtype = self.vae.dtype
         self.vae.to(dtype=torch.float32)
@@ -709,6 +572,7 @@ class StableDiffusionXLAdapterPipeline(
                 XFormersAttnProcessor,
                 LoRAXFormersAttnProcessor,
                 LoRAAttnProcessor2_0,
+                FusedAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
@@ -717,34 +581,6 @@ class StableDiffusionXLAdapterPipeline(
             self.vae.post_quant_conv.to(dtype)
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
-
-    # Copied from diffusers.pipelines.t2i_adapter.pipeline_stable_diffusion_adapter.StableDiffusionAdapterPipeline._default_height_width
-    def _default_height_width(self, height, width, image):
-        # NOTE: It is possible that a list of images have different
-        # dimensions for each image, so just checking the first image
-        # is not _exactly_ correct, but it is simple.
-        while isinstance(image, list):
-            image = image[0]
-
-        if height is None:
-            if isinstance(image, PIL.Image.Image):
-                height = image.height
-            elif isinstance(image, torch.Tensor):
-                height = image.shape[-2]
-
-            # round down to nearest multiple of `self.adapter.downscale_factor`
-            height = (height // self.adapter.downscale_factor) * self.adapter.downscale_factor
-
-        if width is None:
-            if isinstance(image, PIL.Image.Image):
-                width = image.width
-            elif isinstance(image, torch.Tensor):
-                width = image.shape[-1]
-
-            # round down to nearest multiple of `self.adapter.downscale_factor`
-            width = (width // self.adapter.downscale_factor) * self.adapter.downscale_factor
-
-        return height, width
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
@@ -774,38 +610,73 @@ class StableDiffusionXLAdapterPipeline(
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
 
-    # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
-    def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.fuse_qkv_projections
+    def fuse_qkv_projections(self, unet: bool = True, vae: bool = True):
         """
-        See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
 
         Args:
-            timesteps (`torch.Tensor`):
-                generate embedding vectors at these timesteps
-            embedding_dim (`int`, *optional*, defaults to 512):
-                dimension of the embeddings to generate
-            dtype:
-                data type of the generated embeddings
-
-        Returns:
-            `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
+            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
         """
-        assert len(w.shape) == 1
-        w = w * 1000.0
+        self.fusing_unet = False
+        self.fusing_vae = False
 
-        half_dim = embedding_dim // 2
-        emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
-        emb = torch.exp(torch.arange(half_dim, dtype=dtype) * -emb)
-        emb = w.to(dtype)[:, None] * emb[None, :]
-        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
-        if embedding_dim % 2 == 1:  # zero pad
-            emb = torch.nn.functional.pad(emb, (0, 1))
-        assert emb.shape == (w.shape[0], embedding_dim)
-        return emb
+        if unet:
+            self.fusing_unet = True
+            self.unet.fuse_qkv_projections()
+            self.unet.set_attn_processor(FusedAttnProcessor2_0())
+
+        if vae:
+            if not isinstance(self.vae, AutoencoderKL):
+                raise ValueError("`fuse_qkv_projections()` is only supported for the VAE of type `AutoencoderKL`.")
+
+            self.fusing_vae = True
+            self.vae.fuse_qkv_projections()
+            self.vae.set_attn_processor(FusedAttnProcessor2_0())
+
+    def unfuse_qkv_projections(self, unet: bool = True, vae: bool = True):
+        """Disable QKV projection fusion if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        Args:
+            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
+
+        """
+        if unet:
+            if not self.fusing_unet:
+                logger.warning("The UNet was not initially fused for QKV projections. Doing nothing.")
+            else:
+                self.unet.unfuse_qkv_projections()
+                self.fusing_unet = False
+
+        if vae:
+            if not self.fusing_vae:
+                logger.warning("The VAE was not initially fused for QKV projections. Doing nothing.")
+            else:
+                self.vae.unfuse_qkv_projections()
+                self.fusing_vae = False
 
     @property
     def guidance_scale(self):
         return self._guidance_scale
+
+    @property
+    def clip_skip(self):
+        return self._clip_skip
 
     # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
     # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -820,38 +691,29 @@ class StableDiffusionXLAdapterPipeline(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
-        image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
-        timesteps: List[int] = None,
-        denoising_end: Optional[float] = None,
         guidance_scale: float = 5.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         negative_prompt_2: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
-        eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        guidance_rescale: float = 0.0,
         original_size: Optional[Tuple[int, int]] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
         target_size: Optional[Tuple[int, int]] = None,
         negative_original_size: Optional[Tuple[int, int]] = None,
         negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
         negative_target_size: Optional[Tuple[int, int]] = None,
-        adapter_conditioning_scale: Union[float, List[float]] = 1.0,
-        adapter_conditioning_factor: float = 1.0,
+        use_karras_sigmas: Optional[bool] = False,
+        noise_sampler_seed: Optional[int] = None,
         clip_skip: Optional[int] = None,
     ):
         r"""
@@ -864,32 +726,19 @@ class StableDiffusionXLAdapterPipeline(
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in both text-encoders
-            image (`torch.FloatTensor`, `PIL.Image.Image`, `List[torch.FloatTensor]` or `List[PIL.Image.Image]` or `List[List[PIL.Image.Image]]`):
-                The Adapter input condition. Adapter uses this input condition to generate guidance to Unet. If the
-                type is specified as `Torch.FloatTensor`, it is passed to Adapter as is. PIL.Image.Image` can also be
-                accepted as an image. The control image is automatically resized to fit the output image.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image. Anything below 512 pixels won't work well for
+                The height in pixels of the generated image. This is set to 1024 by default for the best results.
+                Anything below 512 pixels won't work well for
                 [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
                 and checkpoints that are not specifically fine-tuned on low resolutions.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. Anything below 512 pixels won't work well for
+                The width in pixels of the generated image. This is set to 1024 by default for the best results.
+                Anything below 512 pixels won't work well for
                 [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
                 and checkpoints that are not specifically fine-tuned on low resolutions.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
-                in their `set_timesteps` method. If not defined, the default behavior when `num_inference_steps` is
-                passed will be used. Must be in descending order.
-            denoising_end (`float`, *optional*):
-                When specified, determines the fraction (between 0.0 and 1.0) of the total denoising process to be
-                completed before it is intentionally prematurely terminated. As a result, the returned sample will
-                still retain a substantial amount of noise as determined by the discrete timesteps selected by the
-                scheduler. The denoising_end parameter should ideally be utilized when this pipeline forms a part of a
-                "Mixture of Denoisers" multi-pipeline setup, as elaborated in [**Refining the Image
-                Output**](https://huggingface.co/docs/diffusers/api/pipelines/stable_diffusion/stable_diffusion_xl#refining-the-image-output)
             guidance_scale (`float`, *optional*, defaults to 5.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -905,9 +754,6 @@ class StableDiffusionXLAdapterPipeline(
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
-            eta (`float`, *optional*, defaults to 0.0):
-                Corresponds to parameter eta (η) in the DDIM paper: https://arxiv.org/abs/2010.02502. Only applies to
-                [`schedulers.DDIMScheduler`], will be ignored for others.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
@@ -929,28 +775,12 @@ class StableDiffusionXLAdapterPipeline(
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
-            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionAdapterPipelineOutput`]
-                instead of a plain tuple.
-            callback (`Callable`, *optional*):
-                A function that will be called every `callback_steps` steps during inference. The function will be
-                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function will be called. If not specified, the callback will be
-                called at every step.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            guidance_rescale (`float`, *optional*, defaults to 0.0):
-                Guidance rescale factor proposed by [Common Diffusion Noise Schedules and Sample Steps are
-                Flawed](https://arxiv.org/pdf/2305.08891.pdf) `guidance_scale` is defined as `φ` in equation 16. of
-                [Common Diffusion Noise Schedules and Sample Steps are Flawed](https://arxiv.org/pdf/2305.08891.pdf).
-                Guidance rescale factor should fix overexposure when using zero terminal SNR.
+                Whether or not to return a [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] instead
+                of a plain tuple.
             original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 If `original_size` is not the same as `target_size` the image will appear to be down- or upsampled.
                 `original_size` defaults to `(height, width)` if not specified. Part of SDXL's micro-conditioning as
@@ -964,7 +794,6 @@ class StableDiffusionXLAdapterPipeline(
             target_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 For most cases, `target_size` should be set to the desired height and width of the generated image. If
                 not specified it will default to `(height, width)`. Part of SDXL's micro-conditioning as explained in
-                section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
                 section 2.2 of [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952).
             negative_original_size (`Tuple[int]`, *optional*, defaults to (1024, 1024)):
                 To negatively condition the generation process based on a specific image resolution. Part of SDXL's
@@ -981,40 +810,19 @@ class StableDiffusionXLAdapterPipeline(
                 as the `target_size` for most cases. Part of SDXL's micro-conditioning as explained in section 2.2 of
                 [https://huggingface.co/papers/2307.01952](https://huggingface.co/papers/2307.01952). For more
                 information, refer to this issue thread: https://github.com/huggingface/diffusers/issues/4208.
-            adapter_conditioning_scale (`float` or `List[float]`, *optional*, defaults to 1.0):
-                The outputs of the adapter are multiplied by `adapter_conditioning_scale` before they are added to the
-                residual in the original unet. If multiple adapters are specified in init, you can set the
-                corresponding scale as a list.
-            adapter_conditioning_factor (`float`, *optional*, defaults to 1.0):
-                The fraction of timesteps for which adapter should be applied. If `adapter_conditioning_factor` is
-                `0.0`, adapter is not applied at all. If `adapter_conditioning_factor` is `1.0`, adapter is applied for
-                all timesteps. If `adapter_conditioning_factor` is `0.5`, adapter is applied for half of the timesteps.
-            clip_skip (`int`, *optional*):
-                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
-                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.StableDiffusionAdapterPipelineOutput`] or `tuple`:
-            [`~pipelines.stable_diffusion.StableDiffusionAdapterPipelineOutput`] if `return_dict` is True, otherwise a
+            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] or `tuple`:
+            [`~pipelines.stable_diffusion_xl.StableDiffusionXLPipelineOutput`] if `return_dict` is True, otherwise a
             `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+
         # 0. Default height and width to unet
+        height = height or self.default_sample_size * self.vae_scale_factor
+        width = width or self.default_sample_size * self.vae_scale_factor
 
-        height, width = self._default_height_width(height, width, image)
-        device = self._execution_device
-
-        if isinstance(self.adapter, MultiAdapter):
-            adapter_input = []
-
-            for one_image in image:
-                one_image = _preprocess_adapter_image(one_image, height, width)
-                one_image = one_image.to(device=device, dtype=self.adapter.dtype)
-                adapter_input.append(one_image)
-        else:
-            adapter_input = _preprocess_adapter_image(image, height, width)
-            adapter_input = adapter_input.to(device=device, dtype=self.adapter.dtype)
         original_size = original_size or (height, width)
         target_size = target_size or (height, width)
 
@@ -1024,7 +832,6 @@ class StableDiffusionXLAdapterPipeline(
             prompt_2,
             height,
             width,
-            callback_steps,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
@@ -1033,7 +840,11 @@ class StableDiffusionXLAdapterPipeline(
             negative_pooled_prompt_embeds,
         )
 
+        if guidance_scale <= 1.0:
+            raise ValueError("has to use guidance_scale")
+
         self._guidance_scale = guidance_scale
+        self._clip_skip = clip_skip
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1045,7 +856,9 @@ class StableDiffusionXLAdapterPipeline(
 
         device = self._execution_device
 
-        # 3.1 Encode input prompt
+        # 3. Encode input prompt
+        lora_scale = None
+
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -1063,22 +876,24 @@ class StableDiffusionXLAdapterPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
-            clip_skip=clip_skip,
+            lora_scale=lora_scale,
+            clip_skip=self.clip_skip,
         )
 
-        # 3.2 Encode ip_adapter_image
-        if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
-            )
-            if self.do_classifier_free_guidance:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
-
         # 4. Prepare timesteps
-        timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
+        self.scheduler.set_timesteps(num_inference_steps, device=prompt_embeds.device)
 
-        # 5. Prepare latent variables
+        # 5. Prepare sigmas
+        if use_karras_sigmas:
+            sigma_min: float = self.k_diffusion_model.sigmas[0].item()
+            sigma_max: float = self.k_diffusion_model.sigmas[-1].item()
+            sigmas = get_sigmas_karras(n=num_inference_steps, sigma_min=sigma_min, sigma_max=sigma_max)
+            sigmas = sigmas.to(device)
+        else:
+            sigmas = self.scheduler.sigmas
+        sigmas = sigmas.to(prompt_embeds.dtype)
+
+        # 6. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
@@ -1090,34 +905,12 @@ class StableDiffusionXLAdapterPipeline(
             generator,
             latents,
         )
+        latents = latents * sigmas[0]
 
-        # 6.1 Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
-        extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
+        self.k_diffusion_model.sigmas = self.k_diffusion_model.sigmas.to(latents.device)
+        self.k_diffusion_model.log_sigmas = self.k_diffusion_model.log_sigmas.to(latents.device)
 
-        # 6.2 Optionally get Guidance Scale Embedding
-        timestep_cond = None
-        if self.unet.config.time_cond_proj_dim is not None:
-            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
-            timestep_cond = self.get_guidance_scale_embedding(
-                guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
-            ).to(device=device, dtype=latents.dtype)
-
-        # 7. Prepare added time ids & embeddings & adapter features
-        if isinstance(self.adapter, MultiAdapter):
-            adapter_state = self.adapter(adapter_input, adapter_conditioning_scale)
-            for k, v in enumerate(adapter_state):
-                adapter_state[k] = v
-        else:
-            adapter_state = self.adapter(adapter_input)
-            for k, v in enumerate(adapter_state):
-                adapter_state[k] = v * adapter_conditioning_scale
-        if num_images_per_prompt > 1:
-            for k, v in enumerate(adapter_state):
-                adapter_state[k] = v.repeat(num_images_per_prompt, 1, 1, 1)
-        if self.do_classifier_free_guidance:
-            for k, v in enumerate(adapter_state):
-                adapter_state[k] = torch.cat([v] * 2, dim=0)
-
+        # 7. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
         if self.text_encoder_2 is None:
             text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
@@ -1151,66 +944,45 @@ class StableDiffusionXLAdapterPipeline(
         add_text_embeds = add_text_embeds.to(device)
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
-        # 8. Denoising loop
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-        # Apply denoising_end
-        if denoising_end is not None and isinstance(denoising_end, float) and denoising_end > 0 and denoising_end < 1:
-            discrete_timestep_cutoff = int(
-                round(
-                    self.scheduler.config.num_train_timesteps
-                    - (denoising_end * self.scheduler.config.num_train_timesteps)
-                )
+        added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+        # 8. Optionally get Guidance Scale Embedding
+        timestep_cond = None
+        if self.unet.config.time_cond_proj_dim is not None:
+            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+            timestep_cond = self.get_guidance_scale_embedding(
+                guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
+            ).to(device=device, dtype=latents.dtype)
+
+        # 9. Define model function
+        def model_fn(x, t):
+            latent_model_input = torch.cat([x] * 2)
+            t = torch.cat([t] * 2)
+
+            noise_pred = self.k_diffusion_model(
+                latent_model_input,
+                t,
+                cond=prompt_embeds,
+                timestep_cond=timestep_cond,
+                added_cond_kwargs=added_cond_kwargs,
             )
-            num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
-            timesteps = timesteps[:num_inference_steps]
 
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+            return noise_pred
 
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+        # 10. Run k-diffusion solver
+        sampler_kwargs = {}
 
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+        if "noise_sampler" in inspect.signature(self.sampler).parameters:
+            min_sigma, max_sigma = sigmas[sigmas > 0].min(), sigmas.max()
+            noise_sampler = BrownianTreeNoiseSampler(latents, min_sigma, max_sigma, noise_sampler_seed)
+            sampler_kwargs["noise_sampler"] = noise_sampler
 
-                if ip_adapter_image is not None:
-                    added_cond_kwargs["image_embeds"] = image_embeds
+        if "generator" in inspect.signature(self.sampler).parameters:
+            sampler_kwargs["generator"] = generator
 
-                # predict the noise residual
-                if i < int(num_inference_steps * adapter_conditioning_factor):
-                    down_intrablock_additional_residuals = [state.clone() for state in adapter_state]
-                else:
-                    down_intrablock_additional_residuals = None
-
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    timestep_cond=timestep_cond,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    down_intrablock_additional_residuals=down_intrablock_additional_residuals,
-                    added_cond_kwargs=added_cond_kwargs,
-                    return_dict=False,
-                )[0]
-
-                # perform guidance
-                if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
-
-                if self.do_classifier_free_guidance and guidance_rescale > 0.0:
-                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=guidance_rescale)
-
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-
-                # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
-                    progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
+        latents = self.sampler(model_fn, latents, sigmas, **sampler_kwargs)
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
@@ -1227,9 +999,9 @@ class StableDiffusionXLAdapterPipeline(
                 self.vae.to(dtype=torch.float16)
         else:
             image = latents
-            return StableDiffusionXLPipelineOutput(images=image)
 
-        image = self.image_processor.postprocess(image, output_type=output_type)
+        if not output_type == "latent":
+            image = self.image_processor.postprocess(image, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
