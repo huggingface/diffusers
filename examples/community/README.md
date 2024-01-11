@@ -1223,7 +1223,7 @@ The resulting images in order:-
 ![result5](https://huggingface.co/datasets/NagaSaiAbhinay/UnCLIPImageInterpolationSamples/resolve/main/starry_to_flowers_5.png)
 
 ### DDIM Noise Comparative Analysis Pipeline
-#### **Research question: What visual concepts do the diffusion models learn from each noise level during training?**
+#### **Research question: What visual concepts do the diffusion models learn from each noise level during training?**
 The [P2 weighting (CVPR 2022)](https://arxiv.org/abs/2204.00227) paper proposed an approach to answer the above question, which is their second contribution.
 The approach consists of the following steps:
 
@@ -1947,7 +1947,7 @@ output = pipeline(
     canvas_width=352,
     regions=[
         Text2ImageRegion(0, 800, 0, 352, guidance_scale=8,
-            prompt=f"best quality, masterpiece, WLOP, sakimichan, art contest winner on pixiv, 8K, intricate details, wet effects, rain drops, ethereal, mysterious, futuristic, UHD, HDR, cinematic lighting, in a beautiful forest, rainy day, award winning, trending on artstation, beautiful confident cheerful young woman, wearing a futuristic sleeveless dress, ultra beautiful detailed  eyes, hyper-detailed face, complex,  perfect, model,  textured,  chiaroscuro, professional make-up, realistic, figure in frame, "),
+            prompt=f"best quality, masterpiece, WLOP, sakimichan, art contest winner on pixiv, 8K, intricate details, wet effects, rain drops, ethereal, mysterious, futuristic, UHD, HDR, cinematic lighting, in a beautiful forest, rainy day, award winning, trending on artstation, beautiful confident cheerful young woman, wearing a futuristic sleeveless dress, ultra beautiful detailed  eyes, hyper-detailed face, complex,  perfect, model,  textured,  chiaroscuro, professional make-up, realistic, figure in frame, "),
         Image2ImageRegion(352-800, 352, 0, 352, reference_image=iic_image, strength=1.0),
     ],
     num_inference_steps=100,
