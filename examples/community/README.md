@@ -57,6 +57,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
 |   Null-Text Inversion Pipeline  | Implement [Null-text Inversion for Editing Real Images using Guided Diffusion Models](https://arxiv.org/abs/2211.09794) as a pipeline.                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Null-Text Inversion](https://github.com/google/prompt-to-prompt/)      | - |              [Junsheng Luan](https://github.com/Junsheng121) |
 |   Rerender A Video Pipeline                                                                                                    | Implementation of [[SIGGRAPH Asia 2023] Rerender A Video: Zero-Shot Text-Guided Video-to-Video Translation](https://arxiv.org/abs/2306.07954)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Rerender A Video Pipeline](#Rerender_A_Video)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
+| StyleAligned Pipeline                                                                                                    | Implementation of [Style Aligned Image Generation via Shared Attention](https://arxiv.org/abs/2312.02133)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [StyleAligned Pipeline](#stylealigned-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/15X2E0jFPTajUIjS0FzX50OaHsCbP2lQ0/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 |   IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
@@ -3028,7 +3029,9 @@ export_to_gif(result.frames[0], "result.gif")
     <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/eb7d2952-72e4-44fa-b664-077c79b4fc70" alt="gif-2"></td>
   </tr>
 </table>
+
 ### DemoFusion
+
 This pipeline is the official implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973).
 The original repo can be found at [repo](https://github.com/PRIS-CV/DemoFusion).
 - `view_batch_size` (`int`, defaults to 16):
@@ -3273,6 +3276,64 @@ output_frames = pipe(
 
 export_to_video(
     output_frames, "/path/to/video.mp4", 5)
+```
+
+### StyleAligned Pipeline
+
+This pipeline is the implementation of [Style Aligned Image Generation via Shared Attention](https://arxiv.org/abs/2312.02133).
+
+> Large-scale Text-to-Image (T2I) models have rapidly gained prominence across creative fields, generating visually compelling outputs from textual prompts. However, controlling these models to ensure consistent style remains challenging, with existing methods necessitating fine-tuning and manual intervention to disentangle content and style. In this paper, we introduce StyleAligned, a novel technique designed to establish style alignment among a series of generated images. By employing minimal `attention sharing' during the diffusion process, our method maintains style consistency across images within T2I models. This approach allows for the creation of style-consistent images using a reference style through a straightforward inversion operation. Our method's evaluation across diverse styles and text prompts demonstrates high-quality synthesis and fidelity, underscoring its efficacy in achieving consistent style across various inputs.
+
+```python
+from typing import List
+
+import torch
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from PIL import Image
+
+model_id = "a-r-r-o-w/dreamshaper-xl-turbo"
+pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, variant="fp16", custom_pipeline="pipeline_sdxl_style_aligned")
+pipe = pipe.to("cuda")
+
+# Enable memory saving techniques
+pipe.enable_vae_slicing()
+pipe.enable_vae_tiling()
+
+prompt = [
+  "a toy train. macro photo. 3d game asset",
+  "a toy airplane. macro photo. 3d game asset",
+  "a toy bicycle. macro photo. 3d game asset",
+  "a toy car. macro photo. 3d game asset",
+]
+negative_prompt = "low quality, worst quality, "
+
+# Enable StyleAligned
+pipe.enable_style_aligned(
+    share_group_norm=False,
+    share_layer_norm=False,
+    share_attention=True,
+    adain_queries=True,
+    adain_keys=True,
+    adain_values=False,
+    full_attention_share=False,
+    shared_score_scale=1.0,
+    shared_score_shift=0.0,
+    only_self_level=0.0,
+)
+
+# Run inference
+images = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    guidance_scale=2,
+    height=1024,
+    width=1024,
+    num_inference_steps=10,
+    generator=torch.Generator().manual_seed(42),
+).images
+
+# Disable StyleAligned if you do not wish to use it anymore
+pipe.disable_style_aligned()
 ```
 
 ### IP Adapter Face ID
