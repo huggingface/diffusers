@@ -1251,14 +1251,10 @@ class RAVEPipeline(
         width, height = video[0].size
         num_frames = len(video)
 
-        print("len:", len(video), len(control_video))
-
         if apply_inversion_on_grid:
             inversion_video = copy.deepcopy(video)
             inversion_control_video = copy.deepcopy(control_video)
             inversion_width, inversion_height = width, height
-
-        print("invlen:", len(inversion_video), len(inversion_control_video))
 
         inversion_num_frames = len(inversion_video)
 
@@ -1320,7 +1316,6 @@ class RAVEPipeline(
             lora_scale=text_encoder_lora_scale,
             clip_skip=self.clip_skip,
         )
-        print("embeds:", prompt_embeds.shape)
 
         if is_inversion_mode:
             inversion_prompt_embeds, negative_inversion_prompt_embeds = self.encode_prompt(
@@ -1335,7 +1330,6 @@ class RAVEPipeline(
                 lora_scale=text_encoder_lora_scale,
                 clip_skip=self.clip_skip,
             )
-            print(inversion_prompt_embeds.shape, negative_inversion_prompt_embeds.shape)
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
@@ -1344,7 +1338,6 @@ class RAVEPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
             if is_inversion_mode:
                 inversion_prompt_embeds = torch.cat([negative_inversion_prompt_embeds, inversion_prompt_embeds])
-                print("here:", inversion_prompt_embeds.shape)
 
         if ip_adapter_image is not None:
             image_embeds, negative_image_embeds = self.encode_image(ip_adapter_image, device, num_videos_per_prompt)
@@ -1376,7 +1369,6 @@ class RAVEPipeline(
 
             # TODO(a-r-r-o-w): refactor
             if is_inversion_mode:
-                print("inv:", len(inversion_control_video))
                 inversion_control_video = self.prepare_control_image(
                     image=inversion_control_video,
                     width=inversion_width,
@@ -1483,8 +1475,6 @@ class RAVEPipeline(
                 latents.append(current_latent)
             latents = torch.cat(latents, dim=0)
         else:
-            print("this:", num_frames, inversion_num_frames)
-            print("this2:", inversion_video.shape, inversion_control_video.shape, len(inversion_video))
             latents = []
             for i in range(0, inversion_num_frames, vae_batch_size):
                 current_vid = inversion_video[i : i + vae_batch_size]
@@ -1498,19 +1488,15 @@ class RAVEPipeline(
                     generator=generator,
                     is_inversion_mode=is_inversion_mode,
                 )
-                print("loop:", len(current_vid), current_latent.shape)
                 latents.append(current_latent)
             latents = torch.cat(latents, dim=0)
-            print("else:", latents.shape)
 
         if is_inversion_mode:
             # TODO(a-r-r-o-w): refactor denoising loops
             with self.progress_bar(total=num_inversion_steps) as progress_bar:
                 for i, t in enumerate(inversion_timesteps):
                     # expand the latents if we are doing classifier free guidance
-                    print("latentsshape:", latents.shape)
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
-                    print("latentmodelinputshape:", latent_model_input.shape, self.do_classifier_free_guidance)
                     latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
 
                     # controlnet(s) inference
@@ -1520,7 +1506,6 @@ class RAVEPipeline(
                         control_model_input = self.inverse_scheduler.scale_model_input(control_model_input, t)
                         controlnet_prompt_embeds = inversion_prompt_embeds.chunk(2)[1]
                     else:
-                        print("THIS")
                         control_model_input = latent_model_input
                         controlnet_prompt_embeds = inversion_prompt_embeds
 
@@ -1533,9 +1518,6 @@ class RAVEPipeline(
                         if isinstance(controlnet_cond_scale, list):
                             controlnet_cond_scale = controlnet_cond_scale[0]
                         cond_scale = controlnet_cond_scale * inversion_controlnet_keep[i]
-
-                    print(latent_model_input.shape, inversion_prompt_embeds.shape, inversion_video.shape)
-                    print(control_model_input.shape, controlnet_prompt_embeds.shape, inversion_control_video.shape)
 
                     down_block_res_samples, mid_block_res_sample = self.controlnet(
                         control_model_input,
@@ -1582,8 +1564,6 @@ class RAVEPipeline(
                         latents[:1] / self.vae.config.scaling_factor, return_dict=False, generator=generator
                     )[0]
                     imggg = self.image_processor.postprocess(imggg, output_type=output_type)
-                    print(imggg)
-                    # display(imggg[0])
 
                     progress_bar.update()
 
@@ -1616,18 +1596,14 @@ class RAVEPipeline(
                     )[0]
                     video.append(current_frames)
 
-                print("length:", len(video))
                 video = torch.cat(video, dim=0)
                 video = self.image_processor.postprocess(video, output_type=output_type)
                 video = self._convert_video_to_grids(video, grid_size)
-                print("length here:", len(video))
                 video = self.image_processor.preprocess(video, height=height, width=width).to(dtype=torch.float32)
-                print("aftershape:", video.shape)
 
                 latents = []
                 for i in range(0, num_frames, vae_batch_size):
                     current_vid = video[i : i + vae_batch_size]
-                    print("loop current_vid:", current_vid.shape)
                     current_latent = self.prepare_latents(
                         image=current_vid,
                         timestep=latent_timestep,
