@@ -941,7 +941,7 @@ class RAVEPipeline(
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
 
-    def _convert_video_to_grids(self, video, grid_size):
+    def _convert_frames_to_grids(self, video, grid_size):
         num_images_per_grid = grid_size**2
         frame_count = len(video)
         grids = []
@@ -952,6 +952,9 @@ class RAVEPipeline(
             grids.append(current_grid)
 
         return grids
+
+    def _grids_to_frames(self, grids, grid_size):
+        return [frame for grid in grids for frame in image_split(grid, grid_size, grid_size)]
 
     @property
     def guidance_scale(self):
@@ -1348,7 +1351,7 @@ class RAVEPipeline(
 
         width = width or video[0].size[0]
         height = height or video[0].size[1]
-        original_num_frames = len(video)
+        num_video_frames = len(video)
         is_inversion_mode = inversion_prompt is not None or inversion_prompt_embeds is not None
 
         # Hardcode restriction for the moment
@@ -1369,14 +1372,14 @@ class RAVEPipeline(
             inversion_control_video = copy.deepcopy(control_video)
             inversion_width, inversion_height = width, height
 
-        video = self._convert_video_to_grids(video, grid_size)
-        control_video = self._convert_video_to_grids(control_video, grid_size)
-        width, height = video[0].size
-        num_frames = len(video)
+        grids = self._convert_frames_to_grids(video, grid_size)
+        control_grids = self._convert_frames_to_grids(control_video, grid_size)
+        width, height = grids[0].size
+        num_grid_frames = len(grids)
 
         if apply_inversion_on_grid:
-            inversion_video = copy.deepcopy(video)
-            inversion_control_video = copy.deepcopy(control_video)
+            inversion_video = copy.deepcopy(grids)
+            inversion_control_video = copy.deepcopy(control_grids)
             inversion_width, inversion_height = width, height
 
         inversion_num_frames = len(inversion_video)
@@ -1431,7 +1434,7 @@ class RAVEPipeline(
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt=prompt,
             device=device,
-            num_images_per_prompt=num_frames,
+            num_images_per_prompt=num_grid_frames,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
@@ -1468,7 +1471,7 @@ class RAVEPipeline(
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 4. Prepare image
-        video = self.image_processor.preprocess(video, height=height, width=width).to(dtype=torch.float32)
+        grids = self.image_processor.preprocess(grids, height=height, width=width).to(dtype=torch.float32)
 
         # TODO(a-r-r-o-w): refactor
         if is_inversion_mode:
@@ -1478,8 +1481,8 @@ class RAVEPipeline(
 
         # 5. Prepare controlnet_conditioning_image
         if isinstance(controlnet, ControlNetModel):
-            control_video = self.prepare_control_image(
-                image=control_video,
+            control_grids = self.prepare_control_image(
+                image=control_grids,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_videos_per_prompt,
@@ -1504,11 +1507,11 @@ class RAVEPipeline(
                     guess_mode=guess_mode,
                 )
         elif isinstance(controlnet, MultiControlNetModel):
-            control_videos = []
+            control_grids_list = []
 
-            for control_video_ in control_video:
-                control_video_ = self.prepare_control_image(
-                    image=control_video_,
+            for control_grid_ in control_grids:
+                control_grid_ = self.prepare_control_image(
+                    image=control_grid_,
                     width=width,
                     height=height,
                     batch_size=batch_size * num_videos_per_prompt,
@@ -1519,17 +1522,17 @@ class RAVEPipeline(
                     guess_mode=guess_mode,
                 )
 
-                control_videos.append(control_video_)
+                control_grids_list.append(control_grid_)
 
-            control_video = control_videos
+            control_grids = control_grids_list
 
             # TODO(a-r-r-o-w): refactor
             if is_inversion_mode:
                 inversion_control_videos = []
 
-                for control_video_ in inversion_control_video:
-                    control_video_ = self.prepare_control_image(
-                        image=control_video_,
+                for control_grid_ in inversion_control_video:
+                    control_grid_ = self.prepare_control_image(
+                        image=control_grid_,
                         width=inversion_width,
                         height=inversion_height,
                         batch_size=batch_size * num_videos_per_prompt,
@@ -1540,7 +1543,7 @@ class RAVEPipeline(
                         guess_mode=guess_mode,
                     )
 
-                    inversion_control_videos.append(control_video_)
+                    inversion_control_videos.append(control_grid_)
 
                 inversion_control_video = inversion_control_videos
         else:
@@ -1583,10 +1586,10 @@ class RAVEPipeline(
         # 6. Prepare latent variables
         if not is_inversion_mode:
             latents = []
-            for i in range(0, num_frames, vae_batch_size):
-                current_vid = video[i : i + vae_batch_size]
+            for i in range(0, num_grid_frames, vae_batch_size):
+                current_grid_batch = grids[i : i + vae_batch_size]
                 current_latent = self.prepare_latents(
-                    image=current_vid,
+                    image=current_grid_batch,
                     timestep=latent_timestep,
                     batch_size=batch_size,
                     num_images_per_prompt=num_videos_per_prompt,
@@ -1630,7 +1633,6 @@ class RAVEPipeline(
                 scheduler=self.inverse_scheduler,
                 prompt_embeds=inversion_prompt_embeds,
                 negative_prompt_embeds=negative_inversion_prompt_embeds,
-                latents=latents,
                 control_video=inversion_control_video,
                 use_shuffling=False,
                 num_frames=inversion_num_frames,
@@ -1646,23 +1648,23 @@ class RAVEPipeline(
             )
 
             if not apply_inversion_on_grid:
-                video = []
+                inversion_video = []
 
                 for i in range(0, inversion_num_frames, vae_batch_size):
                     current_latent = latents[i : i + vae_batch_size]
                     current_frames = self.vae.decode(
                         current_latent / self.vae.config.scaling_factor, return_dict=False, generator=generator
                     )[0]
-                    video.append(current_frames)
+                    inversion_video.append(current_frames)
 
-                video = torch.cat(video, dim=0)
-                video = self.image_processor.postprocess(video, output_type=output_type)
-                video = self._convert_video_to_grids(video, grid_size)
-                video = self.image_processor.preprocess(video, height=height, width=width).to(dtype=torch.float32)
+                inversion_video = torch.cat(inversion_video, dim=0)
+                inversion_video = self.image_processor.postprocess(inversion_video, output_type=output_type)
+                grids = self._convert_frames_to_grids(inversion_video, grid_size)
+                grids = self.image_processor.preprocess(grids, height=height, width=width).to(dtype=torch.float32)
 
                 latents = []
-                for i in range(0, num_frames, vae_batch_size):
-                    current_vid = video[i : i + vae_batch_size]
+                for i in range(0, num_grid_frames, vae_batch_size):
+                    current_vid = grids[i : i + vae_batch_size]
                     current_latent = self.prepare_latents(
                         image=current_vid,
                         timestep=latent_timestep,
@@ -1676,15 +1678,17 @@ class RAVEPipeline(
                     latents.append(current_latent)
                 latents = torch.cat(latents, dim=0)
 
+        common_denoise_kwargs["latents"] = latents
+
         # 8. Denoising loop
-        indices = torch.arange(original_num_frames)
-        latents, control_video, indices = self._denoise_loop(
+        indices = torch.arange(num_video_frames)
+        latents, control_grids, indices = self._denoise_loop(
             scheduler=self.scheduler,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            control_video=control_video,
+            control_video=control_grids,
             use_shuffling=use_shuffling,
-            num_frames=original_num_frames,
+            num_frames=num_video_frames,
             indices=indices,
             timesteps=timesteps,
             num_inference_steps=num_inference_steps,
@@ -1706,20 +1710,21 @@ class RAVEPipeline(
         if output_type == "latent":
             return RAVEPipelineOutput(frames=latents) if return_dict else (latents,)
 
-        video = []
-        for i in range(0, num_frames, vae_batch_size):
+        grids = []
+
+        for i in range(0, num_grid_frames, vae_batch_size):
             current_latent = latents[i : i + vae_batch_size]
             current_frames = self.vae.decode(
                 current_latent / self.vae.config.scaling_factor, return_dict=False, generator=generator
             )[0]
-            video.append(current_frames)
-        video = torch.cat(video, dim=0)
+            grids.append(current_frames)
 
-        video = self.image_processor.postprocess(video, output_type=output_type)
-        shuffled_video = [frame for grid in video for frame in image_split(grid, grid_size, grid_size)]
-        shuffled_video = shuffled_video[:original_num_frames]
+        grids = torch.cat(grids, dim=0)
+        grids = self.image_processor.postprocess(grids, output_type=output_type)
 
-        video = [shuffled_video[indices[i]] for i in range(original_num_frames)]
+        shuffled_video = self._grids_to_frames(grids, grid_size)
+        shuffled_video = shuffled_video[:num_video_frames]
+        video = [shuffled_video[indices[i]] for i in range(num_video_frames)]
 
         # Offload all models
         self.maybe_free_model_hooks()
