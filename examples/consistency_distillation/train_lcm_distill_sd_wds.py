@@ -60,6 +60,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import resolve_interpolation_mode
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -70,7 +71,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.25.0.dev0")
+check_min_version("0.26.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -147,6 +148,7 @@ class SDText2ImageDataset:
         global_batch_size: int,
         num_workers: int,
         resolution: int = 512,
+        interpolation_type: str = "bilinear",
         shuffle_buffer_size: int = 1000,
         pin_memory: bool = False,
         persistent_workers: bool = False,
@@ -156,10 +158,12 @@ class SDText2ImageDataset:
             # flatten list using itertools
             train_shards_path_or_url = list(itertools.chain.from_iterable(train_shards_path_or_url))
 
+        interpolation_mode = resolve_interpolation_mode(interpolation_type)
+
         def transform(example):
             # resize image
             image = example["image"]
-            image = TF.resize(image, resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+            image = TF.resize(image, resolution, interpolation=interpolation_mode)
 
             # get crop coordinates and crop image
             c_top, c_left, _, _ = transforms.RandomCrop.get_params(image, output_size=(resolution, resolution))
@@ -330,8 +334,9 @@ def append_dims(x, target_dims):
 
 # From LCMScheduler.get_scalings_for_boundary_condition_discrete
 def scalings_for_boundary_conditions(timestep, sigma_data=0.5, timestep_scaling=10.0):
-    c_skip = sigma_data**2 / ((timestep / 0.1) ** 2 + sigma_data**2)
-    c_out = (timestep / 0.1) / ((timestep / 0.1) ** 2 + sigma_data**2) ** 0.5
+    scaled_timestep = timestep_scaling * timestep
+    c_skip = sigma_data**2 / (scaled_timestep**2 + sigma_data**2)
+    c_out = scaled_timestep / (scaled_timestep**2 + sigma_data**2) ** 0.5
     return c_skip, c_out
 
 
@@ -550,6 +555,15 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--interpolation_type",
+        type=str,
+        default="bilinear",
+        help=(
+            "The interpolation function used when resizing images to the desired resolution. Choose between `bilinear`,"
+            " `bicubic`, `box`, `nearest`, `nearest_exact`, `hamming`, and `lanczos`."
+        ),
+    )
+    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -688,6 +702,26 @@ def parse_args():
         help=(
             "The dimension of the guidance scale embedding in the U-Net, which will be used if the teacher U-Net"
             " does not have `time_cond_proj_dim` set."
+        ),
+    )
+    parser.add_argument(
+        "--vae_encode_batch_size",
+        type=int,
+        default=32,
+        required=False,
+        help=(
+            "The batch size used when encoding (and decoding) images to latents (and vice versa) using the VAE."
+            " Encoding or decoding the whole batch at once may run into OOM issues."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_scaling_factor",
+        type=float,
+        default=10.0,
+        help=(
+            "The multiplicative timestep scaling factor used when calculating the boundary scalings for LCM. The"
+            " higher the scaling is, the lower the approximation error, but the default value of 10.0 should typically"
+            " suffice."
         ),
     )
     # ----Exponential Moving Average (EMA)----
@@ -1034,6 +1068,7 @@ def main(args):
         global_batch_size=args.train_batch_size * accelerator.num_processes,
         num_workers=args.dataloader_num_workers,
         resolution=args.resolution,
+        interpolation_type=args.interpolation_type,
         shuffle_buffer_size=1000,
         pin_memory=True,
         persistent_workers=True,
@@ -1145,10 +1180,10 @@ def main(args):
                 if vae.dtype != weight_dtype:
                     vae.to(dtype=weight_dtype)
 
-                # encode pixel values with batch size of at most 32
+                # encode pixel values with batch size of at most args.vae_encode_batch_size
                 latents = []
-                for i in range(0, pixel_values.shape[0], 32):
-                    latents.append(vae.encode(pixel_values[i : i + 32]).latent_dist.sample())
+                for i in range(0, pixel_values.shape[0], args.vae_encode_batch_size):
+                    latents.append(vae.encode(pixel_values[i : i + args.vae_encode_batch_size]).latent_dist.sample())
                 latents = torch.cat(latents, dim=0)
 
                 latents = latents * vae.config.scaling_factor
@@ -1164,9 +1199,13 @@ def main(args):
                 timesteps = torch.where(timesteps < 0, torch.zeros_like(timesteps), timesteps)
 
                 # 3. Get boundary scalings for start_timesteps and (end) timesteps.
-                c_skip_start, c_out_start = scalings_for_boundary_conditions(start_timesteps)
+                c_skip_start, c_out_start = scalings_for_boundary_conditions(
+                    start_timesteps, timestep_scaling=args.timestep_scaling_factor
+                )
                 c_skip_start, c_out_start = [append_dims(x, latents.ndim) for x in [c_skip_start, c_out_start]]
-                c_skip, c_out = scalings_for_boundary_conditions(timesteps)
+                c_skip, c_out = scalings_for_boundary_conditions(
+                    timesteps, timestep_scaling=args.timestep_scaling_factor
+                )
                 c_skip, c_out = [append_dims(x, latents.ndim) for x in [c_skip, c_out]]
 
                 # 4. Sample noise from the prior and add it to the latents according to the noise magnitude at each
