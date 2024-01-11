@@ -237,7 +237,18 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         num_attention_heads = num_attention_heads or attention_head_dim
 
         # Check inputs
-        self._check_config(down_block_types, up_block_types, only_cross_attention, block_out_channels, layers_per_block, cross_attention_dim, transformer_layers_per_block, reverse_transformer_layers_per_block, attention_head_dim, num_attention_heads)
+        self._check_config(
+            down_block_types,
+            up_block_types,
+            only_cross_attention,
+            block_out_channels,
+            layers_per_block,
+            cross_attention_dim,
+            transformer_layers_per_block,
+            reverse_transformer_layers_per_block,
+            attention_head_dim,
+            num_attention_heads,
+        )
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
@@ -246,14 +257,41 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         )
 
         # time
-        time_embed_dim, timestep_input_dim = self._set_time_embed_layer(flip_sin_to_cos, freq_shift, block_out_channels, act_fn, time_embedding_type, time_embedding_dim, timestep_post_act, time_cond_proj_dim)
+        time_embed_dim, timestep_input_dim = self._set_time_proj(
+            flip_sin_to_cos, freq_shift, block_out_channels, time_embedding_type, time_embedding_dim
+        )
+
+        self.time_embedding = TimestepEmbedding(
+            timestep_input_dim,
+            time_embed_dim,
+            act_fn=act_fn,
+            post_act_fn=timestep_post_act,
+            cond_proj_dim=time_cond_proj_dim,
+        )
 
         self._set_encoder_hid_proj(cross_attention_dim, encoder_hid_dim, encoder_hid_dim_type)
 
         # class embedding
-        self._set_class_embeder(act_fn, class_embed_type, num_class_embeds, projection_class_embeddings_input_dim, time_embed_dim, timestep_input_dim)
+        self._set_class_embedding(
+            act_fn,
+            class_embed_type,
+            num_class_embeds,
+            projection_class_embeddings_input_dim,
+            time_embed_dim,
+            timestep_input_dim,
+        )
 
-        self._set_add_embeder(flip_sin_to_cos, freq_shift, cross_attention_dim, encoder_hid_dim, addition_embed_type, addition_time_embed_dim, projection_class_embeddings_input_dim, addition_embed_type_num_heads, time_embed_dim)
+        self._set_add_embedding(
+            flip_sin_to_cos,
+            freq_shift,
+            cross_attention_dim,
+            encoder_hid_dim,
+            addition_embed_type,
+            addition_time_embed_dim,
+            projection_class_embeddings_input_dim,
+            addition_embed_type_num_heads,
+            time_embed_dim,
+        )
 
         if time_embedding_act_fn is None:
             self.time_embed_act = None
@@ -332,7 +370,28 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             self.down_blocks.append(down_block)
 
         # mid
-        self.mid_block = get_mid_block(mid_block_type, block_out_channels, mid_block_scale_factor, dropout, act_fn, norm_num_groups, norm_eps, cross_attention_dim, transformer_layers_per_block, attention_head_dim, num_attention_heads, dual_cross_attention, use_linear_projection, upcast_attention, resnet_time_scale_shift, resnet_skip_time_act, attention_type, mid_block_only_cross_attention, cross_attention_norm, blocks_time_embed_dim)
+        self.mid_block = get_mid_block(
+            mid_block_type,
+            temb_channels=blocks_time_embed_dim,
+            in_channels=block_out_channels[-1],
+            resnet_eps=norm_eps,
+            resnet_act_fn=act_fn,
+            resnet_groups=norm_num_groups,
+            output_scale_factor=mid_block_scale_factor,
+            transformer_layers_per_block=transformer_layers_per_block[-1],
+            num_attention_heads=num_attention_heads[-1],
+            cross_attention_dim=cross_attention_dim[-1],
+            dual_cross_attention=dual_cross_attention,
+            use_linear_projection=use_linear_projection,
+            mid_block_only_cross_attention=mid_block_only_cross_attention,
+            upcast_attention=upcast_attention,
+            resnet_time_scale_shift=resnet_time_scale_shift,
+            attention_type=attention_type,
+            resnet_skip_time_act=resnet_skip_time_act,
+            cross_attention_norm=cross_attention_norm,
+            attention_head_dim=attention_head_dim[-1],
+            dropout=dropout,
+        )
 
         # count how many layers upsample the images
         self.num_upsamplers = 0
@@ -411,7 +470,19 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
 
         self._set_pos_net_if_use_gligen(cross_attention_dim, attention_type)
 
-    def _check_config(self, down_block_types, up_block_types, only_cross_attention, block_out_channels, layers_per_block, cross_attention_dim, transformer_layers_per_block, reverse_transformer_layers_per_block, attention_head_dim, num_attention_heads):
+    def _check_config(
+        self,
+        down_block_types,
+        up_block_types,
+        only_cross_attention,
+        block_out_channels,
+        layers_per_block,
+        cross_attention_dim,
+        transformer_layers_per_block,
+        reverse_transformer_layers_per_block,
+        attention_head_dim,
+        num_attention_heads,
+    ):
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
                 f"Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`: {down_block_types}. `up_block_types`: {up_block_types}."
@@ -451,7 +522,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 if isinstance(layer_number_per_block, list):
                     raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
 
-    def _set_time_embed_layer(self, flip_sin_to_cos, freq_shift, block_out_channels, act_fn, time_embedding_type, time_embedding_dim, timestep_post_act, time_cond_proj_dim):
+    def _set_time_proj(self, flip_sin_to_cos, freq_shift, block_out_channels, time_embedding_type, time_embedding_dim):
         if time_embedding_type == "fourier":
             time_embed_dim = time_embedding_dim or block_out_channels[0] * 2
             if time_embed_dim % 2 != 0:
@@ -470,14 +541,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 f"{time_embedding_type} does not exist. Please make sure to use one of `fourier` or `positional`."
             )
 
-        self.time_embedding = TimestepEmbedding(
-            timestep_input_dim,
-            time_embed_dim,
-            act_fn=act_fn,
-            post_act_fn=timestep_post_act,
-            cond_proj_dim=time_cond_proj_dim,
-        )
-        
         return time_embed_dim, timestep_input_dim
 
     def _set_encoder_hid_proj(self, cross_attention_dim, encoder_hid_dim, encoder_hid_dim_type):
@@ -515,7 +578,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         else:
             self.encoder_hid_proj = None
 
-    def _set_class_embeder(self, act_fn, class_embed_type, num_class_embeds, projection_class_embeddings_input_dim, time_embed_dim, timestep_input_dim):
+    def _set_class_embedding(
+        self,
+        act_fn,
+        class_embed_type,
+        num_class_embeds,
+        projection_class_embeddings_input_dim,
+        time_embed_dim,
+        timestep_input_dim,
+    ):
         if class_embed_type is None and num_class_embeds is not None:
             self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
         elif class_embed_type == "timestep":
@@ -544,7 +615,18 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         else:
             self.class_embedding = None
 
-    def _set_add_embeder(self, flip_sin_to_cos, freq_shift, cross_attention_dim, encoder_hid_dim, addition_embed_type, addition_time_embed_dim, projection_class_embeddings_input_dim, addition_embed_type_num_heads, time_embed_dim):
+    def _set_add_embedding(
+        self,
+        flip_sin_to_cos,
+        freq_shift,
+        cross_attention_dim,
+        encoder_hid_dim,
+        addition_embed_type,
+        addition_time_embed_dim,
+        projection_class_embeddings_input_dim,
+        addition_embed_type_num_heads,
+        time_embed_dim,
+    ):
         if addition_embed_type == "text":
             if encoder_hid_dim is not None:
                 text_time_embedding_from_dim = encoder_hid_dim
