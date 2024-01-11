@@ -1173,7 +1173,7 @@ class RAVEPipeline(
                         step_idx = i // getattr(scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
-        return latents
+        return latents, control_video, indices
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -1737,7 +1737,7 @@ class RAVEPipeline(
 
         # 8. Denoising loop
         indices = torch.arange(original_num_frames)
-        latents = self._denoise_loop(
+        latents, control_video, indices = self._denoise_loop(
             scheduler=self.scheduler,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
