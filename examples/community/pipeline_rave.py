@@ -38,7 +38,7 @@ from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from diffusers.schedulers import KarrasDiffusionSchedulers
+from diffusers.schedulers import DDIMInverseScheduler, KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
     BaseOutput,
@@ -153,28 +153,49 @@ def retrieve_latents(
         raise AttributeError("Could not access latents of provided encoder_output")
 
 
-def prepare_image(image):
-    if isinstance(image, torch.Tensor):
-        # Batch single image
-        if image.ndim == 3:
-            image = image.unsqueeze(0)
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    timesteps: Optional[List[int]] = None,
+    **kwargs,
+):
+    """
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
 
-        image = image.to(dtype=torch.float32)
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used,
+            `timesteps` must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`List[int]`, *optional*):
+                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
+                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
+                must be `None`.
+
+    Returns:
+        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
     else:
-        # preprocess image
-        if isinstance(image, (Image.Image, np.ndarray)):
-            image = [image]
-
-        if isinstance(image, list) and isinstance(image[0], Image.Image):
-            image = [np.array(i.convert("RGB"))[None, :] for i in image]
-            image = np.concatenate(image, axis=0)
-        elif isinstance(image, list) and isinstance(image[0], np.ndarray):
-            image = np.concatenate([i[None, :] for i in image], axis=0)
-
-        image = image.transpose(0, 3, 1, 2)
-        image = torch.from_numpy(image).to(dtype=torch.float32) / 127.5 - 1.0
-
-    return image
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
 
 
 @dataclass
@@ -237,7 +258,8 @@ class RAVEPipeline(
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        image_encoder: CLIPVisionModelWithProjection = None,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
+        inverse_scheduler: Optional[KarrasDiffusionSchedulers] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -261,6 +283,9 @@ class RAVEPipeline(
         if isinstance(controlnet, (list, tuple)):
             controlnet = MultiControlNetModel(controlnet)
 
+        if inverse_scheduler is None:
+            inverse_scheduler = DDIMInverseScheduler.from_config(scheduler.config)
+
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
@@ -271,6 +296,7 @@ class RAVEPipeline(
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
+            inverse_scheduler=inverse_scheduler,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
@@ -816,8 +842,17 @@ class RAVEPipeline(
 
         return timesteps, num_inference_steps - t_start
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.prepare_latents
-    def prepare_latents(self, image, timestep, batch_size, num_images_per_prompt, dtype, device, generator=None):
+    def prepare_latents(
+        self,
+        image,
+        timestep,
+        batch_size,
+        num_images_per_prompt,
+        dtype,
+        device,
+        generator=None,
+        is_inversion_mode=False,
+    ):
         if not isinstance(image, (torch.Tensor, Image.Image, list)):
             raise ValueError(
                 f"`image` has to be of type `torch.Tensor`, `PIL.Image.Image` or list but is {type(image)}"
@@ -866,13 +901,15 @@ class RAVEPipeline(
         else:
             init_latents = torch.cat([init_latents], dim=0)
 
-        shape = init_latents.shape
-        noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        # Only add noise when we are not using inversion
+        if not is_inversion_mode:
+            shape = init_latents.shape
+            noise = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
 
-        # get latents
-        init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+            # get latents
+            init_latents = self.scheduler.add_noise(init_latents, noise, timestep)
+
         latents = init_latents
-
         return latents
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
@@ -1033,12 +1070,10 @@ class RAVEPipeline(
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
         negative_prompt: Optional[Union[str, List[str]]] = None,
-        inversion_prompt: Optional[Union[str, List[str]]] = None,
-        negative_inversion_prompt: Optional[Union[str, List[str]]] = None,
         num_videos_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
+        # latents: Optional[torch.FloatTensor] = None, # TODO(a-r-r-o-w): Add support later
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         inversion_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -1058,6 +1093,9 @@ class RAVEPipeline(
         grid_size: int = 2,
         use_shuffling: bool = True,
         vae_batch_size: int = 4,
+        inversion_prompt: Optional[Union[str, List[str]]] = None,
+        negative_inversion_prompt: Optional[Union[str, List[str]]] = None,
+        inversion_num_inference_steps: int = 50,
         **kwargs,
     ):
         r"""
@@ -1186,6 +1224,7 @@ class RAVEPipeline(
         width = width or video[0].size[0]
         height = height or video[0].size[1]
         original_num_frames = len(video)
+        is_inversion_mode = inversion_prompt is not None or inversion_prompt_embeds is not None
 
         # Hardcode restriction for the moment
         num_videos_per_prompt = 1
@@ -1201,6 +1240,11 @@ class RAVEPipeline(
         video = self._convert_video_to_grids(video, grid_size)
         control_video = self._convert_video_to_grids(control_video, grid_size)
         width, height = video[0].size
+        num_frames = len(video)
+
+        # TODO(a-r-r-o-w): find a better way to handle this. In inversion_mode, you want to process all inference steps
+        if is_inversion_mode:
+            strength = 1
 
         # 1. Check inputs. Raise error if not correct
         # self.check_inputs(
@@ -1244,8 +1288,6 @@ class RAVEPipeline(
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
-        is_inversion_mode = inversion_prompt is not None or inversion_prompt_embeds is not None
-        num_frames = len(video)
 
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt=prompt,
@@ -1271,12 +1313,16 @@ class RAVEPipeline(
                 lora_scale=text_encoder_lora_scale,
                 clip_skip=self.clip_skip,
             )
+            print(inversion_prompt_embeds.shape, negative_inversion_prompt_embeds.shape)
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
+            if is_inversion_mode:
+                inversion_prompt_embeds = torch.cat([negative_inversion_prompt_embeds, inversion_prompt_embeds])
+                print("here:", inversion_prompt_embeds.shape)
 
         if ip_adapter_image is not None:
             image_embeds, negative_image_embeds = self.encode_image(ip_adapter_image, device, num_videos_per_prompt)
@@ -1327,11 +1373,16 @@ class RAVEPipeline(
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
         self._num_timesteps = len(timesteps)
 
+        inversion_timesteps, inversion_num_inference_steps = retrieve_timesteps(
+            self.inverse_scheduler, inversion_num_inference_steps, device
+        )
+
         # 6. Prepare latent variables
         latents = []
 
         for i in range(0, num_frames, vae_batch_size):
             current_vid = video[i : i + vae_batch_size]
+            print(current_vid.shape)
             current_latent = self.prepare_latents(
                 image=current_vid,
                 timestep=latent_timestep,
@@ -1340,6 +1391,7 @@ class RAVEPipeline(
                 dtype=prompt_embeds.dtype,
                 device=device,
                 generator=generator,
+                is_inversion_mode=is_inversion_mode,
             )
             latents.append(current_latent)
 
@@ -1359,6 +1411,93 @@ class RAVEPipeline(
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
+
+        if is_inversion_mode:
+            with self.progress_bar(total=inversion_num_inference_steps) as progress_bar:
+                for i, t in enumerate(inversion_timesteps):
+                    # expand the latents if we are doing classifier free guidance
+                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                    latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
+
+                    # controlnet(s) inference
+                    if guess_mode and self.do_classifier_free_guidance:
+                        # Infer ControlNet only for the conditional batch.
+                        control_model_input = latents
+                        control_model_input = self.inverse_scheduler.scale_model_input(control_model_input, t)
+                        controlnet_prompt_embeds = inversion_prompt_embeds.chunk(2)[1]
+                    else:
+                        control_model_input = latent_model_input
+                        controlnet_prompt_embeds = inversion_prompt_embeds
+
+                    if isinstance(controlnet_keep[i], list):
+                        cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                    else:
+                        controlnet_cond_scale = controlnet_conditioning_scale
+                        if isinstance(controlnet_cond_scale, list):
+                            controlnet_cond_scale = controlnet_cond_scale[0]
+                        cond_scale = controlnet_cond_scale * controlnet_keep[i]
+
+                    down_block_res_samples, mid_block_res_sample = self.controlnet(
+                        control_model_input,
+                        t,
+                        encoder_hidden_states=controlnet_prompt_embeds,
+                        controlnet_cond=control_video,
+                        conditioning_scale=cond_scale,
+                        guess_mode=guess_mode,
+                        return_dict=False,
+                    )
+
+                    if guess_mode and self.do_classifier_free_guidance:
+                        # Infered ControlNet only for the conditional batch.
+                        # To apply the output of ControlNet to both the unconditional and conditional batches,
+                        # add 0 to the unconditional batch to keep it unchanged.
+                        down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
+                        mid_block_res_sample = torch.cat(
+                            [torch.zeros_like(mid_block_res_sample), mid_block_res_sample]
+                        )
+
+                    # predict the noise residual
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=inversion_prompt_embeds,
+                        cross_attention_kwargs=self.cross_attention_kwargs,
+                        down_block_additional_residuals=down_block_res_samples,
+                        mid_block_additional_residual=mid_block_res_sample,
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=False,
+                    )[0]
+
+                    # perform guidance
+                    if self.do_classifier_free_guidance:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
+
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents = self.inverse_scheduler.step(
+                        noise_pred, t, latents, **extra_step_kwargs, return_dict=False
+                    )[0]
+
+                    progress_bar.update()
+
+                    # TODO(a-r-r-o-w): Think about how to use this properly since inversion shouldn't call same
+                    #                  callbacks as the ones used in actual generation
+                    # if callback_on_step_end is not None:
+                    #     callback_kwargs = {}
+                    #     for k in callback_on_step_end_tensor_inputs:
+                    #         callback_kwargs[k] = locals()[k]
+                    #     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    #     latents = callback_outputs.pop("latents", latents)
+                    #     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    #     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+
+                    # # call the callback, if provided
+                    # if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.inverse_scheduler.order == 0):
+                    #     progress_bar.update()
+                    #     if callback is not None and i % callback_steps == 0:
+                    #         step_idx = i // getattr(self.scheduler, "order", 1)
+                    #         callback(step_idx, t, latents)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
