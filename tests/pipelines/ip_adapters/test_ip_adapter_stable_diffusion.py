@@ -27,9 +27,10 @@ from diffusers import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
+    StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLInpaintPipeline,
-    StableDiffusionXLPipeline,
+    StableDiffusionXLPipeline, ControlNetModel,
 )
 from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
 from diffusers.utils import load_image
@@ -39,7 +40,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-
 
 enable_full_determinism()
 
@@ -62,7 +62,8 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         image_processor = CLIPImageProcessor.from_pretrained(repo_id)
         return image_processor
 
-    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False):
+    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False,
+                         for_controlnet_image_to_image=False):
         image = load_image(
             "https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png"
         )
@@ -86,6 +87,18 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
                 ip_image = ip_image.resize((1024, 1024))
 
             input_kwargs.update({"image": image, "ip_adapter_image": ip_image})
+
+        elif for_controlnet_image_to_image:
+            image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
+            control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
+            ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
+
+            if for_sdxl:
+                image = image.resize((1024, 1024))
+                control_image = control_image.resize((1024, 1024))
+                ip_image = ip_image.resize((1024, 1024))
+
+            input_kwargs.update({"image": image, "ip_adapter_image": ip_image, "control_image": control_image})
 
         elif for_inpainting:
             image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/inpaint_image.png")
@@ -385,5 +398,33 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         image_slice.tolist()
 
         expected_slice = np.array([0.1398, 0.1476, 0.1407, 0.1442, 0.1470, 0.1480, 0.1449, 0.1481, 0.1494])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+    def test_controlnet_image_to_image(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
+        pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype,
+            controlnet=controlnet
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+
+        inputs = self.get_dummy_inputs(for_controlnet_image_to_image=True)
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.2253, 0.2251, 0.2219, 0.2312, 0.2236, 0.2434, 0.2275, 0.2575, 0.2805])
+
+        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
+
+        inputs = self.get_dummy_inputs(for_controlnet_image_to_image=True)
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.3550, 0.2600, 0.2520, 0.2412, 0.1870, 0.3831, 0.1453, 0.1880, 0.5371])
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
