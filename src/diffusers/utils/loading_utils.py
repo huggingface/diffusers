@@ -1,12 +1,14 @@
 import os
-from typing import Union, Callable
+from typing import Callable, Union
 
-import requests
 import PIL.Image
 import PIL.ImageOps
+import requests
 
 
-def load_image(image: Union[str, PIL.Image.Image], convert_method: Callable[[PIL.Image.Image], PIL.Image.Image] = None) -> PIL.Image.Image:
+def load_image(
+    image: Union[str, PIL.Image.Image], convert_method: Callable[[PIL.Image.Image], PIL.Image.Image] = None
+) -> PIL.Image.Image:
     """
     Loads `image` to a PIL Image.
 
@@ -40,6 +42,6 @@ def load_image(image: Union[str, PIL.Image.Image], convert_method: Callable[[PIL
     if convert_method is not None:
         image = convert_method(image)
     else:
-        image = image.convert('RGB')
+        image = image.convert("RGB")
 
     return image
