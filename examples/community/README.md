@@ -58,6 +58,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   Null-Text Inversion Pipeline  | Implement [Null-text Inversion for Editing Real Images using Guided Diffusion Models](https://arxiv.org/abs/2211.09794) as a pipeline.                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Null-Text Inversion](https://github.com/google/prompt-to-prompt/)      | - |              [Junsheng Luan](https://github.com/Junsheng121) |
 |   Rerender A Video Pipeline                                                                                                    | Implementation of [[SIGGRAPH Asia 2023] Rerender A Video: Zero-Shot Text-Guided Video-to-Video Translation](https://arxiv.org/abs/2306.07954)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Rerender A Video Pipeline](#Rerender_A_Video)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 | StyleAligned Pipeline                                                                                                    | Implementation of [Style Aligned Image Generation via Shared Attention](https://arxiv.org/abs/2312.02133)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [StyleAligned Pipeline](#stylealigned-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/15X2E0jFPTajUIjS0FzX50OaHsCbP2lQ0/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
+| RAVE Pipeline                                                                                                    | Implementation of [RAVE: Randomized Noise Shuffling for Fast and Consistent Video Editing with Diffusion Models](https://arxiv.org/abs/2312.04524)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [RAVE Pipeline](#rave-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1yhRG6md-QXS1YaRC1CdpL_q0ahvPyflk/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -3333,4 +3334,51 @@ images = pipe(
 
 # Disable StyleAligned if you do not wish to use it anymore
 pipe.disable_style_aligned()
+```
+
+### RAVE Pipeline
+
+This pipeline is the implementation of [RAVE: Randomized Noise Shuffling for Fast and Consistent Video Editing with Diffusion Models](https://arxiv.org/abs/2312.04524). Checkout [this](https://github.com/huggingface/diffusers/pull/6490) PR for results.
+
+```python
+import imageio
+import torch
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.utils import export_to_gif
+from PIL import Image
+
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16)
+model_id = "runwayml/stable-diffusion-v1-5"
+pipe = DiffusionPipeline.from_pretrained(model_id, controlnet=controlnet, torch_dtype=torch.float16, custom_pipeline="pipeline_rave")
+pipe = pipe.to("cuda")
+
+def load_video(file_path):
+    images = []
+    vid = imageio.get_reader(file_path)
+    for i, frame in enumerate(vid):
+        pil_image = Image.fromarray(frame)
+        images.append(pil_image)
+    return images
+
+video = load_video("racoon-playing-instrument.gif")
+
+output = pipe(
+    video=video,
+    controlnet_processor_id="depth_midas",
+    prompt="A panda playing a guitar",
+    negative_prompt="low quality, worst quality",
+    height=512,
+    width=512,
+    guidance_scale=8,
+    num_inference_steps=50,
+    
+    # RAVE parameters
+    grid_size=2,
+    use_shuffling=True,
+    vae_batch_size=2,
+    inversion_prompt="",
+    num_inversion_steps=50,
+    apply_inversion_on_grid=True,
+)
+export_to_gif(output.frames, "animation.gif")
 ```
