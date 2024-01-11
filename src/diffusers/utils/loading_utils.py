@@ -2,10 +2,11 @@ import os
 from typing import Union, Callable
 
 import requests
-from PIL import Image, ImageOps
+import PIL.Image
+import PIL.ImageOps
 
 
-def load_image(image: Union[str, Image], convert_method: Callable[[Image], Image] = None) -> Image:
+def load_image(image: Union[str, PIL.Image.Image], convert_method: Callable[[PIL.Image.Image], PIL.Image.Image] = None) -> PIL.Image.Image:
     """
     Loads `image` to a PIL Image.
 
@@ -22,9 +23,9 @@ def load_image(image: Union[str, Image], convert_method: Callable[[Image], Image
     """
     if isinstance(image, str):
         if image.startswith("http://") or image.startswith("https://"):
-            image = Image.open(requests.get(image, stream=True).raw)
+            image = PIL.Image.open(requests.get(image, stream=True).raw)
         elif os.path.isfile(image):
-            image = Image.open(image)
+            image = PIL.Image.open(image)
         else:
             raise ValueError(
                 f"Incorrect path or URL. URLs must start with `http://` or `https://`, and {image} is not a valid path."
@@ -34,7 +35,7 @@ def load_image(image: Union[str, Image], convert_method: Callable[[Image], Image
             "Incorrect format used for the image. Should be a URL linking to an image, a local path, or a PIL image."
         )
 
-    image = ImageOps.exif_transpose(image)
+    image = PIL.ImageOps.exif_transpose(image)
 
     if convert_method is not None:
         image = convert_method(image)
