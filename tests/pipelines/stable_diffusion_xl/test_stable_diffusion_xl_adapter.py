@@ -159,7 +159,8 @@ class StableDiffusionXLAdapterPipelineFastTests(
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
             # "safety_checker": None,
-            # "feature_extractor": None,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
@@ -265,7 +266,8 @@ class StableDiffusionXLAdapterPipelineFastTests(
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
             # "safety_checker": None,
-            # "feature_extractor": None,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 
