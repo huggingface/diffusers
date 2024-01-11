@@ -1614,6 +1614,17 @@ class RAVEPipeline(
                 latents.append(current_latent)
             latents = torch.cat(latents, dim=0)
 
+        common_denoise_kwargs = {
+            "latents": latents,
+            "guidance_scale": guidance_scale,
+            "grid_size": grid_size,
+            "guess_mode": guess_mode,
+            "generator": generator,
+            "controlnet_conditioning_scale": controlnet_conditioning_scale,
+            "added_cond_kwargs": added_cond_kwargs,
+            "extra_step_kwargs": extra_step_kwargs,
+        }
+
         if is_inversion_mode:
             latents, _, _ = self._denoise_loop(
                 scheduler=self.inverse_scheduler,
@@ -1621,23 +1632,17 @@ class RAVEPipeline(
                 negative_prompt_embeds=negative_inversion_prompt_embeds,
                 latents=latents,
                 control_video=inversion_control_video,
-                guidance_scale=guidance_scale,
-                grid_size=grid_size,
                 use_shuffling=False,
                 num_frames=inversion_num_frames,
                 indices=None,
                 timesteps=inversion_timesteps,
                 num_inference_steps=num_inversion_steps,
-                guess_mode=guess_mode,
-                generator=generator,
                 controlnet_keep=inversion_controlnet_keep,
-                controlnet_conditioning_scale=controlnet_conditioning_scale,
-                added_cond_kwargs=added_cond_kwargs,
-                extra_step_kwargs=extra_step_kwargs,
                 callback=inversion_callback,
                 callback_steps=inversion_callback_steps,
                 callback_on_step_end=inversion_callback_on_step_end,
                 callback_on_step_end_tensor_inputs=inversion_callback_on_step_end_tensor_inputs,
+                **common_denoise_kwargs,
             )
 
             if not apply_inversion_on_grid:
@@ -1677,25 +1682,18 @@ class RAVEPipeline(
             scheduler=self.scheduler,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            latents=latents,
             control_video=control_video,
-            guidance_scale=guidance_scale,
-            grid_size=grid_size,
             use_shuffling=use_shuffling,
             num_frames=original_num_frames,
             indices=indices,
             timesteps=timesteps,
             num_inference_steps=num_inference_steps,
-            guess_mode=guess_mode,
-            generator=generator,
             controlnet_keep=controlnet_keep,
-            controlnet_conditioning_scale=controlnet_conditioning_scale,
-            added_cond_kwargs=added_cond_kwargs,
-            extra_step_kwargs=extra_step_kwargs,
             callback=callback,
             callback_steps=callback_steps,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            **common_denoise_kwargs,
         )
 
         # If we do sequential model offloading, let's offload unet and controlnet
