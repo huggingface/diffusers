@@ -164,6 +164,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         euler_at_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
+        final_sigmas_type: Optional[str] = "default",  # "denoise_to_zero", "default"
         use_lu_lambdas: Optional[bool] = False,
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
@@ -267,16 +268,38 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
-            sigmas = np.concatenate([sigmas, np.array([0])]).astype(np.float32)
+            if self.config.final_sigmas_type == "default":
+                sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+            elif self.config.final_sigmas_type == "denoise_to_zero":
+                sigmas = np.concatenate([sigmas, np.array([0])]).astype(np.float32)
+            else:
+                raise ValueError(
+                    f"final_sigmas_type must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
+                )
         elif self.config.use_lu_lambdas:
             lambdas = np.flip(log_sigmas.copy())
             lambdas = self._convert_to_lu(in_lambdas=lambdas, num_inference_steps=num_inference_steps)
             sigmas = np.exp(lambdas)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
-            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+            if self.config.final_sigmas_type == "default":
+                sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+            elif self.config.final_sigmas_type == "denoise_to_zero":
+                sigmas = np.concatenate([sigmas, np.array([0])]).astype(np.float32)
+            else:
+                raise ValueError(
+                    f"final_sigmas_type must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
+                )
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-            sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+            if self.config.final_sigmas_type == "default":
+                sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+            elif self.config.final_sigmas_type == "denoise_to_zero":
+                sigma_last = 0
+            else:
+                raise ValueError(
+                    f"final_sigmas_type must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
+                )
+
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
@@ -833,7 +856,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final = (self.step_index == len(self.timesteps) - 1) and (
             self.config.euler_at_final
             or (self.config.lower_order_final and len(self.timesteps) < 15)
-            or self.config.use_karras_sigmas
+            or self.config.final_sigmas_type == "denoise_to_zero"
         )
         lower_order_second = (
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15

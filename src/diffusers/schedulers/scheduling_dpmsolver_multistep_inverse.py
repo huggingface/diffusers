@@ -826,7 +826,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final = (self.step_index == len(self.timesteps) - 1) and (
             self.config.euler_at_final
             or (self.config.lower_order_final and len(self.timesteps) < 15)
-            or self.config.use_karras_sigmas
+            or self.config.final_sigmas_type == "denoise_to_zero"
         )
         lower_order_second = (
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
