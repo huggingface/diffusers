@@ -626,9 +626,11 @@ class RAVEPipeline(
 
     def check_inputs(
         self,
+        video,
+        control_video,
         prompt,
-        image,
         callback_steps,
+        inversion_callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -636,11 +638,29 @@ class RAVEPipeline(
         control_guidance_start=0.0,
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
+        inversion_callback_on_step_end_tensor_inputs=None,
     ):
+        if not isinstance(video, list) or not isinstance(control_video, list):
+            raise ValueError(
+                f"Expected `video` and `control_video` to have type list but got {type(video)=} and {type(control_video)=}"
+            )
+        if len(video) != len(control_video):
+            raise ValueError(
+                f"Expected length of `video` and `control_video` to be equal but got {len(video)=} and {len(control_video)=}"
+            )
+
         if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
+            )
+
+        if inversion_callback_steps is not None and (
+            not isinstance(inversion_callback_steps, int) or inversion_callback_steps <= 0
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {inversion_callback_steps} of type"
+                f" {type(inversion_callback_steps)}."
             )
 
         if callback_on_step_end_tensor_inputs is not None and not all(
@@ -648,6 +668,13 @@ class RAVEPipeline(
         ):
             raise ValueError(
                 f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
+
+        if inversion_callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in inversion_callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`inversion_callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in inversion_callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -685,37 +712,9 @@ class RAVEPipeline(
                     " prompts. The conditionings will be fixed across the prompts."
                 )
 
-        # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
         )
-        if (
-            isinstance(self.controlnet, ControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetModel)
-        ):
-            self.check_image(image, prompt, prompt_embeds)
-        elif (
-            isinstance(self.controlnet, MultiControlNetModel)
-            or is_compiled
-            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
-        ):
-            if not isinstance(image, list):
-                raise TypeError("For multiple controlnets: `image` must be type `list`")
-
-            # When `image` is a nested list:
-            # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
-            elif any(isinstance(i, list) for i in image):
-                raise ValueError("A single batch of multiple conditionings are supported at the moment.")
-            elif len(image) != len(self.controlnet.nets):
-                raise ValueError(
-                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
-                )
-
-            for image_ in image:
-                self.check_image(image_, prompt, prompt_embeds)
-        else:
-            assert False
 
         # Check `controlnet_conditioning_scale`
         if (
@@ -1389,18 +1388,21 @@ class RAVEPipeline(
             strength = 1
 
         # 1. Check inputs. Raise error if not correct
-        # self.check_inputs(
-        #     prompt,
-        #     control_video,
-        #     callback_steps,
-        #     negative_prompt,
-        #     prompt_embeds,
-        #     negative_prompt_embeds,
-        #     controlnet_conditioning_scale,
-        #     control_guidance_start,
-        #     control_guidance_end,
-        #     callback_on_step_end_tensor_inputs,
-        # )
+        self.check_inputs(
+            video,
+            control_video,
+            prompt,
+            callback_steps,
+            inversion_callback_steps,
+            negative_prompt,
+            prompt_embeds,
+            negative_prompt_embeds,
+            controlnet_conditioning_scale,
+            control_guidance_start,
+            control_guidance_end,
+            callback_on_step_end_tensor_inputs,
+            inversion_callback_on_step_end_tensor_inputs,
+        )
 
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
