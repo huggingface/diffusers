@@ -1023,6 +1023,7 @@ class RAVEPipeline(
     def __call__(
         self,
         video: List[Image.Image],
+        control_video: Optional[List[Image.Image]] = None,
         controlnet_processor_id: str = "depth_zoe",
         controlnet_processor_kwargs: Dict[str, Any] = {},
         prompt: Union[str, List[str]] = None,
@@ -1189,9 +1190,13 @@ class RAVEPipeline(
         # Hardcode restriction for the moment
         num_videos_per_prompt = 1
 
-        controlnet_processor = Processor(controlnet_processor_id, **controlnet_processor_kwargs)
         video = [frame.resize((width, height)).convert("RGB") for frame in video]
-        control_video = [controlnet_processor(frame) for frame in video]
+
+        if control_video is None:
+            controlnet_processor = Processor(controlnet_processor_id, **controlnet_processor_kwargs)
+            control_video = [controlnet_processor(frame) for frame in video]
+        else:
+            control_video = [frame.resize((width, height)).convert("RGB") for frame in video]
 
         video = self._convert_video_to_grids(video, grid_size)
         control_video = self._convert_video_to_grids(control_video, grid_size)
@@ -1239,7 +1244,7 @@ class RAVEPipeline(
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
-        is_inversion_mode = inversion_prompt is not None
+        is_inversion_mode = inversion_prompt is not None or inversion_prompt_embeds is not None
         num_frames = len(video)
 
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
