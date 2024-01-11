@@ -48,8 +48,7 @@ _required_transformers_version = is_transformers_available() and version.parse(
     version.parse(importlib.metadata.version("transformers")).base_version
 ) >= version.parse(MIN_TRANSFORMERS_VERSION)
 
-_use_peft = _required_peft_version and _required_transformers_version
-USE_PEFT_BACKEND = _use_peft
+USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 
 if USE_PEFT_BACKEND and _CHECK_PEFT:
     dep_version_check("peft")
