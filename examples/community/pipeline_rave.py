@@ -21,6 +21,7 @@
 # Adapted to Diffusers by [Aryan V S](https://github.com/a-r-r-o-w).
 
 
+import copy
 import inspect
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -1076,8 +1077,6 @@ class RAVEPipeline(
         # latents: Optional[torch.FloatTensor] = None, # TODO(a-r-r-o-w): Add support later
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        inversion_prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_inversion_prompt_embeds: Optional[torch.FloatTensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -1093,9 +1092,12 @@ class RAVEPipeline(
         grid_size: int = 2,
         use_shuffling: bool = True,
         vae_batch_size: int = 4,
+        num_inversion_steps: int = 50,
         inversion_prompt: Optional[Union[str, List[str]]] = None,
         negative_inversion_prompt: Optional[Union[str, List[str]]] = None,
-        inversion_num_inference_steps: int = 50,
+        inversion_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_inversion_prompt_embeds: Optional[torch.FloatTensor] = None,
+        apply_inversion_on_grid: bool = False,
         **kwargs,
     ):
         r"""
@@ -1237,12 +1239,30 @@ class RAVEPipeline(
         else:
             control_video = [frame.resize((width, height)).convert("RGB") for frame in video]
 
+        # If inversion is not to be applied on grid, we must create a copy before conversion
+        # TODO: improve logic flow
+        if not apply_inversion_on_grid:
+            inversion_video = copy.deepcopy(video)
+            inversion_control_video = copy.deepcopy(control_video)
+            inversion_width, inversion_height = width, height
+
         video = self._convert_video_to_grids(video, grid_size)
         control_video = self._convert_video_to_grids(control_video, grid_size)
         width, height = video[0].size
         num_frames = len(video)
 
-        # TODO(a-r-r-o-w): find a better way to handle this. In inversion_mode, you want to process all inference steps
+        print("len:", len(video), len(control_video))
+
+        if apply_inversion_on_grid:
+            inversion_video = copy.deepcopy(video)
+            inversion_control_video = copy.deepcopy(control_video)
+            inversion_width, inversion_height = width, height
+
+        print("invlen:", len(inversion_video), len(inversion_control_video))
+
+        inversion_num_frames = len(inversion_video)
+
+        # TODO(a-r-r-o-w): In inversion_mode, you want to process all inference steps. handle this better
         if is_inversion_mode:
             strength = 1
 
@@ -1300,12 +1320,14 @@ class RAVEPipeline(
             lora_scale=text_encoder_lora_scale,
             clip_skip=self.clip_skip,
         )
+        print("embeds:", prompt_embeds.shape)
 
         if is_inversion_mode:
             inversion_prompt_embeds, negative_inversion_prompt_embeds = self.encode_prompt(
                 prompt=inversion_prompt,
                 device=device,
-                num_images_per_prompt=num_frames,
+                # TODO(a-r-r-o-w): change below
+                num_images_per_prompt=inversion_num_frames,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 negative_prompt=negative_inversion_prompt,
                 prompt_embeds=inversion_prompt_embeds,
@@ -1332,6 +1354,12 @@ class RAVEPipeline(
         # 4. Prepare image
         video = self.image_processor.preprocess(video, height=height, width=width).to(dtype=torch.float32)
 
+        # TODO(a-r-r-o-w): refactor
+        if is_inversion_mode:
+            inversion_video = self.image_processor.preprocess(
+                inversion_video, height=inversion_height, width=inversion_width
+            ).to(dtype=torch.float32)
+
         # 5. Prepare controlnet_conditioning_image
         if isinstance(controlnet, ControlNetModel):
             control_video = self.prepare_control_image(
@@ -1345,6 +1373,21 @@ class RAVEPipeline(
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
+
+            # TODO(a-r-r-o-w): refactor
+            if is_inversion_mode:
+                print("inv:", len(inversion_control_video))
+                inversion_control_video = self.prepare_control_image(
+                    image=inversion_control_video,
+                    width=inversion_width,
+                    height=inversion_height,
+                    batch_size=batch_size * num_videos_per_prompt,
+                    num_images_per_prompt=num_videos_per_prompt,
+                    device=device,
+                    dtype=controlnet.dtype,
+                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                    guess_mode=guess_mode,
+                )
         elif isinstance(controlnet, MultiControlNetModel):
             control_videos = []
 
@@ -1364,6 +1407,27 @@ class RAVEPipeline(
                 control_videos.append(control_video_)
 
             control_video = control_videos
+
+            # TODO(a-r-r-o-w): refactor
+            if is_inversion_mode:
+                inversion_control_videos = []
+
+                for control_video_ in inversion_control_video:
+                    control_video_ = self.prepare_control_image(
+                        image=control_video_,
+                        width=inversion_width,
+                        height=inversion_height,
+                        batch_size=batch_size * num_videos_per_prompt,
+                        num_images_per_prompt=num_videos_per_prompt,
+                        device=device,
+                        dtype=controlnet.dtype,
+                        do_classifier_free_guidance=self.do_classifier_free_guidance,
+                        guess_mode=guess_mode,
+                    )
+
+                    inversion_control_videos.append(control_video_)
+
+                inversion_control_video = inversion_control_videos
         else:
             assert False
 
@@ -1373,29 +1437,9 @@ class RAVEPipeline(
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
         self._num_timesteps = len(timesteps)
 
-        inversion_timesteps, inversion_num_inference_steps = retrieve_timesteps(
-            self.inverse_scheduler, inversion_num_inference_steps, device
+        inversion_timesteps, num_inversion_steps = retrieve_timesteps(
+            self.inverse_scheduler, num_inversion_steps, device
         )
-
-        # 6. Prepare latent variables
-        latents = []
-
-        for i in range(0, num_frames, vae_batch_size):
-            current_vid = video[i : i + vae_batch_size]
-            print(current_vid.shape)
-            current_latent = self.prepare_latents(
-                image=current_vid,
-                timestep=latent_timestep,
-                batch_size=batch_size,
-                num_images_per_prompt=num_videos_per_prompt,
-                dtype=prompt_embeds.dtype,
-                device=device,
-                generator=generator,
-                is_inversion_mode=is_inversion_mode,
-            )
-            latents.append(current_latent)
-
-        latents = torch.cat(latents, dim=0)
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -1421,12 +1465,52 @@ class RAVEPipeline(
             ]
             inversion_controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
+        # 6. Prepare latent variables
+        if not is_inversion_mode:
+            latents = []
+            for i in range(0, num_frames, vae_batch_size):
+                current_vid = video[i : i + vae_batch_size]
+                current_latent = self.prepare_latents(
+                    image=current_vid,
+                    timestep=latent_timestep,
+                    batch_size=batch_size,
+                    num_images_per_prompt=num_videos_per_prompt,
+                    dtype=prompt_embeds.dtype,
+                    device=device,
+                    generator=generator,
+                    is_inversion_mode=is_inversion_mode,
+                )
+                latents.append(current_latent)
+            latents = torch.cat(latents, dim=0)
+        else:
+            print("this:", num_frames, inversion_num_frames)
+            print("this2:", inversion_video.shape, inversion_control_video.shape, len(inversion_video))
+            latents = []
+            for i in range(0, inversion_num_frames, vae_batch_size):
+                current_vid = inversion_video[i : i + vae_batch_size]
+                current_latent = self.prepare_latents(
+                    image=current_vid,
+                    timestep=latent_timestep,
+                    batch_size=batch_size,
+                    num_images_per_prompt=num_videos_per_prompt,
+                    dtype=prompt_embeds.dtype,
+                    device=device,
+                    generator=generator,
+                    is_inversion_mode=is_inversion_mode,
+                )
+                print("loop:", len(current_vid), current_latent.shape)
+                latents.append(current_latent)
+            latents = torch.cat(latents, dim=0)
+            print("else:", latents.shape)
+
         if is_inversion_mode:
             # TODO(a-r-r-o-w): refactor denoising loops
-            with self.progress_bar(total=inversion_num_inference_steps) as progress_bar:
+            with self.progress_bar(total=num_inversion_steps) as progress_bar:
                 for i, t in enumerate(inversion_timesteps):
                     # expand the latents if we are doing classifier free guidance
+                    print("latentsshape:", latents.shape)
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                    print("latentmodelinputshape:", latent_model_input.shape, self.do_classifier_free_guidance)
                     latent_model_input = self.inverse_scheduler.scale_model_input(latent_model_input, t)
 
                     # controlnet(s) inference
@@ -1436,6 +1520,7 @@ class RAVEPipeline(
                         control_model_input = self.inverse_scheduler.scale_model_input(control_model_input, t)
                         controlnet_prompt_embeds = inversion_prompt_embeds.chunk(2)[1]
                     else:
+                        print("THIS")
                         control_model_input = latent_model_input
                         controlnet_prompt_embeds = inversion_prompt_embeds
 
@@ -1449,11 +1534,14 @@ class RAVEPipeline(
                             controlnet_cond_scale = controlnet_cond_scale[0]
                         cond_scale = controlnet_cond_scale * inversion_controlnet_keep[i]
 
+                    print(latent_model_input.shape, inversion_prompt_embeds.shape, inversion_video.shape)
+                    print(control_model_input.shape, controlnet_prompt_embeds.shape, inversion_control_video.shape)
+
                     down_block_res_samples, mid_block_res_sample = self.controlnet(
                         control_model_input,
                         t,
                         encoder_hidden_states=controlnet_prompt_embeds,
-                        controlnet_cond=control_video,
+                        controlnet_cond=inversion_control_video,
                         conditioning_scale=cond_scale,
                         guess_mode=guess_mode,
                         return_dict=False,
@@ -1490,9 +1578,11 @@ class RAVEPipeline(
                         noise_pred, t, latents, **extra_step_kwargs, return_dict=False
                     )[0]
 
-                    # imggg = self.vae.decode(latents[:1] / self.vae.config.scaling_factor, return_dict=False, generator=generator)[0]
-                    # imggg = self.image_processor.postprocess(imggg, output_type=output_type)
-                    # print(imggg)
+                    imggg = self.vae.decode(
+                        latents[:1] / self.vae.config.scaling_factor, return_dict=False, generator=generator
+                    )[0]
+                    imggg = self.image_processor.postprocess(imggg, output_type=output_type)
+                    print(imggg)
                     # display(imggg[0])
 
                     progress_bar.update()
@@ -1515,6 +1605,41 @@ class RAVEPipeline(
                     #     if callback is not None and i % callback_steps == 0:
                     #         step_idx = i // getattr(self.scheduler, "order", 1)
                     #         callback(step_idx, t, latents)
+
+            if not apply_inversion_on_grid:
+                video = []
+
+                for i in range(0, inversion_num_frames, vae_batch_size):
+                    current_latent = latents[i : i + vae_batch_size]
+                    current_frames = self.vae.decode(
+                        current_latent / self.vae.config.scaling_factor, return_dict=False, generator=generator
+                    )[0]
+                    video.append(current_frames)
+
+                print("length:", len(video))
+                video = torch.cat(video, dim=0)
+                video = self.image_processor.postprocess(video, output_type=output_type)
+                video = self._convert_video_to_grids(video, grid_size)
+                print("length here:", len(video))
+                video = self.image_processor.preprocess(video, height=height, width=width).to(dtype=torch.float32)
+                print("aftershape:", video.shape)
+
+                latents = []
+                for i in range(0, num_frames, vae_batch_size):
+                    current_vid = video[i : i + vae_batch_size]
+                    print("loop current_vid:", current_vid.shape)
+                    current_latent = self.prepare_latents(
+                        image=current_vid,
+                        timestep=latent_timestep,
+                        batch_size=batch_size,
+                        num_images_per_prompt=num_videos_per_prompt,
+                        dtype=prompt_embeds.dtype,
+                        device=device,
+                        generator=generator,
+                        is_inversion_mode=is_inversion_mode,
+                    )
+                    latents.append(current_latent)
+                latents = torch.cat(latents, dim=0)
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
