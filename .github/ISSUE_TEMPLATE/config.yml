@@ -1,4 +1,4 @@
 contact_links:
-  - name: Forum
-    url: https://discuss.huggingface.co/c/discussion-related-to-httpsgithubcomhuggingfacediffusers/63
+  - name: Questions / Discussions
+    url: https://github.com/huggingface/diffusers/discussions
     about: General usage questions and community discussions
