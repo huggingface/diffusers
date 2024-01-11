@@ -1412,7 +1412,17 @@ class RAVEPipeline(
             ]
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
+        # 7.2 Create tensor stating which controlnets to keep
+        inversion_controlnet_keep = []
+        for i in range(len(inversion_timesteps)):
+            keeps = [
+                1.0 - float(i / len(timesteps) < s or (i + 1) / len(inversion_timesteps) > e)
+                for s, e in zip(control_guidance_start, control_guidance_end)
+            ]
+            inversion_controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
+
         if is_inversion_mode:
+            # TODO(a-r-r-o-w): refactor denoising loops
             with self.progress_bar(total=inversion_num_inference_steps) as progress_bar:
                 for i, t in enumerate(inversion_timesteps):
                     # expand the latents if we are doing classifier free guidance
@@ -1429,13 +1439,15 @@ class RAVEPipeline(
                         control_model_input = latent_model_input
                         controlnet_prompt_embeds = inversion_prompt_embeds
 
-                    if isinstance(controlnet_keep[i], list):
-                        cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
+                    if isinstance(inversion_controlnet_keep[i], list):
+                        cond_scale = [
+                            c * s for c, s in zip(controlnet_conditioning_scale, inversion_controlnet_keep[i])
+                        ]
                     else:
                         controlnet_cond_scale = controlnet_conditioning_scale
                         if isinstance(controlnet_cond_scale, list):
                             controlnet_cond_scale = controlnet_cond_scale[0]
-                        cond_scale = controlnet_cond_scale * controlnet_keep[i]
+                        cond_scale = controlnet_cond_scale * inversion_controlnet_keep[i]
 
                     down_block_res_samples, mid_block_res_sample = self.controlnet(
                         control_model_input,
@@ -1477,6 +1489,11 @@ class RAVEPipeline(
                     latents = self.inverse_scheduler.step(
                         noise_pred, t, latents, **extra_step_kwargs, return_dict=False
                     )[0]
+
+                    # imggg = self.vae.decode(latents[:1] / self.vae.config.scaling_factor, return_dict=False, generator=generator)[0]
+                    # imggg = self.image_processor.postprocess(imggg, output_type=output_type)
+                    # print(imggg)
+                    # display(imggg[0])
 
                     progress_bar.update()
 
