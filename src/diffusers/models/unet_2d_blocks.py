@@ -632,6 +632,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self,
         in_channels: int,
         temb_channels: int,
+        out_channels: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
@@ -650,6 +651,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
     ):
         super().__init__()
 
+        out_channels = out_channels or in_channels
+
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -662,7 +665,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         resnets = [
             ResnetBlock2D(
                 in_channels=in_channels,
-                out_channels=in_channels,
+                out_channels=out_channels,
                 temb_channels=temb_channels,
                 eps=resnet_eps,
                 groups=resnet_groups,
@@ -680,8 +683,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 attentions.append(
                     Transformer2DModel(
                         num_attention_heads,
-                        in_channels // num_attention_heads,
-                        in_channels=in_channels,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
                         num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
@@ -694,8 +697,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 attentions.append(
                     DualTransformer2DModel(
                         num_attention_heads,
-                        in_channels // num_attention_heads,
-                        in_channels=in_channels,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
@@ -703,8 +706,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 )
             resnets.append(
                 ResnetBlock2D(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
+                    in_channels=out_channels,
+                    out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
                     groups=resnet_groups,
