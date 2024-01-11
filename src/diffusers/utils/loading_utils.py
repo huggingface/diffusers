@@ -1,12 +1,12 @@
 import os
-from typing import Union
+from typing import Union, Callable
 
 import PIL.Image
 import PIL.ImageOps
 import requests
 
 
-def load_image(image: Union[str, PIL.Image.Image], convert_method=None) -> PIL.Image.Image:
+def load_image(image: Union[str, PIL.Image.Image], convert_method: Callable[[PIL.Image.Image], PIL.Image.Image] = None) -> PIL.Image.Image:
     """
     Loads `image` to a PIL Image.
 
