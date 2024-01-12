@@ -263,7 +263,7 @@ def create_unet_diffusers_config(original_unet_config, class_embed_type=None):
                 projection_class_embeddings_input_dim = original_unet_config["adm_in_channels"]
             else:
                 raise NotImplementedError(
-                    f"Unknown conditional unet num_classes config: {original_unet_config["num_classes"]}"
+                    f"Unknown conditional unet num_classes config: {original_unet_config['num_classes']}"
                 )
 
     config = {
@@ -830,7 +830,7 @@ def superres_create_unet_diffusers_config(original_unet_config):
             projection_class_embeddings_input_dim = original_unet_config["adm_in_channels"]
         else:
             raise NotImplementedError(
-                f"Unknown conditional unet num_classes config: {original_unet_config["num_classes"]}"
+                f"Unknown conditional unet num_classes config: {original_unet_config['num_classes']}"
             )
 
     config = {
