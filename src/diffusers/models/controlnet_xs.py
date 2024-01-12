@@ -83,6 +83,46 @@ class ControlNetConditioningEmbedding(nn.Module):
 
 
 class ControlNetXSAddon(ModelMixin, ConfigMixin):
+
+    @staticmethod
+    def gather_base_subblock_sizes(blocks_sizes: List[int]):
+        """todo - comment"""
+
+        n_blocks = len(blocks_sizes)
+        n_subblocks_per_block = 3
+
+        down_out = []
+        up_in = []
+
+        # down_out
+        for b in range(n_blocks):
+            for i in range(n_subblocks_per_block):
+                if b==n_blocks-1 and i==2:
+                    # last block has now downsampler, so has only 2 subblocks instead of 3
+                    continue
+                if i==0:
+                    # first subblock has same input channels as in last block,
+                    # because channels are changed by the first resnet, which is the first subblock
+                    down_out.append(blocks_sizes[max(b-1,0)])
+                else:
+                    down_out.append(blocks_sizes[b])
+        down_out.append(blocks_sizes[-1])
+
+        # up_in
+        rev_blocks_sizes = list(reversed(blocks_sizes))
+        for b in range(len(rev_blocks_sizes)):
+            for i in range(n_subblocks_per_block):
+                if i==0:
+                    up_in.append(rev_blocks_sizes[max(b-1,0)])
+                else:
+                    up_in.append(rev_blocks_sizes[b])
+
+        return {
+            "down - out": down_out,
+            "mid - out": blocks_sizes[-1],
+            "up - in": up_in,
+        }
+
     @classmethod
     def from_unet(
         cls,
@@ -102,12 +142,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 "Pass exactly one of `block_out_channels` (for absolute sizing) or `control_model_ratio` (for relative sizing)."
             )
 
-        channels_base = {  # todo
-            "down - in": [320, 320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280],
-            "down - out": [320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280, 1280],
-            "mid - out": 1280,
-            "up - in": [1280, 1280, 1280, 1280, 1280, 1280, 1280, 640, 640, 640, 320, 320],
-        }
+        channels_base = ControlNetXSAddon.gather_base_subblock_sizes(base_model.config.block_out_channels)
 
         block_out_channels = [int(b * size_ratio) for b in base_model.config.block_out_channels]
         if num_attention_heads is None:
@@ -122,7 +157,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             addition_time_embed_dim=base_model.config.addition_time_embed_dim,
             attention_head_dim=num_attention_heads,
             block_out_channels=block_out_channels,
-            base_block_out_channels=base_model.config.block_out_channels,
             cross_attention_dim=base_model.config.cross_attention_dim,
             down_block_types=base_model.config.down_block_types,
             projection_class_embeddings_input_dim=base_model.config.projection_class_embeddings_input_dim,
@@ -142,7 +176,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         time_embedding_dim: int = 1280,
         learn_time_embedding: bool = False,
         channels_base: Dict[str, List[Tuple[int]]] = {
-            "down - in": [320, 320, 320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280],
             "down - out": [320, 320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280, 1280],
             "mid - out": 1280,
             "up - in": [1280, 1280, 1280, 1280, 1280, 1280, 1280, 640, 640, 640, 320, 320],
@@ -151,7 +184,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         addition_time_embed_dim=None,
         attention_head_dim=[4],
         block_out_channels=[4, 8, 16, 16],
-        base_block_out_channels=[320, 640, 1280, 1280],
         cross_attention_dim=1024,
         down_block_types=["CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"],
         projection_class_embeddings_input_dim=None,
@@ -206,20 +238,9 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
 
         # down
-        def channels_from_base(block_no, subblock_no):
-            """Determine channel size for extra info from base model"""
-            if block_no == 0:
-                # in 1st block: all subblocks have same channels
-                return base_block_out_channels[0]
-            else:
-                if subblock_no == 0:
-                    # in 2nd+ block: the 1st subblock has same channels as in the last block
-                    return base_block_out_channels[block_no - 1]
-                else:
-                    # in 2nd+ block: after the 1st subblock, the channels have changed
-                    return base_block_out_channels[block_no]
-
         output_channel = block_out_channels[0]
+        subblock_counter = 0
+
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
             output_channel = block_out_channels[i]
@@ -228,7 +249,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             self.down_subblocks.append(
                 CrossAttnSubBlock2D(
                     has_crossattn=use_crossattention,
-                    in_channels=input_channel + channels_from_base(block_no=i, subblock_no=0),
+                    in_channels=input_channel + channels_base['down - out'][subblock_counter],
                     out_channels=output_channel,
                     temb_channels=time_embedding_dim,
                     transformer_layers_per_block=transformer_layers_per_block[i],
@@ -238,10 +259,11 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                     norm_num_groups=norm_num_groups,
                 )
             )
+            subblock_counter += 1
             self.down_subblocks.append(
                 CrossAttnSubBlock2D(
                     has_crossattn=use_crossattention,
-                    in_channels=output_channel + channels_from_base(block_no=i, subblock_no=1),
+                    in_channels=output_channel + channels_base['down - out'][subblock_counter],
                     out_channels=output_channel,
                     temb_channels=time_embedding_dim,
                     transformer_layers_per_block=transformer_layers_per_block[i],
@@ -251,19 +273,20 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                     norm_num_groups=norm_num_groups,
                 )
             )
+            subblock_counter += 1
             if i < len(down_block_types) - 1:
                 self.down_subblocks.append(
                     DownSubBlock2D(
-                        in_channels=output_channel + channels_from_base(block_no=i, subblock_no=2),
+                        in_channels=output_channel + channels_base['down - out'][subblock_counter],
                         out_channels=output_channel,
                     )
                 )
+                subblock_counter += 1
 
         # mid
-        channel_from_base = base_block_out_channels[-1]
         self.mid_block = UNetMidBlock2DCrossAttn(
             transformer_layers_per_block=transformer_layers_per_block[-1],
-            in_channels=block_out_channels[-1] + channel_from_base,
+            in_channels=block_out_channels[-1] + channels_base['down - out'][subblock_counter],
             out_channels=block_out_channels[-1],
             temb_channels=time_embedding_dim,
             resnet_eps=1e-05,
@@ -289,9 +312,10 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         self.up_zero_convs_c2b = nn.ModuleList([])
 
         # 4.1 - Connections from base encoder to ctrl encoder
+        # todo - better comment
         # Information is passed from base to ctrl _before_ each subblock. We therefore use the 'in' channels.
         # As the information is concatted in ctrl, we don't need to change channel sizes. So channels in = channels out.
-        for c in channels_base["down - in"]:
+        for c in channels_base["down - out"]: # change down - in to down - out
             self.down_zero_convs_b2c.append(self._make_zero_conv(c, c))
 
         # 4.2 - Connections from ctrl encoder to base encoder

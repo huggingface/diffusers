@@ -652,6 +652,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         super().__init__()
 
         out_channels = out_channels or in_channels
+        self.in_channels = in_channels
+        self.out_channels = out_channels
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
