@@ -44,12 +44,12 @@ import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import compute_snr
-from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.25.0.dev0")
+check_min_version("0.26.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -486,6 +486,9 @@ def main():
 
     lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
 
+    if args.gradient_checkpointing:
+        unet.enable_gradient_checkpointing()
+
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
@@ -809,7 +812,9 @@ def main():
                         accelerator.save_state(save_path)
 
                         unwrapped_unet = accelerator.unwrap_model(unet)
-                        unet_lora_state_dict = get_peft_model_state_dict(unwrapped_unet)
+                        unet_lora_state_dict = convert_state_dict_to_diffusers(
+                            get_peft_model_state_dict(unwrapped_unet)
+                        )
 
                         StableDiffusionPipeline.save_lora_weights(
                             save_directory=save_path,
@@ -876,7 +881,7 @@ def main():
         unet = unet.to(torch.float32)
 
         unwrapped_unet = accelerator.unwrap_model(unet)
-        unet_lora_state_dict = get_peft_model_state_dict(unwrapped_unet)
+        unet_lora_state_dict = convert_state_dict_to_diffusers(get_peft_model_state_dict(unwrapped_unet))
         StableDiffusionPipeline.save_lora_weights(
             save_directory=args.output_dir,
             unet_lora_layers=unet_lora_state_dict,

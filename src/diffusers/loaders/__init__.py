@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 from ..utils import DIFFUSERS_SLOW_IMPORT, _LazyModule, deprecate
-from ..utils.import_utils import is_torch_available, is_transformers_available
+from ..utils.import_utils import is_peft_available, is_torch_available, is_transformers_available
 
 
 def text_encoder_lora_state_dict(text_encoder):
@@ -65,6 +65,8 @@ if is_torch_available():
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = ["IPAdapterMixin"]
 
+_import_structure["peft"] = ["PeftAdapterMixin"]
+
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
@@ -77,6 +79,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             from .lora import LoraLoaderMixin, StableDiffusionXLLoraLoaderMixin
             from .single_file import FromSingleFileMixin
             from .textual_inversion import TextualInversionLoaderMixin
+
+    from .peft import PeftAdapterMixin
 else:
     import sys
 
