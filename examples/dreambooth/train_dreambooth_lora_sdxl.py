@@ -150,7 +150,6 @@ def import_model_class_from_model_name_or_path(
         return CLIPTextModelWithProjection
     else:
         raise ValueError(f"{model_class} is not supported.")
-    
 
 
 def parse_args(input_args=None):
