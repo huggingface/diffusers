@@ -32,6 +32,7 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["controlnet"] = ["ControlNetModel"]
+    _import_structure["controlnet_xs"] = ["ControlNetXSAddon", "ControlNetXSModel"]
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
@@ -66,6 +67,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
         )
         from .controlnet import ControlNetModel
+        from .controlnet_xs import ControlNetXSAddon, ControlNetXSModel
         from .dual_transformer_2d import DualTransformer2DModel
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
