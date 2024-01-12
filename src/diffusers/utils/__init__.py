@@ -71,6 +71,7 @@ from .import_utils import (
     is_omegaconf_available,
     is_onnx_available,
     is_peft_available,
+    is_pytest_available,
     is_scipy_available,
     is_tensorboard_available,
     is_torch_available,
