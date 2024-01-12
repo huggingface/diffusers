@@ -43,7 +43,7 @@ from transformers import CLIPTextModel, CLIPTokenizer
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_snr
+from diffusers.training_utils import cast_training_params, compute_snr
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -466,10 +466,8 @@ def main():
     # Add adapter and make sure the trainable params are in float32.
     unet.add_adapter(unet_lora_config)
     if args.mixed_precision == "fp16":
-        for param in unet.parameters():
-            # only upcast trainable parameters (LoRA) into fp32
-            if param.requires_grad:
-                param.data = param.to(torch.float32)
+        # only upcast trainable parameters (LoRA) into fp32
+        cast_training_params(unet, dtype=torch.float32)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
