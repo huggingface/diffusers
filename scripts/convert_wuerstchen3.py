@@ -3,7 +3,7 @@ import os
 
 import torch
 from transformers import AutoTokenizer, CLIPTextModelWithProjection, CLIPVisionModelWithProjection
-# from vqgan import VQModel
+from vqgan import VQModel
 
 from diffusers import (
     DDPMWuerstchenScheduler,
@@ -18,14 +18,14 @@ from diffusers.pipelines.wuerstchen3 import WuerstchenV3DiffNeXt, WuerstchenV3Pr
 model_path = "../Wuerstchen/"
 device = "cpu"
 
-# paella_vqmodel = VQModel()
-# state_dict = torch.load(os.path.join(model_path, "vqgan_f4_v1_500k.pt"), map_location=device)["state_dict"]
-# paella_vqmodel.load_state_dict(state_dict)
+paella_vqmodel = VQModel()
+state_dict = torch.load(os.path.join(model_path, "vqgan_f4_v1_500k.pt"), map_location=device)["state_dict"]
+paella_vqmodel.load_state_dict(state_dict)
 
-# state_dict["vquantizer.embedding.weight"] = state_dict["vquantizer.codebook.weight"]
-# state_dict.pop("vquantizer.codebook.weight")
-# vqmodel = PaellaVQModel(num_vq_embeddings=paella_vqmodel.codebook_size, latent_channels=paella_vqmodel.c_latent)
-# vqmodel.load_state_dict(state_dict)
+state_dict["vquantizer.embedding.weight"] = state_dict["vquantizer.codebook.weight"]
+state_dict.pop("vquantizer.codebook.weight")
+vqmodel = PaellaVQModel(num_vq_embeddings=paella_vqmodel.codebook_size, latent_channels=paella_vqmodel.c_latent)
+vqmodel.load_state_dict(state_dict)
 
 # Clip Text encoder and tokenizer
 text_encoder = CLIPTextModelWithProjection.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", cache_dir="cache")
@@ -91,24 +91,24 @@ for key in orig_state_dict.keys():
 prior_model = WuerstchenV3Prior().to(device)
 prior_model.load_state_dict(state_dict)
 
-import pdb
-pdb.set_trace()
+# import pdb
+# pdb.set_trace()
 
 # scheduler
 scheduler = DDPMWuerstchenScheduler()
 
 # Prior pipeline
 prior_pipeline = WuerstchenV3PriorPipeline(
-    prior=prior_model, text_encoder=text_encoder, image_encoder=image_encoder, tokenizer=tokenizer, scheduler=scheduler
+    prior=prior_model, tokenizer=tokenizer, text_encoder=text_encoder, image_encoder=image_encoder, scheduler=scheduler
 )
 
 # prior_pipeline.save_pretrained("warp-ai/wuerstchen-prior")
-#
-# decoder_pipeline = WuerstchenDecoderPipeline(
-#     text_encoder=gen_text_encoder, tokenizer=gen_tokenizer, vqgan=vqmodel, decoder=decoder, scheduler=scheduler
-# )
-# decoder_pipeline.save_pretrained("warp-ai/wuerstchen")
-#
+
+decoder_pipeline = WuerstchenV3DecoderPipeline(
+    encoder=effnet, decoder=decoder, text_encoder=text_encoder, tokenizer=tokenizer, vqgan=vqmodel, scheduler=scheduler
+)
+decoder_pipeline.save_pretrained("warp-ai/wuerstchen")
+
 # # Wuerstchen pipeline
 # wuerstchen_pipeline = WuerstchenCombinedPipeline(
 #     # Decoder

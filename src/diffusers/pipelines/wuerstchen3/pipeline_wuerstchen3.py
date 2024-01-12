@@ -82,18 +82,20 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
 
     def __init__(
         self,
+        encoder: None,
+        decoder: WuerstchenV3DiffNeXt,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
-        decoder: WuerstchenV3DiffNeXt,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: PaellaVQModel,
         latent_dim_scale: float = 10.67,
     ) -> None:
         super().__init__()
         self.register_modules(
+            encoder=encoder,
+            decoder=decoder,
             tokenizer=tokenizer,
             text_encoder=text_encoder,
-            decoder=decoder,
             scheduler=scheduler,
             vqgan=vqgan,
         )
@@ -143,7 +145,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
             attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
 
         text_encoder_output = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask.to(device))
-        text_encoder_hidden_states = text_encoder_output.last_hidden_state
+        text_encoder_hidden_states = text_encoder_output.text_embeds.unsqueeze(1)
         text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
 
         uncond_text_encoder_hidden_states = None
@@ -178,7 +180,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
                 uncond_input.input_ids.to(device), attention_mask=uncond_input.attention_mask.to(device)
             )
 
-            uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.last_hidden_state
+            uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.text_embeds.unsqueeze(1)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = uncond_text_encoder_hidden_states.shape[1]
@@ -211,7 +213,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
         self,
         image_embeddings: Union[torch.FloatTensor, List[torch.FloatTensor]],
         prompt: Union[str, List[str]] = None,
-        num_inference_steps: int = 12,
+        num_inference_steps: int = 10,
         timesteps: Optional[List[float]] = None,
         guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,

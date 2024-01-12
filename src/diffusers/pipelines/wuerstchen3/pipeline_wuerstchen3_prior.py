@@ -111,6 +111,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     def encode_prompt(
         self,
         device,
+        batch_size,
         num_images_per_prompt,
         do_classifier_free_guidance,
         prompt=None,
@@ -120,13 +121,6 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
     ):
-        if prompt is not None and isinstance(prompt, str):
-            batch_size = 1
-        elif prompt is not None and isinstance(prompt, list):
-            batch_size = len(prompt)
-        else:
-            batch_size = prompt_embeds.shape[0]
-
         if prompt_embeds is None:
             # get prompt text embeddings
             text_inputs = self.tokenizer(
@@ -215,6 +209,32 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return prompt_embeds, prompt_embeds_pooled, negative_prompt_embeds, negative_prompt_embeds_pooled
 
+    def encode_image(
+            self,
+            device,
+            batch_size,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            image=None,
+            image_embeds: Optional[torch.FloatTensor] = None,
+    ):
+
+        if not isinstance(image, list):
+            image = [image]
+
+        for img in image:
+            if isinstance(img, PIL.Image.Image):
+                pass
+
+            # clip_preprocess = torchvision.transforms.Compose([
+            #     torchvision.transforms.Resize(224, interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
+            #     torchvision.transforms.CenterCrop(224),
+            #     torchvision.transforms.Normalize(
+            #         mean=(0.48145466, 0.4578275, 0.40821073), std=(0.26862954, 0.26130258, 0.27577711)
+            #     )
+            # ])
+        return None
+
     def check_inputs(
         self,
         prompt,
@@ -294,6 +314,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
+        image_embeds: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -342,6 +363,9 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt` input
                 argument.
+            image_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated image embeddings. Can be used to easily tweak image inputs, *e.g.* prompt weighting.
+                If not provided, image embeddings will be generated from `image` input argument if existing.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -425,6 +449,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         self.check_inputs(
             prompt,
+            image,
             negative_prompt,
             num_inference_steps,
             self.do_classifier_free_guidance,
@@ -434,10 +459,11 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
         )
 
-        # 2. Encode caption
+        # 2. Encode caption + image
         prompt_embeds, prompt_embeds_pooled, negative_prompt_embeds, negative_prompt_embeds_pooled = self.encode_prompt(
             prompt=prompt,
             device=device,
+            batch_size=batch_size,
             num_images_per_prompt=num_images_per_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
             negative_prompt=negative_prompt,
@@ -445,6 +471,15 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
             negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
+        )
+
+        image_embeds_pooled = self.encode_image(
+            image=image,
+            device=device,
+            batch_size=batch_size,
+            num_images_per_prompt=num_images_per_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+            image_embeds=image_embeds,
         )
 
         # For classifier free guidance, we need to do two forward passes.
