@@ -3,7 +3,7 @@ import io
 
 import requests
 import torch
-from omegaconf import OmegaConf
+import yaml
 
 from diffusers import AutoencoderKL
 from diffusers.pipelines.stable_diffusion.convert_from_ckpt import (
@@ -126,7 +126,7 @@ def vae_pt_to_vae_diffuser(
     )
     io_obj = io.BytesIO(r.content)
 
-    original_config = OmegaConf.load(io_obj)
+    original_config = yaml.safe_load(io_obj)
     image_size = 512
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if checkpoint_path.endswith("safetensors"):
