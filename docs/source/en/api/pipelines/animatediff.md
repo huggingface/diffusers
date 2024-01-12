@@ -106,9 +106,13 @@ AnimateDiff tends to work better with finetuned Stable Diffusion models. If you 
 AnimateDiff can also be used to generate visually similar videos or enable style/character/background or other edits starting from an initial video, allowing you to seamlessly explore creative possibilities.
 
 ```python
+import imageio
+import requests
 import torch
 from diffusers import AnimateDiffVideoToVideoPipeline, DDIMScheduler, MotionAdapter
 from diffusers.utils import export_to_gif
+from io import BytesIO
+from PIL import Image
 
 # Load the motion adapter
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
@@ -131,16 +135,24 @@ pipe.enable_model_cpu_offload()
 
 # helper function to load videos
 def load_video(file_path: str):
-    import imageio
-
     images = []
-    vid = imageio.get_reader(file_path)
+
+    if file_path.startswith(('http://', 'https://')):
+        # If the file_path is a URL
+        response = requests.get(file_path)
+        response.raise_for_status()
+        content = BytesIO(response.content)
+        vid = imageio.get_reader(content)
+    else:
+        # Assuming it's a local file path
+        vid = imageio.get_reader(file_path)
+
     for frame in vid:
         pil_image = Image.fromarray(frame)
         images.append(pil_image)
+
     return images
 
-# load initial video
 video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
 
 output = pipe(
@@ -149,6 +161,7 @@ output = pipe(
     negative_prompt="bad quality, worse quality",
     guidance_scale=7.5,
     num_inference_steps=25,
+    strength=0.5,
     generator=torch.Generator("cpu").manual_seed(42),
 )
 frames = output.frames[0]
