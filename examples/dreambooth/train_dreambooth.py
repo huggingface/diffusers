@@ -789,10 +789,7 @@ def encode_prompt(text_encoder, input_ids, attention_mask, text_encoder_use_atte
     else:
         attention_mask = None
 
-    prompt_embeds = text_encoder(
-        text_input_ids,
-        attention_mask=attention_mask,
-        return_dict=False,
+    prompt_embeds = text_encoder(text_input_ids, attention_mask=attention_mask, return_dict=False)
     )
     prompt_embeds = prompt_embeds[0]
 
