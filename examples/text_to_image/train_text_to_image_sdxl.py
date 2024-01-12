@@ -1062,7 +1062,7 @@ def main(args):
                     prompt_embeds,
                     added_cond_kwargs=unet_added_conditions,
                     return_dict=False,
-                    )[0]
+                )[0]
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
