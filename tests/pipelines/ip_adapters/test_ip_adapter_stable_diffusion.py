@@ -90,7 +90,7 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
 
         elif for_controlnet_image_to_image:
             image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
-            control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
+            control_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/depth.png")
             ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
 
             if for_sdxl:
@@ -403,7 +403,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
 
     def test_controlnet_image_to_image(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth")
         pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype,
             controlnet=controlnet
