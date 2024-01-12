@@ -44,24 +44,38 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import imageio
+        >>> import requests
         >>> import torch
-        >>> from diffusers import MotionAdapter, AnimateDiffVideoToVideoPipeline, DDIMScheduler
-        >>> from diffusers.utils import export_to_gif, load_image
+        >>> from diffusers import AnimateDiffVideoToVideoPipeline, DDIMScheduler, MotionAdapter
+        >>> from diffusers.utils import export_to_gif
+        >>> from io import BytesIO
+        >>> from PIL import Image
 
-        >>> adapter = MotionAdapter.from_pretrained("diffusers/motion-adapter")
+        >>> adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
         >>> pipe = AnimateDiffVideoToVideoPipeline.from_pretrained("SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter).to("cuda")
         >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace")
 
-        >>> def load_video(file_path):
+        >>> def load_video(file_path: str):
         ...     images = []
-        ...     vid = imageio.get_reader(file_path)
-        ...     for i, frame in enumerate(vid):
+        ...
+        ...     if file_path.startswith(('http://', 'https://')):
+        ...         # If the file_path is a URL
+        ...         response = requests.get(file_path)
+        ...         response.raise_for_status()
+        ...         content = BytesIO(response.content)
+        ...         vid = imageio.get_reader(content)
+        ...     else:
+        ...         # Assuming it's a local file path
+        ...         vid = imageio.get_reader(file_path)
+        ...
+        ...     for frame in vid:
         ...         pil_image = Image.fromarray(frame)
         ...         images.append(pil_image)
+        ...
         ...     return images
 
-        >>> video = load_video("animation_fireworks.gif")
-        >>> output = pipe(video=video, prompt="Closeup of a woman, fireworks in the background", strength=0.7)
+        >>> video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
+        >>> output = pipe(video=video, prompt="panda playing a guitar, on a boat, in the ocean, high quality", strength=0.5)
         >>> frames = output.frames[0]
         >>> export_to_gif(frames, "animation.gif")
         ```
