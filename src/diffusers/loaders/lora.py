@@ -581,7 +581,6 @@ class LoraLoaderMixin:
                     lora_config_kwargs = get_peft_kwargs(
                         rank, network_alphas, text_encoder_lora_state_dict, is_unet=False
                     )
-
                     lora_config = LoraConfig(**lora_config_kwargs)
 
                     # adapter_name
