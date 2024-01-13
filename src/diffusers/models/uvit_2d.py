@@ -28,8 +28,8 @@ from .attention_processor import (
     CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
     AttnAddedKVProcessor,
-    AttnProcessor,
     AttnAddedKVProcessor2_0,
+    AttnProcessor,
     AttnProcessor2_0,
 )
 from .embeddings import TimestepEmbedding, get_timestep_embedding
@@ -280,7 +280,9 @@ class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         Disables custom attention processors and sets the default attention implementation.
         """
         if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
+            processor = (
+                AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
+            )
         elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnProcessor()
         else:

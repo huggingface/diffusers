@@ -27,8 +27,8 @@ from ...models.attention_processor import (
     CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
     AttnAddedKVProcessor,
-    AttnProcessor,
     AttnAddedKVProcessor2_0,
+    AttnProcessor,
     AttnProcessor2_0,
 )
 from ...models.lora import LoRACompatibleConv, LoRACompatibleLinear
@@ -134,7 +134,9 @@ class WuerstchenPrior(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, Peft
         Disables custom attention processors and sets the default attention implementation.
         """
         if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
+            processor = (
+                AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
+            )
         elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
             processor = AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnProcessor()
         else:
