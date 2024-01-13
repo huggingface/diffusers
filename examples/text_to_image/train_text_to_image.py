@@ -179,7 +179,7 @@ def log_validation(
         images = []
         with torch.autocast("cuda", dtype=weight_dtype):
             image = pipeline(
-                prompt,
+                prompt=prompt,
                 num_inference_steps=4,
                 num_images_per_prompt=4,
                 generator=generator,
