@@ -563,7 +563,6 @@ class StableDiffusionControlNetPipeline(
         control_guidance_start=0.0,
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
-        num_images_per_prompt=1,
     ):
         if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
@@ -617,50 +616,43 @@ class StableDiffusionControlNetPipeline(
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.controlnet, torch._dynamo.eval_frame.OptimizedModule
         )
-        if not is_compiled:
-            is_single_control_net = isinstance(self.controlnet, ControlNetModel)
-            is_multi_control_net = isinstance(self.controlnet, MultiControlNetModel)
-        else:
-            is_single_control_net = isinstance(self.controlnet._orig_mod, ControlNetModel)
-            is_multi_control_net = isinstance(self.controlnet._orig_mod, MultiControlNetModel)
-        # Early exit if invalid controlnet is met
-        if not is_single_control_net and not is_multi_control_net:
-            assert False
-        num_control_nets = 1 if is_single_control_net else len(self.controlnet.nets)
+        if (
+            isinstance(self.controlnet, ControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, ControlNetModel)
+        ):
+            self.check_image(image, prompt, prompt_embeds)
+        elif (
+            isinstance(self.controlnet, MultiControlNetModel)
+            or is_compiled
+            and isinstance(self.controlnet._orig_mod, MultiControlNetModel)
+        ):
+            if not isinstance(image, list):
+                raise TypeError("For multiple controlnets: `image` must be type `list`")
 
-        if is_multi_control_net and not isinstance(image, list):
-            raise TypeError("For multiple controlnets: `image` must be type `list`")
-        # When `image` is a nested list:
-        # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
-        if isinstance(image, list) and any(isinstance(i_, list) for i_ in image):
-            prompt_batch_size = len(prompt) if isinstance(prompt, list) else 1
-            if len(image) != prompt_batch_size:
-                raise ValueError(
-                    f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {len(image)}, prompt batch size: {prompt_batch_size}"
-                )
-            # Check image, this does not apply to the `check_image` logic
-            for i, image_ in enumerate(image):
-                if len(image_) != num_control_nets:
+            # When `image` is a nested list:
+            # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
+            elif any(isinstance(i, list) for i in image):
+                if len(image) != len(prompt):
                     raise ValueError(
-                        f"For multiple controlnets: `image` must have the same length as the number of controlnets, but image[{i}] got {len(image_)} images and {num_control_nets} ControlNets."
+                        f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {len(image)}, prompt batch size: {len(prompt)}"
                     )
-                image_is_pil_list = isinstance(image_, list) and isinstance(image_[0], PIL.Image.Image)
-                image_is_tensor_list = isinstance(image_, list) and isinstance(image_[0], torch.Tensor)
-                image_is_np_list = isinstance(image_, list) and isinstance(image_[0], np.ndarray)
-                if not image_is_pil_list and not image_is_tensor_list and not image_is_np_list:
-                    raise TypeError(
-                        f"image must be passed and be one of PIL image, numpy array, torch tensor, list of PIL images, list of numpy arrays or list of torch tensors, but is {type(image_)}"
-                    )
-        else:
-            if is_single_control_net:
-                self.check_image(image, prompt, prompt_embeds)
-            else:  # is_multi_control_net
-                if len(image) != num_control_nets:
+                transposed_image = [list(t) for t in zip(*image)]
+                if len(transposed_image) != len(self.controlnet.nets):
                     raise ValueError(
-                        f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
+                        f"For multiple controlnets: `image` must have the same length as the number of controlnets, but image got {len(transposed_image)} images and {len(self.controlnet.nets)} ControlNets."
                     )
-                for image_ in image:
+                for image_ in transposed_image:
                     self.check_image(image_, prompt, prompt_embeds)
+            elif len(image) != len(self.controlnet.nets):
+                raise ValueError(
+                    f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
+                )
+
+            for image_ in image:
+                self.check_image(image_, prompt, prompt_embeds)
+        else:
+            assert False
 
         # Check `controlnet_conditioning_scale`
         if (
@@ -1053,7 +1045,6 @@ class StableDiffusionControlNetPipeline(
             control_guidance_start,
             control_guidance_end,
             callback_on_step_end_tensor_inputs,
-            num_images_per_prompt,
         )
 
         self._guidance_scale = guidance_scale
