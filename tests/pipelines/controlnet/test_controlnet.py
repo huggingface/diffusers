@@ -460,6 +460,26 @@ class StableDiffusionMultiControlNetPipelineFastTests(
             except NotImplementedError:
                 pass
 
+    def test_inference_nested_image_input(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionControlNetPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"]]
+        inputs["image"] = [inputs["image"], inputs["image"]]
+        outpus = sd_pipe(**inputs)
+        image = outpus.images
+
+        assert image.shape == (2, 64, 64, 3)
+
+        image_1, image_2 = image
+        # make sure that the outputs are different
+        assert np.sum(np.abs(image_1 - image_2)) > 1e-3
+
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
     PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
