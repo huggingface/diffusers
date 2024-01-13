@@ -971,14 +971,14 @@ def main():
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = unet
+        unet = unwrap_model(unet)
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
         pipeline = StableDiffusionInstructPix2PixPipeline.from_pretrained(
             args.pretrained_model_name_or_path,
-            text_encoder=text_encoder,
-            vae=vae,
+            text_encoder=unwrap_model(text_encoder),
+            vae=unwrap_model(vae),
             unet=unet,
             revision=args.revision,
             variant=args.variant,
