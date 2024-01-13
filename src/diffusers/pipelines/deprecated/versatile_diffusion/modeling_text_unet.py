@@ -18,6 +18,7 @@ from ....models.attention_processor import (
     AttnAddedKVProcessor,
     AttnAddedKVProcessor2_0,
     AttnProcessor,
+    AttnProcessor2_0,
 )
 from ....models.dual_transformer_2d import DualTransformer2DModel
 from ....models.embeddings import (
@@ -888,9 +889,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         Disables custom attention processors and sets the default attention implementation.
         """
         if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = AttnAddedKVProcessor()
+            processor = (
+                AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
+            )
         elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = AttnProcessor()
+            processor = AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnProcessor()
         else:
             raise ValueError(
                 f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
