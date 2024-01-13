@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import gc
 import logging
 import math
 import os
@@ -71,7 +72,7 @@ def save_model_card(
 ):
     img_str = ""
     if len(images) > 0:
-        image_grid = make_image_grid(images, 1, len(args.validation_prompts))
+        image_grid = make_image_grid(images, 1, 4)
         image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
         img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
 
@@ -92,8 +93,8 @@ inference: true
     model_card = f"""
 # Text-to-image finetuning - {repo_id}
 
-This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {args.validation_prompts}: \n
-{img_str}
+This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline \n
+# {img_str}
 
 ## Pipeline usage
 
@@ -104,7 +105,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipeline = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype=torch.float16)
-prompt = "{args.validation_prompts[0]}"
+prompt = "Baby Yoda in the wild"
 image = pipeline(prompt).images[0]
 image.save("my_image.png")
 ```
@@ -138,7 +139,9 @@ More information on all the CLI arguments and the environment are available on y
         f.write(yaml + model_card)
 
 
-def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, epoch):
+def log_validation(
+    vae, args, text_encoder, tokenizer, accelerator, weight_dtype, epoch, unet=None, is_final_validation=False
+):
     logger.info("Running validation... ")
 
     pipeline = StableDiffusionPipeline.from_pretrained(
@@ -163,33 +166,57 @@ def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight
     else:
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
-    images = []
-    for i in range(len(args.validation_prompts)):
-        with torch.autocast("cuda"):
-            image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+    validation_prompts = [
+        "cute Elon Musk character",
+        "A pokemon with wings",
+        "a photo of yoda",
+        "a cute creature with blue wings",
+    ]
 
-        images.append(image)
+    image_logs = []
+
+    for _, prompt in enumerate(validation_prompts):
+        images = []
+        with torch.autocast("cuda", dtype=weight_dtype):
+            image = pipeline(
+                prompt,
+                num_inference_steps=4,
+                num_images_per_prompt=4,
+                generator=generator,
+            ).images
+        image_logs.append({"validation_prompt": prompt, "images": images})
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
-            np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+            for log in image_logs:
+                images = log["images"]
+                validation_prompt = log["validation_prompt"]
+                formatted_images = []
+                for image in images:
+                    formatted_images.append(np.asarray(image))
+
+                formatted_images = np.stack(formatted_images)
+
+                tracker.writer.add_images(validation_prompt, formatted_images, epoch, dataformats="NHWC")
         elif tracker.name == "wandb":
-            tracker.log(
-                {
-                    "validation": [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompts[i]}")
-                        for i, image in enumerate(images)
-                    ]
-                }
-            )
+            formatted_images = []
+
+            for log in image_logs:
+                images = log["images"]
+                validation_prompt = log["validation_prompt"]
+                for image in images:
+                    image = wandb.Image(image, caption=validation_prompt)
+                    formatted_images.append(image)
+            logger_name = "test" if is_final_validation else "validation"
+            tracker.log({logger_name: formatted_images})
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
 
-    del pipeline
-    torch.cuda.empty_cache()
+        del pipeline
+        gc.collect()
+        torch.cuda.empty_cache()
 
-    return images
+        return image_logs
 
 
 def parse_args():
@@ -449,6 +476,13 @@ def parse_args():
         type=int,
         default=None,
         help=("Max number of checkpoints to store."),
+    )
+    # ----------Validation Arguments----------
+    parser.add_argument(
+        "--validation_steps",
+        type=int,
+        default=200,
+        help="Run validation every X steps.",
     )
     parser.add_argument(
         "--resume_from_checkpoint",
@@ -975,8 +1009,8 @@ def main():
                 accelerator.log({"train_loss": train_loss}, step=global_step)
                 train_loss = 0.0
 
-                if global_step % args.checkpointing_steps == 0:
-                    if accelerator.is_main_process:
+                if accelerator.is_main_process:
+                    if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
@@ -1001,6 +1035,18 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
+                    if global_step % args.validation_steps == 0:
+                        log_validation(
+                            vae,
+                            text_encoder,
+                            tokenizer,
+                            args,
+                            accelerator,
+                            weight_dtype,
+                            epoch=global_step,
+                            unet=unet,
+                            is_final_validation=False,
+                        )
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
@@ -1008,20 +1054,21 @@ def main():
                 break
 
         if accelerator.is_main_process:
-            if args.validation_prompts is not None and epoch % args.validation_epochs == 0:
+            if epoch % args.validation_epochs == 0:
                 if args.use_ema:
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
                 log_validation(
                     vae,
+                    args,
                     text_encoder,
                     tokenizer,
-                    unet,
-                    args,
                     accelerator,
                     weight_dtype,
-                    global_step,
+                    epoch=global_step,
+                    unet=unet,
+                    is_final_validation=False,
                 )
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
@@ -1044,34 +1091,29 @@ def main():
         )
         pipeline.save_pretrained(args.output_dir)
 
-        # Run a final round of inference.
-        images = []
-        if args.validation_prompts is not None:
-            logger.info("Running inference for collecting generated images...")
-            pipeline = pipeline.to(accelerator.device)
-            pipeline.torch_dtype = weight_dtype
-            pipeline.set_progress_bar_config(disable=True)
-
-            if args.enable_xformers_memory_efficient_attention:
-                pipeline.enable_xformers_memory_efficient_attention()
-
-            if args.seed is None:
-                generator = None
-            else:
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-
-            for i in range(len(args.validation_prompts)):
-                with torch.autocast("cuda"):
-                    image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
-                images.append(image)
-
         if args.push_to_hub:
-            save_model_card(args, repo_id, images, repo_folder=args.output_dir)
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
                 commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
+            )
+
+        del unet
+        torch.cuda.empty_cache()
+
+        # Run a final round of inference.
+        if args.validation_steps is not None:
+            log_validation(
+                vae,
+                args,
+                text_encoder,
+                tokenizer,
+                accelerator,
+                weight_dtype,
+                epoch=global_step,
+                unet=unet,
+                is_final_validation=True,
             )
 
     accelerator.end_training()
