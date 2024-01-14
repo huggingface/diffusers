@@ -879,7 +879,7 @@ class IPAdapterPlusImageProjection(nn.Module):
         latents = self.proj_out(latents)
         return self.norm_out(latents)
 
-class MultiIPAdapterImageProjection(nn.Module)
+class MultiIPAdapterImageProjection(nn.Module):
     def __init__(
         self,
         IPAdapterImageProjectionLayers: List[Union[ImageProjection, IPAdapterImageProjection, IPAdapterPlusImageProjection]],
@@ -891,5 +891,5 @@ class MultiIPAdapterImageProjection(nn.Module)
         projected_image_embeds = []
         for image_embed, IPAdapterImageProjectionLayer in zip(image_embeds, self.IPAdapterImageProjectionLayers):
             projected_image_embeds.append(IPAdapterImageProjectionLayer(image_embed))
-        projected_image_embeds = torch.cat(projected_image_embeds, dim=1)
+        projected_image_embeds = torch.cat(projected_image_embeds, dim=1) # batch_size, n_tokens, cross_attention_dim
         return projected_image_embeds

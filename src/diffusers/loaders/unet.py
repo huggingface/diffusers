@@ -823,7 +823,6 @@ class UNet2DConditionLoadersMixin:
         # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None
         
-        attn_
         for state_dict in state_dicts:
 
 
