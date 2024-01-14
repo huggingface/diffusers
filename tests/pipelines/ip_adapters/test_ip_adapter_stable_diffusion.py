@@ -24,13 +24,14 @@ from transformers import (
 )
 
 from diffusers import (
+    ControlNetModel,
+    StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
     StableDiffusionPipeline,
-    StableDiffusionControlNetImg2ImgPipeline,
     StableDiffusionXLImg2ImgPipeline,
     StableDiffusionXLInpaintPipeline,
-    StableDiffusionXLPipeline, ControlNetModel,
+    StableDiffusionXLPipeline,
 )
 from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
 from diffusers.utils import load_image
@@ -40,6 +41,7 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
+
 
 enable_full_determinism()
 
@@ -62,8 +64,9 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         image_processor = CLIPImageProcessor.from_pretrained(repo_id)
         return image_processor
 
-    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False,
-                         for_controlnet_image_to_image=False):
+    def get_dummy_inputs(
+        self, for_image_to_image=False, for_inpainting=False, for_sdxl=False, for_controlnet_image_to_image=False
+    ):
         image = load_image(
             "https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png"
         )
@@ -405,8 +408,11 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth")
         pipeline = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype,
-            controlnet=controlnet
+            "runwayml/stable-diffusion-v1-5",
+            image_encoder=image_encoder,
+            safety_checker=None,
+            torch_dtype=self.dtype,
+            controlnet=controlnet,
         )
         pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
