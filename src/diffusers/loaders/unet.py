@@ -761,13 +761,7 @@ class UNet2DConditionLoadersMixin:
         image_projection.load_state_dict(updated_state_dict)
         return image_projection
 
-    def _load_ip_adapter_weights(self, state_dict):
-        from ..models.attention_processor import (
-            AttnProcessor,
-            AttnProcessor2_0,
-            IPAdapterAttnProcessor,
-            IPAdapterAttnProcessor2_0,
-        )
+    def _convert_ip_adapter_attn_to_diffusers(self, state_dict):
 
         if "proj.weight" in state_dict["image_proj"]:
             # IP-Adapter
@@ -778,10 +772,6 @@ class UNet2DConditionLoadersMixin:
         else:
             # IP-Adapter Plus
             num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
-
-        # Set encoder_hid_proj after loading ip_adapter weights,
-        # because `IPAdapterPlusImageProjection` also has `attn_processors`.
-        self.encoder_hid_proj = None
 
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
@@ -818,6 +808,25 @@ class UNet2DConditionLoadersMixin:
 
                 attn_procs[name].load_state_dict(value_dict)
                 key_id += 2
+
+        return attn_procs
+    
+    def _load_ip_adapter_weights(self, state_dicts):
+        from ..models.attention_processor import (
+            AttnProcessor,
+            AttnProcessor2_0,
+            IPAdapterAttnProcessor,
+            IPAdapterAttnProcessor2_0,
+        )
+
+        # Set encoder_hid_proj after loading ip_adapter weights,
+        # because `IPAdapterPlusImageProjection` also has `attn_processors`.
+        self.encoder_hid_proj = None
+        
+        attn_
+        for state_dict in state_dicts:
+
+
 
         self.set_attn_processor(attn_procs)
 

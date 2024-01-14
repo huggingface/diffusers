@@ -114,7 +114,7 @@ class IPAdapterMixin:
             "file_type": "attn_procs_weights",
             "framework": "pytorch",
         }
-        
+        state_dicts = []
         for pretrained_model_name_or_path_or_dict, weight_name, subfolder in zip(pretrained_model_name_or_path_or_dict, weight_name, subfolder):
             if not isinstance(pretrained_model_name_or_path_or_dict, dict):
                 model_file = _get_model_file(
@@ -142,6 +142,8 @@ class IPAdapterMixin:
                     state_dict = torch.load(model_file, map_location="cpu")
             else:
                 state_dict = pretrained_model_name_or_path_or_dict
+            
+            state_dicts.append(state_dict)
 
             keys = list(state_dict.keys())
             if keys != ["image_proj", "ip_adapter"]:
@@ -166,8 +168,8 @@ class IPAdapterMixin:
                 self.register_to_config(feature_extractor=["transformers", "CLIPImageProcessor"])
 
             # load ip-adapter into unet
-            unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-            unet._load_ip_adapter_weights(state_dict)
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        unet._load_ip_adapter_weights(state_dicts)
 
     def set_ip_adapter_scale(self, scale):
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
