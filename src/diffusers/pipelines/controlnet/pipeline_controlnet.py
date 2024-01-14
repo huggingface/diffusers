@@ -633,9 +633,6 @@ class StableDiffusionControlNetPipeline(
             # When `image` is a nested list:
             # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
             elif any(isinstance(i, list) for i in image):
-                if len(image) != len(prompt):
-                    raise ValueError(
-                        f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {len(image)}, prompt batch size: {len(prompt)}"
                     )
                 transposed_image = [list(t) for t in zip(*image)]
                 if len(transposed_image) != len(self.controlnet.nets):
