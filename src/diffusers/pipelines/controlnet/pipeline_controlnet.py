@@ -633,7 +633,6 @@ class StableDiffusionControlNetPipeline(
             # When `image` is a nested list:
             # (e.g. [[canny_image_1, pose_image_1], [canny_image_2, pose_image_2]])
             elif any(isinstance(i, list) for i in image):
-                    )
                 transposed_image = [list(t) for t in zip(*image)]
                 if len(transposed_image) != len(self.controlnet.nets):
                     raise ValueError(
