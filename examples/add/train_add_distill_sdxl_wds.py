@@ -26,7 +26,7 @@ import random
 import shutil
 import types
 from pathlib import Path
-from typing import Callable, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import accelerate
 import numpy as np
@@ -572,6 +572,7 @@ class DiscriminatorOutput(BaseOutput):
     """
 
     logits: torch.FloatTensor
+    features: Optional[Dict[str, torch.FloatTensor]] = None
 
 
 # Based on ProjectedDiscriminator from the official StyleGAN-T code
@@ -650,7 +651,7 @@ class Discriminator(torch.nn.Module):
         if not return_dict:
             return (logits,)
 
-        return DiscriminatorOutput(logits=logits)
+        return DiscriminatorOutput(logits=logits, features=features)
 
 
 def log_validation(vae, unet, args, accelerator, weight_dtype, step, name="student"):
@@ -1952,7 +1953,8 @@ def main(args):
                     )
                     head_grad_norm = 0
                     for grad in head_grad_params:
-                        head_grad_norm += grad.abs().sum()
+                        head_grad_norm += grad.pow(2).sum()
+                    head_grad_norm = head_grad_norm.sqrt()
                     d_r1_regularizer += head_grad_norm
 
                 d_loss_real = d_adv_loss_real + args.discriminator_r1_strength * d_r1_regularizer
@@ -2081,7 +2083,7 @@ def main(args):
             # Write out additional values for accelerator to report.
             logs["d_adv_loss_fake"] = d_adv_loss_fake.detach().item()
             logs["d_adv_loss_real"] = d_adv_loss_real.detach().item()
-            logs["d_r1_regularizer"] = d_r1_regularizer.detach().item()
+            logs["d_r1_penalty_scaled"] = args.discriminator_r1_strength * d_r1_regularizer.detach().item()
             logs["d_loss_real"] = d_loss_real.detach().item()
             accelerator.log(logs, step=global_step)
 
