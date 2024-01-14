@@ -637,7 +637,7 @@ class StableDiffusionControlNetPipeline(
                 transposed_image = [list(t) for t in zip(*image)]
                 if len(transposed_image) != len(self.controlnet.nets):
                     raise ValueError(
-                        f"For multiple controlnets: `image` must have the same length as the number of controlnets, but image got {len(transposed_image)} images and {len(self.controlnet.nets)} ControlNets."
+                        f"For multiple controlnets: if you pass`image` as a list of list, each sublist must have the same length as the number of controlnets, but the sublists in `image` got {len(transposed_image)} images and {len(self.controlnet.nets)} ControlNets."
                     )
                 for image_ in transposed_image:
                     self.check_image(image_, prompt, prompt_embeds)
