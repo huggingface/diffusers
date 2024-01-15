@@ -922,6 +922,8 @@ def main(args):
             models = [unet_]
             if args.train_text_encoder:
                 models.append(text_encoder_)
+
+            # only upcast trainable parameters (LoRA) into fp32
             cast_training_params(models, dtype=torch.float32)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
@@ -942,11 +944,9 @@ def main(args):
         models = [unet]
         if args.train_text_encoder:
             models.append(text_encoder)
-        for model in models:
-            for param in model.parameters():
-                # only upcast trainable parameters (LoRA) into fp32
-                if param.requires_grad:
-                    param.data = param.to(torch.float32)
+
+        # only upcast trainable parameters (LoRA) into fp32
+        cast_training_params(models, dtype=torch.float32)
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
     if args.use_8bit_adam:
