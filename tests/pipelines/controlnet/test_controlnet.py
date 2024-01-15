@@ -460,7 +460,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
             except NotImplementedError:
                 pass
 
-    def test_inference_nested_image_input(self):
+    def test_inference_multiple_prompt_input(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -479,6 +479,13 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         image_1, image_2 = image
         # make sure that the outputs are different
         assert np.sum(np.abs(image_1 - image_2)) > 1e-3
+
+        # multiple prompts, single image conditioning
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"]]
+        output_1 = sd_pipe(**inputs)
+
+        assert np.abs(image - output_1.images).max() < 1e-3
 
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
