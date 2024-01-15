@@ -160,7 +160,7 @@ class UmerDebugLogger:
             xcross=os.path.join(dir_, xcross),
             hint=os.path.join(dir_,hint)
         )
-        self.input_action = 'save'
+        self.input_action = 'load'
 
     def do_input_action(self, x, t, xcross, hint):
         assert self.input_files is not None, "self.input_files not set! Use save_input or load_input"
@@ -172,10 +172,10 @@ class UmerDebugLogger:
             torch.save(hint, self.input_files.hint)
             print('[udl] Input saved')
         else:
-            x = torch.load(self.input_files.x)
-            t = torch.load( self.input_files.t)
-            xcross = torch.load(self.input_files.xcross)
-            hint = torch.load(self.input_files.hint)
+            x = torch.load(self.input_files.x, map_location=x.device)
+            t = torch.load( self.input_files.t, map_location=t.device)
+            xcross = torch.load(self.input_files.xcross, map_location=xcross.device)
+            hint = torch.load(self.input_files.hint, map_location=hint.device)
             print('[udl] Input loaded')
         return x, t, xcross, hint
 
