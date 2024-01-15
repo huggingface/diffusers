@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -21,6 +20,7 @@ import PIL.Image
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
+from gmflow.gmflow import GMFlow
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.image_processor import VaeImageProcessor
@@ -32,12 +32,6 @@ from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionS
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import BaseOutput, deprecate, logging
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
-
-
-gmflow_dir = "/path/to/gmflow"
-sys.path.insert(0, gmflow_dir)
-from gmflow.gmflow import GMFlow  # noqa: E402
-
 from utils.utils import InputPadder  # noqa: E402
 
 
