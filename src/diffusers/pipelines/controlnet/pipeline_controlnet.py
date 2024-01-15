@@ -657,7 +657,8 @@ class StableDiffusionControlNetPipeline(
             if isinstance(controlnet_conditioning_scale, list):
                 if any(isinstance(i, list) for i in controlnet_conditioning_scale):
                     raise ValueError(
-                        "A single batch of varied conditioning scale settings is not supported at the moment."
+                        "A single batch of varying conditioning scale settings (e.g. [[1.0, 0.5], [0.2, 0.8]]) is not supported at the moment. "
+                        "The conditioning scale must be fixed across the batch."
                     )
             elif isinstance(controlnet_conditioning_scale, list) and len(controlnet_conditioning_scale) != len(
                 self.controlnet.nets
