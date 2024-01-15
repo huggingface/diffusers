@@ -223,12 +223,6 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _wandb_available = False
 
-_omegaconf_available = importlib.util.find_spec("omegaconf") is not None
-try:
-    _omegaconf_version = importlib_metadata.version("omegaconf")
-    logger.debug(f"Successfully imported omegaconf version {_omegaconf_version}")
-except importlib_metadata.PackageNotFoundError:
-    _omegaconf_available = False
 
 _tensorboard_available = importlib.util.find_spec("tensorboard")
 try:
@@ -345,10 +339,6 @@ def is_wandb_available():
     return _wandb_available
 
 
-def is_omegaconf_available():
-    return _omegaconf_available
-
-
 def is_tensorboard_available():
     return _tensorboard_available
 
@@ -450,12 +440,6 @@ install wandb`
 """
 
 # docstyle-ignore
-OMEGACONF_IMPORT_ERROR = """
-{0} requires the omegaconf library but it was not found in your environment. You can install it with pip: `pip
-install omegaconf`
-"""
-
-# docstyle-ignore
 TENSORBOARD_IMPORT_ERROR = """
 {0} requires the tensorboard library but it was not found in your environment. You can install it with pip: `pip
 install tensorboard`
@@ -506,7 +490,6 @@ BACKENDS_MAPPING = OrderedDict(
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
-        ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
         ("tensorboard", (is_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
         ("compel", (is_compel_available, COMPEL_IMPORT_ERROR)),
         ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),
