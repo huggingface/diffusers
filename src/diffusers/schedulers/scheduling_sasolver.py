@@ -979,8 +979,6 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 tau=current_tau,
             )
 
-
-
         for i in range(max(self.config.predictor_order, self.config.corrector_order - 1) - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
             self.timestep_list[i] = self.timestep_list[i + 1]
