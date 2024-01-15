@@ -1164,15 +1164,17 @@ class StableDiffusionXLPipeline(
 
         if ip_adapter_image is not None:
             if not isinstance(ip_adapter_image, list):
-                ip_adapter_image = [ip_adapter_image] 
-            
+                ip_adapter_image = [ip_adapter_image]
+
             if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.ImageProjectionLayers):
                 raise ValueError(
                     f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.ImageProjectionLayers)} IP Adapters."
                 )
-            
+
             image_embeds, negative_image_embeds = [], []
-            for single_ip_adapter_image, image_proj_layer in zip(ip_adapter_image, self.unet.encoder_hid_proj.ImageProjectionLayers):
+            for single_ip_adapter_image, image_proj_layer in zip(
+                ip_adapter_image, self.unet.encoder_hid_proj.ImageProjectionLayers
+            ):
                 output_hidden_state = False if isinstance(image_proj_layer, ImageProjection) else True
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
                     single_ip_adapter_image, device, num_images_per_prompt, output_hidden_state
@@ -1180,7 +1182,7 @@ class StableDiffusionXLPipeline(
                 if self.do_classifier_free_guidance:
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                     single_image_embeds = single_image_embeds.to(device)
-                
+
                 image_embeds.append(single_image_embeds)
                 negative_image_embeds.append(single_negative_image_embeds)
 

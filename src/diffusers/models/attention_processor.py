@@ -2106,11 +2106,11 @@ class IPAdapterAttnProcessor(nn.Module):
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
 
-        if not instances(num_tokens, list):
+        if not isinstance(num_tokens, list):
             raise ValueError("`num_tokens` should be a list of integers.")
         self.num_tokens = num_tokens
-        
-        if not instances(scale, list):
+
+        if not isinstance(scale, list):
             scale = [scale] * len(num_tokens)
         if len(scale) != len(num_tokens):
             raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
@@ -2230,7 +2230,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
-        
+
         if not isinstance(num_tokens, list):
             raise ValueError("`num_tokens` should be a list of integers.")
         self.num_tokens = num_tokens
@@ -2328,7 +2328,9 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                 query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
             )
 
-            current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
+            current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
+                batch_size, -1, attn.heads * head_dim
+            )
             current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
 
             hidden_states = hidden_states + scale * current_ip_hidden_states

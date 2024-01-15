@@ -24,7 +24,12 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from ..models.embeddings import ImageProjection, IPAdapterFullImageProjection, IPAdapterPlusImageProjection, MultiIPAdapterImageProjection
+from ..models.embeddings import (
+    ImageProjection,
+    IPAdapterFullImageProjection,
+    IPAdapterPlusImageProjection,
+    MultiIPAdapterImageProjection,
+)
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     USE_PEFT_BACKEND,
@@ -768,10 +773,11 @@ class UNet2DConditionLoadersMixin:
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
         )
+
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
         key_id = 1
-        for name in self.attn_processors.keys():  
+        for name in self.attn_processors.keys():
             cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
             if name.startswith("mid_block"):
                 hidden_size = self.config.block_out_channels[-1]
@@ -781,7 +787,7 @@ class UNet2DConditionLoadersMixin:
             elif name.startswith("down_blocks"):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = self.config.block_out_channels[block_id]
-        
+
             if cross_attention_dim is None or "motion_modules" in name:
                 attn_processor_class = (
                     AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
@@ -810,7 +816,6 @@ class UNet2DConditionLoadersMixin:
                     num_tokens=num_image_text_embeds,
                 ).to(dtype=self.dtype, device=self.device)
 
-                
                 value_dict = {}
                 for i, state_dict in enumerate(state_dicts):
                     value_dict.update({f"to_k_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_k_ip.weight"]})
@@ -820,12 +825,12 @@ class UNet2DConditionLoadersMixin:
                 key_id += 2
 
         return attn_procs
-    
+
     def _load_ip_adapter_weights(self, state_dicts):
         # Set encoder_hid_proj after loading ip_adapter weights,
         # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None
-        
+
         attn_procs = self._convert_ip_adapter_attn_to_diffusers(state_dicts)
         self.set_attn_processor(attn_procs)
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from typing import Dict, Union, List
+from typing import Dict, List, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -45,7 +45,7 @@ class IPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, List[str],Dict[str, torch.Tensor]],
+        pretrained_model_name_or_path_or_dict: Union[str, List[str], Dict[str, torch.Tensor]],
         subfolder: Union[str, list[str]],
         weight_name: Union[str, list[str]],
         **kwargs,
@@ -103,7 +103,7 @@ class IPAdapterMixin:
 
         if len(weight_name) != len(pretrained_model_name_or_path_or_dict):
             raise ValueError("`weight_name` and `pretrained_model_name_or_path_or_dict` must have the same length.")
-        
+
         if len(weight_name) != len(subfolder):
             raise ValueError("`weight_name` and `subfolder` must have the same length.")
 
@@ -121,7 +121,9 @@ class IPAdapterMixin:
             "framework": "pytorch",
         }
         state_dicts = []
-        for pretrained_model_name_or_path_or_dict, weight_name, subfolder in zip(pretrained_model_name_or_path_or_dict, weight_name, subfolder):
+        for pretrained_model_name_or_path_or_dict, weight_name, subfolder in zip(
+            pretrained_model_name_or_path_or_dict, weight_name, subfolder
+        ):
             if not isinstance(pretrained_model_name_or_path_or_dict, dict):
                 model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
@@ -148,7 +150,7 @@ class IPAdapterMixin:
                     state_dict = torch.load(model_file, map_location="cpu")
             else:
                 state_dict = pretrained_model_name_or_path_or_dict
-            
+
             state_dicts.append(state_dict)
 
             keys = list(state_dict.keys())

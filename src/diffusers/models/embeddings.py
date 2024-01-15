@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional, Union, Tuple, List
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -879,19 +879,17 @@ class IPAdapterPlusImageProjection(nn.Module):
         latents = self.proj_out(latents)
         return self.norm_out(latents)
 
+
 class MultiIPAdapterImageProjection(nn.Module):
-    def __init__(
-        self,
-        IPAdapterImageProjectionLayers: Union[List[nn.Module],Tuple[nn.Module]]
-    ):
+    def __init__(self, IPAdapterImageProjectionLayers: Union[List[nn.Module], Tuple[nn.Module]]):
         super().__init__()
         self.ImageProjectionLayers = nn.ModuleList(IPAdapterImageProjectionLayers)
-    
+
     def forward(self, image_embeds: List[torch.FloatTensor]):
         projected_image_embeds = []
 
         for image_embed, ImageProjectionLayer in zip(image_embeds, self.ImageProjectionLayers):
             projected_image_embeds.append(ImageProjectionLayer(image_embed))
 
-        projected_image_embeds = torch.cat(projected_image_embeds, dim=1) # batch_size, n_tokens, cross_attention_dim
+        projected_image_embeds = torch.cat(projected_image_embeds, dim=1)  # batch_size, n_tokens, cross_attention_dim
         return projected_image_embeds
