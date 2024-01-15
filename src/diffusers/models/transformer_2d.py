@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from umer_debug_logger import udl
+from ..umer_debug_logger import udl
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate, is_torch_version

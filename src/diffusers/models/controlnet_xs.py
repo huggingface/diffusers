@@ -590,11 +590,17 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
-        sample, timesteps, encoder_hidden_states = udl.do_input_action(x=sample, t=timesteps, xcross=encoder_hidden_states)
+        sample, timesteps, encoder_hidden_states, controlnet_cond = udl.do_input_action(
+            x=sample,
+            t=timesteps,
+            xcross=encoder_hidden_states, 
+            hint=controlnet_cond
+        )
 
         udl.log_if('sample', sample, udl.SUBBLOCK)
         udl.log_if('timesteps', timesteps, udl.SUBBLOCK)
         udl.log_if('encoder_hidden_states', encoder_hidden_states, udl.SUBBLOCK)
+        udl.log_if('controlnet_cond', controlnet_cond, udl.SUBBLOCK)
 
         t_emb = self.base_time_proj(timesteps)
 

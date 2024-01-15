@@ -144,36 +144,40 @@ class UmerDebugLogger:
                 log_objects.append(SimpleNamespace(**row))
         return log_objects
 
-    def save_input(self, dir_, x, t, xcross):
+    def save_input(self, dir_, x, t, xcross, hint):
         self.input_files = SimpleNamespace(
             x=os.path.join(dir_, x),
             t=os.path.join(dir_, t),
             xcross=os.path.join(dir_, xcross),
+            hint=os.path.join(dir_,hint)
         )
         self.input_action = 'save'
 
-    def load_input(self, dir_, x, t, xcross):
+    def load_input(self, dir_, x, t, xcross, hint):
         self.input_files = SimpleNamespace(
             x=os.path.join(dir_, x),
             t=os.path.join(dir_, t),
             xcross=os.path.join(dir_, xcross),
+            hint=os.path.join(dir_,hint)
         )
         self.input_action = 'save'
 
-    def do_input_action(self, x, t, xcross):
+    def do_input_action(self, x, t, xcross, hint):
         assert self.input_files is not None, "self.input_files not set! Use save_input or load_input"
         assert self.input_action in ['save', 'load']
         if self.input_action == 'save':
             torch.save(x, self.input_files.x)
             torch.save(t, self.input_files.t)
             torch.save(xcross, self.input_files.xcross)
+            torch.save(hint, self.input_files.hint)
             print('[udl] Input saved')
         else:
             x = torch.load(self.input_files.x)
             t = torch.load( self.input_files.t)
             xcross = torch.load(self.input_files.xcross)
+            hint = torch.load(self.input_files.hint)
             print('[udl] Input loaded')
-        return x, t, xcross
+        return x, t, xcross, hint
 
 
 udl = UmerDebugLogger()
