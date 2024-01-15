@@ -63,6 +63,8 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
+from diffusers.configuration_utils import ConfigMixin, register_to_config
+from diffusers.models.modeling_utils import ModelMixin
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, resolve_interpolation_mode
 from diffusers.utils import BaseOutput, check_min_version, is_wandb_available
@@ -560,11 +562,12 @@ class DiscriminatorOutput(BaseOutput):
 
 # Based on ProjectedDiscriminator from the official StyleGAN-T code
 # https://github.com/autonomousvision/stylegan-t/blob/36ab80ce76237fefe03e65e9b3161c040ae888e3/networks/discriminator.py#L130
-class Discriminator(torch.nn.Module):
+class Discriminator(ModelMixin, ConfigMixin):
     """
     StyleGAN-T-style discriminator for adversarial diffusion distillation (ADD).
     """
 
+    @register_to_config
     def __init__(
         self,
         pretrained_feature_network: str = "vit_small_patch14_dinov2.lvd142m",
@@ -1511,7 +1514,10 @@ def main(args):
                     ema_unet.save_pretrained(os.path.join(output_dir, "unet_ema"))
 
                 for i, model in enumerate(models):
-                    model.save_pretrained(os.path.join(output_dir, "unet"))
+                    if isinstance(model, UNet2DConditionModel):
+                        model.save_pretrained(os.path.join(output_dir, "unet"))
+                    else:
+                        model.save_pretrained(os.path.join(output_dir, "discriminator"))
 
                     # make sure to pop weight so that corresponding model is not saved again
                     weights.pop()
@@ -1528,7 +1534,10 @@ def main(args):
                 model = models.pop()
 
                 # load diffusers style into model
-                load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+                if isinstance(model, UNet2DConditionModel):
+                    load_model = UNet2DConditionModel.from_pretrained(input_dir, subfolder="unet")
+                else:
+                    load_model = Discriminator.from_pretrained(input_dir, subfolder="discriminator")
                 model.register_to_config(**load_model.config)
 
                 model.load_state_dict(load_model.state_dict())
