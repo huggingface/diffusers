@@ -2989,7 +2989,7 @@ pipe = DiffusionPipeline.from_pretrained(
     custom_pipeline="pipeline_animatediff_controlnet",
 ).to(device="cuda", dtype=torch.float16)
 pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
-    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1, beta_schedule="linear",
 )
 pipe.enable_vae_slicing()
 
@@ -3005,7 +3005,7 @@ result = pipe(
     width=512,
     height=768,
     conditioning_frames=conditioning_frames,
-    num_inference_steps=12,
+    num_inference_steps=20,
 ).frames[0]
 
 from diffusers.utils import export_to_gif
@@ -3028,6 +3028,79 @@ export_to_gif(result.frames[0], "result.gif")
     <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/eb7d2952-72e4-44fa-b664-077c79b4fc70" alt="gif-2"></td>
   </tr>
 </table>
+
+You can also use multiple controlnets at once!
+
+```python
+import torch
+from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
+from diffusers.pipelines import DiffusionPipeline
+from diffusers.schedulers import DPMSolverMultistepScheduler
+from PIL import Image
+
+motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
+adapter = MotionAdapter.from_pretrained(motion_id)
+controlnet1 = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
+controlnet2 = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    motion_adapter=adapter,
+    controlnet=[controlnet1, controlnet2],
+    vae=vae,
+    custom_pipeline="pipeline_animatediff_controlnet",
+).to(device="cuda", dtype=torch.float16)
+pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
+    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1, beta_schedule="linear",
+)
+pipe.enable_vae_slicing()
+
+def load_video(file_path: str):
+    images = []
+
+    if file_path.startswith(('http://', 'https://')):
+        # If the file_path is a URL
+        response = requests.get(file_path)
+        response.raise_for_status()
+        content = BytesIO(response.content)
+        vid = imageio.get_reader(content)
+    else:
+        # Assuming it's a local file path
+        vid = imageio.get_reader(file_path)
+
+    for frame in vid:
+        pil_image = Image.fromarray(frame)
+        images.append(pil_image)
+
+    return images
+
+video = load_video("dance.gif")
+
+# You need to install it using `pip install controlnet_aux`
+from controlnet_aux.processor import Processor
+
+p1 = Processor("openpose_full")
+cn1 = [p1(frame) for frame in video]
+
+p2 = Processor("canny")
+cn2 = [p2(frame) for frame in video]
+
+prompt = "astronaut in space, dancing"
+negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
+result = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=512,
+    height=768,
+    conditioning_frames=[cn1, cn2],
+    num_inference_steps=20,
+)
+
+from diffusers.utils import export_to_gif
+export_to_gif(result.frames[0], "result.gif")
+```
 
 ### DemoFusion
 
