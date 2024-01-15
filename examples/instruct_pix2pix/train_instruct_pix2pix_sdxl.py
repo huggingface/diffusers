@@ -54,6 +54,7 @@ from diffusers.utils import check_min_version, deprecate, is_wandb_available, lo
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
+
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.26.0.dev0")
 
@@ -1049,7 +1050,11 @@ def main():
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 model_pred = unet(
-                    concatenated_noisy_latents, timesteps, encoder_hidden_states, added_cond_kwargs=added_cond_kwargs, return_dict=False
+                    concatenated_noisy_latents,
+                    timesteps,
+                    encoder_hidden_states,
+                    added_cond_kwargs=added_cond_kwargs,
+                    return_dict=False,
                 )[0]
                 loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
 
