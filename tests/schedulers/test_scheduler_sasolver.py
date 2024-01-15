@@ -80,9 +80,10 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         model = self.dummy_model()
         sample = self.dummy_sample_deter * scheduler.init_noise_sigma
         sample = sample.to(torch_device)
+        generator = torch.manual_seed(0)
 
         for i, t in enumerate(scheduler.timesteps):
-            sample = scheduler.scale_model_input(sample, t)
+            sample = scheduler.scale_model_input(sample, t, generator=generator)
 
             model_output = model(sample, t)
 
@@ -93,8 +94,8 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         if torch_device in ["cpu"]:
-            assert abs(result_sum.item() - 328.8799133300781) < 1e-2
-            assert abs(result_mean.item() - 0.42822906374931335) < 1e-3
+            assert abs(result_sum.item() - 337.394287109375) < 1e-2
+            assert abs(result_mean.item() - 0.43931546807289124) < 1e-3
         elif torch_device in ["cuda"]:
             assert abs(result_sum.item() - 329.1999816894531) < 1e-2
             assert abs(result_mean.item() - 0.4286458194255829) < 1e-3
