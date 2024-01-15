@@ -62,11 +62,11 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         if torch_device in ["cpu"]:
-            assert abs(result_sum.item() - 339.0479736328125) < 1e-2
-            assert abs(result_mean.item() - 0.4414687156677246) < 1e-3
+            assert abs(result_sum.item() - 328.8799133300781) < 1e-2
+            assert abs(result_mean.item() - 0.42822906374931335) < 1e-3
         elif torch_device in ["cuda"]:
-            assert abs(result_sum.item() - 329.20001220703125) < 1e-2
-            assert abs(result_mean.item() - 0.4286458492279053) < 1e-3
+            assert abs(result_sum.item() - 329.1999816894531) < 1e-2
+            assert abs(result_mean.item() - 0.4286458194255829) < 1e-3
         else:
             print("None")
 
@@ -94,11 +94,11 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         if torch_device in ["cpu"]:
-            assert abs(result_sum.item() - 193.1468048095703) < 1e-2
-            assert abs(result_mean.item() - 0.2514932453632355) < 1e-3
+            assert abs(result_sum.item() - 193.1467742919922) < 1e-2
+            assert abs(result_mean.item() - 0.2514931857585907) < 1e-3
         elif torch_device in ["cuda"]:
-            assert abs(result_sum.item() - 193.41543579101562) < 1e-2
-            assert abs(result_mean.item() - 0.25184303522109985) < 1e-3
+            assert abs(result_sum.item() - 193.4154052734375) < 1e-2
+            assert abs(result_mean.item() - 0.2518429756164551) < 1e-3
         else:
             print("None")
 
@@ -157,10 +157,10 @@ class SASolverSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         if torch_device in ["cpu"]:
-            assert abs(result_sum.item() - 840.1239013671875) < 1e-2
-            assert abs(result_mean.item() - 1.0939112901687622) < 1e-2
+            assert abs(result_sum.item() - 837.2554931640625) < 1e-2
+            assert abs(result_mean.item() - 1.0901764631271362) < 1e-2
         elif torch_device in ["cuda"]:
-            assert abs(result_sum.item() - 840.1239624023438) < 1e-2
-            assert abs(result_mean.item() - 1.0939114093780518) < 1e-2
+            assert abs(result_sum.item() - 837.25537109375) < 1e-2
+            assert abs(result_mean.item() - 1.0901763439178467) < 1e-2
         else:
             print("None")

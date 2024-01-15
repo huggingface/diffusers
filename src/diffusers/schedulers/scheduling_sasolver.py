@@ -688,7 +688,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             if len(args) > 2:
                 noise = args[2]
             else:
-                raise ValueError(" missing `noise` as a required keyward argument")       
+                raise ValueError(" missing `noise` as a required keyward argument")
         if order is None:
             if len(args) > 3:
                 order = args[3]
