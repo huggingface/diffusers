@@ -164,13 +164,15 @@ class UmerDebugLogger:
         assert self.input_files is not None, "self.input_files not set! Use save_input or load_input"
         assert self.input_action in ['save', 'load']
         if self.input_action == 'save':
-            torch.save(x, os.path.join(self.log_dir, self.input_files.x))
-            torch.save(t, os.path.join(self.log_dir, self.input_files.t))
-            torch.save(xcross, os.path.join(self.log_dir, self.input_files.xcross))
+            torch.save(x, self.input_files.x)
+            torch.save(t, self.input_files.t)
+            torch.save(xcross, self.input_files.xcross)
+            print('[udl] Input saved')
         else:
-            x = torch.load(os.path.join(self.log_dir, self.input_files.x))
-            t = torch.load(os.path.join(self.log_dir, self.input_files.t))
-            xcross = torch.load(os.path.join(self.log_dir, self.input_files.xcross))
+            x = torch.load(self.input_files.x)
+            t = torch.load( self.input_files.t)
+            xcross = torch.load(self.input_files.xcross)
+            print('[udl] Input loaded')
         return x, t, xcross
 
 
