@@ -471,8 +471,8 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"], inputs["prompt"]]
         inputs["image"] = [inputs["image"], inputs["image"]]
-        outpus = sd_pipe(**inputs)
-        image = outpus.images
+        output = sd_pipe(**inputs)
+        image = output.images
 
         assert image.shape == (2, 64, 64, 3)
 
