@@ -271,7 +271,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 sigmas = np.concatenate([sigmas, np.array([0])]).astype(np.float32)
             else:
                 raise ValueError(
-                    f"final_sigmas_type must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
+                    f"`final_sigmas_type` must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
                 )
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
@@ -283,7 +283,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 sigma_last = 0
             else:
                 raise ValueError(
-                    f"final_sigmas_type must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
+                    f"`final_sigmas_type` must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
                 )
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 

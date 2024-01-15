@@ -150,6 +150,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
         use_karras_sigmas: Optional[bool] = False,
+        final_sigmas_type: Optional[str] = "default",  # "denoise_to_zero", "default"
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
     ):
@@ -267,10 +268,24 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
-            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+            if self.config.final_sigmas_type == "default":
+                sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+            elif self.config.final_sigmas_type == "denoise_to_zero":
+                sigmas = np.concatenate([sigmas, np.array([0.0])]).astype(np.float32)
+            else:
+                raise ValueError(
+                    f" `final_sigmas_type` must be one of `default` or `denoise_to_zero`, but got {self.config.final_sigmas_type}"
+                )
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-            sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+            if self.config.final_sigmas_type == "default":
+                sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+            elif self.config.final_sigmas_type == "denoise_to_zero":
+                sigma_last = 0
+            else:
+                raise ValueError(
+                    f" `final_sigmas_type` must be one of `default` or `denoise_to_zero`, but got {self.config.final_sigmas_type}"
+                )
             sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
@@ -282,6 +297,12 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         if not self.config.lower_order_final and num_inference_steps % self.config.solver_order != 0:
             logger.warn(
                 "Changing scheduler {self.config} to have `lower_order_final` set to True to handle uneven amount of inference steps. Please make sure to always use an even number of `num_inference steps when using `lower_order_final=True`."
+            )
+            self.register_to_config(lower_order_final=True)
+
+        if not self.config.lower_order_final and self.config.final_sigmas_type == "denoise_to_zero":
+            logger.warn(
+                "denoise_to_zero is not supported for `lower_order_final=False`. Changing scheduler {self.config} to have `lower_order_final` set to True."
             )
             self.register_to_config(lower_order_final=True)
 
