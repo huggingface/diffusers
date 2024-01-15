@@ -21,7 +21,8 @@ from typing_extensions import List, Optional
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
-from ..wuerstchen.modeling_wuerstchen_common import AttnBlock, ResBlock, TimestepBlock, WuerstchenLayerNorm
+from ..wuerstchen.modeling_wuerstchen_common import AttnBlock, TimestepBlock, WuerstchenLayerNorm
+from ..wuerstchen.modeling_wuerstchen_diffnext import ResBlockStageB
 
 
 class UpDownBlock2d(nn.Module):
@@ -45,28 +46,28 @@ class UpDownBlock2d(nn.Module):
 class WuerstchenV3Unet(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
-            self,
-            c_in=16,
-            c_out=16,
-            c_r=64,
-            patch_size=1,
-            c_cond=2048,
-            c_hidden=[2048, 2048],
-            nhead=[32, 32],
-            blocks=[[8, 24], [24, 8]],
-            block_repeat=[[1, 1], [1, 1]],
-            level_config=["CTA", "CTA"],
-            c_clip_text: Optional[int] = None,
-            c_clip_text_pooled=1280,
-            c_clip_img: Optional[int] = None,
-            c_clip_seq=4,
-            c_effnet: Optional[int] = None,
-            c_pixels: Optional[int] = None,
-            kernel_size=3,
-            dropout: List[float] = [0.1, 0.1],
-            self_attn: bool = True,
-            t_conds: List[str] = ["sca", "crp"],
-            switch_level: Optional[List[bool]] = [False],
+        self,
+        c_in=16,
+        c_out=16,
+        c_r=64,
+        patch_size=1,
+        c_cond=2048,
+        c_hidden=[2048, 2048],
+        nhead=[32, 32],
+        blocks=[[8, 24], [24, 8]],
+        block_repeat=[[1, 1], [1, 1]],
+        level_config=["CTA", "CTA"],
+        c_clip_text: Optional[int] = None,
+        c_clip_text_pooled=1280,
+        c_clip_img: Optional[int] = None,
+        c_clip_seq=4,
+        c_effnet: Optional[int] = None,
+        c_pixels: Optional[int] = None,
+        kernel_size=3,
+        dropout: List[float] = [0.1, 0.1],
+        self_attn: bool = True,
+        t_conds: List[str] = ["sca", "crp"],
+        switch_level: Optional[List[bool]] = [False],
     ):
         super().__init__()
         self.c_r = c_r
@@ -102,13 +103,13 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
 
         self.embedding = nn.Sequential(
             nn.PixelUnshuffle(patch_size),
-            nn.Conv2d(c_in * (patch_size ** 2), c_hidden[0], kernel_size=1),
+            nn.Conv2d(c_in * (patch_size**2), c_hidden[0], kernel_size=1),
             WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
         )
 
         def get_block(block_type, c_hidden, nhead, c_skip=0, dropout=0, self_attn=True):
             if block_type == "C":
-                return ResBlock(c_hidden, c_skip, kernel_size=kernel_size, dropout=dropout)
+                return ResBlockStageB(c_hidden, c_skip, kernel_size=kernel_size, dropout=dropout)
             elif block_type == "A":
                 return AttnBlock(c_hidden, c_cond, nhead, self_attn=self_attn, dropout=dropout)
             elif block_type == "T":
@@ -179,7 +180,7 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
         # OUTPUT
         self.clf = nn.Sequential(
             WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
-            nn.Conv2d(c_hidden[0], c_out * (patch_size ** 2), kernel_size=1),
+            nn.Conv2d(c_hidden[0], c_out * (patch_size**2), kernel_size=1),
             nn.PixelShuffle(patch_size),
         )
 
@@ -210,7 +211,7 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
         # blocks
         for level_block in self.down_blocks + self.up_blocks:
             for block in level_block:
-                if isinstance(block, ResBlock):
+                if isinstance(block, ResBlockStageB):
                     block.channelwise[-1].weight.data *= np.sqrt(1 / sum(self.config.blocks[0]))
                 elif isinstance(block, TimestepBlock):
                     nn.init.constant_(block.mapper.weight, 0)
@@ -249,7 +250,7 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
             x = downscaler(x)
             for i in range(len(repmap) + 1):
                 for block in down_block:
-                    if isinstance(block, ResBlock):
+                    if isinstance(block, ResBlockStageB):
                         x = block(x)
                     elif isinstance(block, AttnBlock):
                         x = block(x, clip)
@@ -268,7 +269,7 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
         for i, (up_block, upscaler, repmap) in enumerate(block_group):
             for j in range(len(repmap) + 1):
                 for k, block in enumerate(up_block):
-                    if isinstance(block, ResBlock):
+                    if isinstance(block, ResBlockStageB):
                         skip = level_outputs[i] if k == 0 and i > 0 else None
                         if skip is not None and (x.size(-1) != skip.size(-1) or x.size(-2) != skip.size(-2)):
                             x = torch.nn.functional.interpolate(

@@ -82,7 +82,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        encoder: None,
+        # encoder: None,
         decoder: WuerstchenV3DiffNeXt,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
@@ -92,7 +92,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
     ) -> None:
         super().__init__()
         self.register_modules(
-            encoder=encoder,
+            # encoder=encoder,
             decoder=decoder,
             tokenizer=tokenizer,
             text_encoder=text_encoder,

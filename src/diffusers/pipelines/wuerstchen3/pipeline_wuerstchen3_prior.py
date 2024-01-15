@@ -15,10 +15,10 @@
 from math import ceil
 from typing import Callable, Dict, List, Optional, Union
 
-import PIL
 import numpy as np
+import PIL
 import torch
-from transformers import CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...loaders import LoraLoaderMixin
 from ...schedulers import DDPMWuerstchenScheduler
@@ -61,6 +61,10 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             The canonical unCLIP prior to approximate the image embedding from the text embedding.
         text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen text-encoder.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            Model that extracts features from generated images to be used as inputs for the `image_encoder`.
+        image_encoder ([`CLIPVisionModelWithProjection`]):
+            Frozen CLIP image-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         tokenizer (`CLIPTokenizer`):
             Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
@@ -73,28 +77,29 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     unet_name = "prior"
     text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "text_encoder->prior"
+    _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "text_encoder_hidden_states", "negative_prompt_embeds"]
 
     def __init__(
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModelWithProjection,
-        image_encoder: CLIPVisionModelWithProjection,
         prior: WuerstchenV3Prior,
         scheduler: DDPMWuerstchenScheduler,
         resolution_multiple: float = 42.67,
+        feature_extractor: Optional[CLIPImageProcessor] = None,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
     ) -> None:
         super().__init__()
         self.register_modules(
             tokenizer=tokenizer,
             text_encoder=text_encoder,
             image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
             prior=prior,
             scheduler=scheduler,
         )
-        self.register_to_config(
-            resolution_multiple=resolution_multiple
-        )
+        self.register_to_config(resolution_multiple=resolution_multiple)
 
     # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
     def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
@@ -202,42 +207,46 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
 
             seq_len = negative_prompt_embeds_pooled.shape[1]
-            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.to(dtype=self.text_encoder.dtype, device=device)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.to(
+                dtype=self.text_encoder.dtype, device=device
+            )
             negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.repeat(1, num_images_per_prompt, 1)
-            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.view(batch_size * num_images_per_prompt, seq_len, -1)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.view(
+                batch_size * num_images_per_prompt, seq_len, -1
+            )
             # done duplicates
 
         return prompt_embeds, prompt_embeds_pooled, negative_prompt_embeds, negative_prompt_embeds_pooled
 
-    def encode_image(
-            self,
-            device,
-            batch_size,
-            num_images_per_prompt,
-            do_classifier_free_guidance,
-            image=None,
-            image_embeds: Optional[torch.FloatTensor] = None,
-    ):
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        dtype = next(self.image_encoder.parameters()).dtype
 
-        if not isinstance(image, list):
-            image = [image]
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
 
-        for img in image:
-            if isinstance(img, PIL.Image.Image):
-                pass
+        image = image.to(device=device, dtype=dtype)
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_enc_hidden_states = self.image_encoder(
+                torch.zeros_like(image), output_hidden_states=True
+            ).hidden_states[-2]
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+            return image_enc_hidden_states, uncond_image_enc_hidden_states
+        else:
+            image_embeds = self.image_encoder(image).image_embeds
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_embeds = torch.zeros_like(image_embeds)
 
-            # clip_preprocess = torchvision.transforms.Compose([
-            #     torchvision.transforms.Resize(224, interpolation=torchvision.transforms.InterpolationMode.BICUBIC),
-            #     torchvision.transforms.CenterCrop(224),
-            #     torchvision.transforms.Normalize(
-            #         mean=(0.48145466, 0.4578275, 0.40821073), std=(0.26862954, 0.26130258, 0.27577711)
-            #     )
-            # ])
-        return None
+            return image_embeds, uncond_image_embeds
 
     def check_inputs(
         self,
         prompt,
+        image,
         negative_prompt,
         num_inference_steps,
         do_classifier_free_guidance,
@@ -460,7 +469,12 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         )
 
         # 2. Encode caption + image
-        prompt_embeds, prompt_embeds_pooled, negative_prompt_embeds, negative_prompt_embeds_pooled = self.encode_prompt(
+        (
+            prompt_embeds,
+            prompt_embeds_pooled,
+            negative_prompt_embeds,
+            negative_prompt_embeds_pooled,
+        ) = self.encode_prompt(
             prompt=prompt,
             device=device,
             batch_size=batch_size,
@@ -473,14 +487,16 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
         )
 
-        image_embeds_pooled = self.encode_image(
-            image=image,
-            device=device,
-            batch_size=batch_size,
-            num_images_per_prompt=num_images_per_prompt,
-            do_classifier_free_guidance=self.do_classifier_free_guidance,
-            image_embeds=image_embeds,
-        )
+        if image is not None:
+            image_embeds_pooled, uncond_image_embeds_pooled = self.encode_image(
+                image=image,
+                device=device,
+                num_images_per_prompt=num_images_per_prompt,
+            )
+        else:
+            image_embeds_pooled = torch.zeros(batch_size, num_images_per_prompt, 768, device=device)
+            uncond_image_embeds_pooled = torch.zeros(batch_size, num_images_per_prompt, 768, device=device)
+        image_embeds = torch.cat([image_embeds_pooled, uncond_image_embeds_pooled], dim=0)
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
@@ -489,7 +505,9 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
         )
         text_encoder_pooled = (
-            torch.cat([prompt_embeds_pooled, negative_prompt_embeds_pooled]) if negative_prompt_embeds is not None else prompt_embeds
+            torch.cat([prompt_embeds_pooled, negative_prompt_embeds_pooled])
+            if negative_prompt_embeds is not None
+            else prompt_embeds
         )
 
         # 3. Determine latent shape of image embeddings
@@ -520,8 +538,9 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             predicted_image_embedding = self.prior(
                 torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
-                clip_text=text_encoder_hidden_states, clip_text_pooled=text_encoder_pooled,
-                clip_img=image_encoder_pooled,
+                clip_text=text_encoder_hidden_states,
+                clip_text_pooled=text_encoder_pooled,
+                clip_img=image_embeds,
             )
 
             # 8. Check for classifier free guidance and apply it

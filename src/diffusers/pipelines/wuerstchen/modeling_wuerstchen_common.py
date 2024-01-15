@@ -36,6 +36,7 @@ class TimestepBlock(nn.Module):
         super().__init__()
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
         self.mapper = linear_cls(c_timestep, c * 2)
+        self.conds = conds
         for cname in conds:
             setattr(self, f"mapper_{cname}", linear_cls(c_timestep, c * 2))
 
@@ -58,7 +59,11 @@ class ResBlock(nn.Module):
         self.depthwise = conv_cls(c, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
         self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
         self.channelwise = nn.Sequential(
-            linear_cls(c + c_skip, c * 4), nn.GELU(), GlobalResponseNorm(c * 4), nn.Dropout(dropout), linear_cls(c * 4, c)
+            linear_cls(c + c_skip, c * 4),
+            nn.GELU(),
+            GlobalResponseNorm(c * 4),
+            nn.Dropout(dropout),
+            linear_cls(c * 4, c),
         )
 
     def forward(self, x, x_skip=None):
