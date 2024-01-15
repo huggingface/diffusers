@@ -22,6 +22,7 @@ import numpy as np
 import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
+from ..utils import deprecate
 from ..utils.torch_utils import randn_tensor
 from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
@@ -333,7 +334,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         t = (1 - w) * low_idx + w * high_idx
         t = t.reshape(sigma.shape)
         return t
-    
+
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
     def _sigma_to_alpha_sigma_t(self, sigma):
         alpha_t = 1 / ((sigma**2 + 1) ** 0.5)
@@ -710,7 +711,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
         lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
         lambda_s0 = torch.log(alpha_s0) - torch.log(sigma_s0)
-        
+
         gradient_part = torch.zeros_like(sample)
         h = lambda_t - lambda_s0
         lambda_list = []
@@ -734,7 +735,6 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 # ODE case
                 # gradient_coefficients[0] += 1.0 * torch.exp(lambda_t) * (h ** 2 / 2 - (h - 1 + torch.exp(-h))) / (ns.marginal_lambda(t_prev_list[-1]) - ns.marginal_lambda(t_prev_list[-2]))
                 # gradient_coefficients[1] -= 1.0 * torch.exp(lambda_t) * (h ** 2 / 2 - (h - 1 + torch.exp(-h))) / (ns.marginal_lambda(t_prev_list[-1]) - ns.marginal_lambda(t_prev_list[-2]))
-                temp_s = self.step_index - 1
                 temp_sigma = self.sigmas[self.step_index - 1]
                 temp_alpha_s, temp_sigma_s = self._sigma_to_alpha_sigma_t(temp_sigma)
                 temp_lambda_s = torch.log(temp_alpha_s) - torch.log(temp_sigma_s)
@@ -963,7 +963,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
         if self.step_index is None:
             self._init_step_index(timestep)
-            
+
         use_corrector = self.step_index > 0 and self.last_sample is not None
 
         model_output_convert = self.convert_model_output(model_output, sample=sample)
