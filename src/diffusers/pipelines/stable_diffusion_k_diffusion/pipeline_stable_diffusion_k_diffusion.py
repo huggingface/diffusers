@@ -47,7 +47,9 @@ class ModelWrapper:
         return self.model(*args, encoder_hidden_states=encoder_hidden_states, **kwargs).sample
 
 
-class StableDiffusionKDiffusionPipeline(DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin):
+class StableDiffusionKDiffusionPipeline(
+    DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 

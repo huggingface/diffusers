@@ -115,7 +115,12 @@ def retrieve_timesteps(
 
 
 class StableDiffusionPipeline(
-    DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    EfficiencyMixin,
+    TextualInversionLoaderMixin,
+    LoraLoaderMixin,
+    IPAdapterMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
