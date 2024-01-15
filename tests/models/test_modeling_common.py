@@ -24,11 +24,11 @@ from typing import Dict, List, Tuple
 import numpy as np
 import requests_mock
 import torch
+from accelerate.utils import compute_module_sizes
 from huggingface_hub import delete_repo
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
-from accelerate.utils import compute_module_sizes
 from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0, XFormersAttnProcessor
 from diffusers.training_utils import EMAModel
 from diffusers.utils import is_xformers_available, logging
@@ -679,7 +679,7 @@ class ModelTesterMixin:
                 f" {self.model_class}.__init__ if there are deprecated arguments or remove the deprecated argument"
                 " from `_deprecated_kwargs = [<deprecated_argument>]`"
             )
-        
+
     @require_torch_gpu
     def test_cpu_offload(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -707,7 +707,7 @@ class ModelTesterMixin:
                 new_output = new_model(**inputs_dict)
 
                 self.assertTrue(torch.allclose(base_output[0], new_output[0], atol=1e-5))
-        
+
     @require_torch_gpu
     def test_disk_offload(self):
         config, inputs_dict = self.prepare_init_args_and_inputs_for_common()
