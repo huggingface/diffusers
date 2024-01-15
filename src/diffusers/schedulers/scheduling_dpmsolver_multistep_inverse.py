@@ -160,6 +160,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         euler_at_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
+        final_sigmas_type: Optional[str] = "default",  # "denoise_to_zero", "default"
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
         timestep_spacing: str = "linspace",
@@ -264,13 +265,27 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = timesteps.copy().astype(np.int64)
-            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+            if self.config.final_sigmas_type == "default":
+                sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+            elif self.config.final_sigmas_type == "denoise_to_zero":
+                sigmas = np.concatenate([sigmas, np.array([0])]).astype(np.float32)
+            else:
+                raise ValueError(
+                    f"final_sigmas_type must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
+                )
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-            sigma_max = (
-                (1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]
-            ) ** 0.5
-            sigmas = np.concatenate([sigmas, [sigma_max]]).astype(np.float32)
+            if self.config.final_sigmas_type == "default":
+                sigma_last = (
+                    (1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]
+                ) ** 0.5
+            elif self.config.final_sigmas_type == "denoise_to_zero":
+                sigma_last = 0
+            else:
+                raise ValueError(
+                    f"final_sigmas_type must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
+                )
+            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
 
