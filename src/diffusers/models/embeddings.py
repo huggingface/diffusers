@@ -891,8 +891,6 @@ class MultiIPAdapterImageProjection(nn.Module):
         projected_image_embeds = []
 
         for image_embed, ImageProjectionLayer in zip(image_embeds, self.ImageProjectionLayers):
-            print(f" image_embed.shape: {image_embed.shape}")
-            print(f" ImageProjectionLayer: {ImageProjectionLayer}")
             projected_image_embeds.append(ImageProjectionLayer(image_embed))
 
         projected_image_embeds = torch.cat(projected_image_embeds, dim=1) # batch_size, n_tokens, cross_attention_dim

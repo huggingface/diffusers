@@ -541,8 +541,6 @@ class StableDiffusionXLPipeline(
             uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
                 num_images_per_prompt, dim=0
             )
-            print(f" inside encode_image")
-            print(image_enc_hidden_states.shape, uncond_image_enc_hidden_states.shape)
             return image_enc_hidden_states, uncond_image_enc_hidden_states
         else:
             image_embeds = self.image_encoder(image).image_embeds
