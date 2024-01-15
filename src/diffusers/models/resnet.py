@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..umer_debug_logger import udl
 from ..utils import USE_PEFT_BACKEND
 from .activations import get_activation
 from .attention_processor import SpatialNorm
@@ -223,6 +224,7 @@ class ResnetBlock2D(nn.Module):
             )
 
         hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
+        udl.log_if("conv1", hidden_states, udl.SUBBLOCKM1)
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
@@ -232,6 +234,8 @@ class ResnetBlock2D(nn.Module):
                 if not USE_PEFT_BACKEND
                 else self.time_emb_proj(temb)[:, :, None, None]
             )
+
+        udl.log_if("temb", hidden_states, udl.SUBBLOCKM1)
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
@@ -250,12 +254,16 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
 
+        udl.log_if("conv2", hidden_states, udl.SUBBLOCKM1)
+
         if self.conv_shortcut is not None:
             input_tensor = (
                 self.conv_shortcut(input_tensor, scale) if not USE_PEFT_BACKEND else self.conv_shortcut(input_tensor)
             )
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
+
+        udl.log_if("out", output_tensor, udl.SUBBLOCKM1)
 
         return output_tensor
 
