@@ -60,6 +60,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 | StyleAligned Pipeline                                                                                                    | Implementation of [Style Aligned Image Generation via Shared Attention](https://arxiv.org/abs/2312.02133)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [StyleAligned Pipeline](#stylealigned-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/15X2E0jFPTajUIjS0FzX50OaHsCbP2lQ0/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 | AnimateDiff Image-To-Video Pipeline | Experimental Image-To-Video support for AnimateDiff (open to improvements) | [AnimateDiff Image To Video Pipeline](#animatediff-image-to-video-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1TvzCDPHhfFtdcJZe4RLloAwyoLKuttWK/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 
+|   IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -3007,7 +3008,7 @@ result = pipe(
     width=512,
     height=768,
     conditioning_frames=conditioning_frames,
-    num_inference_steps=12,
+    num_inference_steps=20,
 ).frames[0]
 
 from diffusers.utils import export_to_gif
@@ -3030,6 +3031,79 @@ export_to_gif(result.frames[0], "result.gif")
     <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/eb7d2952-72e4-44fa-b664-077c79b4fc70" alt="gif-2"></td>
   </tr>
 </table>
+
+You can also use multiple controlnets at once!
+
+```python
+import torch
+from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
+from diffusers.pipelines import DiffusionPipeline
+from diffusers.schedulers import DPMSolverMultistepScheduler
+from PIL import Image
+
+motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
+adapter = MotionAdapter.from_pretrained(motion_id)
+controlnet1 = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
+controlnet2 = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    motion_adapter=adapter,
+    controlnet=[controlnet1, controlnet2],
+    vae=vae,
+    custom_pipeline="pipeline_animatediff_controlnet",
+).to(device="cuda", dtype=torch.float16)
+pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
+    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1, beta_schedule="linear",
+)
+pipe.enable_vae_slicing()
+
+def load_video(file_path: str):
+    images = []
+
+    if file_path.startswith(('http://', 'https://')):
+        # If the file_path is a URL
+        response = requests.get(file_path)
+        response.raise_for_status()
+        content = BytesIO(response.content)
+        vid = imageio.get_reader(content)
+    else:
+        # Assuming it's a local file path
+        vid = imageio.get_reader(file_path)
+
+    for frame in vid:
+        pil_image = Image.fromarray(frame)
+        images.append(pil_image)
+
+    return images
+
+video = load_video("dance.gif")
+
+# You need to install it using `pip install controlnet_aux`
+from controlnet_aux.processor import Processor
+
+p1 = Processor("openpose_full")
+cn1 = [p1(frame) for frame in video]
+
+p2 = Processor("canny")
+cn2 = [p2(frame) for frame in video]
+
+prompt = "astronaut in space, dancing"
+negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
+result = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=512,
+    height=768,
+    conditioning_frames=[cn1, cn2],
+    num_inference_steps=20,
+)
+
+from diffusers.utils import export_to_gif
+export_to_gif(result.frames[0], "result.gif")
+```
 
 ### DemoFusion
 
@@ -3359,4 +3433,62 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
+=======
+### IP Adapter Face ID
+IP Adapter FaceID is an experimental IP Adapter model that uses image embeddings generated by `insightface`, so no image encoder needs to be loaded.
+You need to install `insightface` and all its requirements to use this model.
+You must pass the image embedding tensor as `image_embeds` to the StableDiffusionPipeline instead of `ip_adapter_image`.
+You have to disable PEFT BACKEND in order to load weights.
+
+```py
+import diffusers
+diffusers.utils.USE_PEFT_BACKEND = False
+import torch
+from diffusers.utils import load_image
+import cv2
+import numpy as np
+from diffusers import DiffusionPipeline, AutoencoderKL, DDIMScheduler
+from insightface.app import FaceAnalysis
+
+
+noise_scheduler = DDIMScheduler(
+    num_train_timesteps=1000,
+    beta_start=0.00085,
+    beta_end=0.012,
+    beta_schedule="scaled_linear",
+    clip_sample=False,
+    set_alpha_to_one=False,
+    steps_offset=1,
+)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained(
+    "SG161222/Realistic_Vision_V4.0_noVAE",
+    torch_dtype=torch.float16,
+    scheduler=noise_scheduler,
+    vae=vae,
+    custom_pipeline="ip_adapter_face_id"
+)
+pipeline.load_ip_adapter_face_id("h94/IP-Adapter-FaceID", "ip-adapter-faceid_sd15.bin")
+pipeline.to("cuda")
+
+generator = torch.Generator(device="cpu").manual_seed(42)
+num_images=2
+
+image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ai_face2.png")
+
+app = FaceAnalysis(name="buffalo_l", providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+app.prepare(ctx_id=0, det_size=(640, 640))
+image = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2RGB)
+faces = app.get(image)
+image = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
+images = pipeline(
+    prompt="A photo of a girl wearing a black dress, holding red roses in hand, upper body, behind is the Eiffel Tower",
+    image_embeds=image,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=20, num_images_per_prompt=num_images, width=512, height=704, 
+    generator=generator
+).images
+
+for i in range(num_images):
+    images[i].save(f"c{i}.png")
 ```
