@@ -235,10 +235,12 @@ class ResnetBlock2D(nn.Module):
                 else self.time_emb_proj(temb)[:, :, None, None]
             )
 
-        udl.log_if("temb", hidden_states, udl.SUBBLOCKM1)
+        udl.log_if("temb", temb, udl.SUBBLOCKM1)
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
+
+        udl.log_if("add temb", hidden_states, udl.SUBBLOCKM1)
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm2(hidden_states, temb)

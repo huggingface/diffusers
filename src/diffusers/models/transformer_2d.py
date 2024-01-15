@@ -18,6 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from umer_debug_logger import udl
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..models.embeddings import ImagePositionalEmbeddings
 from ..utils import USE_PEFT_BACKEND, BaseOutput, deprecate, is_torch_version
@@ -325,6 +326,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             residual = hidden_states
 
             hidden_states = self.norm(hidden_states)
+            udl.log_if('norm', hidden_states, udl.SUBBLOCKM1)
+
             if not self.use_linear_projection:
                 hidden_states = (
                     self.proj_in(hidden_states, scale=lora_scale)
@@ -342,9 +345,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     else self.proj_in(hidden_states)
                 )
 
+            udl.log_if('proj_in', hidden_states, udl.SUBBLOCKM1)
+
         elif self.is_input_vectorized:
+            print('umer: wtf, this happened?')
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
+            print('umer: wtf, why did this happen?')
             height, width = hidden_states.shape[-2] // self.patch_size, hidden_states.shape[-1] // self.patch_size
             hidden_states = self.pos_embed(hidden_states)
 
@@ -357,6 +364,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 timestep, embedded_timestep = self.adaln_single(
                     timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
                 )
+
+
 
         # 2. Blocks
         if self.caption_projection is not None:
@@ -452,6 +461,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             output = hidden_states.reshape(
                 shape=(-1, self.out_channels, height * self.patch_size, width * self.patch_size)
             )
+
+        udl.log_if('proj_out', output, udl.SUBBLOCKM1)
 
         if not return_dict:
             return (output,)

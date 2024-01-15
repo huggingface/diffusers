@@ -333,7 +333,6 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
-        udl.log_if("attn1", attn_output, udl.SUBBLOCKM1)
 
         if self.use_ada_layer_norm_zero:
             attn_output = gate_msa.unsqueeze(1) * attn_output
@@ -343,6 +342,9 @@ class BasicTransformerBlock(nn.Module):
         hidden_states = attn_output + hidden_states
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
+
+        udl.log_if("attn1", attn_output, udl.SUBBLOCKM1)
+        udl.log_if("add attn1", hidden_states, udl.SUBBLOCKM1)
 
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
