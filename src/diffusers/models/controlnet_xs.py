@@ -564,10 +564,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 tuple is returned where the first element is the sample tensor.
         """
 
-        udl.log_if('sample', sample, udl.SUBBLOCK)
-        udl.log_if('timestep', torch.tensor(timestep, dtype=torch.float32), udl.SUBBLOCK)
-        udl.log_if('encoder_hidden_states', encoder_hidden_states, udl.SUBBLOCK)
-
         # check channel order
         if self.conditioning_channel_order == "bgr":
             controlnet_cond = torch.flip(controlnet_cond, dims=[1])
@@ -593,6 +589,12 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
+
+        sample, timesteps, encoder_hidden_states = udl.do_input_action(x=sample, t=timesteps, xcross=encoder_hidden_states)
+
+        udl.log_if('sample', sample, udl.SUBBLOCK)
+        udl.log_if('timesteps', timesteps, udl.SUBBLOCK)
+        udl.log_if('encoder_hidden_states', encoder_hidden_states, udl.SUBBLOCK)
 
         t_emb = self.base_time_proj(timesteps)
 

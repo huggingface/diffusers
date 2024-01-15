@@ -18,6 +18,8 @@ class UmerDebugLogger:
     SUBBLOCKM1 = 'subblock-minus-1'
     allowed_conditions = [BLOCK, SUBBLOCK, SUBBLOCKM1]
 
+    input_files = None
+
     def __init__(self, log_dir="logs", condition=None):
         self.log_dir, self.condition, self.tensor_counter = log_dir, condition, 0
         os.makedirs(log_dir, exist_ok=True)
@@ -141,6 +143,35 @@ class UmerDebugLogger:
                 del row["tensor_file"]
                 log_objects.append(SimpleNamespace(**row))
         return log_objects
+
+    def save_input(self, dir_, x, t, xcross):
+        self.input_files = SimpleNamespace(
+            x=os.path.join(dir_, x),
+            t=os.path.join(dir_, t),
+            xcross=os.path.join(dir_, xcross),
+        )
+        self.input_action = 'save'
+
+    def load_input(self, dir_, x, t, xcross):
+        self.input_files = SimpleNamespace(
+            x=os.path.join(dir_, x),
+            t=os.path.join(dir_, t),
+            xcross=os.path.join(dir_, xcross),
+        )
+        self.input_action = 'save'
+
+    def do_input_action(self, x, t, xcross):
+        assert self.input_files is not None, "self.input_files not set! Use save_input or load_input"
+        assert self.input_action in ['save', 'load']
+        if self.input_action == 'save':
+            torch.save(x, os.path.join(self.log_dir, self.input_files.x))
+            torch.save(t, os.path.join(self.log_dir, self.input_files.t))
+            torch.save(xcross, os.path.join(self.log_dir, self.input_files.xcross))
+        else:
+            x = torch.load(os.path.join(self.log_dir, self.input_files.x))
+            t = torch.load(os.path.join(self.log_dir, self.input_files.t))
+            xcross = torch.load(os.path.join(self.log_dir, self.input_files.xcross))
+        return x, t, xcross
 
 
 udl = UmerDebugLogger()
