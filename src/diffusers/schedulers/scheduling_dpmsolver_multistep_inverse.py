@@ -203,6 +203,11 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             else:
                 raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
 
+        if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"] and final_sigmas_type == "denoise_to_zero":
+            raise ValueError(
+                f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithem_type` {algorithm_type}."
+            )
+
         # setable values
         self.num_inference_steps = None
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=np.float32).copy()
