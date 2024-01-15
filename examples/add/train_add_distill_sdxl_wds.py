@@ -1971,14 +1971,13 @@ def main(args):
                 # 3. Calculate the discriminator R1 gradient penalty term on the gradients with respect to the
                 # discriminator head input features from the real data.
                 d_r1_regularizer = 0
-                grad_params = torch.autograd.grad(
+                feature_grads = torch.autograd.grad(
                     outputs=d_adv_loss_real,
                     inputs=features_real.values(),
                     create_graph=True,
                 )
-                for grad in grad_params:
-                    d_r1_regularizer += grad.pow(2).sum()
-                d_r1_regularizer = d_r1_regularizer.sqrt()
+                for grad in feature_grads:
+                    d_r1_regularizer += torch.linalg.vector_norm(grad.view(grad.size(0), -1), dim=1).pow(2).mean()
 
                 d_loss_real = d_adv_loss_real + args.discriminator_r1_strength * d_r1_regularizer
                 accelerator.backward(d_loss_real, retain_graph=True)
