@@ -28,9 +28,7 @@ from ..attention_processor import (
     CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
     AttnAddedKVProcessor,
-    AttnAddedKVProcessor2_0,
     AttnProcessor,
-    AttnProcessor2_0,
 )
 from ..modeling_utils import ModelMixin
 from ..unet_2d import UNet2DModel
@@ -254,11 +252,9 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         Disables custom attention processors and sets the default attention implementation.
         """
         if all(proc.__class__ in ADDED_KV_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = (
-                AttnAddedKVProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnAddedKVProcessor()
-            )
+            processor = AttnAddedKVProcessor()
         elif all(proc.__class__ in CROSS_ATTENTION_PROCESSORS for proc in self.attn_processors.values()):
-            processor = AttnProcessor2_0() if hasattr(F, "scaled_dot_product_attention") else AttnProcessor()
+            processor = AttnProcessor()
         else:
             raise ValueError(
                 f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
