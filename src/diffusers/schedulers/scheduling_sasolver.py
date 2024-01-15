@@ -96,9 +96,6 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         corrector_order (`int`, defaults to 2):
             The corrector order which can be `1` or `2` or `3` or '4'. It is recommended to use `corrector_order=2` for guided
             sampling, and `corrector_order=3` for unconditional sampling.
-        predictor_corrector_mode (`str`, defaults to `PEC`):
-            The predictor-corrector mode can be `PEC` or 'PECE'. It is recommended to use `PEC` mode for fast
-            sampling, and `PECE` for high-quality sampling (PECE needs around twice model evaluations as PEC).
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
@@ -151,7 +148,6 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         trained_betas: Optional[Union[np.ndarray, List[float]]] = None,
         predictor_order: int = 2,
         corrector_order: int = 2,
-        predictor_corrector_mode: str = "PEC",
         prediction_type: str = "epsilon",
         tau_func: Optional[Callable] = None,
         thresholding: bool = False,
@@ -184,6 +180,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
         self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
+        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -205,6 +202,15 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.predict_x0 = algorithm_type == "data_prediction"
         self.lower_order_nums = 0
         self.last_sample = None
+        self._step_index = None
+        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+
+    @property
+    def step_index(self):
+        """
+        The index counter for current timestep. It will increae 1 after each scheduler step.
+        """
+        return self._step_index
 
     def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
         """
@@ -247,26 +253,28 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
         if self.config.use_karras_sigmas:
             log_sigmas = np.log(sigmas)
+            sigmas = np.flip(sigmas).copy()
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
-            timesteps = np.flip(timesteps).copy().astype(np.int64)
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
+        else:
+            sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
+            sigma_last = ((1 - self.alphas_cumprod[0]) / self.alphas_cumprod[0]) ** 0.5
+            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
-
-        # when num_inference_steps == num_train_timesteps, we can end up with
-        # duplicates in timesteps.
-        _, unique_indices = np.unique(timesteps, return_index=True)
-        timesteps = timesteps[np.sort(unique_indices)]
-
-        self.timesteps = torch.from_numpy(timesteps).to(device)
+        self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
 
         self.num_inference_steps = len(timesteps)
-
         self.model_outputs = [
             None,
         ] * max(self.config.predictor_order, self.config.corrector_order - 1)
         self.lower_order_nums = 0
         self.last_sample = None
+
+        # add an index counter for schedulers that allow duplicated timesteps
+        self._step_index = None
+        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -325,6 +333,13 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         t = (1 - w) * low_idx + w * high_idx
         t = t.reshape(sigma.shape)
         return t
+    
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._sigma_to_alpha_sigma_t
+    def _sigma_to_alpha_sigma_t(self, sigma):
+        alpha_t = 1 / ((sigma**2 + 1) ** 0.5)
+        sigma_t = sigma * alpha_t
+
+        return alpha_t, sigma_t
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._convert_to_karras
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
@@ -353,16 +368,20 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         return sigmas
 
     def convert_model_output(
-        self, model_output: torch.FloatTensor, timestep: int, sample: torch.FloatTensor
+        self,
+        model_output: torch.FloatTensor,
+        *args,
+        sample: torch.FloatTensor = None,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
-        Convert the model output to the corresponding type the DPMSolver/DPMSolver++ algorithm needs. DPM-Solver is
-        designed to discretize an integral of the noise prediction model, and DPM-Solver++ is designed to discretize an
+        Convert the model output to the corresponding type the data_prediction/noise_prediction algorithm needs. Noise_prediction is
+        designed to discretize an integral of the noise prediction model, and data_prediction is designed to discretize an
         integral of the data prediction model.
 
         <Tip>
 
-        The algorithm and model type are decoupled. You can use either DPMSolver or DPMSolver++ for both noise
+        The algorithm and model type are decoupled. You can use either data_prediction or noise_prediction for both noise
         prediction and data prediction models.
 
         </Tip>
@@ -370,8 +389,6 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         Args:
             model_output (`torch.FloatTensor`):
                 The direct output from the learned diffusion model.
-            timestep (`int`):
-                The current discrete timestep in the diffusion chain.
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
 
@@ -379,19 +396,31 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 The converted model output.
         """
+        timestep = args[0] if len(args) > 0 else kwargs.pop("timestep", None)
+        if sample is None:
+            if len(args) > 1:
+                sample = args[1]
+            else:
+                raise ValueError("missing `sample` as a required keyward argument")
+        if timestep is not None:
+            deprecate(
+                "timesteps",
+                "1.0.0",
+                "Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
 
+        sigma = self.sigmas[self.step_index]
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
         # SA-Solver_data_prediction needs to solve an integral of the data prediction model.
         if self.config.algorithm_type in ["data_prediction"]:
             if self.config.prediction_type == "epsilon":
                 # SA-Solver only needs the "mean" output.
                 if self.config.variance_type in ["learned", "learned_range"]:
                     model_output = model_output[:, :3]
-                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 x0_pred = (sample - sigma_t * model_output) / alpha_t
             elif self.config.prediction_type == "sample":
                 x0_pred = model_output
             elif self.config.prediction_type == "v_prediction":
-                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 x0_pred = alpha_t * sample - sigma_t * model_output
             else:
                 raise ValueError(
@@ -413,10 +442,8 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 else:
                     epsilon = model_output
             elif self.config.prediction_type == "sample":
-                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 epsilon = (sample - alpha_t * model_output) / sigma_t
             elif self.config.prediction_type == "v_prediction":
-                alpha_t, sigma_t = self.alpha_t[timestep], self.sigma_t[timestep]
                 epsilon = alpha_t * model_output + sigma_t * sample
             else:
                 raise ValueError(
@@ -626,11 +653,12 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
     def stochastic_adams_bashforth_update(
         self,
         model_output: torch.FloatTensor,
-        prev_timestep: int,
+        *args,
         sample: torch.FloatTensor,
         noise: torch.FloatTensor,
         order: int,
         tau: torch.FloatTensor,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
         One step for the SA-Predictor.
@@ -649,20 +677,50 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             `torch.FloatTensor`:
                 The sample tensor at the previous timestep.
         """
-
-        assert noise is not None
-        timestep_list = self.timestep_list
+        prev_timestep = args[0] if len(args) > 0 else kwargs.pop("prev_timestep", None)
+        if sample is None:
+            if len(args) > 1:
+                sample = args[1]
+            else:
+                raise ValueError(" missing `sample` as a required keyward argument")
+        if noise is None:
+            if len(args) > 2:
+                noise = args[2]
+            else:
+                raise ValueError(" missing `noise` as a required keyward argument")       
+        if order is None:
+            if len(args) > 3:
+                order = args[3]
+            else:
+                raise ValueError(" missing `order` as a required keyward argument")
+        if tau is None:
+            if len(args) > 4:
+                tau = args[4]
+            else:
+                raise ValueError(" missing `tau` as a required keyward argument")
+        if prev_timestep is not None:
+            deprecate(
+                "prev_timestep",
+                "1.0.0",
+                "Passing `prev_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
         model_output_list = self.model_outputs
-        s0, t = self.timestep_list[-1], prev_timestep
-        lambda_t, lambda_s0 = self.lambda_t[t], self.lambda_t[s0]
-        alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
-        sigma_t, sigma_s0 = self.sigma_t[t], self.sigma_t[s0]
+        sigma_t, sigma_s0 = self.sigmas[self.step_index + 1], self.sigmas[self.step_index]
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
+        alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
+        lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
+        lambda_s0 = torch.log(alpha_s0) - torch.log(sigma_s0)
+        
         gradient_part = torch.zeros_like(sample)
         h = lambda_t - lambda_s0
         lambda_list = []
 
         for i in range(order):
-            lambda_list.append(self.lambda_t[timestep_list[-(i + 1)]])
+            si = self.step_index - i
+            alpha_si, sigma_si = self._sigma_to_alpha_sigma_t(self.sigmas[si])
+            lambda_si = torch.log(alpha_si) - torch.log(sigma_si)
+            lambda_list.append(lambda_si)
+
 
         gradient_coefficients = self.get_coefficients_fn(order, lambda_s0, lambda_t, lambda_list, tau)
 
@@ -676,17 +734,21 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 # ODE case
                 # gradient_coefficients[0] += 1.0 * torch.exp(lambda_t) * (h ** 2 / 2 - (h - 1 + torch.exp(-h))) / (ns.marginal_lambda(t_prev_list[-1]) - ns.marginal_lambda(t_prev_list[-2]))
                 # gradient_coefficients[1] -= 1.0 * torch.exp(lambda_t) * (h ** 2 / 2 - (h - 1 + torch.exp(-h))) / (ns.marginal_lambda(t_prev_list[-1]) - ns.marginal_lambda(t_prev_list[-2]))
+                temp_s = self.step_index - 1
+                temp_sigma = self.sigmas[self.step_index - 1]
+                temp_alpha_s, temp_sigma_s = self._sigma_to_alpha_sigma_t(temp_sigma)
+                temp_lambda_s = torch.log(temp_alpha_s) - torch.log(temp_sigma_s)
                 gradient_coefficients[0] += (
                     1.0
                     * torch.exp((1 + tau**2) * lambda_t)
                     * (h**2 / 2 - (h * (1 + tau**2) - 1 + torch.exp((1 + tau**2) * (-h))) / ((1 + tau**2) ** 2))
-                    / (self.lambda_t[timestep_list[-1]] - self.lambda_t[timestep_list[-2]])
+                    / (lambda_s0 - temp_lambda_s)
                 )
                 gradient_coefficients[1] -= (
                     1.0
                     * torch.exp((1 + tau**2) * lambda_t)
                     * (h**2 / 2 - (h * (1 + tau**2) - 1 + torch.exp((1 + tau**2) * (-h))) / ((1 + tau**2) ** 2))
-                    / (self.lambda_t[timestep_list[-1]] - self.lambda_t[timestep_list[-2]])
+                    / (lambda_s0 - temp_lambda_s)
                 )
 
         for i in range(order):
@@ -717,12 +779,13 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
     def stochastic_adams_moulton_update(
         self,
         this_model_output: torch.FloatTensor,
-        this_timestep: int,
+        *args,
         last_sample: torch.FloatTensor,
         last_noise: torch.FloatTensor,
         this_sample: torch.FloatTensor,
         order: int,
         tau: torch.FloatTensor,
+        **kwargs,
     ) -> torch.FloatTensor:
         """
         One step for the SA-Corrector.
@@ -744,19 +807,55 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 The corrected sample tensor at the current timestep.
         """
 
-        assert last_noise is not None
-        timestep_list = self.timestep_list
+        this_timestep = args[0] if len(args) > 0 else kwargs.pop("this_timestep", None)
+        if last_sample is None:
+            if len(args) > 1:
+                last_sample = args[1]
+            else:
+                raise ValueError(" missing`last_sample` as a required keyward argument")
+        if last_noise is None:
+            if len(args) > 2:
+                last_noise = args[2]
+            else:
+                raise ValueError(" missing`last_noise` as a required keyward argument")
+        if this_sample is None:
+            if len(args) > 3:
+                this_sample = args[3]
+            else:
+                raise ValueError(" missing`this_sample` as a required keyward argument")
+        if order is None:
+            if len(args) > 4:
+                order = args[4]
+            else:
+                raise ValueError(" missing`order` as a required keyward argument")
+        if tau is None:
+            if len(args) > 5:
+                tau = args[5]
+            else:
+                raise ValueError(" missing`tau` as a required keyward argument")
+        if this_timestep is not None:
+            deprecate(
+                "this_timestep",
+                "1.0.0",
+                "Passing `this_timestep` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
+            )
+
         model_output_list = self.model_outputs
-        s0, t = self.timestep_list[-1], this_timestep
-        lambda_t, lambda_s0 = self.lambda_t[t], self.lambda_t[s0]
-        alpha_t, alpha_s0 = self.alpha_t[t], self.alpha_t[s0]
-        sigma_t, sigma_s0 = self.sigma_t[t], self.sigma_t[s0]
+        sigma_t, sigma_s0 = self.sigmas[self.step_index], self.sigmas[self.step_index - 1]
+        alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma_t)
+        alpha_s0, sigma_s0 = self._sigma_to_alpha_sigma_t(sigma_s0)
+
+        lambda_t = torch.log(alpha_t) - torch.log(sigma_t)
+        lambda_s0 = torch.log(alpha_s0) - torch.log(sigma_s0)
         gradient_part = torch.zeros_like(this_sample)
         h = lambda_t - lambda_s0
-        t_list = timestep_list + [this_timestep]
         lambda_list = []
         for i in range(order):
-            lambda_list.append(self.lambda_t[t_list[-(i + 1)]])
+            si = self.step_index - i
+            alpha_si, sigma_si = self._sigma_to_alpha_sigma_t(self.sigmas[si])
+            lambda_si = torch.log(alpha_si) - torch.log(sigma_si)
+            lambda_list.append(lambda_si)
+
 
         model_prev_list = model_output_list + [this_model_output]
 
@@ -808,6 +907,25 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         x_t = x_t.to(x.dtype)
         return x_t
 
+    def _init_step_index(self, timestep):
+        if isinstance(timestep, torch.Tensor):
+            timestep = timestep.to(self.timesteps.device)
+
+        index_candidates = (self.timesteps == timestep).nonzero()
+
+        if len(index_candidates) == 0:
+            step_index = len(self.timesteps) - 1
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        elif len(index_candidates) > 1:
+            step_index = index_candidates[1].item()
+        else:
+            step_index = index_candidates[0].item()
+
+        self._step_index = step_index
+
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -843,23 +961,17 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
 
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
-        step_index = (self.timesteps == timestep).nonzero()
-        if len(step_index) == 0:
-            step_index = len(self.timesteps) - 1
-        else:
-            step_index = step_index.item()
+        if self.step_index is None:
+            self._init_step_index(timestep)
+            
+        use_corrector = self.step_index > 0 and self.last_sample is not None
 
-        use_corrector = step_index > 0 and self.last_sample is not None
-
-        model_output_convert = self.convert_model_output(model_output, timestep, sample)
+        model_output_convert = self.convert_model_output(model_output, sample=sample)
 
         if use_corrector:
             current_tau = self.tau_func(self.timestep_list[-1])
             sample = self.stochastic_adams_moulton_update(
                 this_model_output=model_output_convert,
-                this_timestep=timestep,
                 last_sample=self.last_sample,
                 last_noise=self.last_noise,
                 this_sample=sample,
@@ -867,7 +979,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
                 tau=current_tau,
             )
 
-        prev_timestep = 0 if step_index == len(self.timesteps) - 1 else self.timesteps[step_index + 1]
+
 
         for i in range(max(self.config.predictor_order, self.config.corrector_order - 1) - 1):
             self.model_outputs[i] = self.model_outputs[i + 1]
@@ -881,8 +993,8 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         )
 
         if self.config.lower_order_final:
-            this_predictor_order = min(self.config.predictor_order, len(self.timesteps) - step_index)
-            this_corrector_order = min(self.config.corrector_order, len(self.timesteps) - step_index + 1)
+            this_predictor_order = min(self.config.predictor_order, len(self.timesteps) - self.step_index)
+            this_corrector_order = min(self.config.corrector_order, len(self.timesteps) - self.step_index + 1)
         else:
             this_predictor_order = self.config.predictor_order
             this_corrector_order = self.config.corrector_order
@@ -898,7 +1010,6 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         current_tau = self.tau_func(self.timestep_list[-1])
         prev_sample = self.stochastic_adams_bashforth_update(
             model_output=model_output_convert,
-            prev_timestep=prev_timestep,
             sample=sample,
             noise=noise,
             order=self.this_predictor_order,
@@ -907,6 +1018,9 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
         if self.lower_order_nums < max(self.config.predictor_order, self.config.corrector_order - 1):
             self.lower_order_nums += 1
+
+        # upon completion increase step index by one
+        self._step_index += 1
 
         if not return_dict:
             return (prev_sample,)
