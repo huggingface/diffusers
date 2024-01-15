@@ -51,7 +51,7 @@ from diffusers import (
 )
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import compute_snr
+from diffusers.training_utils import cast_training_params, compute_snr
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -634,11 +634,8 @@ def main(args):
         models = [unet]
         if args.train_text_encoder:
             models.extend([text_encoder_one, text_encoder_two])
-        for model in models:
-            for param in model.parameters():
-                # only upcast trainable parameters (LoRA) into fp32
-                if param.requires_grad:
-                    param.data = param.to(torch.float32)
+            # only upcast trainable parameters (LoRA) into fp32
+            cast_training_params(models, dtype=torch.float32)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):

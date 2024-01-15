@@ -1,7 +1,7 @@
 import contextlib
 import copy
 import random
-from typing import Any, Dict, Iterable, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 import torch
@@ -119,6 +119,16 @@ def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
                     lora_state_dict[f"{name}.lora.{lora_layer_matrix_name}"] = lora_param
 
     return lora_state_dict
+
+
+def cast_training_params(model: Union[torch.nn.Module, List[torch.nn.Module]], dtype=torch.float32):
+    if not isinstance(model, list):
+        model = [model]
+    for m in model:
+        for param in m.parameters():
+            # only upcast trainable parameters into fp32
+            if param.requires_grad:
+                param.data = param.to(dtype)
 
 
 def _set_state_dict_into_text_encoder(
