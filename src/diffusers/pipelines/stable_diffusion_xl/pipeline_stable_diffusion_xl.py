@@ -541,6 +541,8 @@ class StableDiffusionXLPipeline(
             uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
                 num_images_per_prompt, dim=0
             )
+            print(f" inside encode_image")
+            print(image_enc_hidden_states.shape, uncond_image_enc_hidden_states.shape)
             return image_enc_hidden_states, uncond_image_enc_hidden_states
         else:
             image_embeds = self.image_encoder(image).image_embeds
@@ -1163,13 +1165,26 @@ class StableDiffusionXLPipeline(
         add_time_ids = add_time_ids.to(device).repeat(batch_size * num_images_per_prompt, 1)
 
         if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
-            )
-            if self.do_classifier_free_guidance:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
-                image_embeds = image_embeds.to(device)
+            if not isinstance(ip_adapter_image, list):
+                ip_adapter_image = [ip_adapter_image] 
+            
+            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.ImageProjectionLayers):
+                raise ValueError(
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.ImageProjectionLayers)} IP Adapters."
+                )
+            
+            image_embeds, negative_image_embeds = [], []
+            for single_ip_adapter_image, image_proj_layer in zip(ip_adapter_image, self.unet.encoder_hid_proj.ImageProjectionLayers):
+                output_hidden_state = False if isinstance(image_proj_layer, ImageProjection) else True
+                single_image_embeds, single_negative_image_embeds = self.encode_image(
+                    single_ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+                )
+                if self.do_classifier_free_guidance:
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                    single_image_embeds = single_image_embeds.to(device)
+                
+                image_embeds.append(single_image_embeds)
+                negative_image_embeds.append(single_negative_image_embeds)
 
         # 8. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)

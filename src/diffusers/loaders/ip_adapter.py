@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-from typing import Dict, Union
+from typing import Dict, Union, List
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -90,10 +90,16 @@ class IPAdapterMixin:
         # handle the list inputs for multiple IP Adapters
         if not isinstance(weight_name, list):
             weight_name = [weight_name]
+
         if not isinstance(pretrained_model_name_or_path_or_dict, list):
-            pretrained_model_name_or_path_or_dict = [pretrained_model_name_or_path_or_dict] * len(weight_name)
+            pretrained_model_name_or_path_or_dict = [pretrained_model_name_or_path_or_dict]
+        if len(pretrained_model_name_or_path_or_dict) == 1:
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict * len(weight_name)
+
         if not isinstance(subfolder, list):
-            subfolder = [subfolder] * len(weight_name)
+            subfolder = [subfolder]
+        if len(subfolder) == 1:
+            subfolder = subfolder * len(weight_name)
 
         if len(weight_name) != len(pretrained_model_name_or_path_or_dict):
             raise ValueError("`weight_name` and `pretrained_model_name_or_path_or_dict` must have the same length.")
