@@ -68,7 +68,6 @@ from diffusers.utils import (
     is_wandb_available,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
