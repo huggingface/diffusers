@@ -335,7 +335,6 @@ def require_python39_or_higher(test_case):
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
-        # local_path = "/home/patrick_huggingface_co/"
         if local_path is not None:
             # local_path can be passed to correct images of tests
             return Path(local_path, arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]).as_posix()
