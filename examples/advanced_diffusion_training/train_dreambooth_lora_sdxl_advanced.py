@@ -58,7 +58,7 @@ from diffusers import (
 )
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import _set_state_dict_into_text_encoder, compute_snr
+from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
     check_min_version,
     convert_all_state_dict_to_peft,
@@ -1368,7 +1368,6 @@ def main(args):
                 )
 
         if args.train_text_encoder:
-            # Do we need to call `scale_lora_layers()` here?
             _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
 
             _set_state_dict_into_text_encoder(
@@ -1382,11 +1381,7 @@ def main(args):
             models = [unet_]
             if args.train_text_encoder:
                 models.extend([text_encoder_one_, text_encoder_two_])
-            for model in models:
-                for param in model.parameters():
-                    # only upcast trainable parameters (LoRA) into fp32
-                    if param.requires_grad:
-                        param.data = param.to(torch.float32)
+            cast_training_params(models)
 
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1406,11 +1401,7 @@ def main(args):
         models = [unet]
         if args.train_text_encoder:
             models.extend([text_encoder_one, text_encoder_two])
-        for model in models:
-            for param in model.parameters():
-                # only upcast trainable parameters (LoRA) into fp32
-                if param.requires_grad:
-                    param.data = param.to(torch.float32)
+        cast_training_params(models, dtype=torch.float32)
 
     unet_lora_parameters = list(filter(lambda p: p.requires_grad, unet.parameters()))
 
