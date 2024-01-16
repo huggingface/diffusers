@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
+from einops import rearrange
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
@@ -43,7 +44,7 @@ from .unet_3d_blocks import (
     get_down_block,
     get_up_block,
 )
-from einops import rearrange
+
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -687,26 +688,20 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if fps > 1:
             # This one needs to be turned into something humans can understand.
             mask_pos = torch.cat(
-                [
-                    (
-                        torch.ones(image_latents[:, :, :1].size(), device=image_latents.device)
-                        * ((tpos + 1) / (fps - 1))
-                    ).to(image_latents.device)
-                    for tpos in range(fps - 1)
-                ],
+                [(torch.ones(image_latents[:, :, :1].size()) * ((tpos + 1) / (fps - 1))) for tpos in range(fps - 1)],
                 dim=2,
-            )
+            ).to(dtype=image_latents.dtype)
             _ximg = torch.cat([image_latents[:, :, :1], mask_pos], dim=2)
-            _ximg = rearrange(_ximg, 'b c f h w -> (b f) c h w')
+            _ximg = rearrange(_ximg, "b c f h w -> (b f) c h w")
         else:
-            _ximg = rearrange(image_latents, 'b c f h w -> (b f) c h w')
-        
+            _ximg = rearrange(image_latents, "b c f h w -> (b f) c h w")
+
         print("_ximg dtype", _ximg.dtype)
         _ximg = self.local_image_concat(_ximg)
         _h = _ximg.shape[2]
-        _ximg = rearrange(_ximg, '(b f) c h w -> (b h w) f c', b = batch_size)
+        _ximg = rearrange(_ximg, "(b f) c h w -> (b h w) f c", b=batch_size)
         _ximg = self.local_temporal_encoder(_ximg)
-        _ximg = rearrange(_ximg, '(b h w) f c -> b c f h w', b = batch_size, h = _h)
+        _ximg = rearrange(_ximg, "(b h w) f c -> b c f h w", b=batch_size, h=_h)
         concat += _ximg
         concat += _ximg  # TODO: This is a bug, but it doesn't matter (copied from the original codebase).
 
@@ -716,10 +711,10 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             y_context = encoder_hidden_states
             context = torch.cat([context, y_context], dim=1)
 
-        local_context = rearrange(image_latents, 'b c f h w -> (b f) c h w')
+        local_context = rearrange(image_latents, "b c f h w -> (b f) c h w")
         local_context = self.local_image_embedding(local_context)
         h_ = local_context.shape[2]
-        local_context = rearrange(local_context, 'b c h w -> b (h w) c', b = batch_size, h = h_)
+        local_context = rearrange(local_context, "b c h w -> b (h w) c", b=batch_size, h=h_)
         context = torch.cat([context, local_context], dim=1)
 
         # 3.3 image inputs.

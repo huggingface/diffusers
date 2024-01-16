@@ -161,7 +161,7 @@ class BasicTransformerBlock(nn.Module):
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
         self.use_ada_layer_norm_single = norm_type == "ada_norm_single"
-        self.use_layer_norm = (norm_type == "layer_norm" or norm_type == "layer_norm_i2vgen")
+        self.use_layer_norm = norm_type == "layer_norm" or norm_type == "layer_norm_i2vgen"
         self.use_ada_layer_norm_continuous = norm_type == "ada_norm_continuous"
 
         if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
