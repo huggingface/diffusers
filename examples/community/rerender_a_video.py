@@ -374,7 +374,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
             attention_type="swin",
             ffn_dim_expansion=4,
             num_transformer_layers=6,
-        ).to("cuda")
+        ).to(self.device)
 
         checkpoint = torch.utils.model_zoo.load_url(
             "https://huggingface.co/Anonymous-sub/Rerender/resolve/main/models/gmflow_sintel-0c07dcb3.pth",
