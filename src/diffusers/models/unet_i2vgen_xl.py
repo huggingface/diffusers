@@ -23,6 +23,7 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..loaders import UNet2DConditionLoadersMixin
 from ..utils import BaseOutput, deprecate, logging
 from .activations import get_activation
+from .attention import BasicTransformerBlock
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -42,7 +43,6 @@ from .unet_3d_blocks import (
     get_down_block,
     get_up_block,
 )
-from .attention import BasicTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -178,15 +178,18 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             nn.SiLU(),
             nn.Conv2d(in_channels * 4, in_channels * 4, 3, stride=1, padding=1),
             nn.SiLU(),
-            nn.Conv2d(in_channels * 4, in_channels, 3, stride=1, padding=1))
-        self.local_temporal_encoder = BasicTransformerBlock(dim=in_channels, num_attention_heads=2, ff_inner_dim=in_channels)
+            nn.Conv2d(in_channels * 4, in_channels, 3, stride=1, padding=1),
+        )
+        self.local_temporal_encoder = BasicTransformerBlock(
+            dim=in_channels, num_attention_heads=2, ff_inner_dim=in_channels, attention_head_dim=attention_head_dim
+        )
         self.local_image_embedding = nn.Sequential(
             nn.Conv2d(4, in_channels * 8, 3, padding=1),
             nn.SiLU(),
             nn.AdaptiveAvgPool2d((32, 32)),
             nn.Conv2d(in_channels * 8, in_channels * 16, 3, stride=2, padding=1),
             nn.SiLU(),
-            nn.Conv2d(in_channels * 16, 1024, 3, stride=2, padding=1)
+            nn.Conv2d(in_channels * 16, 1024, 3, stride=2, padding=1),
         )
 
         # other embeddings -- time, context, fps, etc.
@@ -202,11 +205,10 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.context_embedding = nn.Sequential(
             nn.Linear(cross_attention_dim, time_embed_dim),
             nn.SiLU(),
-            nn.Linear(time_embed_dim, cross_attention_dim * in_channels))
+            nn.Linear(time_embed_dim, cross_attention_dim * in_channels),
+        )
         self.fps_embedding = nn.Sequential(
-            nn.Linear(timestep_input_dim, time_embed_dim),
-            nn.SiLU(),
-            nn.Linear(time_embed_dim, time_embed_dim)
+            nn.Linear(timestep_input_dim, time_embed_dim), nn.SiLU(), nn.Linear(time_embed_dim, time_embed_dim)
         )
 
         # blocks
