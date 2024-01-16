@@ -1277,7 +1277,7 @@ def main(args):
         for name, param in text_encoder_one.named_parameters():
             if "token_embedding" in name:
                 # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
-                param.to(dtype=torch.float32)
+                param.data = param.to(dtype=torch.float32)
                 param.requires_grad = True
                 text_lora_parameters_one.append(param)
             else:
@@ -1286,7 +1286,7 @@ def main(args):
         for name, param in text_encoder_two.named_parameters():
             if "token_embedding" in name:
                 # ensure that dtype is float32, even if rest of the model that isn't trained is loaded in fp16
-                param.to(dtype=torch.float32)
+                param.data = param.to(dtype=torch.float32)
                 param.requires_grad = True
                 text_lora_parameters_two.append(param)
             else:
