@@ -723,7 +723,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 3.3 image inputs.
         # this one comes from the vision encoder.
-        if "image_embeddings" in added_cond_kwargs and added_cond_kwargs["image_embedddings"] is not None:
+        if "image_embeddings" in added_cond_kwargs and added_cond_kwargs["image_embeddings"] is not None:
             image_embeddings = added_cond_kwargs["image_embeddings"]
             image_context = self.context_embedding(image_embeddings)
             image_context = image_context.view(-1, self.config.in_channels, self.config.cross_attention_dim)
