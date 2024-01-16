@@ -18,7 +18,7 @@ import argparse
 
 import torch
 
-from diffusers import UNet3DConditionModel
+from diffusers.models.unet_i2vgen_xl import I2VGenXLUNet
 
 
 def assign_to_checkpoint(
@@ -412,9 +412,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     unet_checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
-    if "state_dict" in unet_checkpoint:
-        unet_checkpoint = unet_checkpoint["state_dict"]
-    unet = UNet3DConditionModel(sample_size=32, in_channels=8 if "i2vgen_xl" in args.checkpoint_path else 4)
+    unet_checkpoint = unet_checkpoint["state_dict"]
+    unet = I2VGenXLUNet(sample_size=32, in_channels=8)
 
     converted_ckpt = convert_ldm_unet_checkpoint(unet_checkpoint, unet.config)
 
