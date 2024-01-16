@@ -72,7 +72,7 @@ def save_model_card(
 ):
     img_str = ""
     if len(images) > 0:
-        image_grid = make_image_grid(images, 1, 4)
+        image_grid = make_image_grid(images, 1, len(args.validation_prompts))
         image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
         img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
 
@@ -93,8 +93,8 @@ inference: true
     model_card = f"""
 # Text-to-image finetuning - {repo_id}
 
-This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline \n
-# {img_str}
+This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the  finetuned pipeline using the following prompts: {args.validation_prompts}: \n
+{img_str}
 
 ## Pipeline usage
 
@@ -105,7 +105,7 @@ from diffusers import DiffusionPipeline
 import torch
 
 pipeline = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype=torch.float16)
-prompt = "Baby Yoda in the wild"
+prompt = "{args.validation_prompts[0]}"
 image = pipeline(prompt).images[0]
 image.save("my_image.png")
 ```
@@ -139,11 +139,10 @@ More information on all the CLI arguments and the environment are available on y
         f.write(yaml + model_card)
 
 
-def log_validation(
-    vae, args, text_encoder, tokenizer, accelerator, weight_dtype, epoch, unet=None, is_final_validation=False
-):
-    logger.info("Running validation... ")
+def log_validation(unet, vae, text_encoder, tokenizer, args, accelerator, weight_dtype, epoch, is_final_validation=False):
+    logger.info(f"Running validation... \n Generating {args.num_validation_images} images with prompt:"f" {args.validation_prompt}.")
 
+    # initialize pipeline
     pipeline = StableDiffusionPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=accelerator.unwrap_model(vae),
@@ -166,25 +165,13 @@ def log_validation(
     else:
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
-    validation_prompts = [
-        "cute Elon Musk character",
-        "A pokemon with wings",
-        "a photo of yoda",
-        "a cute creature with blue wings",
-    ]
-
     image_logs = []
 
-    for _, prompt in enumerate(validation_prompts):
-        images = []
-        with torch.autocast("cuda", dtype=weight_dtype):
-            image = pipeline(
-                prompt=prompt,
-                num_inference_steps=4,
-                num_images_per_prompt=4,
-                generator=generator,
-            ).images
-        image_logs.append({"validation_prompt": prompt, "images": images})
+    for i, prompt in enumerate(len(args.validation_prompts)):
+        with torch.autocast("cuda"):
+            image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
+
+        image_logs.append({"validation_prompt": prompt, "images": image})
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
@@ -212,11 +199,11 @@ def log_validation(
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        gc.collect()
-        torch.cuda.empty_cache()
+    del pipeline
+    gc.collect()
+    torch.cuda.empty_cache()
 
-        return image_logs
+    return image_logs
 
 
 def parse_args():
@@ -1044,7 +1031,7 @@ def main():
                             accelerator,
                             weight_dtype,
                             epoch=global_step,
-                            unet=unet,
+                            unet=ema_unet,
                             is_final_validation=False,
                         )
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1059,17 +1046,7 @@ def main():
                     # Store the UNet parameters temporarily and load the EMA parameters to perform inference.
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
-                log_validation(
-                    vae,
-                    args,
-                    text_encoder,
-                    tokenizer,
-                    accelerator,
-                    weight_dtype,
-                    epoch=global_step,
-                    unet=unet,
-                    is_final_validation=False,
-                )
+
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
                     ema_unet.restore(unet.parameters())
