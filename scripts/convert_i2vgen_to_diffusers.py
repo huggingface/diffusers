@@ -167,29 +167,50 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
     new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
 
-    additional_embedding_substrings = ["local_image_concat", "context_embedding", "local_image_embedding", "fps_embedding"]
+    additional_embedding_substrings = [
+        "local_image_concat",
+        "context_embedding",
+        "local_image_embedding",
+        "fps_embedding",
+    ]
     for k in unet_state_dict:
         if any(substring in k for substring in additional_embedding_substrings):
             new_checkpoint[k] = unet_state_dict[k]
-    
+
     # temporal encoder.
-    new_checkpoint["local_temporal_encoder.norm1.weight"] = unet_state_dict["local_temporal_encoder.layers.0.0.norm.weight"]
-    new_checkpoint["local_temporal_encoder.norm1.bias"] = unet_state_dict["local_temporal_encoder.layers.0.0.norm.bias"]
-    
-    new_checkpoint["local_temporal_encoder.to_out.0.weight"] = unet_state_dict["local_temporal_encoder.layers.0.0.fn.to_out.0.weight"]
-    new_checkpoint["local_temporal_encoder.to_out.0.bias"] = unet_state_dict["local_temporal_encoder.layers.0.0.fn.to_out.0.bias"]
-    
-    new_checkpoint["local_temporal_encoder.ff.net.0.proj.weight"] = unet_state_dict["local_temporal_encoder.layers.0.1.net.0.0.weight"]
-    new_checkpoint["local_temporal_encoder.ff.net.0.proj.bias"] = unet_state_dict["local_temporal_encoder.layers.0.1.net.0.0.bias"]
+    new_checkpoint["local_temporal_encoder.norm1.weight"] = unet_state_dict[
+        "local_temporal_encoder.layers.0.0.norm.weight"
+    ]
+    new_checkpoint["local_temporal_encoder.norm1.bias"] = unet_state_dict[
+        "local_temporal_encoder.layers.0.0.norm.bias"
+    ]
 
-    new_checkpoint["local_temporal_encoder.ff.net.2.weight"] = unet_state_dict["local_temporal_encoder.layers.0.1.net.2.weight"]
-    new_checkpoint["local_temporal_encoder.ff.net.2.bias"] = unet_state_dict["local_temporal_encoder.layers.0.1.net.2.bias"]
-
-    qkv = unet_state_dict['local_temporal_encoder.layers.0.0.fn.to_qkv.weight']
+    # attention
+    qkv = unet_state_dict["local_temporal_encoder.layers.0.0.fn.to_qkv.weight"]
     q, k, v = torch.chunk(qkv, 3, dim=0)
-    new_checkpoint[f"local_temporal_encoder.attn1.to_q.weight"] = q
-    new_checkpoint[f"local_temporal_encoder.attn1.to_k.weight"] = k
-    new_checkpoint[f"local_temporal_encoder.attn1.to_v.weight"] = v
+    new_checkpoint["local_temporal_encoder.attn1.to_q.weight"] = q
+    new_checkpoint["local_temporal_encoder.attn1.to_k.weight"] = k
+    new_checkpoint["local_temporal_encoder.attn1.to_v.weight"] = v
+    new_checkpoint["local_temporal_encoder.attn1.to_out.0.weight"] = unet_state_dict[
+        "local_temporal_encoder.layers.0.0.fn.to_out.0.weight"
+    ]
+    new_checkpoint["local_temporal_encoder.attn1.to_out.0.bias"] = unet_state_dict[
+        "local_temporal_encoder.layers.0.0.fn.to_out.0.bias"
+    ]
+
+    # feedforward
+    new_checkpoint["local_temporal_encoder.ff.net.0.proj.weight"] = unet_state_dict[
+        "local_temporal_encoder.layers.0.1.net.0.0.weight"
+    ]
+    new_checkpoint["local_temporal_encoder.ff.net.0.proj.bias"] = unet_state_dict[
+        "local_temporal_encoder.layers.0.1.net.0.0.bias"
+    ]
+    new_checkpoint["local_temporal_encoder.ff.net.2.weight"] = unet_state_dict[
+        "local_temporal_encoder.layers.0.1.net.2.weight"
+    ]
+    new_checkpoint["local_temporal_encoder.ff.net.2.bias"] = unet_state_dict[
+        "local_temporal_encoder.layers.0.1.net.2.bias"
+    ]
 
     if "class_embed_type" in config:
         if config["class_embed_type"] is None:
@@ -438,7 +459,7 @@ if __name__ == "__main__":
     assert len(diff_0) == len(diff_1) == 0, "Converted weights don't match"
 
     # load state_dict
-    unet.load_state_dict(converted_ckpt)
+    unet.load_state_dict(converted_ckpt, strict=True)
 
     unet.save_pretrained(args.dump_path)
 
