@@ -43,7 +43,7 @@ from .unet_3d_blocks import (
     get_down_block,
     get_up_block,
 )
-
+from einops import rearrange
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -675,6 +675,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # 3.1 image latents.
         # Taken from the original implementation.
         # Clean it up later.
+        # remove einops dep.
         image_latents = added_cond_kwargs["image_latents"]
         if image_latents.ndim == 5 and image_latents.size(2) > 1:
             image_latents = image_latents[:, :, :1, ...]
@@ -696,15 +697,15 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 dim=2,
             )
             _ximg = torch.cat([image_latents[:, :, :1], mask_pos], dim=2)
-            _ximg = _ximg.reshape(batch_size * num_frames, num_channels, height, width)
+            _ximg = rearrange(_ximg, 'b c f h w -> (b f) c h w')
         else:
-            _ximg = image_latents.reshape(batch_size * num_frames, num_channels, height, width)
+            _ximg = rearrange(image_latents, 'b c f h w -> (b f) c h w')
 
         _ximg = self.local_image_concat(_ximg)
         _h = _ximg.shape[2]
-        _ximg = _ximg.reshape(batch_size * height * width, num_frames, num_channels)
+        _ximg = rearrange(_ximg, '(b f) c h w -> (b h w) f c', b = batch_size)
         _ximg = self.local_temporal_encoder(_ximg)
-        _ximg = _ximg.reshape(batch_size, num_channels, num_frames, _h, width)
+        _ximg = rearrange(_ximg, '(b h w) f c -> b c f h w', b = batch_size, h = _h)
         concat += _ximg
         concat += _ximg  # TODO: This is a bug, but it doesn't matter (copied from the original codebase).
 
@@ -714,10 +715,10 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             y_context = encoder_hidden_states
             context = torch.cat([context, y_context], dim=1)
 
-        local_context = image_latents.reshape(batch_size * num_frames, num_channels, height, width)
+        local_context = rearrange(image_latents, 'b c f h w -> (b f) c h w')
         local_context = self.local_image_embedding(local_context)
         h_ = local_context.shape[2]
-        local_context.reshape(batch_size, h_ * width, num_channels)
+        local_context = rearrange(local_context, 'b c h w -> b (h w) c', b = batch_size, h = h_)
         context = torch.cat([context, local_context], dim=1)
 
         # 3.3 image inputs.
