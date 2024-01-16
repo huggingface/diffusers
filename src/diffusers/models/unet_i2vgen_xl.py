@@ -688,7 +688,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if fps > 1:
             # This one needs to be turned into something humans can understand.
             mask_pos = torch.cat(
-                [(torch.ones(image_latents[:, :, :1].size()) * ((tpos + 1) / (fps - 1))).to(image_latents.device) for tpos in range(fps - 1)],
+                [(torch.ones_like(image_latents[:, :, :1]) * ((tpos + 1) / (fps - 1))).to(image_latents.device) for tpos in range(fps - 1)],
                 dim=2,
             ).to(dtype=image_latents.dtype)
             _ximg = torch.cat([image_latents[:, :, :1], mask_pos], dim=2)
