@@ -145,10 +145,10 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
             attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
 
         text_encoder_output = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask.to(device))
-        text_encoder_hidden_states = text_encoder_output.text_embeds.unsqueeze(1)
-        text_encoder_hidden_states = text_encoder_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+        prompt_embeds_pooled = text_encoder_output.text_embeds.unsqueeze(1)
+        prompt_embeds_pooled = prompt_embeds_pooled.repeat_interleave(num_images_per_prompt, dim=0)
 
-        uncond_text_encoder_hidden_states = None
+        negative_prompt_embeds_pooled = None
         if do_classifier_free_guidance:
             uncond_tokens: List[str]
             if negative_prompt is None:
@@ -180,12 +180,12 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
                 uncond_input.input_ids.to(device), attention_mask=uncond_input.attention_mask.to(device)
             )
 
-            uncond_text_encoder_hidden_states = negative_prompt_embeds_text_encoder_output.text_embeds.unsqueeze(1)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_text_encoder_output.text_embeds.unsqueeze(1)
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
-            seq_len = uncond_text_encoder_hidden_states.shape[1]
-            uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.repeat(1, num_images_per_prompt, 1)
-            uncond_text_encoder_hidden_states = uncond_text_encoder_hidden_states.view(
+            seq_len = negative_prompt_embeds_pooled.shape[1]
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.repeat(1, num_images_per_prompt, 1)
+            negative_prompt_embeds_pooled = negative_prompt_embeds_pooled.view(
                 batch_size * num_images_per_prompt, seq_len, -1
             )
             # done duplicates
@@ -193,7 +193,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-        return text_encoder_hidden_states, uncond_text_encoder_hidden_states
+        return prompt_embeds_pooled, negative_prompt_embeds_pooled
 
     @property
     def guidance_scale(self):
@@ -348,7 +348,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
             self.do_classifier_free_guidance,
             negative_prompt,
         )
-        text_encoder_hidden_states = (
+        prompt_embeds_pooled = (
             torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
         )
 
@@ -373,7 +373,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
-            effnet = (
+            image_embeddings = (
                 torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
                 if self.do_classifier_free_guidance
                 else image_embeddings
@@ -382,8 +382,8 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
             predicted_latents = self.decoder(
                 torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
-                effnet=effnet,
-                clip=text_encoder_hidden_states,
+                effnet=image_embeddings,
+                clip=prompt_embeds_pooled,
             )
 
             # 8. Check for classifier free guidance and apply it
@@ -408,7 +408,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
                 latents = callback_outputs.pop("latents", latents)
                 image_embeddings = callback_outputs.pop("image_embeddings", image_embeddings)
                 text_encoder_hidden_states = callback_outputs.pop(
-                    "text_encoder_hidden_states", text_encoder_hidden_states
+                    "text_encoder_hidden_states", prompt_embeds_pooled
                 )
 
             if callback is not None and i % callback_steps == 0:

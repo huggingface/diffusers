@@ -218,35 +218,26 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return prompt_embeds, prompt_embeds_pooled, negative_prompt_embeds, negative_prompt_embeds_pooled
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
+    def encode_image(self, images, device, dtype, batch_size, num_images_per_prompt):
+        image_embeds = []
+        for image in images:
+            if isinstance(image, torch.FloatTensor):
+                image = (image * 255).type(torch.uint8)
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
+            image = image.to(device=device, dtype=dtype)
+            image_embed = self.image_encoder(image).image_embeds.unsqueeze(1)
+            image_embeds.append(image_embed)
+        image_embeds = torch.cat(image_embeds, dim=1)
 
-        image = image.to(device=device, dtype=dtype)
-        if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_enc_hidden_states = self.image_encoder(
-                torch.zeros_like(image), output_hidden_states=True
-            ).hidden_states[-2]
-            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
-            return image_enc_hidden_states, uncond_image_enc_hidden_states
-        else:
-            image_embeds = self.image_encoder(image).image_embeds
-            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_embeds = torch.zeros_like(image_embeds)
+        image_embeds = image_embeds.repeat(batch_size * num_images_per_prompt)
+        negative_image_embeds = torch.zeros_like(image_embeds)
 
-            return image_embeds, uncond_image_embeds
+        return image_embeds, negative_image_embeds
 
     def check_inputs(
         self,
         prompt,
-        image,
+        images,
         negative_prompt,
         num_inference_steps,
         do_classifier_free_guidance,
@@ -295,6 +286,14 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                            In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
             )
 
+        if images:
+            for i, image in enumerate(images):
+                if not isinstance(image, torch.Tensor) and not isinstance(image, PIL.Image.Image):
+                    raise TypeError(
+                        f"'images' must contain images of type 'torch.Tensor' or 'PIL.Image.Image, but got"
+                        f"{type(image)} for image number {i}."
+                    )
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -312,7 +311,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image, List[torch.FloatTensor], List[PIL.Image.Image]] = None,
+        images: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]] = None,
         height: int = 1024,
         width: int = 1024,
         num_inference_steps: int = 20,
@@ -432,6 +431,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         # 0. Define commonly used variables
         device = self._execution_device
+        dtype = next(self.prior.parameters()).dtype
         self._guidance_scale = guidance_scale
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -447,6 +447,9 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             else:
                 raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
 
+        if images is not None and not isinstance(images, list):
+            images = [images]
+
         if self.do_classifier_free_guidance:
             if negative_prompt is not None and not isinstance(negative_prompt, list):
                 if isinstance(negative_prompt, str):
@@ -458,7 +461,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         self.check_inputs(
             prompt,
-            image,
+            images,
             negative_prompt,
             num_inference_steps,
             self.do_classifier_free_guidance,
@@ -468,7 +471,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
         )
 
-        # 2. Encode caption + image
+        # 2. Encode caption + images
         (
             prompt_embeds,
             prompt_embeds_pooled,
@@ -487,15 +490,17 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
         )
 
-        if image is not None:
+        if images is not None:
             image_embeds_pooled, uncond_image_embeds_pooled = self.encode_image(
-                image=image,
+                images=images,
                 device=device,
+                dtype=dtype,
+                batch_size=batch_size,
                 num_images_per_prompt=num_images_per_prompt,
             )
         else:
-            image_embeds_pooled = torch.zeros(batch_size, num_images_per_prompt, 768, device=device)
-            uncond_image_embeds_pooled = torch.zeros(batch_size, num_images_per_prompt, 768, device=device)
+            image_embeds_pooled = torch.zeros(batch_size * num_images_per_prompt, 1, 768, device=device, dtype=dtype)
+            uncond_image_embeds_pooled = torch.zeros(batch_size * num_images_per_prompt, 1, 768, device=device, dtype=dtype)
         image_embeds = torch.cat([image_embeds_pooled, uncond_image_embeds_pooled], dim=0)
 
         # For classifier free guidance, we need to do two forward passes.
@@ -511,7 +516,6 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         )
 
         # 3. Determine latent shape of image embeddings
-        dtype = text_encoder_hidden_states.dtype
         latent_height = ceil(height / self.config.resolution_multiple)
         latent_width = ceil(width / self.config.resolution_multiple)
         num_channels = self.prior.config.c_in
