@@ -179,7 +179,7 @@ class UmerDebugLogger:
             xcross = torch.load(self.input_files.xcross, map_location=xcross.device)
             hint = torch.load(self.input_files.hint, map_location=hint.device)
             assert x.shape[0]==t.shape[0]==xcross.shape[0]==hint.shape[0]
-            print('f[udl] Input loaded (batch size = {x.shape[0]})')
+            print(f'[udl] Input loaded (batch size = {x.shape[0]})')
         return x, t, xcross, hint
 
 

@@ -598,7 +598,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         )
 
         udl.log_if('sample', sample, udl.SUBBLOCK)
-        udl.log_if('timesteps', timesteps, udl.SUBBLOCK)
+        udl.log_if('timestep', timesteps, udl.SUBBLOCK)
         udl.log_if('encoder_hidden_states', encoder_hidden_states, udl.SUBBLOCK)
         udl.log_if('controlnet_cond', controlnet_cond, udl.SUBBLOCK)
 
