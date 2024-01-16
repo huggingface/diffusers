@@ -192,7 +192,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
 
         if algorithm_type != "dpmsolver++" and final_sigmas_type == "denoise_to_zero":
             raise ValueError(
-                f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithem_type` {algorithm_type}."
+                f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithm_type` {algorithm_type}."
             )
 
         # setable values
