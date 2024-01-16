@@ -13,10 +13,11 @@ import torch
 class UmerDebugLogger:
     _FILE = "udl.csv"
 
+    INPUT_SAVE = 'input_save'
     BLOCK = 'block'
     SUBBLOCK = 'subblock'
     SUBBLOCKM1 = 'subblock-minus-1'
-    allowed_conditions = [BLOCK, SUBBLOCK, SUBBLOCKM1]
+    allowed_conditions = [INPUT_SAVE, BLOCK, SUBBLOCK, SUBBLOCKM1]
 
     input_files = None
 
@@ -170,13 +171,15 @@ class UmerDebugLogger:
             torch.save(t, self.input_files.t)
             torch.save(xcross, self.input_files.xcross)
             torch.save(hint, self.input_files.hint)
-            print('[udl] Input saved')
+            assert x.shape[0]==t.shape[0]==xcross.shape[0]==hint.shape[0]
+            print(f'[udl] Input saved (batch size = {x.shape[0]})')
         else:
             x = torch.load(self.input_files.x, map_location=x.device)
             t = torch.load( self.input_files.t, map_location=t.device)
             xcross = torch.load(self.input_files.xcross, map_location=xcross.device)
             hint = torch.load(self.input_files.hint, map_location=hint.device)
-            print('[udl] Input loaded')
+            assert x.shape[0]==t.shape[0]==xcross.shape[0]==hint.shape[0]
+            print('f[udl] Input loaded (batch size = {x.shape[0]})')
         return x, t, xcross, hint
 
 

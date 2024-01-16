@@ -675,7 +675,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         #       base -> ctrl:           | subblock 1  |  ...  | subblock n | mid block
 
         h_base = self.base_conv_in(h_base)
-        udl.log_if('base', h_ctrl, udl.SUBBLOCK)
+        udl.log_if('base', h_base, udl.SUBBLOCK)
         h_ctrl = self.ctrl_conv_in(h_ctrl)
         udl.log_if('ctrl', h_ctrl, udl.SUBBLOCK)
         if guided_hint is not None:
