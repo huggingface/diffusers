@@ -112,7 +112,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             "CrossAttnUpBlock3D",
             "CrossAttnUpBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        block_out_channels: Tuple[int, ...] = (512, 1024, 2048, 2048),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
@@ -181,7 +181,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             nn.Conv2d(in_channels * 4, in_channels, 3, stride=1, padding=1),
         )
         self.local_temporal_encoder = BasicTransformerBlock(
-            dim=in_channels, num_attention_heads=2, ff_inner_dim=in_channels, attention_head_dim=attention_head_dim
+            dim=in_channels, num_attention_heads=2, ff_inner_dim=in_channels, attention_head_dim=in_channels
         )
         self.local_image_embedding = nn.Sequential(
             nn.Conv2d(4, in_channels * 8, 3, padding=1),
