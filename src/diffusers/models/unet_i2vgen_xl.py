@@ -189,11 +189,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             attention_head_dim=in_channels,
             activation_fn="gelu",
         )
-        print(self.local_temporal_encoder)
-        print(
-            "local_temporal_encoder parameters",
-            sum(p.numel() for p in self.local_temporal_encoder.parameters() if p.requires_grad),
-        )
         self.local_image_embedding = nn.Sequential(
             nn.Conv2d(4, in_channels * 8, 3, padding=1),
             nn.SiLU(),
