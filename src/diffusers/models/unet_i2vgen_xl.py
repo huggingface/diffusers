@@ -687,7 +687,10 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             # This one needs to be turned into something humans can understand.
             mask_pos = torch.cat(
                 [
-                    (torch.ones(image_latents[:, :, :1].size()) * ((tpos + 1) / (fps - 1))).to(image_latents.device)
+                    (
+                        torch.ones(image_latents[:, :, :1].size(), device=image_latents.device)
+                        * ((tpos + 1) / (fps - 1))
+                    ).to(image_latents.device)
                     for tpos in range(fps - 1)
                 ],
                 dim=2,
