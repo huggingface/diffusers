@@ -598,8 +598,11 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 If `return_dict` is True, an [`~models.unet_3d_condition.I2VGenXLOutput`] is returned, otherwise
                 a `tuple` is returned where the first element is the sample tensor.
         """
-        if "fps" not in added_cond_kwargs:
-            raise ValueError("Cannot forward without fps being present in `added_cond_kwargs`.")
+        must_present_keys = {"fps", "image_latents", "image_embeddings"}
+        if added_cond_kwargs is None:
+            raise ValueError("`added_cond_kwargs` cannot be None.")
+        if  len(added_cond_kwargs) != 3 and must_present_keys.issubset(added_cond_kwargs.keys()):
+            raise ValueError("`added_cond_kwargs` is missing the required keys: 'fps', 'image_latents', and 'image_embeddings'.")
 
         batch_size, num_channels, num_frames, height, width = sample.shape
 
