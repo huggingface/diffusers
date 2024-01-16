@@ -516,7 +516,11 @@ class TemporalBasicTransformerBlock(nn.Module):
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward
-        norm_hidden_states = self.norm3(hidden_states)
+        # i2vgen doesn't have the second norm.
+        if hasattr(self, "norm3") and self.norm3 is not None:
+            norm_hidden_states = self.norm3(hidden_states)
+        else:
+            norm_hidden_states = hidden_states
 
         if self._chunk_size is not None:
             ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
