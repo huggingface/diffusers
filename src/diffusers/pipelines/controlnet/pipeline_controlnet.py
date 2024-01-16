@@ -906,7 +906,9 @@ class StableDiffusionControlNetPipeline(
                 accepted as an image. The dimensions of the output image defaults to `image`'s dimensions. If height
                 and/or width are passed, `image` is resized accordingly. If multiple ControlNets are specified in
                 `init`, images must be passed as a list such that each element of the list can be correctly batched for
-                input to a single ControlNet.
+                input to a single ControlNet. When `prompt` is a list, and if a list of images is passed for a single ControlNet,
+                each will be paired with each prompt in the `prompt` list. This also applies to multiple ControlNets,
+                where a list of image lists can be passed to batch for each prompt and each ControlNet.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
