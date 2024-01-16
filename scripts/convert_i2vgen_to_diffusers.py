@@ -404,7 +404,7 @@ if __name__ == "__main__":
 
     unet_checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
     unet_checkpoint = unet_checkpoint["state_dict"]
-    unet = I2VGenXLUNet(sample_size=32, in_channels=8)
+    unet = I2VGenXLUNet(sample_size=32)
 
     converted_ckpt = convert_ldm_unet_checkpoint(unet_checkpoint, unet.config)
 
