@@ -26,7 +26,7 @@ Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install -q diffusers transformers accelerate omegaconf invisible-watermark>=0.2.0
+#!pip install -q diffusers transformers accelerate invisible-watermark>=0.2.0
 ```
 
 <Tip warning={true}>

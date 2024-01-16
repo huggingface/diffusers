@@ -23,7 +23,7 @@ Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install -q diffusers transformers accelerate omegaconf
+#!pip install -q diffusers transformers accelerate
 ```
 
 ## Load model checkpoints

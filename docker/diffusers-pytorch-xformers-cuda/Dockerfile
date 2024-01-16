@@ -40,7 +40,6 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
         scipy \
         tensorboard \
         transformers \
-        omegaconf \
         xformers
 
 CMD ["/bin/bash"]
