@@ -553,7 +553,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
-        class_labels: Optional[torch.Tensor] = None,
+        added_cond_kwargs: Dict[str, torch.Tensor],
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -562,7 +562,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         return_dict: bool = True,
     ) -> Union[I2VGenXLOutput, Tuple[torch.FloatTensor]]:
         r"""
-        The [`UNet3DConditionModel`] forward method.
+        The [`I2VGenXLUNet`] forward method.
 
         Args:
             sample (`torch.FloatTensor`):
@@ -598,6 +598,11 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 If `return_dict` is True, an [`~models.unet_3d_condition.I2VGenXLOutput`] is returned, otherwise
                 a `tuple` is returned where the first element is the sample tensor.
         """
+        if "fps" not in added_cond_kwargs:
+            raise ValueError("Cannot forward without fps being present in `added_cond_kwargs`.")
+
+        batch_size, num_channels, num_frames, height, width = sample.shape
+
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
         # However, the upsampling interpolation output size can be forced to fit any upsampling size
@@ -632,7 +637,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        num_frames = sample.shape[2]
         timesteps = timesteps.expand(sample.shape[0])
 
         t_emb = self.time_proj(timesteps)
@@ -641,12 +645,79 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=self.dtype)
+        t_emb = self.time_embedding(t_emb, timestep_cond)
 
-        emb = self.time_embedding(t_emb, timestep_cond)
+        # 2. FPS
+        fps = added_cond_kwargs["fps"]
+        if not torch.is_tensor(fps):
+            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = sample.device.type == "mps"
+            if isinstance(timestep, float):
+                dtype = torch.float32 if is_mps else torch.float64
+            else:
+                dtype = torch.int32 if is_mps else torch.int64
+            fps = torch.tensor([fps], dtype=dtype, device=sample.device)
+        elif len(fps.shape) == 0:
+            fps = fps[None].to(sample.device)
+
+        # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
+        fps = fps.expand(fps.shape[0])
+        fps_emb = self.fps_embedding(self.time_proj(fps).to(self.dtype))
+        emb = t_emb + fps_emb
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
-        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
-        # 2. pre-process
+        # 3.1 image latents.
+        # Taken from the original implementation.
+        # Clean it up later.
+        image_latents = added_cond_kwargs["image_latents"]
+        if image_latents.ndim == 5 and image_latents.size(2) > 1:
+            image_latents = image_latents[:, :, :1, ...]
+        elif image_latents.ndim != 5:
+            image_latents = image_latents.unsqueeze(2)
+
+        concat = sample.new_zeros(batch_size, self.config.in_channels, num_frames, height, width)
+
+        if fps > 1:
+            mask_pos = torch.cat(
+                [(torch.ones(image_latents[:, :, :1].size()) * ((tpos + 1) / (fps - 1))) for tpos in range(fps - 1)],
+                dim=2,
+            )
+            _ximg = torch.cat([image_latents[:, :, :1], mask_pos], dim=2)
+            _ximg = _ximg.reshape(batch_size * num_frames, num_channels, height, width)
+        else:
+            _ximg = image_latents.reshape(batch_size * num_frames, num_channels, height, width)
+
+        _ximg = self.local_image_concat(_ximg)
+        _h = _ximg.shape[2]
+        _ximg = _ximg.reshape(batch_size * height * width, num_frames, num_channels)
+        _ximg = self.local_temporal_encoder(_ximg)
+        _ximg = _ximg.reshape(batch_size, num_channels, num_frames, _h, width)
+        concat += _ximg
+        concat += _ximg  # TODO: This is a bug, but it doesn't matter (copied from the original codebase).
+
+        # 3.2 context embeddings.
+        context = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
+        if encoder_hidden_states is not None:
+            y_context = encoder_hidden_states
+            context = torch.cat([context, y_context], dim=1)
+
+        local_context = image_latents.reshape(batch_size * num_frames, num_channels, height, width)
+        local_context = self.local_image_embedding(local_context)
+        h_ = local_context.shape[2]
+        local_context.reshape(batch_size, h_ * width, num_channels)
+        context = torch.cat([context, local_context], dim=1)
+
+        # 3.3 image inputs.
+        # this one comes from the vision encoder.
+        if "image_embeddings" in added_cond_kwargs and added_cond_kwargs["image_embedddings"] is not None:
+            image_embeddings = added_cond_kwargs["image_embeddings"]
+            image_context = self.context_embedding(image_embeddings)
+            image_context = image_context.view(-1, self.config.in_channels, self.config.cross_attention_dim)
+            context = torch.cat([context, image_context], dim=1)
+        context = context.repeat_interleave(repeats=num_frames, dim=0)
+
+        # 4. pre-process
         sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
         sample = self.conv_in(sample)
 
@@ -657,14 +728,14 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             return_dict=False,
         )[0]
 
-        # 3. down
+        # 5. down
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
-                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_hidden_states=context,
                     attention_mask=attention_mask,
                     num_frames=num_frames,
                     cross_attention_kwargs=cross_attention_kwargs,
@@ -685,7 +756,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
             down_block_res_samples = new_down_block_res_samples
 
-        # 4. mid
+        # 6. mid
         if self.mid_block is not None:
             sample = self.mid_block(
                 sample,
@@ -699,7 +770,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if mid_block_additional_residual is not None:
             sample = sample + mid_block_additional_residual
 
-        # 5. up
+        # 7. up
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
 
@@ -731,7 +802,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     num_frames=num_frames,
                 )
 
-        # 6. post-process
+        # 8. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
