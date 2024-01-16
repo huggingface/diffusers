@@ -83,25 +83,29 @@ SCHEDULER_DEFAULT_CONFIG = {
 
 DIFFUSERS_TO_LDM_MAPPING = {
     "unet": {
-        "time_embedding.linear_1.weight": "time_embed.0.weight",
-        "time_embedding.linear_1.bias": "time_embed.0.bias",
-        "time_embedding.linear_2.weight": "time_embed.2.weight",
-        "time_embedding.linear_2.bias": "time_embed.2.bias",
-        "conv_in.weight": "input_blocks.0.0.weight",
-        "conv_in.bias": "input_blocks.0.0.bias",
+        "layers": {
+            "time_embedding.linear_1.weight": "time_embed.0.weight",
+            "time_embedding.linear_1.bias": "time_embed.0.bias",
+            "time_embedding.linear_2.weight": "time_embed.2.weight",
+            "time_embedding.linear_2.bias": "time_embed.2.bias",
+            "conv_in.weight": "input_blocks.0.0.weight",
+            "conv_in.bias": "input_blocks.0.0.bias",
+            "conv_norm_out.weight": "out.0.weight",
+            "conv_norm_out.bias": "out.0.bias",
+            "conv_out.weight": "out.2.weight",
+            "conv_out.bias": "out.2.bias",
+        },
         "class_embed_type": {
-            "timestep": {
-                "class_embedding.linear_1.weight": "label_emb.0.0.weight",
-                "class_embedding.linear_1.bias": "label_emb.0.0.bias",
-                "class_embedding.linear_2.weight": "label_emb.0.2.weight",
-                "class_embedding.linear_2.bias": "label_emb.0.2.bias",
-            },
-            "text_time": {
-                "class_embedding.linear_1.weight": "label_emb.0.0.weight",
-                "class_embedding.linear_1.bias": "label_emb.0.0.bias",
-                "class_embedding.linear_2.weight": "label_emb.0.2.weight",
-                "class_embedding.linear_2.bias": "label_emb.0.2.bias",
-            },
+            "class_embedding.linear_1.weight": "label_emb.0.0.weight",
+            "class_embedding.linear_1.bias": "label_emb.0.0.bias",
+            "class_embedding.linear_2.weight": "label_emb.0.2.weight",
+            "class_embedding.linear_2.bias": "label_emb.0.2.bias",
+        },
+        "addition_embed_type": {
+            "add_embedding.linear_1.weight": "label_emb.0.0.weight",
+            "add_embedding.linear_1.bias": "label_emb.0.0.bias",
+            "add_embedding.linear_2.weight": "label_emb.0.2.weight",
+            "add_embedding.linear_2.bias": "label_emb.0.2.bias",
         },
     },
     "vae": {
@@ -586,6 +590,27 @@ def create_vae_diffusers_config(original_config, image_size: int):
     return config
 
 
+def update_unet_resnet_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint, mapping=None):
+    for ldm_key in ldm_keys:
+        diffusers_key = (
+            ldm_key.replace("in_layers.0", "norm1")
+            .replace("in_layers.2", "conv1")
+            .replace("out_layers.0", "norm2")
+            .replace("out_layers.3", "conv2")
+            .replace("emb_layers.1", "time_emb_proj")
+            .replace("skip_connection", "conv_shortcut")
+        )
+        if mapping:
+            diffusers_key = diffusers_key.replace(mapping["old"], mapping["new"])
+        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+
+
+def update_unet_attention_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint, mapping):
+    for ldm_key in ldm_keys:
+        diffusers_key = ldm_key.replace(mapping["old"], mapping["new"])
+        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+
+
 def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False, skip_extract_state_dict=False):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
@@ -598,7 +623,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
         unet_state_dict = {}
         keys = list(checkpoint.keys())
 
-        unet_key = "model.diffusion_model."
+        unet_key = LDM_UNET_KEY
 
         # at least a 100 parameters have to start with `model_ema` in order for the checkpoint to be EMA
         if sum(k.startswith("model_ema") for k in keys) > 100 and extract_ema:
@@ -623,41 +648,25 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
                     unet_state_dict[key.replace(unet_key, "")] = checkpoint.pop(key)
 
     new_checkpoint = {}
+    ldm_unet_keys = DIFFUSERS_TO_LDM_MAPPING["unet"]["layers"]
+    for diffusers_key, ldm_key in ldm_unet_keys.items():
+        new_checkpoint[diffusers_key] = unet_state_dict[ldm_key]
 
-    new_checkpoint["time_embedding.linear_1.weight"] = unet_state_dict["time_embed.0.weight"]
-    new_checkpoint["time_embedding.linear_1.bias"] = unet_state_dict["time_embed.0.bias"]
-    new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
-    new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
-
-    if config["class_embed_type"] is None:
-        # No parameters to port
-        ...
-    elif config["class_embed_type"] == "timestep" or config["class_embed_type"] == "projection":
-        new_checkpoint["class_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
-        new_checkpoint["class_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
-        new_checkpoint["class_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
-        new_checkpoint["class_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
-    else:
-        raise NotImplementedError(f"Not implemented `class_embed_type`: {config['class_embed_type']}")
+    if config["class_embed_type"] in ["timestep", "projection"]:
+        class_embed_keys = DIFFUSERS_TO_LDM_MAPPING["unet"]["class_embed_type"]
+        for diffusers_key, ldm_key in class_embed_keys.items():
+            new_checkpoint[diffusers_key] = unet_state_dict[ldm_key]
 
     if config["addition_embed_type"] == "text_time":
-        new_checkpoint["add_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
-        new_checkpoint["add_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
-        new_checkpoint["add_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
-        new_checkpoint["add_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
+        addition_embed_keys = DIFFUSERS_TO_LDM_MAPPING["unet"]["addition_embed_type"]
+        for diffusers_key, ldm_key in addition_embed_keys.items():
+            new_checkpoint[diffusers_key] = unet_state_dict[ldm_key]
 
     # Relevant to StableDiffusionUpscalePipeline
     if "num_class_embeds" in config:
         if (config["num_class_embeds"] is not None) and ("label_emb.weight" in unet_state_dict):
             new_checkpoint["class_embedding.weight"] = unet_state_dict["label_emb.weight"]
 
-    new_checkpoint["conv_in.weight"] = unet_state_dict["input_blocks.0.0.weight"]
-    new_checkpoint["conv_in.bias"] = unet_state_dict["input_blocks.0.0.bias"]
-
-    new_checkpoint["conv_norm_out.weight"] = unet_state_dict["out.0.weight"]
-    new_checkpoint["conv_norm_out.bias"] = unet_state_dict["out.0.bias"]
-    new_checkpoint["conv_out.weight"] = unet_state_dict["out.2.weight"]
-    new_checkpoint["conv_out.bias"] = unet_state_dict["out.2.bias"]
     # Retrieves the keys for the input blocks only
     num_input_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "input_blocks" in layer})
     input_blocks = {
@@ -679,6 +688,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
         for layer_id in range(num_output_blocks)
     }
 
+    # Down blocks
     for i in range(1, num_input_blocks):
         block_id = (i - 1) // (config["layers_per_block"] + 1)
         layer_in_block_id = (i - 1) % (config["layers_per_block"] + 1)
@@ -686,7 +696,12 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
         resnets = [
             key for key in input_blocks[i] if f"input_blocks.{i}.0" in key and f"input_blocks.{i}.0.op" not in key
         ]
-        attentions = [key for key in input_blocks[i] if f"input_blocks.{i}.1" in key]
+        update_unet_resnet_ldm_to_diffusers(
+            resnets,
+            new_checkpoint,
+            unet_state_dict,
+            {"old": f"input_blocks.{i}.0", "new": f"down_blocks.{block_id}.resnets.{layer_in_block_id}"},
+        )
 
         if f"input_blocks.{i}.0.op.weight" in unet_state_dict:
             new_checkpoint[f"down_blocks.{block_id}.downsamplers.0.conv.weight"] = unet_state_dict.pop(
@@ -696,48 +711,77 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
                 f"input_blocks.{i}.0.op.bias"
             )
 
-        paths = renew_resnet_paths(resnets)
-        meta_path = {"old": f"input_blocks.{i}.0", "new": f"down_blocks.{block_id}.resnets.{layer_in_block_id}"}
-        assign_to_checkpoint(
-            paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
-        )
-
-        if len(attentions):
-            paths = renew_attention_paths(attentions)
-
-            meta_path = {"old": f"input_blocks.{i}.1", "new": f"down_blocks.{block_id}.attentions.{layer_in_block_id}"}
-            assign_to_checkpoint(
-                paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
+        attentions = [key for key in input_blocks[i] if f"input_blocks.{i}.1" in key]
+        if attentions:
+            update_unet_attention_ldm_to_diffusers(
+                attentions,
+                new_checkpoint,
+                unet_state_dict,
+                {"old": f"input_blocks.{i}.1", "new": f"down_blocks.{block_id}.attentions.{layer_in_block_id}"},
             )
 
+    # Mid blocks
     resnet_0 = middle_blocks[0]
     attentions = middle_blocks[1]
     resnet_1 = middle_blocks[2]
 
-    resnet_0_paths = renew_resnet_paths(resnet_0)
-    assign_to_checkpoint(resnet_0_paths, new_checkpoint, unet_state_dict, config=config)
-
-    resnet_1_paths = renew_resnet_paths(resnet_1)
-    assign_to_checkpoint(resnet_1_paths, new_checkpoint, unet_state_dict, config=config)
-
-    attentions_paths = renew_attention_paths(attentions)
-    meta_path = {"old": "middle_block.1", "new": "mid_block.attentions.0"}
-    assign_to_checkpoint(
-        attentions_paths, new_checkpoint, unet_state_dict, additional_replacements=[meta_path], config=config
+    update_unet_resnet_ldm_to_diffusers(
+        resnet_0, new_checkpoint, unet_state_dict, mapping={"old": "middle_block.0", "new": "mid_block.resnets.0"}
+    )
+    update_unet_resnet_ldm_to_diffusers(
+        resnet_1, new_checkpoint, unet_state_dict, mapping={"old": "middle_block.2", "new": "mid_block.resnets.1"}
+    )
+    update_unet_attention_ldm_to_diffusers(
+        attentions, new_checkpoint, unet_state_dict, mapping={"old": "middle_block.1", "new": "mid_block.attentions.0"}
     )
 
+    # Up Blocks
     for i in range(num_output_blocks):
         block_id = i // (config["layers_per_block"] + 1)
         layer_in_block_id = i % (config["layers_per_block"] + 1)
+
+        resnets = [
+            key for key in output_blocks[i] if f"output_blocks.{i}.0" in key and f"output_blocks.{i}.0.op" not in key
+        ]
+        update_unet_resnet_ldm_to_diffusers(
+            resnets,
+            new_checkpoint,
+            unet_state_dict,
+            {"old": f"output_blocks.{i}.0", "new": f"up_blocks.{block_id}.resnets.{layer_in_block_id}"},
+        )
+
+        attentions = [key for key in input_blocks[i] if f"output_blocks.{i}.1" in key]
+        if attentions:
+            update_unet_attention_ldm_to_diffusers(
+                attentions,
+                new_checkpoint,
+                unet_state_dict,
+                {"old": f"output_blocks.{i}.1", "new": f"up_blocks.{block_id}.attentions.{layer_in_block_id}"},
+            )
+
+        if f"output_blocks.{i}.1.conv.weight" in unet_state_dict:
+            new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.weight"] = unet_state_dict[
+                f"output_blocks.{i}.1.conv.weight"
+            ]
+            new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.bias"] = unet_state_dict[
+                f"output_blocks.{i}.1.conv.bias"
+            ]
+        if f"output_blocks.{i}.2.conv.weight" in unet_state_dict:
+            new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.weight"] = unet_state_dict[
+                f"output_blocks.{i}.2.conv.weight"
+            ]
+            new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.bias"] = unet_state_dict[
+                f"output_blocks.{i}.2.conv.bias"
+            ]
+
+        """
         output_block_layers = [shave_segments(name, 2) for name in output_blocks[i]]
         output_block_list = {}
 
         for layer in output_block_layers:
             layer_id, layer_name = layer.split(".")[0], shave_segments(layer, 1)
-            if layer_id in output_block_list:
-                output_block_list[layer_id].append(layer_name)
-            else:
-                output_block_list[layer_id] = [layer_name]
+            output_block_list.setdefault(layer_id, [])
+            output_block_list[layer_id].append(layer_name)
 
         if len(output_block_list) > 1:
             resnets = [key for key in output_blocks[i] if f"output_blocks.{i}.0" in key]
@@ -781,6 +825,7 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
                 new_path = ".".join(["up_blocks", str(block_id), "resnets", str(layer_in_block_id), path["new"]])
 
                 new_checkpoint[new_path] = unet_state_dict[old_path]
+        """
 
     return new_checkpoint
 
