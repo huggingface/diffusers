@@ -182,7 +182,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         )
         # print("local_image_concat parameters", sum(p.numel() for p in self.local_image_concat.parameters() if p.requires_grad))
         self.local_temporal_encoder = BasicTransformerBlock(
-            dim=in_channels, num_attention_heads=2, ff_inner_dim=in_channels, attention_head_dim=in_channels
+            dim=in_channels, num_attention_heads=2, ff_inner_dim=in_channels, attention_head_dim=in_channels, activation_fn="gelu"
         )
         print(self.local_temporal_encoder)
         print("local_temporal_encoder parameters", sum(p.numel() for p in self.local_temporal_encoder.parameters() if p.requires_grad))
