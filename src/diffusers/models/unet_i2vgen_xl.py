@@ -185,7 +185,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             norm_type="layer_norm_i2vgen",
             dim=in_channels,
             num_attention_heads=2,
-            ff_inner_dim=in_channels,
+            ff_inner_dim=in_channels * 4,
             attention_head_dim=in_channels,
             activation_fn="gelu",
         )
