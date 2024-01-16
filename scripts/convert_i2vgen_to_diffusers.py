@@ -445,6 +445,7 @@ if __name__ == "__main__":
         "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
+    parser.add_argument("--push_to_hub", action="store_true")
     args = parser.parse_args()
 
     unet_checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
@@ -461,6 +462,6 @@ if __name__ == "__main__":
     # load state_dict
     unet.load_state_dict(converted_ckpt, strict=True)
 
-    unet.save_pretrained(args.dump_path)
+    unet.save_pretrained(args.dump_path, push_to_hub=args.push_to_hub)
 
     # -- finish converting the unet --
