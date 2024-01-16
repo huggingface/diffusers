@@ -98,7 +98,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     def __init__(
         self,
         sample_size: Optional[int] = None,
-        in_channels: int = 4,
+        in_channels: int = 8,
         out_channels: int = 4,
         down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlock3D",
@@ -161,7 +161,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
-            in_channels + in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+            in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
         )
 
         self.transformer_in = TransformerTemporalModel(
@@ -174,28 +174,28 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # image embedding
         self.local_image_concat = nn.Sequential(
-            nn.Conv2d(4, in_channels * 4, 3, padding=1),
+            nn.Conv2d(4, in_channels * 2, 3, padding=1),
             nn.SiLU(),
-            nn.Conv2d(in_channels * 4, in_channels * 4, 3, stride=1, padding=1),
+            nn.Conv2d(in_channels * 2, in_channels * 2, 3, stride=1, padding=1),
             nn.SiLU(),
-            nn.Conv2d(in_channels * 4, in_channels, 3, stride=1, padding=1),
+            nn.Conv2d(in_channels * 2, in_channels // 2, 3, stride=1, padding=1),
         )
         # print("local_image_concat parameters", sum(p.numel() for p in self.local_image_concat.parameters() if p.requires_grad))
         self.local_temporal_encoder = BasicTransformerBlock(
             norm_type="layer_norm_i2vgen",
-            dim=in_channels,
+            dim=in_channels // 2,
             num_attention_heads=2,
-            ff_inner_dim=in_channels * 4,
-            attention_head_dim=in_channels,
+            ff_inner_dim=in_channels * 2,
+            attention_head_dim=in_channels // 2,
             activation_fn="gelu",
         )
         self.local_image_embedding = nn.Sequential(
-            nn.Conv2d(4, in_channels * 8, 3, padding=1),
+            nn.Conv2d(4, in_channels * 4, 3, padding=1),
             nn.SiLU(),
             nn.AdaptiveAvgPool2d((32, 32)),
-            nn.Conv2d(in_channels * 8, in_channels * 16, 3, stride=2, padding=1),
+            nn.Conv2d(in_channels * 4, in_channels * 8, 3, stride=2, padding=1),
             nn.SiLU(),
-            nn.Conv2d(in_channels * 16, 1024, 3, stride=2, padding=1),
+            nn.Conv2d(in_channels * 8, cross_attention_dim, 3, stride=2, padding=1),
         )
         # print("local_image_embedding parameters", sum(p.numel() for p in self.local_image_embedding.parameters() if p.requires_grad))
 
@@ -212,7 +212,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.context_embedding = nn.Sequential(
             nn.Linear(cross_attention_dim, time_embed_dim),
             nn.SiLU(),
-            nn.Linear(time_embed_dim, cross_attention_dim * in_channels),
+            nn.Linear(time_embed_dim, cross_attention_dim * in_channels // 2),
         )
         # print("context_embedding parameters", sum(p.numel() for p in self.context_embedding.parameters() if p.requires_grad))
         self.fps_embedding = nn.Sequential(
