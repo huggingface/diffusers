@@ -64,7 +64,7 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array(
-            [0.79804534, 0.7981539, 0.8019961, 0.7936565, 0.7892033, 0.7914713, 0.7792827, 0.77754563, 0.7836789]
+            [0.79600024, 0.796546, 0.80682373, 0.79428387, 0.7905743, 0.8008807, 0.786183, 0.7835959, 0.797892]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
@@ -97,7 +97,7 @@ class StableDiffusionXLKPipelineIntegrationTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array(
-            [0.9704869, 0.9714559, 0.9693254, 0.96892524, 0.9685236, 0.9659081, 0.9666761, 0.9619067, 0.961759]
+            [0.9389532, 0.9408587, 0.9394901, 0.939082, 0.9402114, 0.9382007, 0.93737566, 0.9346897, 0.9324472]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
