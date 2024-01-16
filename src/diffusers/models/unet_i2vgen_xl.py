@@ -601,8 +601,10 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         must_present_keys = {"fps", "image_latents", "image_embeddings"}
         if added_cond_kwargs is None:
             raise ValueError("`added_cond_kwargs` cannot be None.")
-        if  len(added_cond_kwargs) != 3 and must_present_keys.issubset(added_cond_kwargs.keys()):
-            raise ValueError("`added_cond_kwargs` is missing the required keys: 'fps', 'image_latents', and 'image_embeddings'.")
+        if len(added_cond_kwargs) != 3 and must_present_keys.issubset(added_cond_kwargs.keys()):
+            raise ValueError(
+                "`added_cond_kwargs` is missing the required keys: 'fps', 'image_latents', and 'image_embeddings'."
+            )
 
         batch_size, num_channels, num_frames, height, width = sample.shape
 
@@ -683,7 +685,10 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         if fps > 1:
             mask_pos = torch.cat(
-                [(torch.ones(image_latents[:, :, :1].size()) * ((tpos + 1) / (fps - 1))) for tpos in range(fps - 1)],
+                [
+                    (torch.ones(image_latents[:, :, :1].size()) * ((tpos + 1) / (fps - 1))).to(image_latents.device)
+                    for tpos in range(fps - 1)
+                ],
                 dim=2,
             )
             _ximg = torch.cat([image_latents[:, :, :1], mask_pos], dim=2)
