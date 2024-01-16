@@ -12,7 +12,7 @@ specific language governing permissions and limitations under the License.
 
 # aMUSEd
 
-aMUSEd was introduced in [aMUSEd: An Open MUSE Reproduction](https://huggingface.co/papers/2302.05543) by Suraj Patil, William Berman, Robin Rombach, and Patrick von Platen.
+aMUSEd was introduced in [aMUSEd: An Open MUSE Reproduction](https://huggingface.co/papers/2401.01808) by Suraj Patil, William Berman, Robin Rombach, and Patrick von Platen.
 
 Amused is a lightweight text to image model based off of the [MUSE](https://arxiv.org/abs/2301.00704) architecture. Amused is particularly useful in applications that require a lightweight and fast model such as generating many images quickly at once.
 

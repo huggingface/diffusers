@@ -71,7 +71,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.25.0.dev0")
+check_min_version("0.26.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -921,10 +921,12 @@ def main(args):
 
     # 7. Create online student U-Net. This will be updated by the optimizer (e.g. via backpropagation.)
     # Add `time_cond_proj_dim` to the student U-Net if `teacher_unet.config.time_cond_proj_dim` is None
-    if teacher_unet.config.time_cond_proj_dim is None:
-        teacher_unet.config["time_cond_proj_dim"] = args.unet_time_cond_proj_dim
-    time_cond_proj_dim = teacher_unet.config.time_cond_proj_dim
-    unet = UNet2DConditionModel(**teacher_unet.config)
+    time_cond_proj_dim = (
+        teacher_unet.config.time_cond_proj_dim
+        if teacher_unet.config.time_cond_proj_dim is not None
+        else args.unet_time_cond_proj_dim
+    )
+    unet = UNet2DConditionModel.from_config(teacher_unet.config, time_cond_proj_dim=time_cond_proj_dim)
     # load teacher_unet weights into unet
     unet.load_state_dict(teacher_unet.state_dict(), strict=False)
     unet.train()
