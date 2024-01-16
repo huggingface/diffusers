@@ -124,6 +124,9 @@ DIFFUSERS_TO_LDM_MAPPING = {
     },
 }
 
+LDM_VAE_KEY = "first_stage_model."
+LDM_UNET_KEY = "model.diffusion_model."
+LDM_CLIP_CONFIG_NAME = "openai/clip-vit-large-patch14"
 
 UNET_TIME_EMBEDDING_LAYERS = []
 
@@ -782,36 +785,54 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     return new_checkpoint
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_vae_checkpoint
+def update_vae_resnet_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
+    for ldm_key in keys:
+        diffusers_key = ldm_key.replace(mapping["old"], mapping["new"]).replace("nin_shortcut", "conv_shortcut")
+        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+
+
+def update_vae_attentions_ldm_to_diffusers(keys, new_checkpoint, checkpoint, mapping):
+    for ldm_key in keys:
+        diffusers_key = (
+            ldm_key.replace(mapping["old"], mapping["new"])
+            .replace("norm.weight", "group_norm.weight")
+            .replace("norm.bias", "group_norm.bias")
+            .replace("q.weight", "to_q.weight")
+            .replace("q.bias", "to_q.bias")
+            .replace("k.weight", "to_k.weight")
+            .replace("k.bias", "to_k.bias")
+            .replace("v.weight", "to_v.weight")
+            .replace("v.bias", "to_v.bias")
+            .replace("proj_out.weight", "to_out.0.weight")
+            .replace("proj_out.bias", "to_out.0.bias")
+        )
+        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
+
+        # proj_attn.weight has to be converted from conv 1D to linear
+        shape = new_checkpoint[diffusers_key].shape
+
+        if len(shape) == 3:
+            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0]
+        elif len(shape) == 4:
+            new_checkpoint[diffusers_key] = new_checkpoint[diffusers_key][:, :, 0, 0]
+
+
 def convert_ldm_vae_checkpoint(checkpoint, config):
     # extract state dict for VAE
+    # remove the LDM_VAE_KEY prefix from the ldm checkpoint keys so that it is easier to map them to diffusers keys
     vae_state_dict = {}
     keys = list(checkpoint.keys())
-    vae_key = "first_stage_model." if any(k.startswith("first_stage_model.") for k in keys) else ""
+    vae_key = LDM_VAE_KEY if any(k.startswith(LDM_VAE_KEY) for k in keys) else ""
     for key in keys:
         if key.startswith(vae_key):
             vae_state_dict[key.replace(vae_key, "")] = checkpoint.get(key)
 
     new_checkpoint = {}
-
-    new_checkpoint["encoder.conv_in.weight"] = vae_state_dict["encoder.conv_in.weight"]
-    new_checkpoint["encoder.conv_in.bias"] = vae_state_dict["encoder.conv_in.bias"]
-    new_checkpoint["encoder.conv_out.weight"] = vae_state_dict["encoder.conv_out.weight"]
-    new_checkpoint["encoder.conv_out.bias"] = vae_state_dict["encoder.conv_out.bias"]
-    new_checkpoint["encoder.conv_norm_out.weight"] = vae_state_dict["encoder.norm_out.weight"]
-    new_checkpoint["encoder.conv_norm_out.bias"] = vae_state_dict["encoder.norm_out.bias"]
-
-    new_checkpoint["decoder.conv_in.weight"] = vae_state_dict["decoder.conv_in.weight"]
-    new_checkpoint["decoder.conv_in.bias"] = vae_state_dict["decoder.conv_in.bias"]
-    new_checkpoint["decoder.conv_out.weight"] = vae_state_dict["decoder.conv_out.weight"]
-    new_checkpoint["decoder.conv_out.bias"] = vae_state_dict["decoder.conv_out.bias"]
-    new_checkpoint["decoder.conv_norm_out.weight"] = vae_state_dict["decoder.norm_out.weight"]
-    new_checkpoint["decoder.conv_norm_out.bias"] = vae_state_dict["decoder.norm_out.bias"]
-
-    new_checkpoint["quant_conv.weight"] = vae_state_dict["quant_conv.weight"]
-    new_checkpoint["quant_conv.bias"] = vae_state_dict["quant_conv.bias"]
-    new_checkpoint["post_quant_conv.weight"] = vae_state_dict["post_quant_conv.weight"]
-    new_checkpoint["post_quant_conv.bias"] = vae_state_dict["post_quant_conv.bias"]
+    vae_diffusers_ldm_map = DIFFUSERS_TO_LDM_MAPPING["vae"]
+    for diffusers_key, ldm_key in vae_diffusers_ldm_map.items():
+        if ldm_key not in vae_state_dict:
+            continue
+        new_checkpoint[diffusers_key] = vae_state_dict[ldm_key]
 
     # Retrieves the keys for the encoder down blocks only
     num_down_blocks = len(config["down_block_types"])
@@ -819,15 +840,14 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
         layer_id: [key for key in vae_state_dict if f"down.{layer_id}" in key] for layer_id in range(num_down_blocks)
     }
 
-    # Retrieves the keys for the decoder up blocks only
-    num_up_blocks = len(config["up_block_types"])
-    up_blocks = {
-        layer_id: [key for key in vae_state_dict if f"up.{layer_id}" in key] for layer_id in range(num_up_blocks)
-    }
-
     for i in range(num_down_blocks):
         resnets = [key for key in down_blocks[i] if f"down.{i}" in key and f"down.{i}.downsample" not in key]
-
+        update_vae_resnet_ldm_to_diffusers(
+            resnets,
+            new_checkpoint,
+            vae_state_dict,
+            mapping={"old": f"down.{i}.block", "new": f"down_blocks.{i}.resnets"},
+        )
         if f"encoder.down.{i}.downsample.conv.weight" in vae_state_dict:
             new_checkpoint[f"encoder.down_blocks.{i}.downsamplers.0.conv.weight"] = vae_state_dict.pop(
                 f"encoder.down.{i}.downsample.conv.weight"
@@ -836,31 +856,39 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
                 f"encoder.down.{i}.downsample.conv.bias"
             )
 
-        paths = renew_vae_resnet_paths(resnets)
-        meta_path = {"old": f"down.{i}.block", "new": f"down_blocks.{i}.resnets"}
-        assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
-
     mid_resnets = [key for key in vae_state_dict if "encoder.mid.block" in key]
     num_mid_res_blocks = 2
     for i in range(1, num_mid_res_blocks + 1):
         resnets = [key for key in mid_resnets if f"encoder.mid.block_{i}" in key]
-
-        paths = renew_vae_resnet_paths(resnets)
-        meta_path = {"old": f"mid.block_{i}", "new": f"mid_block.resnets.{i - 1}"}
-        assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
+        update_vae_resnet_ldm_to_diffusers(
+            resnets,
+            new_checkpoint,
+            vae_state_dict,
+            mapping={"old": f"mid.block_{i}", "new": f"mid_block.resnets.{i - 1}"},
+        )
 
     mid_attentions = [key for key in vae_state_dict if "encoder.mid.attn" in key]
-    paths = renew_vae_attention_paths(mid_attentions)
-    meta_path = {"old": "mid.attn_1", "new": "mid_block.attentions.0"}
-    assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
-    conv_attn_to_linear(new_checkpoint)
+    update_vae_attentions_ldm_to_diffusers(
+        mid_attentions, new_checkpoint, vae_state_dict, mapping={"old": "mid.attn_1", "new": "mid_block.attentions.0"}
+    )
+
+    # Retrieves the keys for the decoder up blocks only
+    num_up_blocks = len(config["up_block_types"])
+    up_blocks = {
+        layer_id: [key for key in vae_state_dict if f"up.{layer_id}" in key] for layer_id in range(num_up_blocks)
+    }
 
     for i in range(num_up_blocks):
         block_id = num_up_blocks - 1 - i
         resnets = [
             key for key in up_blocks[block_id] if f"up.{block_id}" in key and f"up.{block_id}.upsample" not in key
         ]
-
+        update_vae_resnet_ldm_to_diffusers(
+            resnets,
+            new_checkpoint,
+            vae_state_dict,
+            mapping={"old": f"up.{block_id}.block", "new": f"up_blocks.{i}.resnets"},
+        )
         if f"decoder.up.{block_id}.upsample.conv.weight" in vae_state_dict:
             new_checkpoint[f"decoder.up_blocks.{i}.upsamplers.0.conv.weight"] = vae_state_dict[
                 f"decoder.up.{block_id}.upsample.conv.weight"
@@ -869,24 +897,23 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
                 f"decoder.up.{block_id}.upsample.conv.bias"
             ]
 
-        paths = renew_vae_resnet_paths(resnets)
-        meta_path = {"old": f"up.{block_id}.block", "new": f"up_blocks.{i}.resnets"}
-        assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
-
     mid_resnets = [key for key in vae_state_dict if "decoder.mid.block" in key]
     num_mid_res_blocks = 2
     for i in range(1, num_mid_res_blocks + 1):
         resnets = [key for key in mid_resnets if f"decoder.mid.block_{i}" in key]
-
-        paths = renew_vae_resnet_paths(resnets)
-        meta_path = {"old": f"mid.block_{i}", "new": f"mid_block.resnets.{i - 1}"}
-        assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
+        update_vae_resnet_ldm_to_diffusers(
+            resnets,
+            new_checkpoint,
+            vae_state_dict,
+            mapping={"old": f"mid.block_{i}", "new": f"mid_block.resnets.{i - 1}"},
+        )
 
     mid_attentions = [key for key in vae_state_dict if "decoder.mid.attn" in key]
-    paths = renew_vae_attention_paths(mid_attentions)
-    meta_path = {"old": "mid.attn_1", "new": "mid_block.attentions.0"}
-    assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
+    update_vae_attentions_ldm_to_diffusers(
+        mid_attentions, new_checkpoint, vae_state_dict, mapping={"old": "mid.attn_1", "new": "mid_block.attentions.0"}
+    )
     conv_attn_to_linear(new_checkpoint)
+
     return new_checkpoint
 
 
@@ -941,25 +968,19 @@ def convert_ldm_bert_checkpoint(checkpoint, config):
     return hf_model
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_clip_checkpoint
-def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False, text_encoder=None):
-    if text_encoder is None:
-        config_name = "openai/clip-vit-large-patch14"
-        try:
-            config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
-        except Exception:
-            raise ValueError(
-                f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: 'openai/clip-vit-large-patch14'."
-            )
+def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
+    try:
+        config = CLIPTextConfig.from_pretrained(LDM_CLIP_CONFIG_NAME, local_files_only=local_files_only)
+    except Exception:
+        raise ValueError(
+            f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: 'openai/clip-vit-large-patch14'."
+        )
 
-        ctx = init_empty_weights if is_accelerate_available() else nullcontext
-        with ctx():
-            text_model = CLIPTextModel(config)
-    else:
-        text_model = text_encoder
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        text_model = CLIPTextModel(config)
 
     keys = list(checkpoint.keys())
-
     text_model_dict = {}
 
     remove_prefixes = ["cond_stage_model.transformer", "conditioner.embedders.0.transformer"]
