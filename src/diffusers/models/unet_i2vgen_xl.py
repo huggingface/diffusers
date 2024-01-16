@@ -696,7 +696,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         else:
             _ximg = rearrange(image_latents, "b c f h w -> (b f) c h w")
 
-        print("_ximg dtype", _ximg.dtype)
         _ximg = self.local_image_concat(_ximg)
         _h = _ximg.shape[2]
         _ximg = rearrange(_ximg, "(b f) c h w -> (b h w) f c", b=batch_size)
