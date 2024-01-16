@@ -14,6 +14,7 @@
 import inspect
 import os
 from contextlib import nullcontext
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
@@ -960,8 +961,9 @@ class LoraLoaderMixin:
             else:
                 weight_name = LORA_WEIGHT_NAME
 
-        save_function(state_dict, os.path.join(save_directory, weight_name))
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
+        save_path = Path(save_directory, weight_name).as_posix()
+        save_function(state_dict, save_path)
+        logger.info(f"Model weights saved in {save_path}")
 
     def unload_lora_weights(self):
         """
