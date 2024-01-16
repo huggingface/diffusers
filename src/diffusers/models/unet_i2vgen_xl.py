@@ -112,7 +112,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             "CrossAttnUpBlock3D",
             "CrossAttnUpBlock3D",
         ),
-        block_out_channels: Tuple[int, ...] = (512, 1024, 2048, 2048),
+        block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
         downsample_padding: int = 1,
         mid_block_scale_factor: float = 1,
