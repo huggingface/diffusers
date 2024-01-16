@@ -180,7 +180,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             nn.SiLU(),
             nn.Conv2d(in_channels * 4, in_channels, 3, stride=1, padding=1),
         )
-        # print("local_image_concat parameters", sum(p.numel() for p in self.local_image_concat.parameters() if p.requires_grad))
         self.local_temporal_encoder = BasicTransformerBlock(
             norm_type="layer_norm_i2vgen",
             dim=in_channels,
@@ -197,7 +196,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             nn.SiLU(),
             nn.Conv2d(in_channels * 16, 1024, 3, stride=2, padding=1),
         )
-        # print("local_image_embedding parameters", sum(p.numel() for p in self.local_image_embedding.parameters() if p.requires_grad))
 
         # other embeddings -- time, context, fps, etc.
         time_embed_dim = block_out_channels[0] * 4
@@ -214,11 +212,9 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             nn.SiLU(),
             nn.Linear(time_embed_dim, cross_attention_dim * in_channels),
         )
-        # print("context_embedding parameters", sum(p.numel() for p in self.context_embedding.parameters() if p.requires_grad))
         self.fps_embedding = nn.Sequential(
             nn.Linear(timestep_input_dim, time_embed_dim), nn.SiLU(), nn.Linear(time_embed_dim, time_embed_dim)
         )
-        # print("fps_embedding parameters", sum(p.numel() for p in self.fps_embedding.parameters() if p.requires_grad))
 
         # blocks
         self.down_blocks = nn.ModuleList([])
