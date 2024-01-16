@@ -14,6 +14,7 @@
 import inspect
 import os
 from contextlib import nullcontext
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
