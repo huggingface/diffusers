@@ -1190,8 +1190,8 @@ def create_scheduler(pipeline_class_name, original_config, checkpoint, checkpoin
         scheduler_type = "euler"
 
     else:
-        beta_start = getattr(original_config["model"]["params"], "linear_start", None) or 0.02
-        beta_end = getattr(original_config["model"]["params"], "linear_end", None) or 0.085
+        beta_start = original_config["model"]["params"].get("linear_start", 0.02)
+        beta_end = original_config["model"]["params"].get("linear_end", 0.085)
         scheduler_config["beta_start"] = beta_start
         scheduler_config["beta_end"] = beta_end
         scheduler_config["beta_schedule"] = "scaled_linear"
