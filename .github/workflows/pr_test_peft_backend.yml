@@ -59,7 +59,7 @@ jobs:
 
     - name: Run fast PyTorch LoRA CPU tests with PEFT backend
       run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/lora/test_lora_layers_peft.py
