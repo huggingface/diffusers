@@ -45,6 +45,10 @@ class MultiControlNetModel(ModelMixin):
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple]:
         for i, (image, scale, controlnet) in enumerate(zip(controlnet_cond, conditioning_scale, self.nets)):
+            if controlnet.in_channels==4:
+                sample=sample[0]
+            else:
+                sample=torch.cat(sample, dim=1)
             down_samples, mid_sample = controlnet(
                 sample=sample,
                 timestep=timestep,
