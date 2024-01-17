@@ -235,6 +235,62 @@ export_to_gif(frames, "animation.gif")
     </tr>
 </table>
 
+## Using FreeInit
+
+[FreeInit: Bridging Initialization Gap in Video Diffusion Models](https://arxiv.org/abs/2312.07537) by Tianxing Wu, Chenyang Si, Yuming Jiang, Ziqi Huang, Ziwei Liu.
+
+FreeInit is an effective method that improves temporal consistency and overall quality of videos generated using video-diffusion-models without any addition training. It can be applied to AnimateDiff, ModelScope, VideoCrafter and various other video generation models seamlessly at inference time, and works by iteratively refining the latent-initialization noise. More details can be found it the paper.
+
+The following example demonstrates the usage of FreeInit.
+
+```python
+import torch
+from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers.utils import export_to_gif
+
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16).to("cuda")
+pipe.scheduler = DDIMScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    beta_schedule="linear",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    steps_offset=1
+)
+
+# enable memory savings
+pipe.enable_vae_slicing()
+pipe.enable_vae_tiling()
+
+# enable FreeInit
+# Refer to the enable_free_init documentation for a full list of configurable parameters
+pipe.enable_free_init(method="butterworth", use_fast_sampling=True)
+
+# run inference
+output = pipe(
+    prompt="a panda playing a guitar, on a boat, in the ocean, high quality",
+    negative_prompt="bad quality, worse quality",
+    num_frames=16,
+    guidance_scale=7.5,
+    num_inference_steps=20,
+    generator=torch.Generator("cpu").manual_seed(666),
+)
+
+# disable FreeInit
+pipe.disable_free_init()
+
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
+```
+
+<Tip warning={true}>
+
+FreeInit is not really free - the improved quality comes at the cost of extra computation. It requires sampling a few extra times depending on the `num_iters` parameter that is set when enabling it. Setting the `use_fast_sampling` parameter to `True` can improve the overall performance (at the cost of lower quality compared to when `use_fast_sampling=False` but still better results than vanilla video generation models).
+
+</Tip>
+
 <Tip>
 
 Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
@@ -248,6 +304,8 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 	- __call__
     - enable_freeu
     - disable_freeu
+    - enable_free_init
+    - disable_free_init
     - enable_vae_slicing
     - disable_vae_slicing
     - enable_vae_tiling
