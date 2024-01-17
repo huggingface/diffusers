@@ -720,6 +720,7 @@ class AttnProcessor:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
+        **kwargs,
     ) -> torch.Tensor:
         residual = hidden_states
 
@@ -1196,6 +1197,7 @@ class AttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
+        **kwargs,
     ) -> torch.FloatTensor:
         residual = hidden_states
         if attn.spatial_norm is not None:
@@ -2251,6 +2253,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         encoder_hidden_states=None,
         attention_mask=None,
         temb=None,
+        ip_hidden_states=None,
     ):
         residual = hidden_states
 
@@ -2284,11 +2287,6 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         # split hidden states
-        end_pos = encoder_hidden_states.shape[1] - sum(self.num_tokens)
-        encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, :end_pos, :],
-            encoder_hidden_states[:, end_pos:, :],
-        )
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -2311,11 +2309,9 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         hidden_states = hidden_states.to(query.dtype)
 
         # for ip-adapter
-        for num_token, scale, to_k_ip, to_v_ip in zip(self.num_tokens, self.scale, self.to_k_ip, self.to_v_ip):
-            current_ip_hidden_states, ip_hidden_states = (
-                ip_hidden_states[:, :num_token, :],
-                ip_hidden_states[:, num_token:, :],
-            )
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
+        ):
             ip_key = to_k_ip(current_ip_hidden_states)
             ip_value = to_v_ip(current_ip_hidden_states)
 
