@@ -191,7 +191,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         sample_size=96,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         upcast_attention=True,
-        norm_num_groups=4,
+        norm_num_groups=32,
     ):
         super().__init__()
 
@@ -285,15 +285,19 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 subblock_counter += 1
 
         # mid
+        mid_in_channels = block_out_channels[-1] + channels_base['down - out'][subblock_counter]
+        mid_out_channels = block_out_channels[-1]
+
         self.mid_block = UNetMidBlock2DCrossAttn(
             transformer_layers_per_block=transformer_layers_per_block[-1],
-            in_channels=block_out_channels[-1] + channels_base['down - out'][subblock_counter],
-            out_channels=block_out_channels[-1],
+            in_channels=mid_in_channels,
+            out_channels=mid_out_channels,
             temb_channels=time_embedding_dim,
             resnet_eps=1e-05,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads[-1],
-            resnet_groups=norm_num_groups,
+            resnet_groups=find_largest_factor(mid_in_channels, norm_num_groups),
+            resnet_groups_out=find_largest_factor(mid_out_channels, norm_num_groups),
             use_linear_projection=True,
             upcast_attention=upcast_attention,
         )
@@ -754,6 +758,17 @@ def zero_module(module):
     return module
 
 
+def find_largest_factor(number, max_factor):
+    factor = max_factor
+    if factor >= number:
+        return number
+    while factor != 0:
+        residual = number % factor
+        if residual == 0:
+            return factor
+        factor -= 1
+
+
 class CrossAttnSubBlock2D(nn.Module):
     def __init__(
         self,
@@ -772,6 +787,7 @@ class CrossAttnSubBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
         if is_empty:
+            # todo umer: comment
             return
 
         self.in_channels = in_channels
@@ -781,7 +797,8 @@ class CrossAttnSubBlock2D(nn.Module):
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
-            groups=norm_num_groups,
+            groups=find_largest_factor(in_channels, start=norm_num_groups),
+            groups_out=find_largest_factor(out_channels, start=norm_num_groups),
             eps=1e-5,
         )
 
@@ -794,7 +811,7 @@ class CrossAttnSubBlock2D(nn.Module):
                 cross_attention_dim=cross_attention_dim,
                 use_linear_projection=True,
                 upcast_attention=upcast_attention,
-                norm_num_groups=norm_num_groups,
+                norm_num_groups=find_largest_factor(out_channels, start=norm_num_groups),
             )
         else:
             self.attention = None
@@ -875,6 +892,7 @@ class DownSubBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
         if is_empty:
+            # todo umer: comment
             return
 
         self.in_channels = in_channels
