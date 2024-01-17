@@ -27,6 +27,7 @@ from ..utils import (
     logging,
 )
 from .single_file_utils import (
+    create_controlnet_model,
     create_scheduler,
     create_text_encoders_and_tokenizers,
     create_unet_model,
@@ -318,11 +319,11 @@ class FromSingleFileMixin:
         original_config = fetch_original_config(class_name, checkpoint, original_config_file, config_files)
 
         if class_name == "AutoencoderKL":
-            component = build_component({}, "vae", original_config, checkpoint, pretrained_model_link_or_path)
+            component = create_vae_model(class_name, original_config, checkpoint, pretrained_model_link_or_path)
             return component["vae"]
 
         if class_name == "ControlNetModel":
-            component = build_component({}, "controlnet", original_config, checkpoint, pretrained_model_link_or_path)
+            component = create_controlnet_model(class_name, original_config, checkpoint, **kwargs)
             return component["controlnet"]
 
         component_names = extract_pipeline_component_names(cls)
