@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
+from pathlib import Path
 from typing import Dict, Union
 
 import torch
@@ -138,7 +138,7 @@ class IPAdapterMixin:
                 logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
                 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
                     pretrained_model_name_or_path_or_dict,
-                    subfolder=os.path.join(subfolder, "image_encoder"),
+                    subfolder=Path(subfolder, "image_encoder").as_posix(),
                 ).to(self.device, dtype=self.dtype)
                 self.image_encoder = image_encoder
                 self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])

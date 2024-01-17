@@ -429,7 +429,7 @@ image = pipe(
 make_image_grid([original_image, canny_image, image], rows=1, cols=3)
 ```
 
-### MultiControlNet
+## MultiControlNet
 
 <Tip>
 
