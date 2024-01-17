@@ -858,7 +858,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
         )
 
         # 4. Preprocess image
-        image = self.image_processor.preprocess(image).to(device)
+        image = self.image_processor.preprocess(image, height=height, width=width).to(device)
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
