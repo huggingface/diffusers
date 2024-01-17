@@ -23,17 +23,13 @@ import torch
 import yaml
 from safetensors.torch import load_file as safe_load
 from transformers import (
-    BertTokenizerFast,
-    CLIPImageProcessor,
     CLIPTextConfig,
     CLIPTextModel,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
-    CLIPVisionModelWithProjection,
 )
 
 from ..models import AutoencoderKL, UNet2DConditionModel
-from ..pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
 from ..schedulers import (
     DDIMScheduler,
     DDPMScheduler,
@@ -148,6 +144,8 @@ LDM_VAE_KEY = "first_stage_model."
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CLIP_CONFIG_NAME = "openai/clip-vit-large-patch14"
 LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
+
+SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = ['cond_stage_model.model.transformer.resblocks.23.attn.in_proj_bias', 'cond_stage_model.model.transformer.resblocks.23.attn.in_proj_weight', 'cond_stage_model.model.transformer.resblocks.23.attn.out_proj.bias', 'cond_stage_model.model.transformer.resblocks.23.attn.out_proj.weight', 'cond_stage_model.model.transformer.resblocks.23.ln_1.bias', 'cond_stage_model.model.transformer.resblocks.23.ln_1.weight', 'cond_stage_model.model.transformer.resblocks.23.ln_2.bias', 'cond_stage_model.model.transformer.resblocks.23.ln_2.weight', 'cond_stage_model.model.transformer.resblocks.23.mlp.c_fc.bias', 'cond_stage_model.model.transformer.resblocks.23.mlp.c_fc.weight', 'cond_stage_model.model.transformer.resblocks.23.mlp.c_proj.bias', 'cond_stage_model.model.transformer.resblocks.23.mlp.c_proj.weight', 'cond_stage_model.model.text_projection']
 
 textenc_conversion_lst = [
     ("positional_embedding", "text_model.embeddings.position_embedding.weight"),
@@ -796,7 +794,6 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
     return text_model
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_open_clip_checkpoint
 def convert_open_clip_checkpoint(
     checkpoint,
     config_name,
@@ -818,12 +815,7 @@ def convert_open_clip_checkpoint(
 
     keys = list(checkpoint.keys())
 
-    keys_to_ignore = []
-    if config_name == "stabilityai/stable-diffusion-2" and config.num_hidden_layers == 23:
-        # make sure to remove all keys > 22
-        keys_to_ignore += [k for k in keys if k.startswith("cond_stage_model.model.transformer.resblocks.23")]
-        keys_to_ignore += ["cond_stage_model.model.text_projection"]
-
+    keys_to_ignore = SD_2_TEXT_ENCODER_KEYS_TO_IGNORE
     text_model_dict = {}
 
     if prefix + "text_projection" in checkpoint:
@@ -832,7 +824,6 @@ def convert_open_clip_checkpoint(
         d_model = 1024
 
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
-
     for key in keys:
         if key in keys_to_ignore:
             continue
@@ -873,53 +864,6 @@ def convert_open_clip_checkpoint(
         text_model.load_state_dict(text_model_dict)
 
     return text_model
-
-
-def stable_unclip_image_encoder(original_config, local_files_only=False):
-    """
-    Returns the image processor and clip image encoder for the img2img unclip pipeline.
-
-    We currently know of two types of stable unclip models which separately use the clip and the openclip image
-    encoders.
-    """
-
-    image_embedder_config = original_config["model"]["params"].embedder_config
-
-    sd_clip_image_embedder_class = image_embedder_config.target
-    sd_clip_image_embedder_class = sd_clip_image_embedder_class.split(".")[-1]
-
-    if sd_clip_image_embedder_class == "ClipImageEmbedder":
-        clip_model_name = image_embedder_config.params.model
-
-        if clip_model_name == "ViT-L/14":
-            feature_extractor = CLIPImageProcessor()
-            image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-                "openai/clip-vit-large-patch14", local_files_only=local_files_only
-            )
-        else:
-            raise NotImplementedError(f"Unknown CLIP checkpoint name in stable diffusion checkpoint {clip_model_name}")
-
-    elif sd_clip_image_embedder_class == "FrozenOpenCLIPImageEmbedder":
-        feature_extractor = CLIPImageProcessor()
-        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-            "laion/CLIP-ViT-H-14-laion2B-s32B-b79K", local_files_only=local_files_only
-        )
-    else:
-        raise NotImplementedError(
-            f"Unknown CLIP image embedder class in stable diffusion checkpoint {sd_clip_image_embedder_class}"
-        )
-
-    return feature_extractor, image_encoder
-
-
-def create_ldm_bert_config(original_config):
-    bert_params = original_config["model"]["params"].cond_stage_config.params
-    config = LDMBertConfig(
-        d_model=bert_params.n_embed,
-        encoder_layers=bert_params.n_layer,
-        encoder_ffn_dim=bert_params.n_embed * 4,
-    )
-    return config
 
 
 def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs):
