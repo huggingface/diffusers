@@ -46,8 +46,8 @@ class IPAdapterMixin:
     def load_ip_adapter(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, List[str], Dict[str, torch.Tensor]],
-        subfolder: Union[str, list[str]],
-        weight_name: Union[str, list[str]],
+        subfolder: Union[str, List[str]],
+        weight_name: Union[str, List[str]],
         **kwargs,
     ):
         """
