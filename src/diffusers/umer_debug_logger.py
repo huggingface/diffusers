@@ -147,7 +147,7 @@ class UmerDebugLogger:
                 log_objects.append(SimpleNamespace(**row))
         return log_objects
 
-    def save_input(self, dir_, x, t, xcross, hint, text_embeds=None, time_ids=None):
+    def save_input(self, dir_, x, t, xcross, hint, text_embeds=None, time_ids=None, minimize_bs=True):
         assert (text_embeds is None and time_ids is None) or (text_embeds is not None and time_ids is not None)
         is_sdxl = text_embeds is not None
         inputs = dict(
@@ -158,11 +158,12 @@ class UmerDebugLogger:
         )
         if is_sdxl:
             inputs.update(dict(
-                text_embeds=os.path.join(dir_, x),
+                text_embeds=os.path.join(dir_, text_embeds),
                 time_ids=os.path.join(dir_, time_ids),
             ))
         self.input_files = SimpleNamespace(**inputs)
         self.input_action = 'save'
+        self.minimize_bs = minimize_bs
 
     def load_input(self, dir_, x, t, xcross, hint, text_embeds=None, time_ids=None):
         assert (text_embeds is None and time_ids is None) or (text_embeds is not None and time_ids is not None)
@@ -175,7 +176,7 @@ class UmerDebugLogger:
         )
         if is_sdxl:
             inputs.update(dict(
-                text_embeds=os.path.join(dir_, x),
+                text_embeds=os.path.join(dir_, text_embeds),
                 time_ids=os.path.join(dir_, time_ids),
             ))
         self.input_files = SimpleNamespace(**inputs)
@@ -192,6 +193,21 @@ class UmerDebugLogger:
         is_sdxl = text_embeds is not None
 
         if self.input_action == 'save':
+            assert x.shape[0]==t.shape[0]==xcross.shape[0]==hint.shape[0]
+            if is_sdxl:
+                assert x.shape[0]==text_embeds.shape[0]==time_ids.shape[0]
+
+            bs = x.shape[0]
+            if self.minimize_bs and bs > 1:
+                print(f'[udl] Input has batch size {bs} but reducing to 1 before saving')
+                x = x[0:1]
+                t = t[0:1]
+                xcross = xcross[0:1]
+                hint = hint[0:1]
+                if is_sdxl:
+                    text_embeds = text_embeds[0:1]
+                    time_ids = time_ids[0:1]
+
             torch.save(x, self.input_files.x)
             torch.save(t, self.input_files.t)
             torch.save(xcross, self.input_files.xcross)
