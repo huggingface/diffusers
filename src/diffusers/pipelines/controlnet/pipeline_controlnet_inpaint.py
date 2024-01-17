@@ -1443,7 +1443,7 @@ class StableDiffusionControlNetInpaintPipeline(
                     control_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
                 
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
-                    control_model_input,
+                    [latent_model_input, mask, masked_image_latents],
                     t,
                     encoder_hidden_states=controlnet_prompt_embeds,
                     controlnet_cond=control_image,
