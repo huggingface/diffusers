@@ -127,21 +127,27 @@ DIFFUSERS_TO_LDM_MAPPING = {
         "post_quant_conv.bias": "post_quant_conv.bias",
     },
     "openclip": {
-        "positional_embedding": "text_model.embeddings.position_embedding.weight",
-        "token_embedding.weight": "text_model.embeddings.token_embedding.weight",
+        # "positional_embedding": "text_model.embeddings.position_embedding.weight",
+        # "token_embedding.weight": "text_model.embeddings.token_embedding.weight",
         "ln_final.weight": "text_model.final_layer_norm.weight",
         "ln_final.bias": "text_model.final_layer_norm.bias",
         "text_projection": "text_projection.weight",
-        ""
-    }
+        "resblocks.": "text_model.encoder.layers.",
+        "ln_1": "layer_norm1",
+        "ln_2": "layer_norm2",
+        ".c_fc.": ".fc1.",
+        ".c_proj.": ".fc2.",
+        ".attn": ".self_attn",
+        "ln_final.": "transformer.text_model.final_layer_norm.",
+        "token_embedding.weight": "transformer.text_model.embeddings.token_embedding.weight",
+        "positional_embedding": "transformer.text_model.embeddings.position_embedding.weight",
+    },
 }
 
 LDM_VAE_KEY = "first_stage_model."
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CLIP_CONFIG_NAME = "openai/clip-vit-large-patch14"
-
-UNET_TIME_EMBEDDING_LAYERS = []
-
+LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
 
 textenc_conversion_lst = [
     ("positional_embedding", "text_model.embeddings.position_embedding.weight"),
@@ -461,13 +467,13 @@ def update_unet_resnet_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint, ma
         )
         if mapping:
             diffusers_key = diffusers_key.replace(mapping["old"], mapping["new"])
-        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
+        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
 
 
 def update_unet_attention_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint, mapping):
     for ldm_key in ldm_keys:
         diffusers_key = ldm_key.replace(mapping["old"], mapping["new"])
-        new_checkpoint[diffusers_key] = checkpoint.get(ldm_key)
+        new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
 
 
 def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False, skip_extract_state_dict=False):
@@ -609,7 +615,9 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
             {"old": f"output_blocks.{i}.0", "new": f"up_blocks.{block_id}.resnets.{layer_in_block_id}"},
         )
 
-        attentions = [key for key in output_blocks[i] if f"output_blocks.{i}.1" in key]
+        attentions = [
+            key for key in output_blocks[i] if f"output_blocks.{i}.1" in key and f"output_blocks.{i}.1.conv" not in key
+        ]
         if attentions:
             update_unet_attention_ldm_to_diffusers(
                 attentions,
@@ -834,12 +842,13 @@ def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
     keys = list(checkpoint.keys())
     text_model_dict = {}
 
-    remove_prefixes = ["cond_stage_model.transformer", "conditioner.embedders.0.transformer"]
+    remove_prefixes = LDM_CLIP_PREFIX_TO_REMOVE
 
     for key in keys:
         for prefix in remove_prefixes:
             if key.startswith(prefix):
-                text_model_dict[key[len(prefix + ".") :]] = checkpoint[key]
+                diffusers_key = key.replace(prefix, "")
+                text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
         for param_name, param in text_model_dict.items():
@@ -862,10 +871,6 @@ def convert_open_clip_checkpoint(
     local_files_only=False,
     **config_kwargs,
 ):
-    # text_model = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2", subfolder="text_encoder")
-    # text_model = CLIPTextModelWithProjection.from_pretrained(
-    #    "laion/CLIP-ViT-bigG-14-laion2B-39B-b160k", projection_dim=1280
-    # )
     try:
         config = CLIPTextConfig.from_pretrained(config_name, **config_kwargs, local_files_only=local_files_only)
     except Exception:
@@ -1017,9 +1022,6 @@ def create_unet_model(pipeline_class_name, original_config, checkpoint, checkpoi
     with ctx():
         unet = UNet2DConditionModel(**unet_config)
 
-    print('difference')
-    print(set(unet.state_dict().keys()).difference(set(diffusers_format_unet_checkpoint.keys())))
-
     if is_accelerate_available():
         for param_name, param in diffusers_format_unet_checkpoint.items():
             set_module_tensor_to_device(unet, param_name, "cpu", value=param)
@@ -1075,9 +1077,7 @@ def create_text_encoders_and_tokenizers(
     elif model_type == "FrozenCLIPEmbedder":
         try:
             config_name = "openai/clip-vit-large-patch14"
-            text_encoder = convert_ldm_clip_checkpoint(
-                checkpoint, local_files_only=local_files_only, text_encoder=None
-            )
+            text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
 
         except Exception:
