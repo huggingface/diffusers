@@ -68,9 +68,6 @@ EXAMPLE_DOC_STRING = """
 
 
 def tensor2vid(video: torch.Tensor, processor, output_type="np"):
-    # Based on:
-    # https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
-
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
     for batch_idx in range(batch_size):
@@ -78,6 +75,9 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         batch_output = processor.postprocess(batch_vid, output_type)
 
         outputs.append(batch_output)
+
+    if output_type == "np":
+        outputs = np.stack(outputs)
 
     return outputs
 

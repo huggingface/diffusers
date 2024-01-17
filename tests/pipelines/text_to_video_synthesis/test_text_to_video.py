@@ -141,9 +141,10 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         inputs["output_type"] = "np"
         frames = sd_pipe(**inputs).frames
-        image_slice = frames[0][-3:, -3:, -1]
 
-        assert frames[0].shape == (32, 32, 3)
+        image_slice = frames[0][0][-3:, -3:, -1]
+
+        assert frames[0][0].shape == (32, 32, 3)
         expected_slice = np.array([192.0, 44.0, 157.0, 140.0, 108.0, 104.0, 123.0, 144.0, 129.0])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
