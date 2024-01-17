@@ -1438,7 +1438,7 @@ class StableDiffusionControlNetInpaintPipeline(
                     if isinstance(controlnet_cond_scale, list):
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
-
+                
                 if num_channels_unet == 9:
                     control_model_input = torch.cat([latent_model_input, mask, masked_image_latents], dim=1)
                 
@@ -1451,7 +1451,7 @@ class StableDiffusionControlNetInpaintPipeline(
                     guess_mode=guess_mode,
                     return_dict=False,
                 )
-
+                print('controlnet did')
                 if guess_mode and self.do_classifier_free_guidance:
                     # Infered ControlNet only for the conditional batch.
                     # To apply the output of ControlNet to both the unconditional and conditional batches,
