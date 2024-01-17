@@ -20,10 +20,10 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import torch
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import deprecate
-from ..utils.torch_utils import randn_tensor
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...utils import deprecate
+from ...utils.torch_utils import randn_tensor
+from ..scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
 
 
 # Copied from diffusers.schedulers.scheduling_ddpm.betas_for_alpha_bar
@@ -71,9 +71,9 @@ def betas_for_alpha_bar(
     return torch.tensor(betas, dtype=torch.float32)
 
 
-class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
+class DPMSolverMultistepInverseSchedulerLegacy(SchedulerMixin, ConfigMixin):
     """
-    `DPMSolverMultistepInverseScheduler` is the reverse scheduler of [`DPMSolverMultistepScheduler`].
+    `DPMSolverMultistepInverseSchedulerLegacy` is the reverse scheduler of [`DPMSolverMultistepSchedulerLegacy`].
 
     This model inherits from [`SchedulerMixin`] and [`ConfigMixin`]. Check the superclass documentation for the generic
     methods the library implements for all schedulers such as loading and saving.
@@ -105,12 +105,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         sample_max_value (`float`, defaults to 1.0):
             The threshold value for dynamic thresholding. Valid only when `thresholding=True` and
             `algorithm_type="dpmsolver++"`.
-        algorithm_type (`str`, defaults to `dpmsolver++`):
-            Algorithm type for the solver; can be `dpmsolver`, `dpmsolver++`, `sde-dpmsolver` or `sde-dpmsolver++`. The
+        algorithm_type (`str`, defaults to `dpmsolver`):
+            Algorithm type for the solver; can be `dpmsolver` or `sde-dpmsolver`. The
             `dpmsolver` type implements the algorithms in the [DPMSolver](https://huggingface.co/papers/2206.00927)
-            paper, and the `dpmsolver++` type implements the algorithms in the
-            [DPMSolver++](https://huggingface.co/papers/2211.01095) paper. It is recommended to use `dpmsolver++` or
-            `sde-dpmsolver++` with `solver_order=2` for guided sampling like in Stable Diffusion.
+            paper.
         solver_type (`str`, defaults to `midpoint`):
             Solver type for the second-order solver; can be `midpoint` or `heun`. The solver type slightly affects the
             sample quality, especially for a small number of steps. It is recommended to use `midpoint` solvers.
@@ -155,12 +153,11 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         thresholding: bool = False,
         dynamic_thresholding_ratio: float = 0.995,
         sample_max_value: float = 1.0,
-        algorithm_type: str = "dpmsolver++",
+        algorithm_type: str = "dpmsolver",
         solver_type: str = "midpoint",
         lower_order_final: bool = True,
         euler_at_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
-        final_sigmas_type: Optional[str] = "default",  # "denoise_to_zero", "default"
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
         timestep_spacing: str = "linspace",
@@ -191,22 +188,14 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         self.init_noise_sigma = 1.0
 
         # settings for DPM-Solver
-        if algorithm_type not in ["dpmsolver", "dpmsolver++", "sde-dpmsolver", "sde-dpmsolver++"]:
-            if algorithm_type == "deis":
-                self.register_to_config(algorithm_type="dpmsolver++")
-            else:
-                raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
+        if algorithm_type not in ["dpmsolver", "sde-dpmsolver"]:
+            raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
 
         if solver_type not in ["midpoint", "heun"]:
             if solver_type in ["logrho", "bh1", "bh2"]:
                 self.register_to_config(solver_type="midpoint")
             else:
                 raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
-
-        if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"] and final_sigmas_type == "denoise_to_zero":
-            raise ValueError(
-                f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithem_type` {algorithm_type}."
-            )
 
         # setable values
         self.num_inference_steps = None
@@ -270,29 +259,16 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = timesteps.copy().astype(np.int64)
-            if self.config.final_sigmas_type == "default":
-                sigmas = np.concatenate([sigmas[0], sigmas]).astype(np.float32)
-            elif self.config.final_sigmas_type == "denoise_to_zero":
-                sigmas = np.concatenate([np.array([0]), sigmas]).astype(np.float32)
-            else:
-                raise ValueError(
-                    f"`final_sigmas_type` must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
-                )
+            sigmas = np.concatenate([sigmas[-1:], sigmas]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-            if self.config.final_sigmas_type == "default":
-                sigma_last = (
+            sigma_last = (
                     (1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]
                 ) ** 0.5
-            elif self.config.final_sigmas_type == "denoise_to_zero":
-                sigma_last = 0
-            else:
-                raise ValueError(
-                    f"`final_sigmas_type` must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
-                )
             sigmas = np.concatenate([[sigma_last], sigmas]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
+
         self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
 
         self.num_inference_steps = len(timesteps)
@@ -397,7 +373,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.convert_model_output
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep_legacy.DPMSolverMultistepSchedulerLegacy.convert_model_output
     def convert_model_output(
         self,
         model_output: torch.FloatTensor,
@@ -406,14 +382,11 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         **kwargs,
     ) -> torch.FloatTensor:
         """
-        Convert the model output to the corresponding type the DPMSolver/DPMSolver++ algorithm needs. DPM-Solver is
-        designed to discretize an integral of the noise prediction model, and DPM-Solver++ is designed to discretize an
-        integral of the data prediction model.
+        Convert the model output to predict data. DPM-Solver is designed to discretize an integral of the noise prediction model.
 
         <Tip>
 
-        The algorithm and model type are decoupled. You can use either DPMSolver or DPMSolver++ for both noise
-        prediction and data prediction models.
+        The algorithm and model type are decoupled. You can use either DPMSolver for either noise prediction and data prediction models.
 
         </Tip>
 
@@ -440,34 +413,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 "Passing `timesteps` is deprecated and has no effect as model output conversion is now handled via an internal counter `self.step_index`",
             )
 
-        # DPM-Solver++ needs to solve an integral of the data prediction model.
-        if self.config.algorithm_type in ["dpmsolver++", "sde-dpmsolver++"]:
-            if self.config.prediction_type == "epsilon":
-                # DPM-Solver and DPM-Solver++ only need the "mean" output.
-                if self.config.variance_type in ["learned", "learned_range"]:
-                    model_output = model_output[:, :3]
-                sigma = self.sigmas[self.step_index]
-                alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
-                x0_pred = (sample - sigma_t * model_output) / alpha_t
-            elif self.config.prediction_type == "sample":
-                x0_pred = model_output
-            elif self.config.prediction_type == "v_prediction":
-                sigma = self.sigmas[self.step_index]
-                alpha_t, sigma_t = self._sigma_to_alpha_sigma_t(sigma)
-                x0_pred = alpha_t * sample - sigma_t * model_output
-            else:
-                raise ValueError(
-                    f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
-                    " `v_prediction` for the DPMSolverMultistepScheduler."
-                )
-
-            if self.config.thresholding:
-                x0_pred = self._threshold_sample(x0_pred)
-
-            return x0_pred
-
-        # DPM-Solver needs to solve an integral of the noise prediction model.
-        elif self.config.algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
+        if self.config.algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
             if self.config.prediction_type == "epsilon":
                 # DPM-Solver and DPM-Solver++ only need the "mean" output.
                 if self.config.variance_type in ["learned", "learned_range"]:
@@ -497,7 +443,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
             return epsilon
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.dpm_solver_first_order_update
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep_legacy.DPMSolverMultistepSchedulerLegacy.dpm_solver_first_order_update
     def dpm_solver_first_order_update(
         self,
         model_output: torch.FloatTensor,
@@ -567,7 +513,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             )
         return x_t
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.multistep_dpm_solver_second_order_update
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep_legacy.DPMSolverMultistepSchedulerLegacy.multistep_dpm_solver_second_order_update
     def multistep_dpm_solver_second_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
@@ -691,7 +637,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 )
         return x_t
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.multistep_dpm_solver_third_order_update
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep_legacy.DPMSolverMultistepSchedulerLegacy.multistep_dpm_solver_third_order_update
     def multistep_dpm_solver_third_order_update(
         self,
         model_output_list: List[torch.FloatTensor],
@@ -797,7 +743,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = step_index
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.step
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep_legacy.DPMSolverMultistepSchedulerLegacy.step
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -876,7 +822,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.scale_model_input
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep_legacy.DPMSolverMultistepSchedulerLegacy.scale_model_input
     def scale_model_input(self, sample: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
