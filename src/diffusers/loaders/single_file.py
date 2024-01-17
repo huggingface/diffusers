@@ -281,7 +281,7 @@ class FromSingleFileMixin:
         torch_dtype = kwargs.pop("torch_dtype", None)
         use_safetensors = kwargs.pop("use_safetensors", True)
 
-        pipeline_class_name = cls.__name__
+        class_name = cls.__name__
         file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
         from_safetensors = file_extension == "safetensors"
 
@@ -315,14 +315,22 @@ class FromSingleFileMixin:
         while "state_dict" in checkpoint:
             checkpoint = checkpoint["state_dict"]
 
-        original_config = fetch_original_config(pipeline_class_name, checkpoint, original_config_file, config_files)
-        component_names = extract_pipeline_component_names(cls)
+        original_config = fetch_original_config(class_name, checkpoint, original_config_file, config_files)
 
+        if class_name == "AutoencoderKL":
+            component = build_component({}, "vae", original_config, checkpoint, pretrained_model_link_or_path)
+            return component["vae"]
+
+        if class_name == "ControlNetModel":
+            component = build_component({}, "controlnet", original_config, checkpoint, pretrained_model_link_or_path)
+            return component["controlnet"]
+
+        component_names = extract_pipeline_component_names(cls)
         pipeline_components = {}
         for component in component_names:
             components = build_component(
                 pipeline_components,
-                pipeline_class_name,
+                class_name,
                 component,
                 original_config,
                 checkpoint,
@@ -335,7 +343,7 @@ class FromSingleFileMixin:
 
         additional_components = set(component_names - pipeline_components.keys())
         if additional_components:
-            components = build_additional_components(pipeline_class_name, original_config, **kwargs)
+            components = build_additional_components(class_name, original_config, **kwargs)
             if components:
                 pipeline_components.update(components)
 

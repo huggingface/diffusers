@@ -55,6 +55,7 @@ CONFIG_URLS = {
     "xl": "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml",
     "xl_refiner": "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml",
     "upscale": "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml",
+    "controlnet": "https://raw.githubusercontent.com/lllyasviel/ControlNet/main/models/cldm_v15.yaml",
 }
 
 CHECKPOINT_KEY_NAMES = {
@@ -172,7 +173,7 @@ protected = {re.escape(x[0]): x[1] for x in textenc_transformer_conversion_lst}
 textenc_pattern = re.compile("|".join(protected.keys()))
 
 
-def fetch_original_config_file_from_url(pipeline_class_name, checkpoint):
+def fetch_original_config_file_from_url(class_name, checkpoint):
     if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
         config_url = CONFIG_URLS["v2"]
 
@@ -182,8 +183,11 @@ def fetch_original_config_file_from_url(pipeline_class_name, checkpoint):
     elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
         config_url = CONFIG_URLS["xl_refiner"]
 
-    elif pipeline_class_name == "StableDiffusionUpscalePipeline":
+    elif class_name == "StableDiffusionUpscalePipeline":
         config_url = CONFIG_URLS["upscale"]
+
+    elif class_name == "ControlNetModel":
+        config_url = CONFIG_URLS["controlnet"]
 
     else:
         config_url = CONFIG_URLS["v1"]
@@ -414,6 +418,14 @@ def create_unet_diffusers_config(original_config, image_size: int):
     return config
 
 
+def create_controlnet_diffusers_config(original_config, image_size: int):
+    unet_params = original_config["model"]["params"]["control_stage_config"]["params"]
+    config = create_unet_diffusers_config(original_config, image_size=image_size)
+
+    config["conditioning_channels"] = unet_params["hint_channels"]
+
+    return config
+
 def create_vae_diffusers_config(original_config, image_size: int):
     """
     Creates a config for the diffusers based on the config of the LDM model.
@@ -623,6 +635,83 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
             new_checkpoint[f"up_blocks.{block_id}.upsamplers.0.conv.bias"] = unet_state_dict[
                 f"output_blocks.{i}.2.conv.bias"
             ]
+
+    return new_checkpoint
+
+
+def convert_controlnet_checkpoint(
+    checkpoint,
+    original_config,
+    checkpoint_path,
+    image_size,
+    upcast_attention,
+    extract_ema,
+    use_linear_projection=None,
+    cross_attention_dim=None,
+):
+
+    """"
+    ctrlnet_config = create_unet_diffusers_config(original_config, image_size=image_size)
+    ctrlnet_config["upcast_attention"] = upcast_attention
+
+    ctrlnet_config.pop("sample_size")
+
+    if use_linear_projection is not None:
+        ctrlnet_config["use_linear_projection"] = use_linear_projection
+
+    if cross_attention_dim is not None:
+        ctrlnet_config["cross_attention_dim"] = cross_attention_dim
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        controlnet = ControlNetModel(**ctrlnet_config)
+    """
+
+    # Some controlnet ckpt files are distributed independently from the rest of the
+    # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
+    if "time_embed.0.weight" in checkpoint:
+        skip_extract_state_dict = True
+    else:
+        skip_extract_state_dict = False
+
+    new_checkpoint = convert_ldm_unet_checkpoint(checkpoint, original_config)
+    orig_index = 0
+
+    new_checkpoint["controlnet_cond_embedding.conv_in.weight"] = unet_state_dict.pop(
+        f"input_hint_block.{orig_index}.weight"
+    )
+    new_checkpoint["controlnet_cond_embedding.conv_in.bias"] = unet_state_dict.pop(
+        f"input_hint_block.{orig_index}.bias"
+    )
+
+    orig_index += 2
+    diffusers_index = 0
+
+    while diffusers_index < 6:
+        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_index}.weight"] = unet_state_dict.pop(
+            f"input_hint_block.{orig_index}.weight"
+        )
+        new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_index}.bias"] = unet_state_dict.pop(
+            f"input_hint_block.{orig_index}.bias"
+        )
+        diffusers_index += 1
+        orig_index += 2
+
+    new_checkpoint["controlnet_cond_embedding.conv_out.weight"] = unet_state_dict.pop(
+        f"input_hint_block.{orig_index}.weight"
+    )
+    new_checkpoint["controlnet_cond_embedding.conv_out.bias"] = unet_state_dict.pop(
+        f"input_hint_block.{orig_index}.bias"
+    )
+
+    # down blocks
+    for i in range(num_input_blocks):
+        new_checkpoint[f"controlnet_down_blocks.{i}.weight"] = unet_state_dict.pop(f"zero_convs.{i}.0.weight")
+        new_checkpoint[f"controlnet_down_blocks.{i}.bias"] = unet_state_dict.pop(f"zero_convs.{i}.0.bias")
+
+    # mid block
+    new_checkpoint["controlnet_mid_block.weight"] = unet_state_dict.pop("middle_block_out.0.weight")
+    new_checkpoint["controlnet_mid_block.bias"] = unet_state_dict.pop("middle_block_out.0.bias")
 
     return new_checkpoint
 
