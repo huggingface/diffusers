@@ -594,20 +594,13 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
-        sample, timesteps, encoder_hidden_states, controlnet_cond, text_embeds, time_ids = udl.do_input_action(
+        sample, timesteps, encoder_hidden_states, controlnet_cond = udl.do_input_action(
             x=sample,
             t=timesteps,
             xcross=encoder_hidden_states, 
             hint=controlnet_cond,
-            text_embeds=added_cond_kwargs.get('text_embeds', None),
-            time_ids=added_cond_kwargs.get('time_ids', None),
         )
-        udl.stop_if(udl.INPUT_SAVE, 'Stopping because I only wanted to save input')
 
-        udl.log_if('sample', sample, udl.SUBBLOCK)
-        udl.log_if('timestep', timesteps, udl.SUBBLOCK)
-        udl.log_if('encoder_hidden_states', encoder_hidden_states, udl.SUBBLOCK)
-        udl.log_if('controlnet_cond', controlnet_cond, udl.SUBBLOCK)
 
         t_emb = self.base_time_proj(timesteps)
 
@@ -656,9 +649,19 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
             add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
             add_embeds = add_embeds.to(temb.dtype)
+
+            add_embeds = udl.do_input_action_for_do_input_action(add_embeds)
+
             aug_emb = self.base_add_embedding(add_embeds)
         else:
             raise NotImplementedError()
+
+        udl.stop_if(udl.INPUT_SAVE, 'Stopping because I only wanted to save input')
+
+        udl.log_if('sample', sample, udl.SUBBLOCK)
+        udl.log_if('timestep', timesteps, udl.SUBBLOCK)
+        udl.log_if('encoder_hidden_states', encoder_hidden_states, udl.SUBBLOCK)
+        udl.log_if('controlnet_cond', controlnet_cond, udl.SUBBLOCK)
 
         temb = temb + aug_emb if aug_emb is not None else temb
 

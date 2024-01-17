@@ -147,38 +147,28 @@ class UmerDebugLogger:
                 log_objects.append(SimpleNamespace(**row))
         return log_objects
 
-    def save_input(self, dir_, x, t, xcross, hint, text_embeds=None, time_ids=None, minimize_bs=True):
-        assert (text_embeds is None and time_ids is None) or (text_embeds is not None and time_ids is not None)
-        is_sdxl = text_embeds is not None
+    def save_input(self, dir_, x, t, xcross, hint, add_embeds=None, minimize_bs=True):
+        is_sdxl = add_embeds is not None
         inputs = dict(
             x=os.path.join(dir_, x),
             t=os.path.join(dir_, t),
             xcross=os.path.join(dir_, xcross),
             hint=os.path.join(dir_,hint)
         )
-        if is_sdxl:
-            inputs.update(dict(
-                text_embeds=os.path.join(dir_, text_embeds),
-                time_ids=os.path.join(dir_, time_ids),
-            ))
+        if is_sdxl: inputs['add_embeds']=os.path.join(dir_, add_embeds)
         self.input_files = SimpleNamespace(**inputs)
         self.input_action = 'save'
         self.minimize_bs = minimize_bs
 
-    def load_input(self, dir_, x, t, xcross, hint, text_embeds=None, time_ids=None):
-        assert (text_embeds is None and time_ids is None) or (text_embeds is not None and time_ids is not None)
-        is_sdxl = text_embeds is not None
+    def load_input(self, dir_, x, t, xcross, hint, add_embeds=None):
+        is_sdxl = add_embeds is not None
         inputs = dict(
             x=os.path.join(dir_, x),
             t=os.path.join(dir_, t),
             xcross=os.path.join(dir_, xcross),
             hint=os.path.join(dir_,hint)
         )
-        if is_sdxl:
-            inputs.update(dict(
-                text_embeds=os.path.join(dir_, text_embeds),
-                time_ids=os.path.join(dir_, time_ids),
-            ))
+        if is_sdxl:inputs['add_embeds']=os.path.join(dir_, add_embeds),            
         self.input_files = SimpleNamespace(**inputs)
         self.input_action = 'load'
 
@@ -186,16 +176,12 @@ class UmerDebugLogger:
         self.input_action = 'none'
         self.input_files = {}
 
-    def do_input_action(self, x, t, xcross, hint, text_embeds=None, time_ids=None):
+    def do_input_action(self, x, t, xcross, hint):
         assert self.input_files is not None, "self.input_files not set! Use `save_input`, `load_input` or `dont_process_input`"
         assert self.input_action in ['save', 'load', 'none']
-        assert (text_embeds is None and time_ids is None) or (text_embeds is not None and time_ids is not None)
-        is_sdxl = text_embeds is not None
 
         if self.input_action == 'save':
             assert x.shape[0]==t.shape[0]==xcross.shape[0]==hint.shape[0]
-            if is_sdxl:
-                assert x.shape[0]==text_embeds.shape[0]==time_ids.shape[0]
 
             bs = x.shape[0]
             if self.minimize_bs and bs > 1:
@@ -204,39 +190,46 @@ class UmerDebugLogger:
                 t = t[0:1]
                 xcross = xcross[0:1]
                 hint = hint[0:1]
-                if is_sdxl:
-                    text_embeds = text_embeds[0:1]
-                    time_ids = time_ids[0:1]
 
             torch.save(x, self.input_files.x)
             torch.save(t, self.input_files.t)
             torch.save(xcross, self.input_files.xcross)
             torch.save(hint, self.input_files.hint)
 
-            assert x.shape[0]==t.shape[0]==xcross.shape[0]==hint.shape[0]
-
-            if is_sdxl:
-                torch.save(text_embeds, self.input_files.text_embeds)
-                torch.save(time_ids, self.input_files.time_ids)
-                assert x.shape[0]==text_embeds.shape[0]==time_ids.shape[0]
-            
             print(f'[udl] Input saved (batch size = {x.shape[0]})')
+
         elif self.input_action == 'load':
             x = torch.load(self.input_files.x, map_location=x.device)
             t = torch.load( self.input_files.t, map_location=t.device)
             xcross = torch.load(self.input_files.xcross, map_location=xcross.device)
             hint = torch.load(self.input_files.hint, map_location=hint.device)
+
             assert x.shape[0]==t.shape[0]==xcross.shape[0]==hint.shape[0]
-
-            if is_sdxl:
-                text_embeds = torch.load(self.input_files.text_embeds, map_location=text_embeds.device)
-                time_ids = torch.load(self.input_files.time_ids, map_location=time_ids.device)
-                assert x.shape[0]==text_embeds.shape[0]==time_ids.shape[0]
-
+            
             print(f'[udl] Input loaded (batch size = {x.shape[0]})')
         else:
             print(f'[udl] Neither saving nor loading input (batch size = {x.shape[0]})')
-        return x, t, xcross, hint, text_embeds, time_ids
+        return x, t, xcross, hint
 
+    def do_input_action_for_do_input_action(self, add_embeds):
+        assert self.input_files is not None, "self.input_files not set! Use `save_input`, `load_input` or `dont_process_input`"
+        assert self.input_action in ['save', 'load', 'none']
+
+        if self.input_action == 'save':                
+            bs = add_embeds.shape[0]
+            if self.minimize_bs and bs > 1:
+                print(f'[udl] Input `add_embeds` has batch size {bs} but reducing to 1 before saving `add_embeds`')
+                add_embeds = add_embeds[0:1]
+            torch.save(add_embeds, self.input_files.add_embeds)
+            print(f'[udl] Input `add_embeds` saved (batch size = {add_embeds.shape[0]})')
+
+        elif self.input_action == 'load':
+            add_embeds = torch.load(self.input_files.add_embeds, map_location=add_embeds.device)
+            print(f'[udl] Input loaded (batch size = {add_embeds.shape[0]})')
+
+        else:
+            print(f'[udl] Neither saving nor loading input (batch size = {add_embeds.shape[0]})')
+
+        return add_embeds     
 
 udl = UmerDebugLogger()
