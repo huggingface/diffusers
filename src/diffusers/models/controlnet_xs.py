@@ -594,12 +594,15 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
-        sample, timesteps, encoder_hidden_states, controlnet_cond = udl.do_input_action(
+        sample, timesteps, encoder_hidden_states, controlnet_cond, text_embeds, time_ids = udl.do_input_action(
             x=sample,
             t=timesteps,
             xcross=encoder_hidden_states, 
-            hint=controlnet_cond
+            hint=controlnet_cond,
+            text_embeds=added_cond_kwargs.get('text_embeds', None),
+            time_ids=added_cond_kwargs.get('time_ids', None),
         )
+        udl.stop_if(udl.INPUT_SAVE, 'Stopping because I only wanted to save input')
 
         udl.log_if('sample', sample, udl.SUBBLOCK)
         udl.log_if('timestep', timesteps, udl.SUBBLOCK)
@@ -797,8 +800,8 @@ class CrossAttnSubBlock2D(nn.Module):
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
-            groups=find_largest_factor(in_channels, start=norm_num_groups),
-            groups_out=find_largest_factor(out_channels, start=norm_num_groups),
+            groups=find_largest_factor(in_channels, max_factor=norm_num_groups),
+            groups_out=find_largest_factor(out_channels, max_factor=norm_num_groups),
             eps=1e-5,
         )
 
@@ -811,7 +814,7 @@ class CrossAttnSubBlock2D(nn.Module):
                 cross_attention_dim=cross_attention_dim,
                 use_linear_projection=True,
                 upcast_attention=upcast_attention,
-                norm_num_groups=find_largest_factor(out_channels, start=norm_num_groups),
+                norm_num_groups=find_largest_factor(out_channels, max_factor=norm_num_groups),
             )
         else:
             self.attention = None

@@ -64,6 +64,9 @@ class UmerDebugLogger:
     def log_if(self, msg, t, condition, *, print_=False):
         self.maybe_warn_of_no_condition()
 
+        if not self.check_condition(condition):
+            return
+
         # Use inspect to get the current frame and then go back one level to find caller
         frame = inspect.currentframe()
         caller_frame = frame.f_back
@@ -78,30 +81,29 @@ class UmerDebugLogger:
         if not hasattr(t, "shape"):
             t = torch.tensor(t)
         t = t.cpu().detach()
+        
+        # Save tensor to a file
+        tensor_filename = f"tensor_{self.tensor_counter}.pt"
+        torch.save(t, os.path.join(self.log_dir, tensor_filename))
+        self.tensor_counter += 1
 
-        if self.check_condition(condition):
-            # Save tensor to a file
-            tensor_filename = f"tensor_{self.tensor_counter}.pt"
-            torch.save(t, os.path.join(self.log_dir, tensor_filename))
-            self.tensor_counter += 1
+        # Log information to CSV
+        log_info = {
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "cls": cls_name,
+            "fn": function_name,
+            "shape": str(list(t.shape)),
+            "msg": msg,
+            "condition": condition,
+            "tensor_file": tensor_filename,
+        }
 
-            # Log information to CSV
-            log_info = {
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "cls": cls_name,
-                "fn": function_name,
-                "shape": str(list(t.shape)),
-                "msg": msg,
-                "condition": condition,
-                "tensor_file": tensor_filename,
-            }
+        with open(self.full_file_path, "a", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=self.fields)
+            writer.writerow(log_info)
 
-            with open(self.full_file_path, "a", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=self.fields)
-                writer.writerow(log_info)
-
-            if print_:
-                print(f"{msg}\t{t.flatten()[:10]}")
+        if print_:
+            print(f"{msg}\t{t.flatten()[:10]}")
 
     def print_if(self, msg, conditions, end="\n"):
         self.maybe_warn_of_no_condition()
@@ -145,42 +147,80 @@ class UmerDebugLogger:
                 log_objects.append(SimpleNamespace(**row))
         return log_objects
 
-    def save_input(self, dir_, x, t, xcross, hint):
-        self.input_files = SimpleNamespace(
+    def save_input(self, dir_, x, t, xcross, hint, text_embeds=None, time_ids=None):
+        assert (text_embeds is None and time_ids is None) or (text_embeds is not None and time_ids is not None)
+        is_sdxl = text_embeds is not None
+        inputs = dict(
             x=os.path.join(dir_, x),
             t=os.path.join(dir_, t),
             xcross=os.path.join(dir_, xcross),
             hint=os.path.join(dir_,hint)
         )
+        if is_sdxl:
+            inputs.update(dict(
+                text_embeds=os.path.join(dir_, x),
+                time_ids=os.path.join(dir_, time_ids),
+            ))
+        self.input_files = SimpleNamespace(**inputs)
         self.input_action = 'save'
 
-    def load_input(self, dir_, x, t, xcross, hint):
-        self.input_files = SimpleNamespace(
+    def load_input(self, dir_, x, t, xcross, hint, text_embeds=None, time_ids=None):
+        assert (text_embeds is None and time_ids is None) or (text_embeds is not None and time_ids is not None)
+        is_sdxl = text_embeds is not None
+        inputs = dict(
             x=os.path.join(dir_, x),
             t=os.path.join(dir_, t),
             xcross=os.path.join(dir_, xcross),
             hint=os.path.join(dir_,hint)
         )
+        if is_sdxl:
+            inputs.update(dict(
+                text_embeds=os.path.join(dir_, x),
+                time_ids=os.path.join(dir_, time_ids),
+            ))
+        self.input_files = SimpleNamespace(**inputs)
         self.input_action = 'load'
 
-    def do_input_action(self, x, t, xcross, hint):
-        assert self.input_files is not None, "self.input_files not set! Use save_input or load_input"
-        assert self.input_action in ['save', 'load']
+    def dont_process_input(self):
+        self.input_action = 'none'
+        self.input_files = {}
+
+    def do_input_action(self, x, t, xcross, hint, text_embeds=None, time_ids=None):
+        assert self.input_files is not None, "self.input_files not set! Use `save_input`, `load_input` or `dont_process_input`"
+        assert self.input_action in ['save', 'load', 'none']
+        assert (text_embeds is None and time_ids is None) or (text_embeds is not None and time_ids is not None)
+        is_sdxl = text_embeds is not None
+
         if self.input_action == 'save':
             torch.save(x, self.input_files.x)
             torch.save(t, self.input_files.t)
             torch.save(xcross, self.input_files.xcross)
             torch.save(hint, self.input_files.hint)
+
             assert x.shape[0]==t.shape[0]==xcross.shape[0]==hint.shape[0]
+
+            if is_sdxl:
+                torch.save(text_embeds, self.input_files.text_embeds)
+                torch.save(time_ids, self.input_files.time_ids)
+                assert x.shape[0]==text_embeds.shape[0]==time_ids.shape[0]
+            
             print(f'[udl] Input saved (batch size = {x.shape[0]})')
-        else:
+        elif self.input_action == 'load':
             x = torch.load(self.input_files.x, map_location=x.device)
             t = torch.load( self.input_files.t, map_location=t.device)
             xcross = torch.load(self.input_files.xcross, map_location=xcross.device)
             hint = torch.load(self.input_files.hint, map_location=hint.device)
             assert x.shape[0]==t.shape[0]==xcross.shape[0]==hint.shape[0]
+
+            if is_sdxl:
+                text_embeds = torch.load(self.input_files.text_embeds, map_location=text_embeds.device)
+                time_ids = torch.load(self.input_files.time_ids, map_location=time_ids.device)
+                assert x.shape[0]==text_embeds.shape[0]==time_ids.shape[0]
+
             print(f'[udl] Input loaded (batch size = {x.shape[0]})')
-        return x, t, xcross, hint
+        else:
+            print(f'[udl] Neither saving nor loading input (batch size = {x.shape[0]})')
+        return x, t, xcross, hint, text_embeds, time_ids
 
 
 udl = UmerDebugLogger()
