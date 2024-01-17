@@ -19,7 +19,13 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import (
@@ -178,6 +184,8 @@ class StableDiffusionXLControlNetInpaintPipeline(
         tokenizer_2 (`CLIPTokenizer`):
             Second Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
         unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
@@ -185,7 +193,14 @@ class StableDiffusionXLControlNetInpaintPipeline(
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
-    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2", "image_encoder"]
+    _optional_components = [
+        "tokenizer",
+        "tokenizer_2",
+        "text_encoder",
+        "text_encoder_2",
+        "feature_extractor",
+        "image_encoder",
+    ]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -198,6 +213,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
         unet: UNet2DConditionModel,
         controlnet: ControlNetModel,
         scheduler: KarrasDiffusionSchedulers,
+        feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
@@ -217,6 +233,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
             unet=unet,
             controlnet=controlnet,
             scheduler=scheduler,
+            feature_extractor=feature_extractor,
             image_encoder=image_encoder,
         )
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
