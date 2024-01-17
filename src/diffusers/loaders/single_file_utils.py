@@ -246,10 +246,6 @@ def infer_model_type(pipeline_class_name, original_config, model_type=None, **kw
     if model_type is not None:
         return model_type
 
-    if pipeline_class_name in ["StableUnCLIPPipeline", "StableUnCLIPImg2ImgPipeline"]:
-        model_type = "FrozenOpenCLIPEmbedder"
-        return model_type
-
     has_cond_stage_config = (
         "cond_stage_config" in original_config["model"]["params"]
         and original_config["model"]["params"]["cond_stage_config"] is not None
@@ -303,17 +299,6 @@ def determine_image_size(pipeline_class_name, original_config, checkpoint, **kwa
         return image_size
 
     return image_size
-
-
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.shave_segments
-def shave_segments(path, n_shave_prefix_segments=1):
-    """
-    Removes segments. Positive values shave the first segments, negative shave the last segments.
-    """
-    if n_shave_prefix_segments >= 0:
-        return ".".join(path.split(".")[n_shave_prefix_segments:])
-    else:
-        return ".".join(path.split(".")[:n_shave_prefix_segments])
 
 
 # Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.conv_attn_to_linear
@@ -776,57 +761,6 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     return new_checkpoint
 
 
-# Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.convert_ldm_bert_checkpoint
-def convert_ldm_bert_checkpoint(checkpoint, config):
-    def _copy_attn_layer(hf_attn_layer, pt_attn_layer):
-        hf_attn_layer.q_proj.weight.data = pt_attn_layer.to_q.weight
-        hf_attn_layer.k_proj.weight.data = pt_attn_layer.to_k.weight
-        hf_attn_layer.v_proj.weight.data = pt_attn_layer.to_v.weight
-
-        hf_attn_layer.out_proj.weight = pt_attn_layer.to_out.weight
-        hf_attn_layer.out_proj.bias = pt_attn_layer.to_out.bias
-
-    def _copy_linear(hf_linear, pt_linear):
-        hf_linear.weight = pt_linear.weight
-        hf_linear.bias = pt_linear.bias
-
-    def _copy_layer(hf_layer, pt_layer):
-        # copy layer norms
-        _copy_linear(hf_layer.self_attn_layer_norm, pt_layer[0][0])
-        _copy_linear(hf_layer.final_layer_norm, pt_layer[1][0])
-
-        # copy attn
-        _copy_attn_layer(hf_layer.self_attn, pt_layer[0][1])
-
-        # copy MLP
-        pt_mlp = pt_layer[1][1]
-        _copy_linear(hf_layer.fc1, pt_mlp.net[0][0])
-        _copy_linear(hf_layer.fc2, pt_mlp.net[2])
-
-    def _copy_layers(hf_layers, pt_layers):
-        for i, hf_layer in enumerate(hf_layers):
-            if i != 0:
-                i += i
-            pt_layer = pt_layers[i : i + 2]
-            _copy_layer(hf_layer, pt_layer)
-
-    hf_model = LDMBertModel(config).eval()
-
-    # copy  embeds
-    hf_model.model.embed_tokens.weight = checkpoint.transformer.token_emb.weight
-    hf_model.model.embed_positions.weight.data = checkpoint.transformer.pos_emb.emb.weight
-
-    # copy layer norm
-    _copy_linear(hf_model.model.layer_norm, checkpoint.transformer.norm)
-
-    # copy hidden layers
-    _copy_layers(hf_model.model.layers, checkpoint.transformer.attn_layers.layers)
-
-    _copy_linear(hf_model.to_logits, checkpoint.transformer.to_logits)
-
-    return hf_model
-
-
 def convert_ldm_clip_checkpoint(checkpoint, local_files_only=False):
     try:
         config = CLIPTextConfig.from_pretrained(LDM_CLIP_CONFIG_NAME, local_files_only=local_files_only)
@@ -1150,13 +1084,6 @@ def create_text_encoders_and_tokenizers(
             "tokenizer_2": tokenizer_2,
             "text_encoder_2": text_encoder_2,
         }
-
-    elif pipeline_class_name == "LDMTextToImagePipeline":
-        text_config = create_ldm_bert_config(original_config)
-        text_encoder = convert_ldm_bert_checkpoint(checkpoint, text_config)
-        tokenizer = BertTokenizerFast.from_pretrained("bert-base-uncased", local_files_only=local_files_only)
-
-        return {"text_encoder": text_encoder, "tokenizer": tokenizer}
 
     return
 
