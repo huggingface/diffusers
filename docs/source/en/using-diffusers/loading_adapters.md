@@ -344,7 +344,8 @@ pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-a
 IP-Adapter relies on an image encoder to generate the image features, if your IP-Adapter weights folder contains a "image_encoder" subfolder, the image encoder will be automatically loaded and registered to the pipeline. Otherwise you can so load a [`~transformers.CLIPVisionModelWithProjection`] model and  pass it to a Stable Diffusion pipeline when you create it.
 
 ```py
-from diffusers import AutoPipelineForText2Image, CLIPVisionModelWithProjection
+from diffusers import AutoPipelineForText2Image
+from transformers import CLIPVisionModelWithProjection
 import torch
 
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
