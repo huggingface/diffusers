@@ -677,15 +677,11 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
 
             if batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] == 0:
                 # expand init_latents for batch_size
-                deprecation_message = (
+                error_message = (
                     f"You have passed {batch_size} text prompts (`prompt`), but only {init_latents.shape[0]} initial"
-                    " images (`image`). Initial images are now duplicating to match the number of text prompts. Note"
-                    " that this behavior is deprecated and will be removed in a version 1.0.0. Please make sure to update"
-                    " your script to pass as many initial images as text prompts to suppress this warning."
+                    " images (`image`). Please make sure to update your script to pass as many initial images as text prompts"
                 )
-                deprecate("len(prompt) != len(video)", "1.0.0", deprecation_message, standard_warn=False)
-                additional_video_per_prompt = batch_size // init_latents.shape[0]
-                init_latents = torch.cat([init_latents] * additional_video_per_prompt, dim=0)
+                raise ValueError(error_message)
             elif batch_size > init_latents.shape[0] and batch_size % init_latents.shape[0] != 0:
                 raise ValueError(
                     f"Cannot duplicate `image` of batch size {init_latents.shape[0]} to {batch_size} text prompts."
