@@ -11,6 +11,6 @@
 - sections:
   - local: tutorials/tutorial_overview
     title: 概要
-  - local: tutorials/autopipeline.md
+  - local: tutorials/autopipeline
     title: AutoPipeline
   title: チュートリアル
