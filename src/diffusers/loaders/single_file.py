@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import inspect
+import os
+import re
 from pathlib import Path
 
 import torch
@@ -20,6 +22,8 @@ from huggingface_hub.utils import validate_hf_hub_args
 from safetensors.torch import load_file as safe_load
 from transformers import AutoFeatureExtractor
 
+from ..models.modeling_utils import load_state_dict
+from ..pipelines.pipeline_utils import _get_pipeline_class
 from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ..utils import (
     is_accelerate_available,
@@ -123,6 +127,22 @@ def load_checkpoint(checkpoint_path_or_dict, device=None, from_safetensors=True)
         checkpoint = checkpoint_path_or_dict
 
     return checkpoint
+
+
+def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
+    pattern = r'([^/]+)/([^/]+)/(?:blob/main/)?(.+)'
+    weights_name = None
+    repo_id = None,
+    for prefix in VALID_URL_PREFIXES:
+        pretrained_model_name_or_path = pretrained_model_name_or_path.replace(prefix, "")
+    match = re.match(pattern, pretrained_model_name_or_path)
+    if not match:
+        return repo_id, weights_name
+
+    repo_id = f"{match.group(1)}/{match.group(2)}"
+    weights_name = match.group(3)
+
+    return repo_id, weights_name
 
 
 def build_component(
@@ -292,6 +312,14 @@ class FromSingleFileMixin:
 
         has_valid_url_prefix, pretrained_model_link_or_path = check_valid_url(pretrained_model_link_or_path)
 
+        """
+        if os.path.isfile(pretrained_model_link_or_path):
+            checkpoint = load_state_dict(pretrained_model_link_or_path)
+        else:
+            repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
+            checkpoint_path = _get_model_file(repo_id, weights_name=weights_name, use_safetensors=from_safetensors)
+            checkpoint = load_state_dict(checkpoint_path)
+        """
         # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
         ckpt_path = Path(pretrained_model_link_or_path)
         if (not ckpt_path.is_file()) and (not has_valid_url_prefix):
@@ -327,6 +355,44 @@ class FromSingleFileMixin:
             component = create_controlnet_model(class_name, original_config, checkpoint, **kwargs)
             return component["controlnet"]
 
+        pipeline_class = _get_pipeline_class(cls, class_name=class_name)
+
+        # some modules can be passed directly to the init
+        # in this case they are already instantiated in `kwargs`
+        # extract them here
+        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
+        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
+
+        expected_keys = cls._get_init_keys(cls)
+        expected_keys.remove("self")
+        # remove general kwargs if present in dict
+        if "kwargs" in expected_keys:
+            expected_keys.remove("kwargs")
+
+        init_dict = {}
+        for key in expected_keys:
+            if key in kwargs:
+                init_dict[key] = kwargs.pop(key)
+
+        # define init kwargs and make sure that optional component modules are filtered out
+        init_kwargs = {
+            k: init_dict.pop(k)
+            for k in kwargs
+            if k in init_dict and k not in pipeline_class._optional_components
+        }
+        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
+
+        # remove `null` components
+        def load_module(name, value):
+            if value[0] is None:
+                return False
+            if name in passed_class_obj and passed_class_obj[name] is None:
+                return False
+            return True
+
+        init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+
         component_names = extract_pipeline_component_names(cls)
         pipeline_components = {}
         for component in component_names:
@@ -349,7 +415,7 @@ class FromSingleFileMixin:
             if components:
                 pipeline_components.update(components)
 
-        pipe = cls(**pipeline_components)
+        pipe = pipeline_class(**pipeline_components)
 
         if torch_dtype is not None:
             pipe.to(dtype=torch_dtype)
