@@ -39,7 +39,7 @@ except OptionalDependencyNotAvailable:
 
 else:
     _import_structure["deprecated"] = [
-        "DPMSolverSinglestepSchedulerLegacy",
+        "DPMSolverMultistepSchedulerLegacy",
         "DPMSolverSinglestepSchedulerLegacy",
         "KarrasVeScheduler",
         "ScoreSdeVpScheduler",
