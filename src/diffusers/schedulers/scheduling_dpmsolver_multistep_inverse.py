@@ -777,6 +777,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = step_index
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.step
     def step(
         self,
         model_output: torch.FloatTensor,
