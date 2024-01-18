@@ -160,12 +160,15 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         lower_order_final: bool = True,
         euler_at_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
-        final_sigmas_type: Optional[str] = "default",  # "denoise_to_zero", "default"
         lambda_min_clipped: float = -float("inf"),
         variance_type: Optional[str] = None,
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
+        if algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
+            deprecation_message = f"algorithm_type {algorithm_type} is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
+            deprecate("algorithm_types dpmsolver and sde-dpmsolver", "1.0.0", deprecation_message, warning=True)
+
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -202,11 +205,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 self.register_to_config(solver_type="midpoint")
             else:
                 raise NotImplementedError(f"{solver_type} does is not implemented for {self.__class__}")
-
-        if algorithm_type not in ["dpmsolver++", "sde-dpmsolver++"] and final_sigmas_type == "denoise_to_zero":
-            raise ValueError(
-                f"`final_sigmas_type` {final_sigmas_type} is not supported for `algorithm_type` {algorithm_type}."
-            )
 
         # setable values
         self.num_inference_steps = None
@@ -270,27 +268,13 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = timesteps.copy().astype(np.int64)
-            if self.config.final_sigmas_type == "default":
-                sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
-            elif self.config.final_sigmas_type == "denoise_to_zero":
-                sigmas = np.concatenate([sigmas, np.array([0])]).astype(np.float32)
-            else:
-                raise ValueError(
-                    f"`final_sigmas_type` must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
-                )
+            sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
         else:
             sigmas = np.interp(timesteps, np.arange(0, len(sigmas)), sigmas)
-            if self.config.final_sigmas_type == "default":
-                sigma_last = (
-                    (1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]
-                ) ** 0.5
-            elif self.config.final_sigmas_type == "denoise_to_zero":
-                sigma_last = 0
-            else:
-                raise ValueError(
-                    f"`final_sigmas_type` must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
-                )
-            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
+            sigma_max = (
+                (1 - self.alphas_cumprod[self.noisiest_timestep]) / self.alphas_cumprod[self.noisiest_timestep]
+            ) ** 0.5
+            sigmas = np.concatenate([sigmas, [sigma_max]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
 
@@ -803,7 +787,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = step_index
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.step
     def step(
         self,
         model_output: torch.FloatTensor,
@@ -844,9 +827,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         # Improve numerical stability for small number of steps
         lower_order_final = (self.step_index == len(self.timesteps) - 1) and (
-            self.config.euler_at_final
-            or (self.config.lower_order_final and len(self.timesteps) < 15)
-            or self.config.final_sigmas_type == "denoise_to_zero"
+            self.config.euler_at_final or (self.config.lower_order_final and len(self.timesteps) < 15)
         )
         lower_order_second = (
             (self.step_index == len(self.timesteps) - 2) and self.config.lower_order_final and len(self.timesteps) < 15
