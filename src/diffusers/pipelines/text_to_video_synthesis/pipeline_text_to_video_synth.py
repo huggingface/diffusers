@@ -73,7 +73,7 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         outputs = np.stack(outputs)
 
     if output_type == "pt":
-        outputs = torch.cat(outputs, dim=0)
+        outputs = torch.stack(outputs)
 
     return outputs
 
