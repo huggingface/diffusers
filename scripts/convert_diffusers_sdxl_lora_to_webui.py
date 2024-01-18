@@ -5,7 +5,7 @@
 # To get started you can find some cool `diffusers` trained LoRAs such as this cute Corgy
 # https://huggingface.co/ignasbud/corgy_dog_LoRA/, download its `pytorch_lora_weights.safetensors` file
 # and run the script:
-# python convert_diffusers_sdxl_lora_to_webui.py --input_lora pytorch_lora_weights.safetensors --output_lora corgy.safetensors
+# python convert_diffusers_sdxl_lora_to_webui.py pytorch_lora_weights.safetensors corgy.safetensors
 # now you can use corgy.safetensors in your WebUI of choice!
 
 # To train your own, here are some diffusers training scripts and utils that you can use and then convert:
