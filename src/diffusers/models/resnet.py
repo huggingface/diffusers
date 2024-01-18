@@ -189,16 +189,16 @@ class ResnetBlock2D(nn.Module):
     ) -> torch.FloatTensor:
         hidden_states = input_tensor
 
-        udl.log_if('res: input', hidden_states, udl.SUBBLOCKM1)
+        udl.log_if("res: input", hidden_states, udl.SUBBLOCKM1)
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm1(hidden_states, temb)
         else:
             hidden_states = self.norm1(hidden_states)
-        udl.log_if('res: norm1', hidden_states, udl.SUBBLOCKM1)
+        udl.log_if("res: norm1", hidden_states, udl.SUBBLOCKM1)
 
         hidden_states = self.nonlinearity(hidden_states)
-        udl.log_if('res: nonlin', hidden_states, udl.SUBBLOCKM1)
+        udl.log_if("res: nonlin", hidden_states, udl.SUBBLOCKM1)
 
         if self.upsample is not None:
             # upsample_nearest_nhwc fails with large batch sizes. see https://github.com/huggingface/diffusers/issues/984
@@ -227,10 +227,10 @@ class ResnetBlock2D(nn.Module):
                 else self.downsample(hidden_states)
             )
 
-        udl.log_if('res: updown', hidden_states, udl.SUBBLOCKM1)
+        udl.log_if("res: updown", hidden_states, udl.SUBBLOCKM1)
 
         hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
-        udl.log_if('res: conv1', hidden_states, udl.SUBBLOCKM1)
+        udl.log_if("res: conv1", hidden_states, udl.SUBBLOCKM1)
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
@@ -241,12 +241,12 @@ class ResnetBlock2D(nn.Module):
                 else self.time_emb_proj(temb)[:, :, None, None]
             )
 
-        udl.log_if('res: temb', temb, udl.SUBBLOCKM1)
+        udl.log_if("res: temb", temb, udl.SUBBLOCKM1)
 
         if temb is not None and self.time_embedding_norm == "default":
             hidden_states = hidden_states + temb
 
-        udl.log_if('res: add temb', hidden_states, udl.SUBBLOCKM1)
+        udl.log_if("res: add temb", hidden_states, udl.SUBBLOCKM1)
 
         if self.time_embedding_norm == "ada_group" or self.time_embedding_norm == "spatial":
             hidden_states = self.norm2(hidden_states, temb)
@@ -262,7 +262,7 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.dropout(hidden_states)
         hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
 
-        udl.log_if('res: conv2', hidden_states, udl.SUBBLOCKM1)
+        udl.log_if("res: conv2", hidden_states, udl.SUBBLOCKM1)
 
         if self.conv_shortcut is not None:
             input_tensor = (
@@ -271,7 +271,7 @@ class ResnetBlock2D(nn.Module):
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
-        udl.log_if('res: out', output_tensor, udl.SUBBLOCKM1)
+        udl.log_if("res: out", output_tensor, udl.SUBBLOCKM1)
 
         return output_tensor
 

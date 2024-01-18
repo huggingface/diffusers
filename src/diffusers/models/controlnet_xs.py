@@ -84,10 +84,48 @@ class ControlNetConditioningEmbedding(nn.Module):
 
 
 class ControlNetXSAddon(ModelMixin, ConfigMixin):
+    r"""
+    A ControlNetXSAddon model
+
+    # todo - the below comment is very outdated. update it
+
+    This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
+    methods implemented for all models (such as downloading or saving).
+
+    Most of parameters for this model are passed into the [`UNet2DConditionModel`] it creates. Check the documentation
+    of [`UNet2DConditionModel`] for them.
+
+    Parameters:
+        conditioning_channels (`int`, defaults to 3):
+            Number of channels of conditioning input (e.g. an image)
+        controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
+            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
+        conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
+            The tuple of output channel for each block in the `controlnet_cond_embedding` layer.
+        time_embedding_input_dim (`int`, defaults to 320):
+            Dimension of input into time embedding. Needs to be same as in the base model.
+        time_embedding_dim (`int`, defaults to 1280):
+            Dimension of output from time embedding. Needs to be same as in the base model.
+        learn_embedding (`bool`, defaults to `False`):
+            Whether to use time embedding of the control model. If yes, the time embedding is a linear interpolation of
+            the time embeddings of the control and base model with interpolation parameter `time_embedding_mix**3`.
+        time_embedding_mix (`float`, defaults to 1.0):
+            Linear interpolation parameter used if `learn_embedding` is `True`. A value of 1.0 means only the
+            control model's time embedding will be used. A value of 0.0 means only the base model's time embedding will be used.
+        base_model_channel_sizes (`Dict[str, List[Tuple[int]]]`):
+            Channel sizes of each subblock of base model. Use `gather_subblock_sizes` on your base model to compute it.
+    """
 
     @staticmethod
     def gather_base_subblock_sizes(blocks_sizes: List[int]):
-        """todo - comment"""
+        """
+        To create a correctly sized `ControlNetXSAddon`, we need to know
+        the channels sizes of each base subblock.
+
+        Parameters:
+            blocks_sizes (`List[int]`):
+                Channel sizes of each base block.
+        """
 
         n_blocks = len(blocks_sizes)
         n_subblocks_per_block = 3
@@ -99,14 +137,17 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         for b in range(n_blocks):
             for i in range(n_subblocks_per_block):
                 if b==n_blocks-1 and i==2:
-                    # last block has now downsampler, so has only 2 subblocks instead of 3
+                    # Last block has no downsampler, so there are only 2 subblocks instead of 3
                     continue
+
+                # The input channels are changed by the first resnet, which is in the first subblock.
                 if i==0:
-                    # first subblock has same input channels as in last block,
-                    # because channels are changed by the first resnet, which is the first subblock
+                    # Same input channels
                     down_out.append(blocks_sizes[max(b-1,0)])
                 else:
+                    # Changed input channels
                     down_out.append(blocks_sizes[b])
+
         down_out.append(blocks_sizes[-1])
 
         # up_in
@@ -114,7 +155,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         for b in range(len(rev_blocks_sizes)):
             for i in range(n_subblocks_per_block):
                 if i==0:
-                    up_in.append(rev_blocks_sizes[max(b-1,0)])
+                    up_in.append(rev_blocks_sizes[max(b-1,0)]) # todo: explain max(b-1,0)
                 else:
                     up_in.append(rev_blocks_sizes[b])
 
@@ -133,7 +174,22 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         num_attention_heads: Optional[List[int]] = None,
         learn_time_embedding: bool = False,
     ):
-        # todo - comment
+        r"""
+        Instantiate a [`ControlNetXSAddon`] from [`UNet2DConditionModel`].
+
+        Parameters:
+            base_model (`UNet2DConditionModel`):
+                The UNet model we want to control. The dimensions of the ControlNetXSModel will be adapted to it.
+            size_ratio (float, *optional*):
+                When given, block_out_channels is set to a relative fraction of the base model's block_out_channels.
+                Either this or `block_out_channels` must be given.
+            block_out_channels (`Tuple[int]`, *optional*):
+                Down blocks output channels in control model. Either this or `size_ratio` must be given.
+            num_attention_heads (`Union[int, Tuple[int]]`, *optional*):
+                The dimension of the attention heads. The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
+            learn_time_embedding (`bool`):
+                todo
+        """
 
         # Check input
         fixed_size = block_out_channels is not None
@@ -658,10 +714,10 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
         udl.stop_if(udl.INPUT_SAVE, 'Stopping because I only wanted to save input')
 
-        udl.log_if('sample', sample, udl.SUBBLOCK)
-        udl.log_if('timestep', timesteps, udl.SUBBLOCK)
-        udl.log_if('encoder_hidden_states', encoder_hidden_states, udl.SUBBLOCK)
-        udl.log_if('controlnet_cond', controlnet_cond, udl.SUBBLOCK)
+        udl.log_if("sample", sample, udl.SUBBLOCK)
+        udl.log_if("timestep", timesteps, udl.SUBBLOCK)
+        udl.log_if("encoder_hidden_states", encoder_hidden_states, udl.SUBBLOCK)
+        udl.log_if("controlnet_cond", controlnet_cond, udl.SUBBLOCK)
 
         temb = temb + aug_emb if aug_emb is not None else temb
 
@@ -674,24 +730,24 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         h_ctrl = h_base = sample
         hs_base, hs_ctrl = [], []
 
-        udl.log_if('h_ctrl', h_ctrl, udl.SUBBLOCK)
-        udl.log_if('h_base', h_base, udl.SUBBLOCK)
+        udl.log_if("h_ctrl", h_ctrl, udl.SUBBLOCK)
+        udl.log_if("h_base", h_base, udl.SUBBLOCK)
 
         # Cross Control
         # 1 - conv in & down
-        # The base -> ctrl connections are 'delayed' by 1 subblock, because we want to 'wait' to ensure the new information from the last  ctrl -> base connection is also considered
+        # The base -> ctrl connections are "delayed" by 1 subblock, because we want to "wait" to ensure the new information from the last  ctrl -> base connection is also considered
         # Therefore, the connections iterate over:
         #       ctrl -> base:   conv_in | subblock 1  |  ...  | subblock n
         #       base -> ctrl:           | subblock 1  |  ...  | subblock n | mid block
 
         h_base = self.base_conv_in(h_base)
-        udl.log_if('base', h_base, udl.SUBBLOCK)
+        udl.log_if("base", h_base, udl.SUBBLOCK)
         h_ctrl = self.ctrl_conv_in(h_ctrl)
-        udl.log_if('ctrl', h_ctrl, udl.SUBBLOCK)
+        udl.log_if("ctrl", h_ctrl, udl.SUBBLOCK)
         if guided_hint is not None:
             h_ctrl += guided_hint
         h_base = h_base + self.down_zero_convs_c2b[0](h_ctrl) * conditioning_scale  # add ctrl -> base
-        udl.log_if('add c2b', h_base, udl.SUBBLOCK)
+        udl.log_if("add c2b", h_base, udl.SUBBLOCK)
 
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
@@ -708,47 +764,47 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 additional_params = []
 
             h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)  # concat base -> ctrl
-            udl.log_if('concat b2c', h_ctrl, udl.SUBBLOCK)
+            udl.log_if("concat b2c", h_ctrl, udl.SUBBLOCK)
 
             h_base = b(h_base, *additional_params)  # apply base subblock
-            udl.log_if('base', h_base, udl.SUBBLOCK)
+            udl.log_if("base", h_base, udl.SUBBLOCK)
 
             h_ctrl = c(h_ctrl, *additional_params)  # apply ctrl subblock
-            udl.log_if('ctrl', h_ctrl, udl.SUBBLOCK)
+            udl.log_if("ctrl", h_ctrl, udl.SUBBLOCK)
 
             h_base = h_base + c2b(h_ctrl) * conditioning_scale  # add ctrl -> base
-            udl.log_if('add c2b', h_base, udl.SUBBLOCK)
+            udl.log_if("add c2b", h_base, udl.SUBBLOCK)
 
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
         h_ctrl = torch.cat([h_ctrl, self.down_zero_convs_b2c[-1](h_base)], dim=1)  # concat base -> ctrl 
-        udl.log_if('concat b2c', h_ctrl, udl.SUBBLOCK)
+        udl.log_if("concat b2c", h_ctrl, udl.SUBBLOCK)
 
         # 2 - mid
         h_base = self.base_mid_block(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # apply base subblock
-        udl.log_if('base', h_base, udl.SUBBLOCK)
+        udl.log_if("base", h_base, udl.SUBBLOCK)
         
         h_ctrl = self.ctrl_mid_block(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # apply ctrl subblock
-        udl.log_if('ctrl', h_ctrl, udl.SUBBLOCK)
+        udl.log_if("ctrl", h_ctrl, udl.SUBBLOCK)
 
         h_base = h_base + self.mid_zero_convs_c2b(h_ctrl) * conditioning_scale  # add ctrl -> base
-        udl.log_if('add c2b', h_base, udl.SUBBLOCK)
+        udl.log_if("add c2b", h_base, udl.SUBBLOCK)
 
         # 3 - up
         for b, c2b, skip_c, skip_b in zip(
             self.base_up_subblocks, self.up_zero_convs_c2b, reversed(hs_ctrl), reversed(hs_base)
         ):
             h_base = h_base + c2b(skip_c) * conditioning_scale  # add info from ctrl encoder
-            udl.log_if('add c2b', h_base, udl.SUBBLOCK)
+            udl.log_if("add c2b", h_base, udl.SUBBLOCK)
     
             h_base = torch.cat([h_base, skip_b], dim=1)  # concat info from base encoder+ctrl encoder
             h_base = b(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
-            udl.log_if('base', h_base, udl.SUBBLOCK)
+            udl.log_if("base", h_base, udl.SUBBLOCK)
 
         h_base = self.base_conv_norm_out(h_base)
         h_base = self.base_conv_act(h_base)
         h_base = self.base_conv_out(h_base)
-        udl.log_if('conv_out', h_base, udl.SUBBLOCK)
+        udl.log_if("conv_out", h_base, udl.SUBBLOCK)
 
         udl.stop_if(udl.SUBBLOCK, 'It is done, my dude. Let us look at these tensors.')
 
@@ -793,7 +849,7 @@ class CrossAttnSubBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
         if is_empty:
-            # todo umer: comment
+            # modules will be set manually, see `CrossAttnSubBlock2D.from_modules`
             return
 
         self.in_channels = in_channels
@@ -898,12 +954,11 @@ class DownSubBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
         if is_empty:
-            # todo umer: comment
+            # downsampler will be set manually, see `DownSubBlock2D.from_modules`
             return
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-
         self.downsampler = Downsample2D(in_channels, use_conv=True, out_channels=out_channels, name="op")
 
     @classmethod
@@ -919,28 +974,15 @@ class DownSubBlock2D(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
-        if self.training and self.gradient_checkpointing:
-
-            def create_custom_forward(module, return_dict=None):
-                def custom_forward(*inputs):
-                    if return_dict is not None:
-                        return module(*inputs, return_dict=return_dict)
-                    else:
-                        return module(*inputs)
-
-                return custom_forward
-
-            # todo: gradient ckptin?
-            hidden_states = self.downsampler(hidden_states)
-        else:
-            hidden_states = self.downsampler(hidden_states)
-
-        return hidden_states
+        return self.downsampler(hidden_states)
 
 
 class CrossAttnUpSubBlock2D(nn.Module):
     def __init__(self):
-        """todo doc - init emtpty as only from_modules will be used"""
+        """
+            In the context of ControlNet-XS, `CrossAttnUpSubBlock2D` are only loaded from existing modules, and not created from scratch.
+            Therefore, `__init__` is left almost empty.
+        """
         super().__init__()
         self.gradient_checkpointing = False
 

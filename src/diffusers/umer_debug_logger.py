@@ -168,7 +168,7 @@ class UmerDebugLogger:
             xcross=os.path.join(dir_, xcross),
             hint=os.path.join(dir_,hint)
         )
-        if is_sdxl:inputs['add_embeds']=os.path.join(dir_, add_embeds),            
+        if is_sdxl:inputs['add_embeds']=os.path.join(dir_, add_embeds)      
         self.input_files = SimpleNamespace(**inputs)
         self.input_action = 'load'
 
