@@ -523,7 +523,7 @@ def update_unet_attention_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint,
 
 
 def convert_ldm_unet_checkpoint(
-    checkpoint, config, unet_key, path=None, extract_ema=False, skip_extract_state_dict=False
+    checkpoint, config, path=None, extract_ema=False, skip_extract_state_dict=False
 ):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
@@ -792,6 +792,11 @@ def convert_controlnet_checkpoint(
 
 def create_controlnet_model(pipeline_class_name, original_config, checkpoint, **kwargs):
     from ..models import ControlNetModel
+
+    # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
+    # "state_dict" key https://huggingface.co/thibaud/controlnet-canny-sd21
+    while "state_dict" in checkpoint:
+        checkpoint = checkpoint["state_dict"]
 
     image_size = determine_image_size(pipeline_class_name, original_config, checkpoint, **kwargs)
     upcast_attention = kwargs.get("upcast_attention", False)

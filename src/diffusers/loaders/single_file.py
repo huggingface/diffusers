@@ -59,6 +59,14 @@ REFINER_PIPELINES = [
     "StableDiffusionXLControlNetImg2ImgPipeline",
 ]
 
+LOADABLE_CLASSES = {
+    "diffusers": {
+        "ControlNetModel": "create_controlnet_model",
+        "AutoencoderKL": "create_vae_model",
+        "UNet2DConditionModel": "create_unet_model",
+    }
+}
+
 
 def extract_pipeline_component_names(pipeline_class):
     components = inspect.signature(pipeline_class).parameters.keys()
@@ -75,58 +83,6 @@ def check_valid_url(pretrained_model_link_or_path):
             has_valid_url_prefix = True
 
     return has_valid_url_prefix, pretrained_model_link_or_path
-
-
-def download_model_checkpoint(
-    ckpt_path,
-    cache_dir=None,
-    resume_download=False,
-    force_download=False,
-    proxies=None,
-    local_files_only=None,
-    token=None,
-    revision=None,
-):
-    # get repo_id and (potentially nested) file path of ckpt in repo
-    repo_id = "/".join(ckpt_path.parts[:2])
-    file_path = "/".join(ckpt_path.parts[2:])
-
-    if file_path.startswith("blob/"):
-        file_path = file_path[len("blob/") :]
-
-    if file_path.startswith("main/"):
-        file_path = file_path[len("main/") :]
-
-    path = hf_hub_download(
-        repo_id,
-        filename=file_path,
-        cache_dir=cache_dir,
-        resume_download=resume_download,
-        proxies=proxies,
-        local_files_only=local_files_only,
-        token=token,
-        revision=revision,
-        force_download=force_download,
-    )
-
-    return path
-
-
-def load_checkpoint(checkpoint_path_or_dict, device=None, from_safetensors=True):
-    if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-
-    if isinstance(checkpoint_path_or_dict, str):
-        if from_safetensors:
-            checkpoint = safe_load(checkpoint_path_or_dict, device="cpu")
-
-        else:
-            checkpoint = torch.load(checkpoint_path_or_dict, map_location=device)
-
-    elif isinstance(checkpoint_path_or_dict, dict):
-        checkpoint = checkpoint_path_or_dict
-
-    return checkpoint
 
 
 def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
@@ -295,6 +251,7 @@ class FromSingleFileMixin:
         original_config_file = kwargs.pop("original_config_file", None)
         config_files = kwargs.pop("config_files", None)
         resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         cache_dir = kwargs.pop("cache_dir", None)
@@ -310,40 +267,23 @@ class FromSingleFileMixin:
         if from_safetensors and use_safetensors is False:
             raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
 
-        has_valid_url_prefix, pretrained_model_link_or_path = check_valid_url(pretrained_model_link_or_path)
-
-        """
         if os.path.isfile(pretrained_model_link_or_path):
             checkpoint = load_state_dict(pretrained_model_link_or_path)
         else:
             repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
-            checkpoint_path = _get_model_file(repo_id, weights_name=weights_name, use_safetensors=from_safetensors)
-            checkpoint = load_state_dict(checkpoint_path)
-        """
-        # Code based on diffusers.pipelines.pipeline_utils.DiffusionPipeline.from_pretrained
-        ckpt_path = Path(pretrained_model_link_or_path)
-        if (not ckpt_path.is_file()) and (not has_valid_url_prefix):
-            raise ValueError(
-                f"The provided path is either not a file or a valid huggingface URL was not provided. Valid URLs begin with {', '.join(VALID_URL_PREFIXES)}"
-            )
-        if ckpt_path.is_file():
-            checkpoint = load_checkpoint(pretrained_model_link_or_path, from_safetensors=from_safetensors)
-        else:
-            pretrained_model_link_or_path = download_model_checkpoint(
-                ckpt_path,
+            checkpoint_path = _get_model_file(
+                repo_id,
+                weights_name=weights_name,
+                force_download=force_download,
                 cache_dir=cache_dir,
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
                 token=token,
                 revision=revision,
-            )
-            checkpoint = load_checkpoint(pretrained_model_link_or_path, from_safetensors=from_safetensors)
 
-        # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
-        # "state_dict" key https://huggingface.co/thibaud/controlnet-canny-sd21
-        while "state_dict" in checkpoint:
-            checkpoint = checkpoint["state_dict"]
+            )
+            checkpoint = load_state_dict(checkpoint_path)
 
         original_config = fetch_original_config(class_name, checkpoint, original_config_file, config_files)
 
@@ -354,44 +294,6 @@ class FromSingleFileMixin:
         if class_name == "ControlNetModel":
             component = create_controlnet_model(class_name, original_config, checkpoint, **kwargs)
             return component["controlnet"]
-
-        pipeline_class = _get_pipeline_class(cls, class_name=class_name)
-
-        # some modules can be passed directly to the init
-        # in this case they are already instantiated in `kwargs`
-        # extract them here
-        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
-        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
-        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
-
-        expected_keys = cls._get_init_keys(cls)
-        expected_keys.remove("self")
-        # remove general kwargs if present in dict
-        if "kwargs" in expected_keys:
-            expected_keys.remove("kwargs")
-
-        init_dict = {}
-        for key in expected_keys:
-            if key in kwargs:
-                init_dict[key] = kwargs.pop(key)
-
-        # define init kwargs and make sure that optional component modules are filtered out
-        init_kwargs = {
-            k: init_dict.pop(k)
-            for k in kwargs
-            if k in init_dict and k not in pipeline_class._optional_components
-        }
-        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
-
-        # remove `null` components
-        def load_module(name, value):
-            if value[0] is None:
-                return False
-            if name in passed_class_obj and passed_class_obj[name] is None:
-                return False
-            return True
-
-        init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
 
         component_names = extract_pipeline_component_names(cls)
         pipeline_components = {}
@@ -415,7 +317,7 @@ class FromSingleFileMixin:
             if components:
                 pipeline_components.update(components)
 
-        pipe = pipeline_class(**pipeline_components)
+        pipe = cls(**pipeline_components)
 
         if torch_dtype is not None:
             pipe.to(dtype=torch_dtype)
