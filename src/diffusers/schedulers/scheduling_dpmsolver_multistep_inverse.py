@@ -271,9 +271,9 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas]).round()
             timesteps = timesteps.copy().astype(np.int64)
             if self.config.final_sigmas_type == "default":
-                sigmas = np.concatenate([sigmas[0], sigmas]).astype(np.float32)
+                sigmas = np.concatenate([sigmas, sigmas[-1:]]).astype(np.float32)
             elif self.config.final_sigmas_type == "denoise_to_zero":
-                sigmas = np.concatenate([np.array([0]), sigmas]).astype(np.float32)
+                sigmas = np.concatenate([sigmas, np.array([0])]).astype(np.float32)
             else:
                 raise ValueError(
                     f"`final_sigmas_type` must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
@@ -290,9 +290,15 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 raise ValueError(
                     f"`final_sigmas_type` must be one of 'default', or 'denoise_to_zero', but got {self.config.final_sigmas_type}"
                 )
-            sigmas = np.concatenate([[sigma_last], sigmas]).astype(np.float32)
+            sigmas = np.concatenate([sigmas, [sigma_last]]).astype(np.float32)
 
         self.sigmas = torch.from_numpy(sigmas)
+
+        # when num_inference_steps == num_train_timesteps, we can end up with
+        # duplicates in timesteps.
+        _, unique_indices = np.unique(timesteps, return_index=True)
+        timesteps = timesteps[np.sort(unique_indices)]
+
         self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.int64)
 
         self.num_inference_steps = len(timesteps)
