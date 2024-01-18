@@ -167,7 +167,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
     ):
         if algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
             deprecation_message = f"algorithm_type {algorithm_type} is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
-            deprecate("algorithm_types dpmsolver and sde-dpmsolver", "1.0.0", deprecation_message, warning=True)
+            deprecate("algorithm_types dpmsolver and sde-dpmsolver", "1.0.0", deprecation_message)
 
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
