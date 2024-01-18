@@ -199,7 +199,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 self.register_to_config(algorithm_type="dpmsolver++")
             elif algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
                 raise ValueError(
-                    f"`algorithm_type` {algorithm_type} is no longer supported in {self.__class__}. Please use `DPMSolverMultistepSchedulerLegacy` instead."
+                    f"`algorithm_type` {algorithm_type} is no longer supported in {self.__class__}. Please use `DPMSolverSchedulerLegacy` instead."
                 )
             else:
                 raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
