@@ -79,6 +79,9 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
     if output_type == "np":
         outputs = np.stack(outputs)
 
+    if output_type == "pt":
+        outputs = torch.stack(outputs)
+
     return outputs
 
 
@@ -805,11 +808,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             return AnimateDiffPipelineOutput(frames=latents)
 
         video_tensor = self.decode_latents(latents)
-
-        if output_type == "pt":
-            video = video_tensor
-        else:
-            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+        video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
         if not return_dict:
             return (video,)

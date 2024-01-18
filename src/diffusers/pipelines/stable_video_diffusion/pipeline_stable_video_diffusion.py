@@ -51,7 +51,10 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         outputs.append(batch_output)
 
     if output_type == "np":
-        return np.stack(outputs)
+        outputs = np.stack(outputs)
+
+    if output_type == "pt":
+        outputs = torch.stack(outputs)
 
     return outputs
 
