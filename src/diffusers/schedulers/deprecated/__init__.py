@@ -22,6 +22,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_pt_objects))
 else:
     _import_structure["scheduling_dpmsolver_multistep_legacy"] = ["DPMSolverMultistepSchedulerLegacy"]
+    _import_structure["scheduling_dpmsolver_singlestep_legacy"] = ["DPMSolverSinglestepSchedulerLegacy"]
     _import_structure["scheduling_karras_ve"] = ["KarrasVeScheduler"]
     _import_structure["scheduling_sde_vp"] = ["ScoreSdeVpScheduler"]
 
@@ -34,6 +35,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ..utils.dummy_pt_objects import *  # noqa F403
     else:
         from .scheduling_dpmsolver_multistep_legacy import DPMSolverMultistepSchedulerLegacy
+        from .scheduling_dpmsolver_singlestep_legacy import DPMSolverSinglestepSchedulerLegacy
         from .scheduling_karras_ve import KarrasVeScheduler
         from .scheduling_sde_vp import ScoreSdeVpScheduler
 
