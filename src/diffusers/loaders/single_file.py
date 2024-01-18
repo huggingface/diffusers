@@ -26,6 +26,7 @@ from ..utils import (
     is_transformers_available,
     logging,
 )
+from ..utils.hub_utils import _get_model_file
 from .single_file_utils import (
     create_controlnet_model,
     create_scheduler,
