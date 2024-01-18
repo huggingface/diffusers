@@ -1701,8 +1701,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if candidate_file in filenames:
                     custom_components[component] = module_candidate
                 elif module_candidate not in LOADABLE_CLASSES and not hasattr(pipelines, module_candidate):
-                    raise ValueError(
-                        f"{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
+                    logger.warn(
+                        f"\n{candidate_file} as defined in `model_index.json` does not exist in {pretrained_model_name} and is not a module in 'diffusers/pipelines'."
                     )
 
             if len(variant_filenames) == 0 and variant is not None:
