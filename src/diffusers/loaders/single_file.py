@@ -19,6 +19,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from transformers import AutoFeatureExtractor
 
 from ..models.modeling_utils import load_state_dict
+from ..pipelines.pipeline_utils import _get_pipeline_class
 from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ..utils import (
     is_accelerate_available,
@@ -27,11 +28,11 @@ from ..utils import (
 )
 from ..utils.hub_utils import _get_model_file
 from .single_file_utils import (
-    create_controlnet_model,
-    create_scheduler,
-    create_text_encoders_and_tokenizers,
-    create_unet_model,
-    create_vae_model,
+    create_diffusers_controlnet_model_from_ldm,
+    create_diffusers_unet_model_from_ldm,
+    create_diffusers_vae_model_from_ldm,
+    create_scheduler_from_ldm,
+    create_text_encoders_and_tokenizers_from_ldm,
     fetch_original_config,
     infer_model_type,
 )
@@ -96,46 +97,57 @@ def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
     return repo_id, weights_name
 
 
-def build_component(
+def build_sub_model_components(
     pipeline_components,
     pipeline_class_name,
     component_name,
     original_config,
     checkpoint,
     checkpoint_path_or_dict,
+    local_files_only=False,
+    load_safety_checker=False,
     **kwargs,
 ):
-    if component_name in kwargs:
-        component = kwargs.pop(component_name, None)
-        return {component_name: component}
-
     if component_name in pipeline_components:
         return {}
 
-    load_safety_checker = kwargs.get("load_safety_checker", False)
-    local_files_only = kwargs.get("local_files_only", False)
+    model_type = kwargs.get("model_type", None)
+    image_size = kwargs.pop("image_size", None)
 
     if component_name == "unet":
-        unet_components = create_unet_model(
-            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        num_in_channels = kwargs.pop("num_in_channels", None)
+        unet_components = create_diffusers_unet_model_from_ldm(
+            pipeline_class_name, original_config, checkpoint, num_in_channels=num_in_channels, image_size=image_size
         )
         return unet_components
 
     if component_name == "vae":
-        vae_components = create_vae_model(
-            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        vae_components = create_diffusers_vae_model_from_ldm(
+            pipeline_class_name, original_config, checkpoint, image_size
         )
         return vae_components
 
     if component_name == "scheduler":
-        scheduler_components = create_scheduler(
-            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        scheduler_type = kwargs.get("scheduler_type", "ddim")
+        prediction_type = kwargs.get("prediction_type", None)
+
+        scheduler_components = create_scheduler_from_ldm(
+            pipeline_class_name,
+            original_config,
+            checkpoint,
+            scheduler_type=scheduler_type,
+            prediction_type=prediction_type,
+            model_type=model_type,
         )
+
         return scheduler_components
 
     if component_name in ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]:
-        text_encoder_components = create_text_encoders_and_tokenizers(
-            pipeline_class_name, original_config, checkpoint, checkpoint_path_or_dict, **kwargs
+        text_encoder_components = create_text_encoders_and_tokenizers_from_ldm(
+            original_config,
+            checkpoint,
+            model_type=model_type,
+            local_files_only=local_files_only,
         )
         return text_encoder_components
 
@@ -156,7 +168,7 @@ def build_component(
     return
 
 
-def build_additional_components(
+def set_additional_components(
     pipeline_class_name,
     original_config,
     **kwargs,
@@ -282,36 +294,57 @@ class FromSingleFileMixin:
         original_config = fetch_original_config(class_name, checkpoint, original_config_file, config_files)
 
         if class_name == "AutoencoderKL":
-            component = create_vae_model(class_name, original_config, checkpoint, pretrained_model_link_or_path)
+            image_size = kwargs.pop("image_size", None)
+            component = create_diffusers_vae_model_from_ldm(
+                class_name, original_config, checkpoint, image_size=image_size
+            )
             return component["vae"]
 
         if class_name == "ControlNetModel":
-            component = create_controlnet_model(class_name, original_config, checkpoint, **kwargs)
+            upcast_attention = kwargs.pop("upcast_attention", False)
+            image_size = kwargs.pop("image_size", None)
+
+            component = create_diffusers_controlnet_model_from_ldm(
+                class_name, original_config, checkpoint, upcast_attention=upcast_attention, image_size=image_size
+            )
             return component["controlnet"]
 
-        component_names = extract_pipeline_component_names(cls)
-        pipeline_components = {}
-        for component in component_names:
-            components = build_component(
-                pipeline_components,
-                class_name,
-                component,
-                original_config,
-                checkpoint,
-                pretrained_model_link_or_path,
-                **kwargs,
-            )
-            if not components:
-                continue
-            pipeline_components.update(components)
+        pipeline_class = _get_pipeline_class(
+            cls,
+            config=None,
+            cache_dir=cache_dir,
+        )
 
-        additional_components = set(component_names - pipeline_components.keys())
+        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
+        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
+
+        init_kwargs = {}
+        for name in expected_modules:
+            if name in passed_class_obj:
+                init_kwargs[name] = passed_class_obj[name]
+            else:
+                components = build_sub_model_components(
+                    init_kwargs,
+                    class_name,
+                    name,
+                    original_config,
+                    checkpoint,
+                    pretrained_model_link_or_path,
+                    **kwargs,
+                )
+                if not components:
+                    continue
+                init_kwargs.update(components)
+
+        additional_components = set(optional_kwargs - init_kwargs.keys())
         if additional_components:
-            components = build_additional_components(class_name, original_config, **kwargs)
+            components = set_additional_components(class_name, original_config, **kwargs)
             if components:
-                pipeline_components.update(components)
+                init_kwargs.update(components)
 
-        pipe = cls(**pipeline_components)
+        init_kwargs.update(passed_pipe_kwargs)
+        pipe = pipeline_class(**init_kwargs)
 
         if torch_dtype is not None:
             pipe.to(dtype=torch_dtype)
