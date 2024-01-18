@@ -720,11 +720,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
             return TextToVideoSDPipelineOutput(frames=latents)
 
         video_tensor = self.decode_latents(latents)
-
-        if output_type == "pt":
-            video = video_tensor
-        else:
-            video = tensor2vid(video_tensor, self.image_processor, output_type)
+        video = tensor2vid(video_tensor, self.image_processor, output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
