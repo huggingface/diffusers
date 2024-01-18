@@ -39,19 +39,19 @@ if is_torch_available():
     _import_structure["t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformer_temporal"] = ["TransformerTemporalModel"]
-    _import_structure["unet_1d"] = ["UNet1DModel"]
-    _import_structure["unet_2d"] = ["UNet2DModel"]
-    _import_structure["unet_2d_condition"] = ["UNet2DConditionModel"]
-    _import_structure["unet_3d_condition"] = ["UNet3DConditionModel"]
-    _import_structure["unet_kandinsky3"] = ["Kandinsky3UNet"]
-    _import_structure["unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
-    _import_structure["unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
-    _import_structure["uvit_2d"] = ["UVit2DModel"]
+    _import_structure["unets.unet_1d"] = ["UNet1DModel"]
+    _import_structure["unets.unet_2d"] = ["UNet2DModel"]
+    _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
+    _import_structure["unets.unet_3d_condition"] = ["UNet3DConditionModel"]
+    _import_structure["unets.unet_kandinsky3"] = ["Kandinsky3UNet"]
+    _import_structure["unets.unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
+    _import_structure["unets.unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
+    _import_structure["unets.uvit_2d"] = ["UVit2DModel"]
     _import_structure["vq_model"] = ["VQModel"]
 
 if is_flax_available():
     _import_structure["controlnet_flax"] = ["FlaxControlNetModel"]
-    _import_structure["unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
+    _import_structure["unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
     _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
 
 
