@@ -291,6 +291,9 @@ class FromSingleFileMixin:
             )
             checkpoint = load_state_dict(checkpoint_path)
 
+        while "state_dict" in checkpoint:
+            checkpoint = checkpoint["state_dict"]
+
         original_config = fetch_original_config(class_name, checkpoint, original_config_file, config_files)
 
         if class_name == "AutoencoderKL":

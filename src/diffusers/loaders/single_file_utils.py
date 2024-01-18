@@ -509,7 +509,6 @@ def convert_ldm_unet_checkpoint(checkpoint, config, extract_ema=False):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
     """
-
     # extract state_dict for UNet
     unet_state_dict = {}
     keys = list(checkpoint.keys())
