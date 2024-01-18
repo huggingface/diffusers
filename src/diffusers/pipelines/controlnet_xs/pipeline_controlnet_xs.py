@@ -91,6 +91,7 @@ class StableDiffusionControlNetXSPipeline(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
+    # todo
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet-XS guidance.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -109,7 +110,7 @@ class StableDiffusionControlNetXSPipeline(
             A `CLIPTokenizer` to tokenize text.
         unet ([`UNet2DConditionModel`]):
             A `UNet2DConditionModel` to denoise the encoded image latents.
-        controlnet ([`ControlNetXSModel`]):
+        controlnet_addon ([`ControlNetXSAddon`]):
             Provides additional conditioning to the `unet` during the denoising process.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
@@ -163,7 +164,7 @@ class StableDiffusionControlNetXSPipeline(
         ) = controlnet_addon._check_if_vae_compatible(vae)
         if not vae_compatible:
             raise ValueError(
-                f"The downsampling factors of the VAE ({vae_downsample_factor}) and the conditioning part of ControlNetXS model {cnxs_condition_downsample_factor} need to be equal. Consider building the ControlNetXS model with different `conditioning_block_sizes`."
+                f"The downsampling factors of the VAE ({vae_downsample_factor}) and the conditioning part of ControlNetXSAddon model ({cnxs_condition_downsample_factor}) need to be equal. Consider building the ControlNetXSAddon model with different `conditioning_embedding_out_channels`."
             )
 
         self.register_modules(

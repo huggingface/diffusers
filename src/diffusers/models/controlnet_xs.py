@@ -85,20 +85,16 @@ class ControlNetConditioningEmbedding(nn.Module):
 
 class ControlNetXSAddon(ModelMixin, ConfigMixin):
     r"""
-    A ControlNetXSAddon model
-
-    # todo - the below comment is very outdated. update it
-
+    A `ControlNetXSAddon` model. To use it, pass it into a `ControlNetXSModel` (together with a `UNet2DConditionModel` base model).
+    
     This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
     methods implemented for all models (such as downloading or saving).
 
-    Most of parameters for this model are passed into the [`UNet2DConditionModel`] it creates. Check the documentation
-    of [`UNet2DConditionModel`] for them.
 
     Parameters:
         conditioning_channels (`int`, defaults to 3):
             Number of channels of conditioning input (e.g. an image)
-        controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
+        conditioning_channel_order (`str`, defaults to `"rgb"`):
             The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
         conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
             The tuple of output channel for each block in the `controlnet_cond_embedding` layer.
@@ -106,14 +102,34 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             Dimension of input into time embedding. Needs to be same as in the base model.
         time_embedding_dim (`int`, defaults to 1280):
             Dimension of output from time embedding. Needs to be same as in the base model.
-        learn_embedding (`bool`, defaults to `False`):
-            Whether to use time embedding of the control model. If yes, the time embedding is a linear interpolation of
-            the time embeddings of the control and base model with interpolation parameter `time_embedding_mix**3`.
-        time_embedding_mix (`float`, defaults to 1.0):
-            Linear interpolation parameter used if `learn_embedding` is `True`. A value of 1.0 means only the
-            control model's time embedding will be used. A value of 0.0 means only the base model's time embedding will be used.
-        base_model_channel_sizes (`Dict[str, List[Tuple[int]]]`):
-            Channel sizes of each subblock of base model. Use `gather_subblock_sizes` on your base model to compute it.
+        learn_time_embedding (`bool`, defaults to `False`): todo
+            Whether the time embedding should be learned or fixed.
+        channels_base (`Dict[str, List[Tuple[int]]]`): todo
+            Base channel configurations for the model's layers.
+        addition_embed_type (defaults to `None`):
+            Configures an optional embedding which will be summed with the time embeddings. Choose from `None` or
+            "text_time".
+        addition_time_embed_dim (defaults to `None`):
+            Dimension for the timestep embeddings.
+        attention_head_dim (`list[int]`, defaults to `[4]`):
+             The dimension of the attention heads.
+        block_out_channels (`list[int]`, defaults to `[4, 8, 16, 16]`):
+            The tuple of output channels for each block.
+        cross_attention_dim (`int`, defaults to 1024):
+            The dimension of the cross attention features.
+        down_block_types (`list[str]`, defaults to `["CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"]`):
+            The tuple of downsample blocks to use.
+        projection_class_embeddings_input_dim (defaults to `None`):
+            The dimension of the `class_labels` input when
+        sample_size (`int`, defaults to 96):
+            Height and width of input/output sample.
+        transformer_layers_per_block (`Union[int, Tuple[int]]`, defaults to 1):
+            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
+            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
+        upcast_attention (`bool`, defaults to `True`):
+            todo
+        norm_num_groups (`int`, defaults to 32):
+            If `None`, normalization and activation layers is skipped in post-processing. # todo: is actually max_norm_num_groups
     """
 
     @staticmethod
@@ -154,9 +170,12 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         rev_blocks_sizes = list(reversed(blocks_sizes))
         for b in range(len(rev_blocks_sizes)):
             for i in range(n_subblocks_per_block):
+                # The input channels are changed by the first resnet, which is in the first subblock.
                 if i==0:
-                    up_in.append(rev_blocks_sizes[max(b-1,0)]) # todo: explain max(b-1,0)
+                    # Same input channels
+                    up_in.append(rev_blocks_sizes[max(b-1,0)])
                 else:
+                    # Changed input channels
                     up_in.append(rev_blocks_sizes[b])
 
         return {
@@ -173,6 +192,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         block_out_channels: Optional[List[int]] = None,
         num_attention_heads: Optional[List[int]] = None,
         learn_time_embedding: bool = False,
+        conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
     ):
         r"""
         Instantiate a [`ControlNetXSAddon`] from [`UNet2DConditionModel`].
@@ -180,15 +200,17 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         Parameters:
             base_model (`UNet2DConditionModel`):
                 The UNet model we want to control. The dimensions of the ControlNetXSModel will be adapted to it.
-            size_ratio (float, *optional*):
+            size_ratio (float, *optional*, defaults to `None`):
                 When given, block_out_channels is set to a relative fraction of the base model's block_out_channels.
                 Either this or `block_out_channels` must be given.
-            block_out_channels (`Tuple[int]`, *optional*):
+            block_out_channels (`Tuple[int]`, *optional*, defaults to `None`):
                 Down blocks output channels in control model. Either this or `size_ratio` must be given.
-            num_attention_heads (`Union[int, Tuple[int]]`, *optional*):
+            num_attention_heads (`Union[int, Tuple[int]]`, *optional*, defaults to `None`):
                 The dimension of the attention heads. The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
-            learn_time_embedding (`bool`):
-                todo
+            learn_time_embedding (`bool`, defaults to `False`):
+                Whether the `ControlNetXSAddon` should learn a time embedding.
+            conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
+                The tuple of output channel for each block in the `controlnet_cond_embedding` layer.
         """
 
         # Check input
@@ -221,13 +243,14 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             transformer_layers_per_block=base_model.config.transformer_layers_per_block,
             upcast_attention=base_model.config.upcast_attention,
             norm_num_groups=norm_num_groups,
+            conditioning_embedding_out_channels=conditioning_embedding_out_channels,
         )
 
     @register_to_config
     def __init__(
         self,
-        conditioning_channel_order: str = "rgb",
         conditioning_channels: int = 3,
+        conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
         time_embedding_input_dim: int = 320,
         time_embedding_dim: int = 1280,
