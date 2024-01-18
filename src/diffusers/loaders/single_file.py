@@ -14,16 +14,11 @@
 import inspect
 import os
 import re
-from pathlib import Path
 
-import torch
-from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
-from safetensors.torch import load_file as safe_load
 from transformers import AutoFeatureExtractor
 
 from ..models.modeling_utils import load_state_dict
-from ..pipelines.pipeline_utils import _get_pipeline_class
 from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ..utils import (
     is_accelerate_available,
@@ -86,9 +81,9 @@ def check_valid_url(pretrained_model_link_or_path):
 
 
 def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
-    pattern = r'([^/]+)/([^/]+)/(?:blob/main/)?(.+)'
+    pattern = r"([^/]+)/([^/]+)/(?:blob/main/)?(.+)"
     weights_name = None
-    repo_id = None,
+    repo_id = (None,)
     for prefix in VALID_URL_PREFIXES:
         pretrained_model_name_or_path = pretrained_model_name_or_path.replace(prefix, "")
     match = re.match(pattern, pretrained_model_name_or_path)
@@ -281,7 +276,6 @@ class FromSingleFileMixin:
                 local_files_only=local_files_only,
                 token=token,
                 revision=revision,
-
             )
             checkpoint = load_state_dict(checkpoint_path)
 

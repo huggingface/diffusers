@@ -144,29 +144,33 @@ DIFFUSERS_TO_LDM_MAPPING = {
         "post_quant_conv.bias": "post_quant_conv.bias",
     },
     "openclip": {
-        # "positional_embedding": "text_model.embeddings.position_embedding.weight",
-        # "token_embedding.weight": "text_model.embeddings.token_embedding.weight",
-        "ln_final.weight": "text_model.final_layer_norm.weight",
-        "ln_final.bias": "text_model.final_layer_norm.bias",
-        "text_projection": "text_projection.weight",
-        "resblocks.": "text_model.encoder.layers.",
-        "ln_1": "layer_norm1",
-        "ln_2": "layer_norm2",
-        ".c_fc.": ".fc1.",
-        ".c_proj.": ".fc2.",
-        ".attn": ".self_attn",
-        "ln_final.": "transformer.text_model.final_layer_norm.",
-        "token_embedding.weight": "transformer.text_model.embeddings.token_embedding.weight",
-        "positional_embedding": "transformer.text_model.embeddings.position_embedding.weight",
+        "layers": {
+            "text_model.embeddings.position_embedding.weight": "positional_embedding",
+            "text_model.embeddings.token_embedding.weight": "token_embedding.weight",
+            "text_model.final_layer_norm.weight": "ln_final.weight",
+            "text_model.final_layer_norm.bias": "ln_final.bias",
+            "text_projection.weight": "text_projection",
+        },
+        "transformer": {
+            "text_model.encoder.layers.": "resblocks.",
+            "layer_norm1": "ln_1",
+            "layer_norm2": "ln_2",
+            ".fc1.": ".c_fc.",
+            ".fc2.": ".c_proj.",
+            ".self_attn": ".attn",
+            "transformer.text_model.final_layer_norm.": "ln_final.",
+            "transformer.text_model.embeddings.token_embedding.weight": "token_embedding.weight",
+            "transformer.text_model.embeddings.position_embedding.weight": "positional_embedding",
+        },
     },
 }
-
 
 LDM_VAE_KEY = "first_stage_model."
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CONTROLNET_KEY = "control_model."
 LDM_CLIP_CONFIG_NAME = "openai/clip-vit-large-patch14"
 LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
+LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
 
 SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
     "cond_stage_model.model.transformer.resblocks.23.attn.in_proj_bias",
@@ -522,9 +526,7 @@ def update_unet_attention_ldm_to_diffusers(ldm_keys, new_checkpoint, checkpoint,
         new_checkpoint[diffusers_key] = checkpoint.pop(ldm_key)
 
 
-def convert_ldm_unet_checkpoint(
-    checkpoint, config, path=None, extract_ema=False, skip_extract_state_dict=False
-):
+def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False, skip_extract_state_dict=False):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
     """
@@ -1005,46 +1007,55 @@ def convert_open_clip_checkpoint(
     with ctx():
         text_model = CLIPTextModelWithProjection(config) if has_projection else CLIPTextModel(config)
 
-    keys = list(checkpoint.keys())
-
-    keys_to_ignore = SD_2_TEXT_ENCODER_KEYS_TO_IGNORE
     text_model_dict = {}
-
-    if prefix + "text_projection" in checkpoint:
-        d_model = int(checkpoint[prefix + "text_projection"].shape[0])
-    else:
-        d_model = 1024
-
+    text_proj_key = prefix + "text_projection"
+    text_proj_dim = (
+        int(checkpoint[text_proj_key].shape[0]) if text_proj_key in checkpoint else LDM_OPEN_CLIP_TEXT_PROJECTION_DIM
+    )
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
+
+    openclip_diffusers_ldm_map = DIFFUSERS_TO_LDM_MAPPING["openclip"]["layers"]
+    for diffusers_key, ldm_key in openclip_diffusers_ldm_map.items():
+        ldm_key = prefix + ldm_key
+        if ldm_key not in checkpoint:
+            continue
+        if ldm_key.endswith("text_projection"):
+            text_model_dict[diffusers_key] = checkpoint[ldm_key].T.contiguous()
+        else:
+            text_model_dict[diffusers_key] = checkpoint[ldm_key]
+
+    keys = list(checkpoint.keys())
+    keys_to_ignore = SD_2_TEXT_ENCODER_KEYS_TO_IGNORE
+
     for key in keys:
         if key in keys_to_ignore:
             continue
-        if key[len(prefix) :] in textenc_conversion_map:
-            if key.endswith("text_projection"):
-                value = checkpoint[key].T.contiguous()
-            else:
-                value = checkpoint[key]
 
-            text_model_dict[textenc_conversion_map[key[len(prefix) :]]] = value
+        if not key.startswith(prefix + "transformer."):
+            continue
 
-        if key.startswith(prefix + "transformer."):
-            new_key = key[len(prefix + "transformer.") :]
-            if new_key.endswith(".in_proj_weight"):
-                new_key = new_key[: -len(".in_proj_weight")]
-                new_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], new_key)
-                text_model_dict[new_key + ".q_proj.weight"] = checkpoint[key][:d_model, :]
-                text_model_dict[new_key + ".k_proj.weight"] = checkpoint[key][d_model : d_model * 2, :]
-                text_model_dict[new_key + ".v_proj.weight"] = checkpoint[key][d_model * 2 :, :]
-            elif new_key.endswith(".in_proj_bias"):
-                new_key = new_key[: -len(".in_proj_bias")]
-                new_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], new_key)
-                text_model_dict[new_key + ".q_proj.bias"] = checkpoint[key][:d_model]
-                text_model_dict[new_key + ".k_proj.bias"] = checkpoint[key][d_model : d_model * 2]
-                text_model_dict[new_key + ".v_proj.bias"] = checkpoint[key][d_model * 2 :]
-            else:
-                new_key = textenc_pattern.sub(lambda m: protected[re.escape(m.group(0))], new_key)
+        diffusers_key = key.replace(prefix + "transformer.", "")
+        transformer_diffusers_to_ldm_map = DIFFUSERS_TO_LDM_MAPPING["openclip"]["transformer"]
+        for new_key, old_key in transformer_diffusers_to_ldm_map.items():
+            diffusers_key = (
+                diffusers_key.replace(old_key, new_key).replace(".in_proj_weight", "").replace(".in_proj_bias", "")
+            )
 
-                text_model_dict[new_key] = checkpoint[key]
+        if key.endswith(".in_proj_weight"):
+            weight_value = checkpoint[key]
+
+            text_model_dict[diffusers_key + ".q_proj.weight"] = weight_value[:text_proj_dim, :]
+            text_model_dict[diffusers_key + ".k_proj.weight"] = weight_value[text_proj_dim : text_proj_dim * 2, :]
+            text_model_dict[diffusers_key + ".v_proj.weight"] = weight_value[text_proj_dim * 2 :, :]
+
+        elif key.endswith(".in_proj_bias"):
+            weight_value = checkpoint[key]
+            text_model_dict[diffusers_key + ".q_proj.bias"] = weight_value[:text_proj_dim]
+            text_model_dict[diffusers_key + ".k_proj.bias"] = weight_value[text_proj_dim : text_proj_dim * 2]
+            text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :]
+
+        else:
+            text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
         for param_name, param in text_model_dict.items():
@@ -1174,7 +1185,8 @@ def create_text_encoders_and_tokenizers(
                 local_files_only=local_files_only,
                 **config_kwargs,
             )
-        except Exception:
+        except Exception as e:
+            raise e
             raise ValueError(
                 f"With local_files_only set to {local_files_only}, you must first locally save the text_encoder_2 and tokenizer_2 in the following path: {config_name} with `pad_token` set to '!'."
             )
@@ -1193,7 +1205,8 @@ def create_text_encoders_and_tokenizers(
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
             text_encoder = convert_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
 
-        except Exception:
+        except Exception as e:
+            raise e
             raise ValueError(
                 f"With local_files_only set to {local_files_only}, you must first locally save the text_encoder and tokenizer in the following path: 'openai/clip-vit-large-patch14'."
             )

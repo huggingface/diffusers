@@ -245,7 +245,7 @@ def _get_model_file(
     *,
     weights_name: str,
     subfolder: Optional[str] = None,
-    cache_dir: Optional[str]= None,
+    cache_dir: Optional[str] = None,
     force_download: bool = False,
     proxies: Optional[Dict] = None,
     resume_download: bool = False,
