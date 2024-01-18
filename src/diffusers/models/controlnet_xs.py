@@ -7,7 +7,6 @@ import torch.utils.checkpoint
 from torch import nn
 from torch.nn import functional as F
 
-from ..umer_debug_logger import udl
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, is_torch_version, logging
 from .autoencoders import AutoencoderKL
@@ -673,14 +672,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
-        sample, timesteps, encoder_hidden_states, controlnet_cond = udl.do_input_action(
-            x=sample,
-            t=timesteps,
-            xcross=encoder_hidden_states, 
-            hint=controlnet_cond,
-        )
-
-
         t_emb = self.base_time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
@@ -728,19 +719,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
             add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
             add_embeds = add_embeds.to(temb.dtype)
-
-            add_embeds = udl.do_input_action_for_do_input_action(add_embeds)
-
             aug_emb = self.base_add_embedding(add_embeds)
         else:
             raise NotImplementedError()
-
-        udl.stop_if(udl.INPUT_SAVE, 'Stopping because I only wanted to save input')
-
-        udl.log_if("sample", sample, udl.SUBBLOCK)
-        udl.log_if("timestep", timesteps, udl.SUBBLOCK)
-        udl.log_if("encoder_hidden_states", encoder_hidden_states, udl.SUBBLOCK)
-        udl.log_if("controlnet_cond", controlnet_cond, udl.SUBBLOCK)
 
         temb = temb + aug_emb if aug_emb is not None else temb
 
@@ -753,9 +734,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         h_ctrl = h_base = sample
         hs_base, hs_ctrl = [], []
 
-        udl.log_if("h_ctrl", h_ctrl, udl.SUBBLOCK)
-        udl.log_if("h_base", h_base, udl.SUBBLOCK)
-
         # Cross Control
         # 1 - conv in & down
         # The base -> ctrl connections are "delayed" by 1 subblock, because we want to "wait" to ensure the new information from the last  ctrl -> base connection is also considered
@@ -764,13 +742,10 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         #       base -> ctrl:           | subblock 1  |  ...  | subblock n | mid block
 
         h_base = self.base_conv_in(h_base)
-        udl.log_if("base", h_base, udl.SUBBLOCK)
         h_ctrl = self.ctrl_conv_in(h_ctrl)
-        udl.log_if("ctrl", h_ctrl, udl.SUBBLOCK)
         if guided_hint is not None:
             h_ctrl += guided_hint
         h_base = h_base + self.down_zero_convs_c2b[0](h_ctrl) * conditioning_scale  # add ctrl -> base
-        udl.log_if("add c2b", h_base, udl.SUBBLOCK)
 
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
@@ -787,49 +762,30 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 additional_params = []
 
             h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)  # concat base -> ctrl
-            udl.log_if("concat b2c", h_ctrl, udl.SUBBLOCK)
-
             h_base = b(h_base, *additional_params)  # apply base subblock
-            udl.log_if("base", h_base, udl.SUBBLOCK)
-
             h_ctrl = c(h_ctrl, *additional_params)  # apply ctrl subblock
-            udl.log_if("ctrl", h_ctrl, udl.SUBBLOCK)
-
             h_base = h_base + c2b(h_ctrl) * conditioning_scale  # add ctrl -> base
-            udl.log_if("add c2b", h_base, udl.SUBBLOCK)
 
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
         h_ctrl = torch.cat([h_ctrl, self.down_zero_convs_b2c[-1](h_base)], dim=1)  # concat base -> ctrl 
-        udl.log_if("concat b2c", h_ctrl, udl.SUBBLOCK)
 
         # 2 - mid
         h_base = self.base_mid_block(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # apply base subblock
-        udl.log_if("base", h_base, udl.SUBBLOCK)
-        
         h_ctrl = self.ctrl_mid_block(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # apply ctrl subblock
-        udl.log_if("ctrl", h_ctrl, udl.SUBBLOCK)
-
         h_base = h_base + self.mid_zero_convs_c2b(h_ctrl) * conditioning_scale  # add ctrl -> base
-        udl.log_if("add c2b", h_base, udl.SUBBLOCK)
 
         # 3 - up
         for b, c2b, skip_c, skip_b in zip(
             self.base_up_subblocks, self.up_zero_convs_c2b, reversed(hs_ctrl), reversed(hs_base)
         ):
             h_base = h_base + c2b(skip_c) * conditioning_scale  # add info from ctrl encoder
-            udl.log_if("add c2b", h_base, udl.SUBBLOCK)
-    
             h_base = torch.cat([h_base, skip_b], dim=1)  # concat info from base encoder+ctrl encoder
             h_base = b(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
-            udl.log_if("base", h_base, udl.SUBBLOCK)
 
         h_base = self.base_conv_norm_out(h_base)
         h_base = self.base_conv_act(h_base)
         h_base = self.base_conv_out(h_base)
-        udl.log_if("conv_out", h_base, udl.SUBBLOCK)
-
-        udl.stop_if(udl.SUBBLOCK, 'It is done, my dude. Let us look at these tensors.')
 
         if not return_dict:
             return h_base

@@ -17,7 +17,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..umer_debug_logger import udl
 from ..utils import USE_PEFT_BACKEND
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU
@@ -343,8 +342,6 @@ class BasicTransformerBlock(nn.Module):
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
-        udl.log_if("attn: attn1", attn_output, udl.SUBBLOCKM1)
-        udl.log_if("attn: add attn1", hidden_states, udl.SUBBLOCKM1)
 
         # 2.5 GLIGEN Control
         if gligen_kwargs is not None:
@@ -375,8 +372,6 @@ class BasicTransformerBlock(nn.Module):
                 **cross_attention_kwargs,
             )
             hidden_states = attn_output + hidden_states
-        udl.log_if("attn: attn2", attn_output, udl.SUBBLOCKM1)
-        udl.log_if("attn: add attn2", hidden_states, udl.SUBBLOCKM1)
 
         # 4. Feed-forward
         if self.use_ada_layer_norm_continuous:
@@ -407,9 +402,6 @@ class BasicTransformerBlock(nn.Module):
         hidden_states = ff_output + hidden_states
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
-
-        udl.log_if("attn: ff", ff_output, udl.SUBBLOCKM1)
-        udl.log_if("attn: add ff", hidden_states, udl.SUBBLOCKM1)
 
         return hidden_states
 
