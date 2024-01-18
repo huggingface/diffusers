@@ -18,13 +18,13 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import is_torch_version, logging
-from ..utils.torch_utils import apply_freeu
-from .activations import get_activation
-from .attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
-from .dual_transformer_2d import DualTransformer2DModel
-from .normalization import AdaGroupNorm
-from .resnet import (
+from ...utils import is_torch_version, logging
+from ...utils.torch_utils import apply_freeu
+from ..activations import get_activation
+from ..attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
+from ..dual_transformer_2d import DualTransformer2DModel
+from ..normalization import AdaGroupNorm
+from ..resnet import (
     Downsample2D,
     FirDownsample2D,
     FirUpsample2D,
@@ -34,7 +34,7 @@ from .resnet import (
     ResnetBlockCondNorm2D,
     Upsample2D,
 )
-from .transformer_2d import Transformer2DModel
+from ..transformer_2d import Transformer2DModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

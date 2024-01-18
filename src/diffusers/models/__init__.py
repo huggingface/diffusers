@@ -73,19 +73,22 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .t5_film_transformer import T5FilmDecoder
         from .transformer_2d import Transformer2DModel
         from .transformer_temporal import TransformerTemporalModel
-        from .unet_1d import UNet1DModel
-        from .unet_2d import UNet2DModel
-        from .unet_2d_condition import UNet2DConditionModel
-        from .unet_3d_condition import UNet3DConditionModel
-        from .unet_kandinsky3 import Kandinsky3UNet
-        from .unet_motion_model import MotionAdapter, UNetMotionModel
-        from .unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel
-        from .uvit_2d import UVit2DModel
+        from .unets import (
+            Kandinsky3UNet,
+            MotionAdapter,
+            UNet1DModel,
+            UNet2DConditionModel,
+            UNet2DModel,
+            UNet3DConditionModel,
+            UNetMotionModel,
+            UNetSpatioTemporalConditionModel,
+            UVit2DModel,
+        )
         from .vq_model import VQModel
 
     if is_flax_available():
         from .controlnet_flax import FlaxControlNetModel
-        from .unet_2d_condition_flax import FlaxUNet2DConditionModel
+        from .unets import FlaxUNet2DConditionModel
         from .vae_flax import FlaxAutoencoderKL
 
 else:

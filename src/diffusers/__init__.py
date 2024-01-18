@@ -709,7 +709,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .models.controlnet_flax import FlaxControlNetModel
         from .models.modeling_flax_utils import FlaxModelMixin
-        from .models.unet_2d_condition_flax import FlaxUNet2DConditionModel
+        from .models.unets.unet_2d_condition_flax import FlaxUNet2DConditionModel
         from .models.vae_flax import FlaxAutoencoderKL
         from .pipelines import FlaxDiffusionPipeline
         from .schedulers import (

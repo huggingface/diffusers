@@ -18,8 +18,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from .activations import get_activation
-from .resnet import Downsample1D, ResidualTemporalBlock1D, Upsample1D, rearrange_dims
+from ..activations import get_activation
+from ..resnet import Downsample1D, ResidualTemporalBlock1D, Upsample1D, rearrange_dims
 
 
 class DownResnetBlock1D(nn.Module):
