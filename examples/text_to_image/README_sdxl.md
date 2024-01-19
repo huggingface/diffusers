@@ -183,6 +183,66 @@ The above command will also run inference as fine-tuning progresses and log the 
 
 * SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
 
+
+### Using DeepSpeed
+Using DeepSpeed one can reduce the consumption of GPU memory, enabling the training of models on GPUs with smaller memory sizes. DeepSpeed is capable of offloading model parameters to the machine's memory, or it can distribute parameters, gradients, and optimizer states across multiple GPUs. This allows for the training of larger models under the same hardware configuration.
+
+First, you need to use the `accelerate config` command to choose to use DeepSpeed, or manually use the accelerate config file to set up DeepSpeed.
+
+Here is an example of a config file for using DeepSpeed. For more detailed explanations of the configuration, you can refer to this [link](https://huggingface.co/docs/accelerate/usage_guides/deepspeed).
+```yaml
+compute_environment: LOCAL_MACHINE
+debug: true
+deepspeed_config:
+  gradient_accumulation_steps: 1
+  gradient_clipping: 1.0
+  offload_optimizer_device: none
+  offload_param_device: none
+  zero3_init_flag: false
+  zero_stage: 2
+distributed_type: DEEPSPEED
+downcast_bf16: 'no'
+machine_rank: 0
+main_training_function: main
+mixed_precision: fp16
+num_machines: 1
+num_processes: 1
+rdzv_backend: static
+same_network: true
+tpu_env: []
+tpu_use_cluster: false
+tpu_use_sudo: false
+use_cpu: false
+```
+You need to save the mentioned configuration as an `accelerate_config.yaml` file. Then, you need to input the path of your `accelerate_config.yaml` file into the `ACCELERATE_CONFIG_FILE` parameter. This way you can use DeepSpeed to train your SDXL model in LoRA. Additionally, you can use DeepSpeed to train other SD models in this way.
+
+```shell
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
+export VAE_NAME="madebyollin/sdxl-vae-fp16-fix"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export ACCELERATE_CONFIG_FILE="your accelerate_config.yaml"
+
+accelerate launch  --config_file $ACCELERATE_CONFIG_FILE train_text_to_image_lora_sdxl.py \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --pretrained_vae_model_name_or_path=$VAE_NAME \
+  --dataset_name=$DATASET_NAME --caption_column="text" \
+  --resolution=1024  \
+  --train_batch_size=1 \
+  --num_train_epochs=2 \
+  --checkpointing_steps=2 \
+  --learning_rate=1e-04 \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --mixed_precision="fp16" \
+  --max_train_steps=20 \
+  --validation_epochs=20 \
+  --seed=1234 \
+  --output_dir="sd-pokemon-model-lora-sdxl" \
+  --validation_prompt="cute dragon creature" 
+  
+```
+
+
 ### Finetuning the text encoder and UNet
 
 The script also allows you to finetune the `text_encoder` along with the `unet`.
