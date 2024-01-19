@@ -2243,8 +2243,12 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
 
-        self.to_k_ip = nn.ModuleList([nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))])
-       self.to_v_ip = nn.ModuleList([nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))])
+        self.to_k_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
+        self.to_v_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
 
     def __call__(
         self,
