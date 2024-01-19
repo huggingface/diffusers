@@ -215,9 +215,8 @@ def infer_original_config_file(class_name, checkpoint):
 
 
 def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=None):
-
     def is_valid_url(url):
-        pattern = r'^(http|https):\/\/([\w.-]+)(\.[\w.-]+)+([\/\w\.-]*)*\/?$'
+        pattern = r"^(http|https):\/\/([\w.-]+)(\.[\w.-]+)+([\/\w\.-]*)*\/?$"
         return bool(re.match(pattern, url))
 
     if os.path.isfile(original_config_file):
