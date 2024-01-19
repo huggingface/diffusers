@@ -687,7 +687,7 @@ def convert_controlnet_checkpoint(
                 controlnet_state_dict[key.replace(controlnet_key, "")] = checkpoint.pop(key)
 
     new_checkpoint = {}
-    ldm_controlnet_keys = DIFFUSERS_TO_LDM_MAPPING["controlnet"]
+    ldm_controlnet_keys = DIFFUSERS_TO_LDM_MAPPING["controlnet"]["layers"]
     for diffusers_key, ldm_key in ldm_controlnet_keys.items():
         if ldm_key not in controlnet_state_dict:
             continue
