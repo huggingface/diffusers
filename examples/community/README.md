@@ -56,7 +56,9 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 | AnimateDiff ControlNet Pipeline                                                                                                    | Combines AnimateDiff with precise motion control using ControlNets                                                                                                                                                                                                                                                                                                                                                                                                                                    | [AnimateDiff ControlNet Pipeline](#animatediff-controlnet-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1SKboYeGjEQmQPWoFC0aLYpBlYdHXkvAu?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) and [Edoardo Botta](https://github.com/EdoardoBotta) |
 |   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
 |   Null-Text Inversion Pipeline  | Implement [Null-text Inversion for Editing Real Images using Guided Diffusion Models](https://arxiv.org/abs/2211.09794) as a pipeline.                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Null-Text Inversion](https://github.com/google/prompt-to-prompt/)      | - |              [Junsheng Luan](https://github.com/Junsheng121) |
-
+|   Rerender A Video Pipeline                                                                                                    | Implementation of [[SIGGRAPH Asia 2023] Rerender A Video: Zero-Shot Text-Guided Video-to-Video Translation](https://arxiv.org/abs/2306.07954)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Rerender A Video Pipeline](#Rerender_A_Video)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
+| StyleAligned Pipeline                                                                                                    | Implementation of [Style Aligned Image Generation via Shared Attention](https://arxiv.org/abs/2312.02133)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [StyleAligned Pipeline](#stylealigned-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/15X2E0jFPTajUIjS0FzX50OaHsCbP2lQ0/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
+|   IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -2988,7 +2990,7 @@ pipe = DiffusionPipeline.from_pretrained(
     custom_pipeline="pipeline_animatediff_controlnet",
 ).to(device="cuda", dtype=torch.float16)
 pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
-    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1, beta_schedule="linear",
 )
 pipe.enable_vae_slicing()
 
@@ -3004,7 +3006,7 @@ result = pipe(
     width=512,
     height=768,
     conditioning_frames=conditioning_frames,
-    num_inference_steps=12,
+    num_inference_steps=20,
 ).frames[0]
 
 from diffusers.utils import export_to_gif
@@ -3027,7 +3029,82 @@ export_to_gif(result.frames[0], "result.gif")
     <td align=center><img src="https://github.com/huggingface/diffusers/assets/72266394/eb7d2952-72e4-44fa-b664-077c79b4fc70" alt="gif-2"></td>
   </tr>
 </table>
+
+You can also use multiple controlnets at once!
+
+```python
+import torch
+from diffusers import AutoencoderKL, ControlNetModel, MotionAdapter
+from diffusers.pipelines import DiffusionPipeline
+from diffusers.schedulers import DPMSolverMultistepScheduler
+from PIL import Image
+
+motion_id = "guoyww/animatediff-motion-adapter-v1-5-2"
+adapter = MotionAdapter.from_pretrained(motion_id)
+controlnet1 = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_openpose", torch_dtype=torch.float16)
+controlnet2 = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse", torch_dtype=torch.float16)
+
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = DiffusionPipeline.from_pretrained(
+    model_id,
+    motion_adapter=adapter,
+    controlnet=[controlnet1, controlnet2],
+    vae=vae,
+    custom_pipeline="pipeline_animatediff_controlnet",
+).to(device="cuda", dtype=torch.float16)
+pipe.scheduler = DPMSolverMultistepScheduler.from_pretrained(
+    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1, beta_schedule="linear",
+)
+pipe.enable_vae_slicing()
+
+def load_video(file_path: str):
+    images = []
+
+    if file_path.startswith(('http://', 'https://')):
+        # If the file_path is a URL
+        response = requests.get(file_path)
+        response.raise_for_status()
+        content = BytesIO(response.content)
+        vid = imageio.get_reader(content)
+    else:
+        # Assuming it's a local file path
+        vid = imageio.get_reader(file_path)
+
+    for frame in vid:
+        pil_image = Image.fromarray(frame)
+        images.append(pil_image)
+
+    return images
+
+video = load_video("dance.gif")
+
+# You need to install it using `pip install controlnet_aux`
+from controlnet_aux.processor import Processor
+
+p1 = Processor("openpose_full")
+cn1 = [p1(frame) for frame in video]
+
+p2 = Processor("canny")
+cn2 = [p2(frame) for frame in video]
+
+prompt = "astronaut in space, dancing"
+negative_prompt = "bad quality, worst quality, jpeg artifacts, ugly"
+result = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    width=512,
+    height=768,
+    conditioning_frames=[cn1, cn2],
+    num_inference_steps=20,
+)
+
+from diffusers.utils import export_to_gif
+export_to_gif(result.frames[0], "result.gif")
+```
+
 ### DemoFusion
+
 This pipeline is the official implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973).
 The original repo can be found at [repo](https://github.com/PRIS-CV/DemoFusion).
 - `view_batch_size` (`int`, defaults to 16):
@@ -3185,5 +3262,208 @@ pipeline = NullTextPipeline.from_pretrained(model_path, scheduler = scheduler, t
 #Saves the inverted_latent to save time
 inverted_latent, uncond = pipeline.invert(input_image, invert_prompt, num_inner_steps=10, early_stop_epsilon= 1e-5, num_inference_steps = steps)
 pipeline(prompt, uncond, inverted_latent, guidance_scale=7.5, num_inference_steps=steps).images[0].save(input_image+".output.jpg")
+```
+### Rerender_A_Video
 
+This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender_A_Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `examples/community/rerender_a_video.py`:
+
+```py
+gmflow_dir = "/path/to/gmflow"
+```
+
+After that, you can run the pipeline with:
+
+```py
+from diffusers import ControlNetModel, AutoencoderKL, DDIMScheduler
+from diffusers.utils import export_to_video
+import numpy as np
+import torch
+
+import cv2
+from PIL import Image
+
+def video_to_frame(video_path: str, interval: int):
+    vidcap = cv2.VideoCapture(video_path)
+    success = True
+
+    count = 0
+    res = []
+    while success:
+        count += 1
+        success, image = vidcap.read()
+        if count % interval != 1:
+            continue
+        if image is not None:
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            res.append(image)
+
+    vidcap.release()
+    return res
+
+input_video_path = 'path/to/video'
+input_interval = 10
+frames = video_to_frame(
+    input_video_path, input_interval)
+
+control_frames = []
+# get canny image
+for frame in frames:
+    np_image = cv2.Canny(frame, 50, 100)
+    np_image = np_image[:, :, None]
+    np_image = np.concatenate([np_image, np_image, np_image], axis=2)
+    canny_image = Image.fromarray(np_image)
+    control_frames.append(canny_image)
+
+# You can use any ControlNet here
+controlnet = ControlNetModel.from_pretrained(
+    "lllyasviel/sd-controlnet-canny").to('cuda')
+
+# You can use any fintuned SD here
+pipe = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", controlnet=controlnet, custom_pipeline='rerender_a_video').to('cuda')
+
+# Optional: you can download vae-ft-mse-840000-ema-pruned.ckpt to enhance the results
+# pipe.vae = AutoencoderKL.from_single_file(
+#     "path/to/vae-ft-mse-840000-ema-pruned.ckpt").to('cuda')
+
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+
+generator = torch.manual_seed(0)
+frames = [Image.fromarray(frame) for frame in frames]
+output_frames = pipe(
+    "a beautiful woman in CG style, best quality, extremely detailed",
+
+    frames,
+    control_frames,
+    num_inference_steps=20,
+    strength=0.75,
+    controlnet_conditioning_scale=0.7,
+    generator=generator,
+    warp_start=0.0,
+    warp_end=0.1,
+    mask_start=0.5,
+    mask_end=0.8,
+    mask_strength=0.5,
+    negative_prompt='longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality'
+).frames
+
+export_to_video(
+    output_frames, "/path/to/video.mp4", 5)
+```
+
+### StyleAligned Pipeline
+
+This pipeline is the implementation of [Style Aligned Image Generation via Shared Attention](https://arxiv.org/abs/2312.02133).
+
+> Large-scale Text-to-Image (T2I) models have rapidly gained prominence across creative fields, generating visually compelling outputs from textual prompts. However, controlling these models to ensure consistent style remains challenging, with existing methods necessitating fine-tuning and manual intervention to disentangle content and style. In this paper, we introduce StyleAligned, a novel technique designed to establish style alignment among a series of generated images. By employing minimal `attention sharing' during the diffusion process, our method maintains style consistency across images within T2I models. This approach allows for the creation of style-consistent images using a reference style through a straightforward inversion operation. Our method's evaluation across diverse styles and text prompts demonstrates high-quality synthesis and fidelity, underscoring its efficacy in achieving consistent style across various inputs.
+
+```python
+from typing import List
+
+import torch
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from PIL import Image
+
+model_id = "a-r-r-o-w/dreamshaper-xl-turbo"
+pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, variant="fp16", custom_pipeline="pipeline_sdxl_style_aligned")
+pipe = pipe.to("cuda")
+
+# Enable memory saving techniques
+pipe.enable_vae_slicing()
+pipe.enable_vae_tiling()
+
+prompt = [
+  "a toy train. macro photo. 3d game asset",
+  "a toy airplane. macro photo. 3d game asset",
+  "a toy bicycle. macro photo. 3d game asset",
+  "a toy car. macro photo. 3d game asset",
+]
+negative_prompt = "low quality, worst quality, "
+
+# Enable StyleAligned
+pipe.enable_style_aligned(
+    share_group_norm=False,
+    share_layer_norm=False,
+    share_attention=True,
+    adain_queries=True,
+    adain_keys=True,
+    adain_values=False,
+    full_attention_share=False,
+    shared_score_scale=1.0,
+    shared_score_shift=0.0,
+    only_self_level=0.0,
+)
+
+# Run inference
+images = pipe(
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    guidance_scale=2,
+    height=1024,
+    width=1024,
+    num_inference_steps=10,
+    generator=torch.Generator().manual_seed(42),
+).images
+
+# Disable StyleAligned if you do not wish to use it anymore
+pipe.disable_style_aligned()
+```
+
+### IP Adapter Face ID
+IP Adapter FaceID is an experimental IP Adapter model that uses image embeddings generated by `insightface`, so no image encoder needs to be loaded.
+You need to install `insightface` and all its requirements to use this model.
+You must pass the image embedding tensor as `image_embeds` to the StableDiffusionPipeline instead of `ip_adapter_image`.
+You have to disable PEFT BACKEND in order to load weights.
+
+```py
+import diffusers
+diffusers.utils.USE_PEFT_BACKEND = False
+import torch
+from diffusers.utils import load_image
+import cv2
+import numpy as np
+from diffusers import DiffusionPipeline, AutoencoderKL, DDIMScheduler
+from insightface.app import FaceAnalysis
+
+
+noise_scheduler = DDIMScheduler(
+    num_train_timesteps=1000,
+    beta_start=0.00085,
+    beta_end=0.012,
+    beta_schedule="scaled_linear",
+    clip_sample=False,
+    set_alpha_to_one=False,
+    steps_offset=1,
+)
+vae = AutoencoderKL.from_pretrained("stabilityai/sd-vae-ft-mse").to(dtype=torch.float16)
+pipeline = DiffusionPipeline.from_pretrained(
+    "SG161222/Realistic_Vision_V4.0_noVAE",
+    torch_dtype=torch.float16,
+    scheduler=noise_scheduler,
+    vae=vae,
+    custom_pipeline="ip_adapter_face_id"
+)
+pipeline.load_ip_adapter_face_id("h94/IP-Adapter-FaceID", "ip-adapter-faceid_sd15.bin")
+pipeline.to("cuda")
+
+generator = torch.Generator(device="cpu").manual_seed(42)
+num_images=2
+
+image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ai_face2.png")
+
+app = FaceAnalysis(name="buffalo_l", providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+app.prepare(ctx_id=0, det_size=(640, 640))
+image = cv2.cvtColor(np.asarray(image), cv2.COLOR_BGR2RGB)
+faces = app.get(image)
+image = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
+images = pipeline(
+    prompt="A photo of a girl wearing a black dress, holding red roses in hand, upper body, behind is the Eiffel Tower",
+    image_embeds=image,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=20, num_images_per_prompt=num_images, width=512, height=704, 
+    generator=generator
+).images
+
+for i in range(num_images):
+    images[i].save(f"c{i}.png")
 ```

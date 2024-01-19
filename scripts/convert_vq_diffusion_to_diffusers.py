@@ -45,51 +45,45 @@ from diffusers import Transformer2DModel, VQDiffusionPipeline, VQDiffusionSchedu
 from diffusers.pipelines.vq_diffusion.pipeline_vq_diffusion import LearnedClassifierFreeSamplingEmbeddings
 
 
-try:
-    from omegaconf import OmegaConf
-except ImportError:
-    raise ImportError(
-        "OmegaConf is required to convert the VQ Diffusion checkpoints. Please install it with `pip install"
-        " OmegaConf`."
-    )
-
 # vqvae model
 
 PORTED_VQVAES = ["image_synthesis.modeling.codecs.image_codec.patch_vqgan.PatchVQGAN"]
 
 
 def vqvae_model_from_original_config(original_config):
-    assert original_config.target in PORTED_VQVAES, f"{original_config.target} has not yet been ported to diffusers."
+    assert (
+        original_config["target"] in PORTED_VQVAES
+    ), f"{original_config['target']} has not yet been ported to diffusers."
 
-    original_config = original_config.params
+    original_config = original_config["params"]
 
-    original_encoder_config = original_config.encoder_config.params
-    original_decoder_config = original_config.decoder_config.params
+    original_encoder_config = original_config["encoder_config"]["params"]
+    original_decoder_config = original_config["decoder_config"]["params"]
 
-    in_channels = original_encoder_config.in_channels
-    out_channels = original_decoder_config.out_ch
+    in_channels = original_encoder_config["in_channels"]
+    out_channels = original_decoder_config["out_ch"]
 
     down_block_types = get_down_block_types(original_encoder_config)
     up_block_types = get_up_block_types(original_decoder_config)
 
-    assert original_encoder_config.ch == original_decoder_config.ch
-    assert original_encoder_config.ch_mult == original_decoder_config.ch_mult
+    assert original_encoder_config["ch"] == original_decoder_config["ch"]
+    assert original_encoder_config["ch_mult"] == original_decoder_config["ch_mult"]
     block_out_channels = tuple(
-        [original_encoder_config.ch * a_ch_mult for a_ch_mult in original_encoder_config.ch_mult]
+        [original_encoder_config["ch"] * a_ch_mult for a_ch_mult in original_encoder_config["ch_mult"]]
     )
 
-    assert original_encoder_config.num_res_blocks == original_decoder_config.num_res_blocks
-    layers_per_block = original_encoder_config.num_res_blocks
+    assert original_encoder_config["num_res_blocks"] == original_decoder_config["num_res_blocks"]
+    layers_per_block = original_encoder_config["num_res_blocks"]
 
-    assert original_encoder_config.z_channels == original_decoder_config.z_channels
-    latent_channels = original_encoder_config.z_channels
+    assert original_encoder_config["z_channels"] == original_decoder_config["z_channels"]
+    latent_channels = original_encoder_config["z_channels"]
 
-    num_vq_embeddings = original_config.n_embed
+    num_vq_embeddings = original_config["n_embed"]
 
     # Hard coded value for ResnetBlock.GoupNorm(num_groups) in VQ-diffusion
     norm_num_groups = 32
 
-    e_dim = original_config.embed_dim
+    e_dim = original_config["embed_dim"]
 
     model = VQModel(
         in_channels=in_channels,
@@ -108,9 +102,9 @@ def vqvae_model_from_original_config(original_config):
 
 
 def get_down_block_types(original_encoder_config):
-    attn_resolutions = coerce_attn_resolutions(original_encoder_config.attn_resolutions)
-    num_resolutions = len(original_encoder_config.ch_mult)
-    resolution = coerce_resolution(original_encoder_config.resolution)
+    attn_resolutions = coerce_attn_resolutions(original_encoder_config["attn_resolutions"])
+    num_resolutions = len(original_encoder_config["ch_mult"])
+    resolution = coerce_resolution(original_encoder_config["resolution"])
 
     curr_res = resolution
     down_block_types = []
@@ -129,9 +123,9 @@ def get_down_block_types(original_encoder_config):
 
 
 def get_up_block_types(original_decoder_config):
-    attn_resolutions = coerce_attn_resolutions(original_decoder_config.attn_resolutions)
-    num_resolutions = len(original_decoder_config.ch_mult)
-    resolution = coerce_resolution(original_decoder_config.resolution)
+    attn_resolutions = coerce_attn_resolutions(original_decoder_config["attn_resolutions"])
+    num_resolutions = len(original_decoder_config["ch_mult"])
+    resolution = coerce_resolution(original_decoder_config["resolution"])
 
     curr_res = [r // 2 ** (num_resolutions - 1) for r in resolution]
     up_block_types = []
@@ -150,7 +144,7 @@ def get_up_block_types(original_decoder_config):
 
 
 def coerce_attn_resolutions(attn_resolutions):
-    attn_resolutions = OmegaConf.to_object(attn_resolutions)
+    attn_resolutions = list(attn_resolutions)
     attn_resolutions_ = []
     for ar in attn_resolutions:
         if isinstance(ar, (list, tuple)):
@@ -161,7 +155,6 @@ def coerce_attn_resolutions(attn_resolutions):
 
 
 def coerce_resolution(resolution):
-    resolution = OmegaConf.to_object(resolution)
     if isinstance(resolution, int):
         resolution = [resolution, resolution]  # H, W
     elif isinstance(resolution, (tuple, list)):
@@ -472,18 +465,18 @@ def transformer_model_from_original_config(
     original_diffusion_config, original_transformer_config, original_content_embedding_config
 ):
     assert (
-        original_diffusion_config.target in PORTED_DIFFUSIONS
-    ), f"{original_diffusion_config.target} has not yet been ported to diffusers."
+        original_diffusion_config["target"] in PORTED_DIFFUSIONS
+    ), f"{original_diffusion_config['target']} has not yet been ported to diffusers."
     assert (
-        original_transformer_config.target in PORTED_TRANSFORMERS
-    ), f"{original_transformer_config.target} has not yet been ported to diffusers."
+        original_transformer_config["target"] in PORTED_TRANSFORMERS
+    ), f"{original_transformer_config['target']} has not yet been ported to diffusers."
     assert (
-        original_content_embedding_config.target in PORTED_CONTENT_EMBEDDINGS
-    ), f"{original_content_embedding_config.target} has not yet been ported to diffusers."
+        original_content_embedding_config["target"] in PORTED_CONTENT_EMBEDDINGS
+    ), f"{original_content_embedding_config['target']} has not yet been ported to diffusers."
 
-    original_diffusion_config = original_diffusion_config.params
-    original_transformer_config = original_transformer_config.params
-    original_content_embedding_config = original_content_embedding_config.params
+    original_diffusion_config = original_diffusion_config["params"]
+    original_transformer_config = original_transformer_config["params"]
+    original_content_embedding_config = original_content_embedding_config["params"]
 
     inner_dim = original_transformer_config["n_embd"]
 
@@ -689,13 +682,11 @@ def transformer_feedforward_to_diffusers_checkpoint(checkpoint, *, diffusers_fee
 
 def read_config_file(filename):
     # The yaml file contains annotations that certain values should
-    # loaded as tuples. By default, OmegaConf will panic when reading
-    # these. Instead, we can manually read the yaml with the FullLoader and then
-    # construct the OmegaConf object.
+    # loaded as tuples.
     with open(filename) as f:
         original_config = yaml.load(f, FullLoader)
 
-    return OmegaConf.create(original_config)
+    return original_config
 
 
 # We take separate arguments for the vqvae because the ITHQ vqvae config file
@@ -792,9 +783,9 @@ if __name__ == "__main__":
 
     original_config = read_config_file(args.original_config_file).model
 
-    diffusion_config = original_config.params.diffusion_config
-    transformer_config = original_config.params.diffusion_config.params.transformer_config
-    content_embedding_config = original_config.params.diffusion_config.params.content_emb_config
+    diffusion_config = original_config["params"]["diffusion_config"]
+    transformer_config = original_config["params"]["diffusion_config"]["params"]["transformer_config"]
+    content_embedding_config = original_config["params"]["diffusion_config"]["params"]["content_emb_config"]
 
     pre_checkpoint = torch.load(args.checkpoint_path, map_location=checkpoint_map_location)
 
@@ -831,7 +822,7 @@ if __name__ == "__main__":
     # The learned embeddings are stored on the transformer in the original VQ-diffusion. We store them on a separate
     # model, so we pull them off the checkpoint before the checkpoint is deleted.
 
-    learnable_classifier_free_sampling_embeddings = diffusion_config.params.learnable_cf
+    learnable_classifier_free_sampling_embeddings = diffusion_config["params"].learnable_cf
 
     if learnable_classifier_free_sampling_embeddings:
         learned_classifier_free_sampling_embeddings_embeddings = checkpoint["transformer.empty_text_embed"]
