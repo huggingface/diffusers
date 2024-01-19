@@ -325,7 +325,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             residual = hidden_states
 
             hidden_states = self.norm(hidden_states)
-
             if not self.use_linear_projection:
                 hidden_states = (
                     self.proj_in(hidden_states, scale=lora_scale)
@@ -358,8 +357,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 timestep, embedded_timestep = self.adaln_single(
                     timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
                 )
-
-
 
         # 2. Blocks
         if self.caption_projection is not None:

@@ -85,7 +85,7 @@ class ControlNetConditioningEmbedding(nn.Module):
 class ControlNetXSAddon(ModelMixin, ConfigMixin):
     r"""
     A `ControlNetXSAddon` model. To use it, pass it into a `ControlNetXSModel` (together with a `UNet2DConditionModel` base model).
-    
+
     This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
     methods implemented for all models (such as downloading or saving).
 
@@ -105,11 +105,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             Whether the time embedding should be learned or fixed.
         channels_base (`Dict[str, List[Tuple[int]]]`): todo
             Base channel configurations for the model's layers.
-        addition_embed_type (defaults to `None`):
-            Configures an optional embedding which will be summed with the time embeddings. Choose from `None` or
-            "text_time".
-        addition_time_embed_dim (defaults to `None`):
-            Dimension for the timestep embeddings.
         attention_head_dim (`list[int]`, defaults to `[4]`):
              The dimension of the attention heads.
         block_out_channels (`list[int]`, defaults to `[4, 8, 16, 16]`):
@@ -118,8 +113,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             The dimension of the cross attention features.
         down_block_types (`list[str]`, defaults to `["CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"]`):
             The tuple of downsample blocks to use.
-        projection_class_embeddings_input_dim (defaults to `None`):
-            The dimension of the `class_labels` input when
         sample_size (`int`, defaults to 96):
             Height and width of input/output sample.
         transformer_layers_per_block (`Union[int, Tuple[int]]`, defaults to 1):
@@ -151,14 +144,14 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         # down_out
         for b in range(n_blocks):
             for i in range(n_subblocks_per_block):
-                if b==n_blocks-1 and i==2:
+                if b == n_blocks - 1 and i == 2:
                     # Last block has no downsampler, so there are only 2 subblocks instead of 3
                     continue
 
                 # The input channels are changed by the first resnet, which is in the first subblock.
-                if i==0:
+                if i == 0:
                     # Same input channels
-                    down_out.append(blocks_sizes[max(b-1,0)])
+                    down_out.append(blocks_sizes[max(b - 1, 0)])
                 else:
                     # Changed input channels
                     down_out.append(blocks_sizes[b])
@@ -170,9 +163,9 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         for b in range(len(rev_blocks_sizes)):
             for i in range(n_subblocks_per_block):
                 # The input channels are changed by the first resnet, which is in the first subblock.
-                if i==0:
+                if i == 0:
                     # Same input channels
-                    up_in.append(rev_blocks_sizes[max(b-1,0)])
+                    up_in.append(rev_blocks_sizes[max(b - 1, 0)])
                 else:
                     # Changed input channels
                     up_in.append(rev_blocks_sizes[b])
@@ -224,25 +217,28 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
 
         block_out_channels = [int(b * size_ratio) for b in base_model.config.block_out_channels]
         if num_attention_heads is None:
-            num_attention_heads = base_model.config.num_attention_heads
+            # The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
+            num_attention_heads = base_model.config.attention_head_dim
 
         norm_num_groups = math.gcd(*block_out_channels)
+
+        time_embedding_input_dim = base_model.time_embedding.linear_1.in_features
+        time_embedding_dim = base_model.time_embedding.linear_1.out_features
 
         return ControlNetXSAddon(
             learn_time_embedding=learn_time_embedding,
             channels_base=channels_base,
-            addition_embed_type=base_model.config.addition_embed_type,
-            addition_time_embed_dim=base_model.config.addition_time_embed_dim,
             attention_head_dim=num_attention_heads,
             block_out_channels=block_out_channels,
             cross_attention_dim=base_model.config.cross_attention_dim,
             down_block_types=base_model.config.down_block_types,
-            projection_class_embeddings_input_dim=base_model.config.projection_class_embeddings_input_dim,
             sample_size=base_model.config.sample_size,
             transformer_layers_per_block=base_model.config.transformer_layers_per_block,
             upcast_attention=base_model.config.upcast_attention,
             norm_num_groups=norm_num_groups,
             conditioning_embedding_out_channels=conditioning_embedding_out_channels,
+            time_embedding_input_dim=time_embedding_input_dim,
+            time_embedding_dim=time_embedding_dim,
         )
 
     @register_to_config
@@ -251,21 +247,18 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         conditioning_channels: int = 3,
         conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
-        time_embedding_input_dim: int = 320,
-        time_embedding_dim: int = 1280,
+        time_embedding_input_dim: Optional[int] = 320,
+        time_embedding_dim: Optional[int] = 1280,
         learn_time_embedding: bool = False,
         channels_base: Dict[str, List[Tuple[int]]] = {
             "down - out": [320, 320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280, 1280],
             "mid - out": 1280,
             "up - in": [1280, 1280, 1280, 1280, 1280, 1280, 1280, 640, 640, 640, 320, 320],
         },
-        addition_embed_type=None,
-        addition_time_embed_dim=None,
         attention_head_dim=[4],
         block_out_channels=[4, 8, 16, 16],
         cross_attention_dim=1024,
         down_block_types=["CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"],
-        projection_class_embeddings_input_dim=None,
         sample_size=96,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         upcast_attention=True,
@@ -292,18 +285,11 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
 
         # time
         if learn_time_embedding:
-            time_embedding_dim = time_embedding_dim or block_out_channels[0] * 4
             self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos=True, downscale_freq_shift=0)
             self.time_embedding = TimestepEmbedding(time_embedding_input_dim, time_embedding_dim)
         else:
             self.time_proj = None
             self.time_embedding = None
-
-        if addition_embed_type == "text_time":
-            self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos=True, downscale_freq_shift=0)
-            self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embedding_dim)
-        elif addition_embed_type is not None:
-            raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
 
         self.time_embed_act = None
 
@@ -328,7 +314,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             self.down_subblocks.append(
                 CrossAttnSubBlock2D(
                     has_crossattn=use_crossattention,
-                    in_channels=input_channel + channels_base['down - out'][subblock_counter],
+                    in_channels=input_channel + channels_base["down - out"][subblock_counter],
                     out_channels=output_channel,
                     temb_channels=time_embedding_dim,
                     transformer_layers_per_block=transformer_layers_per_block[i],
@@ -342,7 +328,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             self.down_subblocks.append(
                 CrossAttnSubBlock2D(
                     has_crossattn=use_crossattention,
-                    in_channels=output_channel + channels_base['down - out'][subblock_counter],
+                    in_channels=output_channel + channels_base["down - out"][subblock_counter],
                     out_channels=output_channel,
                     temb_channels=time_embedding_dim,
                     transformer_layers_per_block=transformer_layers_per_block[i],
@@ -356,14 +342,14 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             if i < len(down_block_types) - 1:
                 self.down_subblocks.append(
                     DownSubBlock2D(
-                        in_channels=output_channel + channels_base['down - out'][subblock_counter],
+                        in_channels=output_channel + channels_base["down - out"][subblock_counter],
                         out_channels=output_channel,
                     )
                 )
                 subblock_counter += 1
 
         # mid
-        mid_in_channels = block_out_channels[-1] + channels_base['down - out'][subblock_counter]
+        mid_in_channels = block_out_channels[-1] + channels_base["down - out"][subblock_counter]
         mid_out_channels = block_out_channels[-1]
 
         self.mid_block = UNetMidBlock2DCrossAttn(
@@ -398,7 +384,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         # todo - better comment
         # Information is passed from base to ctrl _before_ each subblock. We therefore use the 'in' channels.
         # As the information is concatted in ctrl, we don't need to change channel sizes. So channels in = channels out.
-        for c in channels_base["down - out"]: # change down - in to down - out
+        for c in channels_base["down - out"]:  # change down - in to down - out
             self.down_zero_convs_b2c.append(self._make_zero_conv(c, c))
 
         # 4.2 - Connections from ctrl encoder to base encoder
@@ -721,7 +707,9 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             add_embeds = add_embeds.to(temb.dtype)
             aug_emb = self.base_add_embedding(add_embeds)
         else:
-            raise NotImplementedError()
+            raise ValueError(
+                f"ControlNet-XS currently only supports StableDiffusion and StableDiffusion-XL, so addition_embed_type = {self.base_addition_embed_type} is currently not supported."
+            )
 
         temb = temb + aug_emb if aug_emb is not None else temb
 
@@ -768,7 +756,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
-        h_ctrl = torch.cat([h_ctrl, self.down_zero_convs_b2c[-1](h_base)], dim=1)  # concat base -> ctrl 
+        h_ctrl = torch.cat([h_ctrl, self.down_zero_convs_b2c[-1](h_base)], dim=1)  # concat base -> ctrl
 
         # 2 - mid
         h_base = self.base_mid_block(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # apply base subblock
@@ -959,8 +947,8 @@ class DownSubBlock2D(nn.Module):
 class CrossAttnUpSubBlock2D(nn.Module):
     def __init__(self):
         """
-            In the context of ControlNet-XS, `CrossAttnUpSubBlock2D` are only loaded from existing modules, and not created from scratch.
-            Therefore, `__init__` is left almost empty.
+        In the context of ControlNet-XS, `CrossAttnUpSubBlock2D` are only loaded from existing modules, and not created from scratch.
+        Therefore, `__init__` is left almost empty.
         """
         super().__init__()
         self.gradient_checkpointing = False

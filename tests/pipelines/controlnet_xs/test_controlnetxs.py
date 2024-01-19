@@ -111,6 +111,8 @@ class ControlNetXSPipelineFastTests(
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
+    test_attention_slicing = False
+
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -131,7 +133,7 @@ class ControlNetXSPipelineFastTests(
             size_ratio=0.5,
             num_attention_heads=2,
             learn_time_embedding=True,
-            conditioning_embedding_out_channels=(16,32),
+            conditioning_embedding_out_channels=(16, 32),
         )
         torch.manual_seed(0)
         scheduler = DDIMScheduler(

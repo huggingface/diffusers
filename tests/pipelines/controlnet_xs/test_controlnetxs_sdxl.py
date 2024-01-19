@@ -61,6 +61,8 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
+    test_attention_slicing = False
+
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
@@ -84,8 +86,8 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         controlnet_addon = ControlNetXSAddon.from_unet(
             base_model=unet,
             size_ratio=0.5,
-            learn_time_embedding=True,   
-            conditioning_embedding_out_channels=(16,32),
+            learn_time_embedding=True,
+            conditioning_embedding_out_channels=(16, 32),
         )
         torch.manual_seed(0)
         scheduler = EulerDiscreteScheduler(
@@ -308,7 +310,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
 @slow
 @require_torch_gpu
-class ControlNetSDXLPipelineXSSlowTests(unittest.TestCase):
+class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
