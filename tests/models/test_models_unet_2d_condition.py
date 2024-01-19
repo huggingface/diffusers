@@ -235,7 +235,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
     model_class = UNet2DConditionModel
     main_input_name = "sample"
     # We override the items here because the unet under consideration is small.
-    model_split_percents = [0.5, 0.3, 0.9]
+    model_split_percents = [0.5, 0.3, 0.4]
 
     @property
     def dummy_input(self):
