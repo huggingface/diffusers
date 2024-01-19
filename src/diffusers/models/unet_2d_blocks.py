@@ -20,10 +20,14 @@ def get_down_block():
     deprecation_message = "Importing `get_down_block` from `diffusers.models.unet_2d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_2d_blocks import get_down_block`, instead."
     deprecate("get_down_block", "0.29", deprecation_message)
 
+    from .unets.unet_2d_blocks import get_down_block  # noqa
+
 
 def get_up_block():
     deprecation_message = "Importing `get_up_block` from `diffusers.models.unet_2d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_2d_blocks import get_up_block`, instead."
     deprecate("get_up_block", "0.29", deprecation_message)
+
+    from .unets.unet_2d_blocks import get_up_block  # noqa
 
 
 class AutoencoderTinyBlock:
