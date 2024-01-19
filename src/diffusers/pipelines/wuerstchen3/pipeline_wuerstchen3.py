@@ -383,7 +383,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
                 torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
                 effnet=image_embeddings,
-                clip=prompt_embeds_pooled,
+                clip_text_pooled=prompt_embeds_pooled,
             )
 
             # 8. Check for classifier free guidance and apply it
