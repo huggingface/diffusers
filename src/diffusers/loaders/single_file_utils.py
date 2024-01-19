@@ -936,8 +936,8 @@ def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_
 
 
 def create_text_encoder_from_open_clip_checkpoint(
-    checkpoint,
     config_name,
+    checkpoint,
     prefix="cond_stage_model.model.",
     has_projection=False,
     local_files_only=False,
@@ -1102,13 +1102,12 @@ def create_text_encoders_and_tokenizers_from_ldm(
 
         try:
             text_encoder = create_text_encoder_from_open_clip_checkpoint(
-                checkpoint, config_name, local_files_only=local_files_only, **config_kwargs
+                config_name, checkpoint, local_files_only=local_files_only, **config_kwargs
             )
             tokenizer = CLIPTokenizer.from_pretrained(
                 config_name, subfolder="tokenizer", local_files_only=local_files_only
             )
-        except Exception as e:
-            raise e
+        except Exception:
             raise ValueError(
                 f"With local_files_only set to {local_files_only}, you must first locally save the text_encoder in the following path: '{config_name}'."
             )
@@ -1118,7 +1117,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
     elif model_type == "FrozenCLIPEmbedder":
         try:
             config_name = "openai/clip-vit-large-patch14"
-            text_encoder = create_text_encoder_from_ldm_clip_checkpoint(checkpoint, local_files_only=local_files_only)
+            text_encoder = create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=local_files_only)
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
 
         except Exception:
@@ -1136,8 +1135,8 @@ def create_text_encoders_and_tokenizers_from_ldm(
         try:
             tokenizer_2 = CLIPTokenizer.from_pretrained(config_name, pad_token="!", local_files_only=local_files_only)
             text_encoder_2 = create_text_encoder_from_open_clip_checkpoint(
-                checkpoint,
                 config_name,
+                checkpoint,
                 prefix=prefix,
                 has_projection=True,
                 local_files_only=local_files_only,
@@ -1173,8 +1172,8 @@ def create_text_encoders_and_tokenizers_from_ldm(
             prefix = "conditioner.embedders.1.model."
             tokenizer_2 = CLIPTokenizer.from_pretrained(config_name, pad_token="!", local_files_only=local_files_only)
             text_encoder_2 = create_text_encoder_from_open_clip_checkpoint(
-                checkpoint,
                 config_name,
+                checkpoint,
                 prefix=prefix,
                 has_projection=True,
                 local_files_only=local_files_only,
