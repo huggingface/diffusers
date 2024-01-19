@@ -18,10 +18,7 @@ from huggingface_hub.utils import validate_hf_hub_args
 from transformers import AutoFeatureExtractor
 
 from ..models.modeling_utils import load_state_dict
-from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ..utils import (
-    is_accelerate_available,
-    is_transformers_available,
     logging,
 )
 from ..utils.hub_utils import _get_model_file
@@ -35,12 +32,6 @@ from .single_file_utils import (
     infer_model_type,
 )
 
-
-if is_transformers_available():
-    pass
-
-if is_accelerate_available():
-    pass
 
 logger = logging.get_logger(__name__)
 
@@ -126,6 +117,8 @@ def build_sub_model_components(
 
     if component_name == "safety_checker":
         if load_safety_checker:
+            from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+
             safety_checker = StableDiffusionSafetyChecker.from_pretrained(
                 "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
             )
