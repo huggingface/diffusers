@@ -9,7 +9,6 @@ from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import (
     is_accelerate_available,
-    is_omegaconf_available,
     is_transformers_available,
     logging,
 )
