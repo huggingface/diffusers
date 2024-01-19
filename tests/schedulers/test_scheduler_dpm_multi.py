@@ -32,6 +32,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "euler_at_final": False,
             "lambda_min_clipped": -float("inf"),
             "variance_type": None,
+            "final_sigmas_type": "sigma_min",
         }
 
         config.update(**kwargs)
