@@ -11,32 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-import re
 
 from huggingface_hub.utils import validate_hf_hub_args
-from transformers import AutoFeatureExtractor
 
-from ..models.modeling_utils import load_state_dict
-from ..utils import (
-    logging,
-)
-from ..utils.hub_utils import _get_model_file
+from ..utils import logging
 from .single_file_utils import (
-    create_diffusers_controlnet_model_from_ldm,
     create_diffusers_unet_model_from_ldm,
     create_diffusers_vae_model_from_ldm,
     create_scheduler_from_ldm,
     create_text_encoders_and_tokenizers_from_ldm,
-    fetch_original_config,
+    fetch_ldm_config_and_checkpoint,
     infer_model_type,
 )
 
 
 logger = logging.get_logger(__name__)
 
-
-VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
 # Pipelines that support the SDXL Refiner checkpoint
 REFINER_PIPELINES = [
     "StableDiffusionXLImg2ImgPipeline",
@@ -45,29 +35,12 @@ REFINER_PIPELINES = [
 ]
 
 
-def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
-    pattern = r"([^/]+)/([^/]+)/(?:blob/main/)?(.+)"
-    weights_name = None
-    repo_id = (None,)
-    for prefix in VALID_URL_PREFIXES:
-        pretrained_model_name_or_path = pretrained_model_name_or_path.replace(prefix, "")
-    match = re.match(pattern, pretrained_model_name_or_path)
-    if not match:
-        return repo_id, weights_name
-
-    repo_id = f"{match.group(1)}/{match.group(2)}"
-    weights_name = match.group(3)
-
-    return repo_id, weights_name
-
-
 def build_sub_model_components(
     pipeline_components,
     pipeline_class_name,
     component_name,
     original_config,
     checkpoint,
-    checkpoint_path_or_dict,
     local_files_only=False,
     load_safety_checker=False,
     **kwargs,
@@ -117,6 +90,8 @@ def build_sub_model_components(
 
     if component_name == "safety_checker":
         if load_safety_checker:
+            from transformers import AutoFeatureExtractor
+
             from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
             safety_checker = StableDiffusionSafetyChecker.from_pretrained(
@@ -233,50 +208,20 @@ class FromSingleFileMixin:
         use_safetensors = kwargs.pop("use_safetensors", True)
 
         class_name = cls.__name__
-        file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
-        from_safetensors = file_extension == "safetensors"
 
-        if from_safetensors and use_safetensors is False:
-            raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
-
-        if os.path.isfile(pretrained_model_link_or_path):
-            checkpoint = load_state_dict(pretrained_model_link_or_path)
-        else:
-            repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
-            checkpoint_path = _get_model_file(
-                repo_id,
-                weights_name=weights_name,
-                force_download=force_download,
-                cache_dir=cache_dir,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-            )
-            checkpoint = load_state_dict(checkpoint_path)
-
-        # some checkpoints contain the model state dict under a "state_dict" key
-        while "state_dict" in checkpoint:
-            checkpoint = checkpoint["state_dict"]
-
-        original_config = fetch_original_config(class_name, checkpoint, original_config_file)
-
-        if class_name == "AutoencoderKL":
-            image_size = kwargs.pop("image_size", None)
-            component = create_diffusers_vae_model_from_ldm(
-                class_name, original_config, checkpoint, image_size=image_size
-            )
-            return component["vae"]
-
-        if class_name == "ControlNetModel":
-            upcast_attention = kwargs.pop("upcast_attention", False)
-            image_size = kwargs.pop("image_size", None)
-
-            component = create_diffusers_controlnet_model_from_ldm(
-                class_name, original_config, checkpoint, upcast_attention=upcast_attention, image_size=image_size
-            )
-            return component["controlnet"]
+        original_config, checkpoint = fetch_ldm_config_and_checkpoint(
+            pretrained_model_link_or_path=pretrained_model_link_or_path,
+            class_name=class_name,
+            original_config_file=original_config_file,
+            resume_download=resume_download,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            revision=revision,
+            local_files_only=local_files_only,
+            use_safetensors=use_safetensors,
+            cache_dir=cache_dir,
+        )
 
         from ..pipelines.pipeline_utils import _get_pipeline_class
 

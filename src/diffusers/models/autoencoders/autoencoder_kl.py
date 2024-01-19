@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromSingleFileMixin
+from ...loaders import FromOriginalVAEMixin
 from ...utils.accelerate_utils import apply_forward_hook
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -32,7 +32,7 @@ from ..modeling_utils import ModelMixin
 from .vae import Decoder, DecoderOutput, DiagonalGaussianDistribution, Encoder
 
 
-class AutoencoderKL(ModelMixin, ConfigMixin, FromSingleFileMixin):
+class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
 

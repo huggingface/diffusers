@@ -15,20 +15,15 @@
 """ Conversion script for the Stable Diffusion checkpoints."""
 
 import os
+import re
 from contextlib import nullcontext
 from io import BytesIO
 from urllib.parse import urlparse
 
 import requests
 import yaml
-from transformers import (
-    CLIPTextConfig,
-    CLIPTextModel,
-    CLIPTextModelWithProjection,
-    CLIPTokenizer,
-)
 
-from ..models import UNet2DConditionModel
+from ..models.modeling_utils import load_state_dict
 from ..schedulers import (
     DDIMScheduler,
     DDPMScheduler,
@@ -39,8 +34,17 @@ from ..schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ..utils import is_accelerate_available, logging
+from ..utils import is_accelerate_available, is_transformers_available, logging
+from ..utils.hub_utils import _get_model_file
 
+
+if is_transformers_available():
+    from transformers import (
+        CLIPTextConfig,
+        CLIPTextModel,
+        CLIPTextModelWithProjection,
+        CLIPTokenizer,
+    )
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -185,6 +189,71 @@ SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
     "cond_stage_model.model.transformer.resblocks.23.mlp.c_proj.weight",
     "cond_stage_model.model.text_projection",
 ]
+
+
+VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
+
+
+def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
+    pattern = r"([^/]+)/([^/]+)/(?:blob/main/)?(.+)"
+    weights_name = None
+    repo_id = (None,)
+    for prefix in VALID_URL_PREFIXES:
+        pretrained_model_name_or_path = pretrained_model_name_or_path.replace(prefix, "")
+    match = re.match(pattern, pretrained_model_name_or_path)
+    if not match:
+        return repo_id, weights_name
+
+    repo_id = f"{match.group(1)}/{match.group(2)}"
+    weights_name = match.group(3)
+
+    return repo_id, weights_name
+
+
+def fetch_ldm_config_and_checkpoint(
+    pretrained_model_link_or_path,
+    class_name,
+    original_config_file=None,
+    resume_download=False,
+    force_download=False,
+    proxies=None,
+    token=None,
+    cache_dir=None,
+    local_files_only=None,
+    revision=None,
+    use_safetensors=True,
+):
+    file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
+    from_safetensors = file_extension == "safetensors"
+
+    if from_safetensors and use_safetensors is False:
+        raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
+
+    if os.path.isfile(pretrained_model_link_or_path):
+        checkpoint = load_state_dict(pretrained_model_link_or_path)
+
+    else:
+        repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
+        checkpoint_path = _get_model_file(
+            repo_id,
+            weights_name=weights_name,
+            force_download=force_download,
+            cache_dir=cache_dir,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+        )
+        checkpoint = load_state_dict(checkpoint_path)
+
+    # some checkpoints contain the model state dict under a "state_dict" key
+    while "state_dict" in checkpoint:
+        checkpoint = checkpoint["state_dict"]
+
+    original_config = fetch_original_config(class_name, checkpoint, original_config_file)
+
+    return original_config, checkpoint
 
 
 def infer_original_config_file(class_name, checkpoint):
@@ -1029,6 +1098,8 @@ def create_diffusers_unet_model_from_ldm(
     extract_ema=False,
     image_size=None,
 ):
+    from ..models import UNet2DConditionModel
+
     if num_in_channels is None:
         if pipeline_class_name in [
             "StableDiffusionInpaintPipeline",
