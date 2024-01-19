@@ -523,7 +523,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         order: int = 4,
         spatial_stop_frequency: float = 0.25,
         temporal_stop_frequency: float = 0.25,
-        generator: torch.Generator = None,
     ):
         """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
 
@@ -547,9 +546,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             temporal_stop_frequency (`float`, *optional*, defaults to `0.25`):
                 Normalized stop frequency for temporal dimensions. Must be between 0 to 1. Referred to as `d_t` in
                 the original implementation.
-            generator (`torch.Generator`, *optional*, defaults to `0.25`):
-                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
-                FreeInit generation deterministic.
         """
         self._free_init_num_iters = num_iters
         self._free_init_use_fast_sampling = use_fast_sampling
@@ -557,7 +553,6 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         self._free_init_order = order
         self._free_init_spatial_stop_frequency = spatial_stop_frequency
         self._free_init_temporal_stop_frequency = temporal_stop_frequency
-        self._free_init_generator = generator
 
     def disable_free_init(self):
         """Disables the FreeInit mechanism if enabled."""
@@ -730,6 +725,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         num_videos_per_prompt,
         denoise_args,
         device,
+        generator,
     ):
         """Denoising loop for AnimateDiff using FreeInit noise reinitialization technique."""
 
@@ -737,21 +733,12 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
         prompt_embeds = denoise_args.get("prompt_embeds")
         timesteps = denoise_args.get("timesteps")
         num_inference_steps = denoise_args.get("num_inference_steps")
+        H = height // self.vae_scale_factor
+        W = width // self.vae_scale_factor
+        bs = batch_size * num_videos_per_prompt
 
-        latent_shape = (
-            batch_size * num_videos_per_prompt,
-            num_channels_latents,
-            num_frames,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-        )
-        free_init_filter_shape = (
-            1,
-            num_channels_latents,
-            num_frames,
-            height // self.vae_scale_factor,
-            width // self.vae_scale_factor,
-        )
+        latent_shape = (bs, num_channels_latents, num_frames, H, W)
+        free_init_filter_shape = (1, num_channels_latents, num_frames, H, W)
         free_init_freq_filter = _get_freeinit_freq_filter(
             shape=free_init_filter_shape,
             device=device,
@@ -777,7 +764,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
                     ).to(dtype=torch.float32)
                     z_rand = randn_tensor(
                         shape=latent_shape,
-                        generator=self._free_init_generator,
+                        generator=generator,
                         device=device,
                         dtype=torch.float32,
                     )
@@ -1068,6 +1055,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
                 num_videos_per_prompt=num_videos_per_prompt,
                 denoise_args=denoise_args,
                 device=device,
+                generator=generator,
             )
         else:
             latents = self._denoise_loop(**denoise_args)
