@@ -219,14 +219,18 @@ def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=
         pattern = r"^(http|https):\/\/([\w.-]+)(\.[\w.-]+)+([\/\w\.-]*)*\/?$"
         return bool(re.match(pattern, url))
 
-    if os.path.isfile(original_config_file):
+    if original_config_file is None:
+        original_config_file = infer_original_config_file(pipeline_class_name, checkpoint)
+
+    elif os.path.isfile(original_config_file):
         with open(original_config_file, "r") as fp:
             original_config_file = fp.read()
 
     elif is_valid_url(original_config_file):
         original_config_file = BytesIO(requests.get(original_config_file).content)
+
     else:
-        original_config_file = infer_original_config_file(pipeline_class_name, checkpoint)
+        raise ValueError("Invalid `original_config_file` provided. Please set it to a valid file path or URL.")
 
     original_config = yaml.safe_load(original_config_file)
 
