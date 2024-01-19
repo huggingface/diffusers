@@ -749,7 +749,6 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -822,24 +821,6 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
                 If `return_dict` is `True`, [`AnimateDiffPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
-
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider using"
-                " `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using"
-                " `callback_on_step_end`",
-            )
 
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
