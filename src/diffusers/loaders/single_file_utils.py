@@ -14,6 +14,8 @@
 # limitations under the License.
 """ Conversion script for the Stable Diffusion checkpoints."""
 
+import os
+import re
 from contextlib import nullcontext
 from io import BytesIO
 
@@ -188,7 +190,7 @@ SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
 ]
 
 
-def fetch_original_config_file_from_url(class_name, checkpoint):
+def infer_original_config_file(class_name, checkpoint):
     if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
         config_url = CONFIG_URLS["v2"]
 
@@ -212,30 +214,20 @@ def fetch_original_config_file_from_url(class_name, checkpoint):
     return original_config_file
 
 
-def fetch_original_config_file_from_file(config_files: list):
-    if "v2" in config_files:
-        return config_files["v2"]
+def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=None):
 
-    elif "xl" in config_files:
-        return config_files["xl"]
+    def is_valid_url(url):
+        pattern = r'^(http|https):\/\/([\w.-]+)(\.[\w.-]+)+([\/\w\.-]*)*\/?$'
+        return bool(re.match(pattern, url))
 
-    elif "xl_refiner" in config_files:
-        return config_files["xl_refiner"]
+    if os.path.isfile(original_config_file):
+        with open(original_config_file, "r") as fp:
+            original_config_file = fp.read()
 
+    elif is_valid_url(original_config_file):
+        original_config_file = BytesIO(requests.get(original_config_file).content)
     else:
-        return config_files["v1"]
-
-
-def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=None, config_files=None):
-    if original_config_file:
-        original_config = yaml.safe_load(original_config_file)
-        return original_config
-
-    elif config_files:
-        original_config_file = fetch_original_config_file_from_file(config_files)
-
-    else:
-        original_config_file = fetch_original_config_file_from_url(pipeline_class_name, checkpoint)
+        original_config_file = infer_original_config_file(pipeline_class_name, checkpoint)
 
     original_config = yaml.safe_load(original_config_file)
 

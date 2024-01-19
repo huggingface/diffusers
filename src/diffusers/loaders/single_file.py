@@ -231,7 +231,6 @@ class FromSingleFileMixin:
         ```
         """
         original_config_file = kwargs.pop("original_config_file", None)
-        config_files = kwargs.pop("config_files", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -270,7 +269,7 @@ class FromSingleFileMixin:
         while "state_dict" in checkpoint:
             checkpoint = checkpoint["state_dict"]
 
-        original_config = fetch_original_config(class_name, checkpoint, original_config_file, config_files)
+        original_config = fetch_original_config(class_name, checkpoint, original_config_file)
 
         if class_name == "AutoencoderKL":
             image_size = kwargs.pop("image_size", None)
