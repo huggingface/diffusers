@@ -984,18 +984,20 @@ def create_text_encoder_from_open_clip_checkpoint(
     )
     text_model_dict["text_model.embeddings.position_ids"] = text_model.text_model.embeddings.get_buffer("position_ids")
 
+    keys = list(checkpoint.keys())
+    keys_to_ignore = SD_2_TEXT_ENCODER_KEYS_TO_IGNORE
+
     openclip_diffusers_ldm_map = DIFFUSERS_TO_LDM_MAPPING["openclip"]["layers"]
     for diffusers_key, ldm_key in openclip_diffusers_ldm_map.items():
         ldm_key = prefix + ldm_key
         if ldm_key not in checkpoint:
             continue
+        if ldm_key in keys_to_ignore:
+            continue
         if ldm_key.endswith("text_projection"):
             text_model_dict[diffusers_key] = checkpoint[ldm_key].T.contiguous()
         else:
             text_model_dict[diffusers_key] = checkpoint[ldm_key]
-
-    keys = list(checkpoint.keys())
-    keys_to_ignore = SD_2_TEXT_ENCODER_KEYS_TO_IGNORE
 
     for key in keys:
         if key in keys_to_ignore:
@@ -1028,11 +1030,9 @@ def create_text_encoder_from_open_clip_checkpoint(
             text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
-        try:
-            for param_name, param in text_model_dict.items():
-                set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
-        except Exception as e:
-            raise e
+        for param_name, param in text_model_dict.items():
+            set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
+
     else:
         if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
             text_model_dict.pop("text_model.embeddings.position_ids", None)
@@ -1125,7 +1125,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
 
         try:
             text_encoder = create_text_encoder_from_open_clip_checkpoint(
-                checkpoint, config_name, has_projection=True, local_files_only=local_files_only, **config_kwargs
+                checkpoint, config_name, local_files_only=local_files_only, **config_kwargs
             )
             tokenizer = CLIPTokenizer.from_pretrained(
                 config_name, subfolder="tokenizer", local_files_only=local_files_only
