@@ -15,9 +15,9 @@
 """ Conversion script for the Stable Diffusion checkpoints."""
 
 import os
-import re
 from contextlib import nullcontext
 from io import BytesIO
+from urllib.parse import urlparse
 
 import requests
 import yaml
@@ -213,8 +213,11 @@ def infer_original_config_file(class_name, checkpoint):
 
 def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=None):
     def is_valid_url(url):
-        pattern = r"^(http|https):\/\/([\w.-]+)(\.[\w.-]+)+([\/\w\.-]*)*\/?$"
-        return bool(re.match(pattern, url))
+        result = urlparse(url)
+        if result.scheme and result.netloc:
+            return True
+
+        return False
 
     if original_config_file is None:
         original_config_file = infer_original_config_file(pipeline_class_name, checkpoint)
