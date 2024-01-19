@@ -18,7 +18,6 @@ from huggingface_hub.utils import validate_hf_hub_args
 from transformers import AutoFeatureExtractor
 
 from ..models.modeling_utils import load_state_dict
-from ..pipelines.pipeline_utils import _get_pipeline_class
 from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from ..utils import (
     is_accelerate_available,
@@ -285,6 +284,8 @@ class FromSingleFileMixin:
                 class_name, original_config, checkpoint, upcast_attention=upcast_attention, image_size=image_size
             )
             return component["controlnet"]
+
+        from ..pipelines.pipeline_utils import _get_pipeline_class
 
         pipeline_class = _get_pipeline_class(
             cls,
