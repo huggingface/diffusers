@@ -507,7 +507,7 @@ def create_controlnet_diffusers_config(original_config, image_size: int):
     return controlnet_config
 
 
-def create_vae_diffusers_config(original_config, image_size: int):
+def create_vae_diffusers_config(original_config, image_size, scaling_factor=0.18125):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
@@ -526,6 +526,7 @@ def create_vae_diffusers_config(original_config, image_size: int):
         "block_out_channels": tuple(block_out_channels),
         "latent_channels": vae_params["z_channels"],
         "layers_per_block": vae_params["num_res_blocks"],
+        "scaling_factor": scaling_factor,
     }
 
     return config
@@ -1134,17 +1135,14 @@ def create_diffusers_unet_model_from_ldm(
 
 
 def create_diffusers_vae_model_from_ldm(
-    pipeline_class_name,
-    original_config,
-    checkpoint,
-    image_size=None,
+    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=0.18125
 ):
     # import here to avoid circular imports
     from ..models import AutoencoderKL
 
     image_size = set_image_size(pipeline_class_name, original_config, checkpoint, image_size=image_size)
 
-    vae_config = create_vae_diffusers_config(original_config, image_size=image_size)
+    vae_config = create_vae_diffusers_config(original_config, image_size=image_size, scaling_factor=scaling_factor)
     diffusers_format_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
 

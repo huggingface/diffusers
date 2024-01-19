@@ -22,14 +22,14 @@ from .single_file_utils import (
 
 class FromOriginalVAEMixin:
     """
-    Load pretrained ControlNet weights saved in the `.ckpt` or `.safetensors` format into a [`ControlNetModel`].
+    Load pretrained AutoencoderKL weights saved in the `.ckpt` or `.safetensors` format into a [`ControlNetModel`].
     """
 
     @classmethod
     @validate_hf_hub_args
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`ControlNetModel`] from pretrained ControlNet weights saved in the original `.ckpt` or
+        Instantiate a [`AutoencoderKL`] from pretrained ControlNet weights saved in the original `.ckpt` or
         `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
@@ -62,32 +62,35 @@ class FromOriginalVAEMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            image_size (`int`, *optional*, defaults to 512):
+                The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
+                Diffusion v2 base model. Use 768 for Stable Diffusion v2.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
                 weights. If set to `False`, safetensors weights are not loaded.
-            image_size (`int`, *optional*, defaults to 512):
-                The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
-                Diffusion v2 base model. Use 768 for Stable Diffusion v2.
-            upcast_attention (`bool`, *optional*, defaults to `None`):
-                Whether the attention computation should always be upcasted.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
                 method. See example below for more information.
 
+        <Tip warning={true}>
+
+            Make sure to pass both `image_size` and `scaling_factor` to `from_single_file()` if you're loading
+            a VAE from SDXL or a Stable Diffusion v2 model or higher.
+
+        </Tip>
+
         Examples:
 
         ```py
-        from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
+        from diffusers import AutoencoderKL
 
-        url = "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"  # can also be a local path
-        model = ControlNetModel.from_single_file(url)
-
-        url = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned.safetensors"  # can also be a local path
-        pipe = StableDiffusionControlNetPipeline.from_single_file(url, controlnet=controlnet)
+        url = "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"  # can also be local file
+        model = AutoencoderKL.from_single_file(url)
         ```
         """
+
         original_config_file = kwargs.pop("original_config_file", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)

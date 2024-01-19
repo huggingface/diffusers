@@ -20,7 +20,7 @@ from .single_file_utils import (
 )
 
 
-class FromOriginalControlnetMixin:
+class FromOriginalControlNetMixin:
     """
     Load pretrained ControlNet weights saved in the `.ckpt` or `.safetensors` format into a [`ControlNetModel`].
     """
