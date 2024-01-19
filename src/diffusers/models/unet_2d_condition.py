@@ -1075,9 +1075,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             image_embeds = self.encoder_hid_proj(image_embeds)
-            if cross_attention_kwargs is None:
-                cross_attention_kwargs = {}
-            cross_attention_kwargs["ip_hidden_states"] = image_embeds
+            encoder_hidden_states = (encoder_hidden_states, image_embeds)
 
         # 2. pre-process
         sample = self.conv_in(sample)

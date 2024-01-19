@@ -720,7 +720,6 @@ class AttnProcessor:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
-        **kwargs,
     ) -> torch.Tensor:
         residual = hidden_states
 
@@ -1197,7 +1196,6 @@ class AttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
-        **kwargs,
     ) -> torch.FloatTensor:
         residual = hidden_states
         if attn.spatial_norm is not None:
@@ -2125,11 +2123,14 @@ class IPAdapterAttnProcessor(nn.Module):
         self,
         attn,
         hidden_states,
-        encoder_hidden_states=None,
+        encoder_hidden_states,
         attention_mask=None,
         temb=None,
+        **kwargs,
     ):
         residual = hidden_states
+
+        encoder_hidden_states, ip_hidden_states = encoder_hidden_states
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2140,9 +2141,8 @@ class IPAdapterAttnProcessor(nn.Module):
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        batch_size, sequence_length, _ = encoder_hidden_states.shape
+
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         if attn.group_norm is not None:
@@ -2150,17 +2150,8 @@ class IPAdapterAttnProcessor(nn.Module):
 
         query = attn.to_q(hidden_states)
 
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
+        if attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        # split hidden states
-        end_pos = encoder_hidden_states.shape[1] - sum(self.num_tokens)
-        encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, :end_pos, :],
-            encoder_hidden_states[:, end_pos:, :],
-        )
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
@@ -2174,11 +2165,9 @@ class IPAdapterAttnProcessor(nn.Module):
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # for ip-adapter
-        for num_token, scale, to_k_ip, to_v_ip in zip(self.num_tokens, self.scale, self.to_k_ip, self.to_v_ip):
-            current_ip_hidden_states, ip_hidden_states = (
-                ip_hidden_states[:, :num_token, :],
-                ip_hidden_states[:, num_token:, :],
-            )
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
+        ):
             ip_key = to_k_ip(current_ip_hidden_states)
             ip_value = to_v_ip(current_ip_hidden_states)
 
@@ -2254,12 +2243,14 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         self,
         attn,
         hidden_states,
-        encoder_hidden_states=None,
+        encoder_hidden_states,
         attention_mask=None,
         temb=None,
-        ip_hidden_states=None,
+        **kwargs,
     ):
         residual = hidden_states
+
+        encoder_hidden_states, ip_hidden_states = encoder_hidden_states
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2270,9 +2261,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        batch_size, sequence_length, _ = (
-            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
-        )
+        batch_size, sequence_length, _ = encoder_hidden_states.shape
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -2285,9 +2274,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
         query = attn.to_q(hidden_states)
 
-        if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
-        elif attn.norm_cross:
+        if attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         # split hidden states
