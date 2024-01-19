@@ -301,7 +301,7 @@ def set_image_size(pipeline_class_name, original_config, checkpoint, image_size=
     model_type = infer_model_type(original_config, model_type)
 
     if pipeline_class_name == "StableDiffusionUpscalePipeline":
-        image_size = original_config["model"]["params"].unet_config.params.image_size
+        image_size = original_config["model"]["params"]["unet_config"]["params"]["image_size"]
         return image_size
 
     elif model_type in ["SDXL", "SDXL-Refiner"]:
@@ -771,11 +771,6 @@ def create_diffusers_controlnet_model_from_ldm(
     # import here to avoid circular imports
     from ..models import ControlNetModel
 
-    # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
-    # "state_dict" key https://huggingface.co/thibaud/controlnet-canny-sd21
-    while "state_dict" in checkpoint:
-        checkpoint = checkpoint["state_dict"]
-
     image_size = set_image_size(pipeline_class_name, original_config, checkpoint, image_size=image_size)
 
     diffusers_config = create_controlnet_diffusers_config(original_config, image_size=image_size)
@@ -1033,8 +1028,11 @@ def create_text_encoder_from_open_clip_checkpoint(
             text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
-        for param_name, param in text_model_dict.items():
-            set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
+        try:
+            for param_name, param in text_model_dict.items():
+                set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
+        except Exception as e:
+            raise e
     else:
         if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
             text_model_dict.pop("text_model.embeddings.position_ids", None)
@@ -1127,12 +1125,13 @@ def create_text_encoders_and_tokenizers_from_ldm(
 
         try:
             text_encoder = create_text_encoder_from_open_clip_checkpoint(
-                checkpoint, config_name, local_files_only=local_files_only, **config_kwargs
+                checkpoint, config_name, has_projection=True, local_files_only=local_files_only, **config_kwargs
             )
             tokenizer = CLIPTokenizer.from_pretrained(
                 config_name, subfolder="tokenizer", local_files_only=local_files_only
             )
-        except Exception:
+        except Exception as e:
+            raise e
             raise ValueError(
                 f"With local_files_only set to {local_files_only}, you must first locally save the text_encoder in the following path: '{config_name}'."
             )
