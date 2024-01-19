@@ -20,9 +20,7 @@ from contextlib import nullcontext
 from io import BytesIO
 
 import requests
-import torch
 import yaml
-from safetensors.torch import load_file as safe_load
 from transformers import (
     CLIPTextConfig,
     CLIPTextModel,
@@ -1117,7 +1115,9 @@ def create_text_encoders_and_tokenizers_from_ldm(
     elif model_type == "FrozenCLIPEmbedder":
         try:
             config_name = "openai/clip-vit-large-patch14"
-            text_encoder = create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=local_files_only)
+            text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
+                config_name, checkpoint, local_files_only=local_files_only
+            )
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
 
         except Exception:
@@ -1159,7 +1159,9 @@ def create_text_encoders_and_tokenizers_from_ldm(
         try:
             config_name = "openai/clip-vit-large-patch14"
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
-            text_encoder = create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=local_files_only)
+            text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
+                config_name, checkpoint, local_files_only=local_files_only
+            )
 
         except Exception:
             raise ValueError(
