@@ -8,3 +8,14 @@
   - local: installation
     title: インストール
   title: はじめに
+- sections:
+  - sections:
+    - local: using-diffusers/loading_overview
+      title: 概要
+    - local: using-diffusers/loading
+      title: パイプライン、モデル、スケジューラの読み込み
+    - local: using-diffusers/schedulers
+      title: 異なるスケジューラの読み込みと比較
+    - local: using-diffusers/custom_pipeline_overview
+      title: コミュニティのパイプラインとコンポーネントの読み込み
+    title: 読み込みと Hub
