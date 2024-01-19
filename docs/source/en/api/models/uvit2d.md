@@ -24,16 +24,16 @@ The abstract from the paper is:
 
 ## UVit2DConvEmbed
 
-[[autodoc]] UVit2DConvEmbed
+[[autodoc]] models.uvit_2d.UVit2DConvEmbed
 
 ## UVitBlock
 
-[[autodoc]] UVitBlock
+[[autodoc]] models.uvit_2d.UVitBlock
 
 ## ConvNextBlock
 
-[[autodoc]] ConvNextBlock
+[[autodoc]] models.uvit_2d.ConvNextBlock
 
 ## ConvMlmLayer
 
-[[autodoc]] ConvMlmLayer
+[[autodoc]] models.uvit_2d.ConvMlmLayer
