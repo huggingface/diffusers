@@ -133,8 +133,7 @@ class StableDiffusionXLControlNetXSPipeline(
             watermarker is used.
     """
 
-    # leave controlnet out on purpose because it iterates with unet
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae->controlnet"
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->controlnet->vae"
     _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
 
     def __init__(
@@ -172,7 +171,7 @@ class StableDiffusionXLControlNetXSPipeline(
             controlnet_addon=controlnet_addon,
             scheduler=scheduler,
         )
-        self.controlnet = ControlNetXSModel(base_model=unet, ctrl_model=controlnet_addon)
+        self.controlnet = ControlNetXSModel(base_model=unet, ctrl_model=controlnet_addon)        
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(

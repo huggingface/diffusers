@@ -255,14 +255,14 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             "mid - out": 1280,
             "up - in": [1280, 1280, 1280, 1280, 1280, 1280, 1280, 640, 640, 640, 320, 320],
         },
-        attention_head_dim=[4],
-        block_out_channels=[4, 8, 16, 16],
-        cross_attention_dim=1024,
-        down_block_types=["CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"],
-        sample_size=96,
+        attention_head_dim: Union[int, Tuple[int]] = 4,
+        block_out_channels : Tuple[int] = (4, 8, 16, 16),
+        cross_attention_dim: int =1024,
+        down_block_types: Tuple[str]=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"),
+        sample_size: Optional[int]=96, # todo understand
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
-        upcast_attention=True,
-        norm_num_groups=32,
+        upcast_attention: bool = True,
+        norm_num_groups: int = 32, # todo: rename max_norm_num_groups?
     ):
         super().__init__()
 
@@ -278,7 +278,22 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         # Check inputs
         if conditioning_channel_order not in ["rgb", "bgr"]:
             raise ValueError(f"unknown `conditioning_channel_order`: {conditioning_channel_order}")
-        # todo - other checks
+
+        if len(block_out_channels) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
+            )
+
+        if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
+            )
+
+        # todo: attention_head_dim can be int, not list(int)
+        if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
+            )
 
         # input
         self.conv_in = nn.Conv2d(4, block_out_channels[0], kernel_size=3, padding=1)
