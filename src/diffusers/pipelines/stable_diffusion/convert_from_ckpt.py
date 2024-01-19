@@ -1317,6 +1317,9 @@ def download_from_original_stable_diffusion_ckpt(
 
         if config_url is not None:
             original_config_file = BytesIO(requests.get(config_url).content)
+        else:
+            with open(original_config_file, "r") as f:
+                original_config_file = f.read()
 
     original_config = yaml.safe_load(original_config_file)
 
