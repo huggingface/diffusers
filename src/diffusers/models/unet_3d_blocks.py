@@ -2231,6 +2231,7 @@ class UpBlockSpatioTemporal(nn.Module):
         hidden_states: torch.FloatTensor,
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
+        upsample_size: Optional[int] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
         for resnet in self.resnets:
@@ -2272,7 +2273,7 @@ class UpBlockSpatioTemporal(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
@@ -2341,6 +2342,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        upsample_size: Optional[int] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -2390,6 +2392,6 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
