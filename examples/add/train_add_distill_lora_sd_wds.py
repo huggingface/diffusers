@@ -210,6 +210,7 @@ class SDText2ImageDataset:
                 # Prepare a separate image for image conditioning since the preprocessing pipelines are different.
                 cond_image = TF.resize(cond_image, cond_resolution, interpolation=cond_interpolation_mode)
                 cond_image = TF.center_crop(cond_image, output_size=(cond_resolution, cond_resolution))
+                cond_image = TF.to_tensor(cond_image)
                 cond_image = TF.normalize(cond_image, IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
                 example["cond_image"] = cond_image
 
@@ -1327,8 +1328,9 @@ def encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompt
     return prompt_embeds, pooled_output
 
 
-def encode_images(image_batch, image_encoder):
+def encode_images(image_batch, image_encoder, device, weight_dtype):
     # image_encoder pre-processing is done in SDText2ImageDataset
+    image_batch = image_batch.to(device=device, dtype=weight_dtype)
     image_embeds = image_encoder(image_batch)
     return image_embeds
 
@@ -1698,8 +1700,8 @@ def main(args):
         )
         return {"prompt_embeds": prompt_embeds, "text_embedding": text_embedding}
 
-    def compute_image_embeddings(image_batch, image_encoder):
-        image_embeds = encode_images(image_batch, image_encoder)
+    def compute_image_embeddings(image_batch, image_encoder, device, weight_dtype):
+        image_embeds = encode_images(image_batch, image_encoder, device, weight_dtype)
         return {"image_embeds": image_embeds}
 
     dataset = SDText2ImageDataset(
@@ -1731,6 +1733,8 @@ def main(args):
         compute_image_embeddings_fn = functools.partial(
             compute_image_embeddings,
             image_encoder=image_encoder,
+            device=accelerator.device,
+            weight_dtype=weight_dtype,
         )
 
     # 15. Create learning rate scheduler for generator and discriminator
