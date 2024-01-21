@@ -76,6 +76,11 @@ class WuerstchenV3Prior(WuerstchenV3Unet):
 
         # Model Blocks
         x = self.embedding(x)
+        # print(x.dtype)
+        # print(r.dtype)
+        # print(clip.dtype)
+        # print(next(self.parameters()).dtype)
+        # print("========================================")
         level_outputs = self._down_encode(x, r_embed, clip)
         x = self._up_decode(level_outputs, r_embed, clip)
         return self.clf(x)

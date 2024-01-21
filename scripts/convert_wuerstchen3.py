@@ -22,6 +22,8 @@ from diffusers.pipelines.wuerstchen3 import WuerstchenV3DiffNeXt, WuerstchenV3Pr
 
 model_path = "../Wuerstchen/"
 device = "cpu"
+prior_checkpoint_path = "/fsx/home-warp/models/wurstchen/C_bigmama_v1_merged/v1.pt"
+decoder_checkpoint_path = "/weka/home-warp/models/wurstchen/B_exp3_finetuning_v2/base.pt"
 
 # paella_vqmodel = VQModel()
 # state_dict = torch.load(os.path.join(model_path, "vqgan_f4_v1_500k.pt"), map_location=device)["state_dict"]
@@ -45,7 +47,7 @@ feature_extractor = CLIPImageProcessor()
 image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
 
 # Prior
-orig_state_dict = torch.load(os.path.join(model_path, "v1.pt"), map_location=device)
+orig_state_dict = torch.load(prior_checkpoint_path, map_location=device)
 state_dict = {}
 for key in orig_state_dict.keys():
     if key.endswith("in_proj_weight"):
@@ -85,7 +87,7 @@ prior_pipeline = WuerstchenV3PriorPipeline(
 
 prior_pipeline.save_pretrained("wuerstchenV3-prior")
 
-orig_state_dict = torch.load(os.path.join(model_path, "base_120k.pt"), map_location=device)
+orig_state_dict = torch.load(decoder_checkpoint_path, map_location=device)
 state_dict = {}
 for key in orig_state_dict.keys():
     if key.endswith("in_proj_weight"):

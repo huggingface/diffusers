@@ -39,7 +39,7 @@ class UpDownBlock2d(nn.Module):
 
     def forward(self, x):
         for block in self.blocks:
-            x = block(x.float())
+            x = block(x)
         return x
 
 
@@ -225,7 +225,7 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
         emb = torch.cat([emb.sin(), emb.cos()], dim=1)
         if self.c_r % 2 == 1:  # zero pad
             emb = nn.functional.pad(emb, (0, 1), mode="constant")
-        return emb
+        return emb.to(dtype=r.dtype)
 
     def gen_c_embeddings(self, clip_txt_pooled, clip_txt=None, clip_img=None):
         if len(clip_txt_pooled.shape) == 2:
