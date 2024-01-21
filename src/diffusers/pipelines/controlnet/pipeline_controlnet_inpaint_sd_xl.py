@@ -636,11 +636,6 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 )
 
         if padding_mask_crop is not None:
-            if self.unet.config.in_channels != 4 and self.unet.config.in_channels != 9:
-                raise ValueError(
-                    f"The UNet should have 4 or 9 input channels for inpainting mask crop, but has"
-                    f" {self.unet.config.in_channels} input channels."
-                )
             if not isinstance(image, PIL.Image.Image):
                 raise ValueError(
                     f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
@@ -1406,10 +1401,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
         # 5. Preprocess mask and image - resizes image and mask w.r.t height and width
         # 5.1 Prepare init image
         if padding_mask_crop is not None:
-            if width is None or height is None:
-                default_height, default_width = self.image_processor.get_default_height_width(image)
-                width = width or default_width
-                height = height or default_height
+            height, width = self.image_processor.get_default_height_width(image, height, width)
             crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
             resize_mode = "fill"
         else:
