@@ -63,6 +63,8 @@ from diffusers.utils import (
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
+if is_wandb_available():
+    import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.26.0.dev0")
@@ -134,6 +136,67 @@ Weights for this model are available in Safetensors format.
 """
     with open(os.path.join(repo_folder, "README.md"), "w") as f:
         f.write(yaml + model_card)
+
+
+def log_validation(
+    pipeline,
+    args,
+    accelerator,
+    pipeline_args,
+    epoch,
+    is_final_validation=False,
+):
+    logger.info(
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
+    )
+
+    # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
+    scheduler_args = {}
+
+    if "variance_type" in pipeline.scheduler.config:
+        variance_type = pipeline.scheduler.config.variance_type
+
+        if variance_type in ["learned", "learned_range"]:
+            variance_type = "fixed_small"
+
+        scheduler_args["variance_type"] = variance_type
+
+    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+        pipeline.scheduler.config, **scheduler_args
+    )
+
+    pipeline = pipeline.to(accelerator.device)
+    pipeline.set_progress_bar_config(disable=True)
+
+    # run inference
+    generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
+
+    with torch.cuda.amp.autocast():
+        images = [
+            pipeline(**pipeline_args, generator=generator).images[0]
+            for _ in range(args.num_validation_images)
+        ]
+
+    for tracker in accelerator.trackers:
+        phase_name = "test" if is_final_validation else "validation"
+        if tracker.name == "tensorboard":
+            np_images = np.stack([np.asarray(img) for img in images])
+            tracker.writer.add_images(phase_name, np_images, epoch, dataformats="NHWC")
+        if tracker.name == "wandb":
+            tracker.log(
+                {
+                    phase_name: [
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
+                        for i, image in enumerate(images)
+                    ]
+                }
+            )
+
+    del pipeline
+    torch.cuda.empty_cache()
+
+    return images
 
 
 def import_model_class_from_model_name_or_path(
@@ -817,7 +880,6 @@ def main(args):
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -1573,10 +1635,6 @@ def main(args):
 
         if accelerator.is_main_process:
             if args.validation_prompt is not None and epoch % args.validation_epochs == 0:
-                logger.info(
-                    f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
-                    f" {args.validation_prompt}."
-                )
                 # create pipeline
                 if not args.train_text_encoder:
                     text_encoder_one = text_encoder_cls_one.from_pretrained(
@@ -1602,50 +1660,16 @@ def main(args):
                     torch_dtype=weight_dtype,
                 )
 
-                # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
-                scheduler_args = {}
-
-                if "variance_type" in pipeline.scheduler.config:
-                    variance_type = pipeline.scheduler.config.variance_type
-
-                    if variance_type in ["learned", "learned_range"]:
-                        variance_type = "fixed_small"
-
-                    scheduler_args["variance_type"] = variance_type
-
-                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-                    pipeline.scheduler.config, **scheduler_args
-                )
-
-                pipeline = pipeline.to(accelerator.device)
-                pipeline.set_progress_bar_config(disable=True)
-
-                # run inference
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.cuda.amp.autocast():
-                    images = [
-                        pipeline(**pipeline_args, generator=generator).images[0]
-                        for _ in range(args.num_validation_images)
-                    ]
+                images = log_validation(
+                    pipeline,
+                    args,
+                    accelerator,
+                    pipeline_args,
+                    epoch,
+                )
 
-                for tracker in accelerator.trackers:
-                    if tracker.name == "tensorboard":
-                        np_images = np.stack([np.asarray(img) for img in images])
-                        tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
-                    if tracker.name == "wandb":
-                        tracker.log(
-                            {
-                                "validation": [
-                                    wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                    for i, image in enumerate(images)
-                                ]
-                            }
-                        )
-
-                del pipeline
-                torch.cuda.empty_cache()
 
     # Save the lora layers
     accelerator.wait_for_everyone()
@@ -1691,45 +1715,21 @@ def main(args):
             torch_dtype=weight_dtype,
         )
 
-        # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
-        scheduler_args = {}
-
-        if "variance_type" in pipeline.scheduler.config:
-            variance_type = pipeline.scheduler.config.variance_type
-
-            if variance_type in ["learned", "learned_range"]:
-                variance_type = "fixed_small"
-
-            scheduler_args["variance_type"] = variance_type
-
-        pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
-
         # load attention processors
         pipeline.load_lora_weights(args.output_dir)
 
         # run inference
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
-            pipeline = pipeline.to(accelerator.device)
-            generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            images = [
-                pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
-                for _ in range(args.num_validation_images)
-            ]
-
-            for tracker in accelerator.trackers:
-                if tracker.name == "tensorboard":
-                    np_images = np.stack([np.asarray(img) for img in images])
-                    tracker.writer.add_images("test", np_images, epoch, dataformats="NHWC")
-                if tracker.name == "wandb":
-                    tracker.log(
-                        {
-                            "test": [
-                                wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                                for i, image in enumerate(images)
-                            ]
-                        }
-                    )
+            pipeline_args = {"prompt": args.validation_prompt, "num_inference_steps": 25}
+            images = log_validation(
+                pipeline,
+                args,
+                accelerator,
+                pipeline_args,
+                epoch,
+                final_validation=True,
+            )
 
         if args.push_to_hub:
             save_model_card(
