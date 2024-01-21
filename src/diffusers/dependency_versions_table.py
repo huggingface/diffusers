@@ -22,7 +22,6 @@ deps = {
     "note_seq": "note_seq",
     "librosa": "librosa",
     "numpy": "numpy",
-    "omegaconf": "omegaconf",
     "parameterized": "parameterized",
     "peft": "peft>=0.6.0",
     "protobuf": "protobuf>=3.20.3,<4",

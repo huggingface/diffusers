@@ -265,7 +265,10 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
 else:
-    _import_structure["stable_diffusion_k_diffusion"] = ["StableDiffusionKDiffusionPipeline"]
+    _import_structure["stable_diffusion_k_diffusion"] = [
+        "StableDiffusionKDiffusionPipeline",
+        "StableDiffusionXLKDiffusionPipeline",
+    ]
 try:
     if not is_flax_available():
         raise OptionalDependencyNotAvailable()
@@ -491,7 +494,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         except OptionalDependencyNotAvailable:
             from ..utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
         else:
-            from .stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
+            from .stable_diffusion_k_diffusion import (
+                StableDiffusionKDiffusionPipeline,
+                StableDiffusionXLKDiffusionPipeline,
+            )
 
         try:
             if not is_flax_available():
