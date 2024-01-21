@@ -696,11 +696,9 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step, name="stude
     pipeline = StableDiffusionXLPipeline.from_pretrained(
         args.pretrained_teacher_model,
         vae=vae,
-        unet=unet,
         revision=args.revision,
         torch_dtype=weight_dtype,
-    )
-    pipeline = pipeline.to(accelerator.device)
+    ).to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
     lora_state_dict = get_module_kohya_state_dict(unet, "lora_unet", weight_dtype)
