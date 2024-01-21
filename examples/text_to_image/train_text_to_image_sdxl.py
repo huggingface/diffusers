@@ -457,6 +457,8 @@ def parse_args(input_args=None):
     )
     parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
 
+    parser.add_argument("--freeze_unet_top", action="store_true", help="Freeze only the 3rd first and last layers of the down and up sample layers in the unet")
+
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -671,6 +673,38 @@ def main(args):
     text_encoder_two.requires_grad_(False)
     # Set unet as trainable.
     unet.train()
+
+    if args.freeze_unet_top:
+        def freeze_params(params):
+            for param in params:
+                param.requires_grad = False
+
+        # Set first and last blocks as frozen
+        freeze_params(unet.down_blocks[:2].parameters())
+        freeze_params(unet.down_blocks[2].attentions.parameters())
+        freeze_params(unet.down_blocks[2].resnets[0].parameters())
+        freeze_params(unet.up_blocks[-3:].parameters())
+        # freeze_params(unet.up_blocks[-3].attentions[1:].parameters())
+        # freeze_params(unet.up_blocks[-3].attentions[0].proj_out.parameters())
+        # freeze_params(unet.up_blocks[-3].attentions[0].transformer_blocks[:].parameters())
+        # freeze_params(unet.up_blocks[-3].resnets[1:].parameters())
+        # freeze_params(unet.up_blocks[-3].upsamplers.parameters())
+        # freeze_params(unet.mid_block.parameters())
+        freeze_params(unet.time_embedding.parameters())
+        freeze_params(unet.add_embedding.parameters())
+        freeze_params(unet.conv_norm_out.parameters())
+        freeze_params(unet.conv_in.parameters())
+        freeze_params(unet.conv_out.parameters())
+
+    # # # Loop through the model's named parameters
+    # for name, param in unet.named_parameters():
+    #     if param.requires_grad:
+    #         # Count the number of parameters and print their location
+    #         print(f"{name}: {param.numel()} trainable parameters")
+
+    # Alternatively, to get the total count of trainable parameters
+    total_params = sum(p.numel() for p in unet.parameters() if p.requires_grad)
+    print(f"*****Total trainable parameters*****: {total_params}")
 
     # For mixed precision training we cast all non-trainable weigths to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
