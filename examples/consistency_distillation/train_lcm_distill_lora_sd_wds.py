@@ -1069,7 +1069,7 @@ def main(args):
                 # save weights in peft format to be able to load them back
                 unet_.save_pretrained(output_dir)
 
-                if args.use_target_unet:
+                if args.use_target_model:
                     target_lora_state_dict = get_peft_model_state_dict(target_unet, adapter_name="default")
                     StableDiffusionPipeline.save_lora_weights(
                         os.path.join(output_dir, "unet_target_lora"), target_lora_state_dict
@@ -1086,7 +1086,7 @@ def main(args):
             unet_ = accelerator.unwrap_model(unet)
             unet_.load_adapter(os.path.join(input_dir, "unet_lora"), "default", is_trainable=True)
 
-            if args.use_target_unet:
+            if args.use_target_model:
                 target_unet.load_adapter(os.path.join(input_dir, "unet_target_lora"), "default", is_trainable=True)
 
             for _ in range(len(models)):
@@ -1393,7 +1393,7 @@ def main(args):
                         x_prev = solver.ddim_step(pred_x0, pred_noise, index)
 
                 # 9. Get target LCM prediction on x_prev, w, c, t_n (timesteps)
-                if args.using_target_model:
+                if args.use_target_model:
                     target_model = target_unet
                 else:
                     target_model = unet
@@ -1434,7 +1434,8 @@ def main(args):
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
                 # 12. If using a target model, update its parameters via EMA.
-                update_ema(target_unet.parameters(), unet.parameters(), args.ema_decay)
+                if args.use_target_model:
+                    update_ema(target_unet.parameters(), unet.parameters(), args.ema_decay)
                 progress_bar.update(1)
                 global_step += 1
 
