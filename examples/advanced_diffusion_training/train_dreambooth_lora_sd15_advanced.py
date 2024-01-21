@@ -998,7 +998,6 @@ def tokenize_prompt(tokenizer, prompt, add_special_tokens=False):
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
 def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
-
     for i, text_encoder in enumerate(text_encoders):
         if tokenizers is not None:
             tokenizer = tokenizers[i]
@@ -1163,9 +1162,7 @@ def main(args):
                 args.class_prompt = args.class_prompt.replace(token_abs, "".join(token_replacement))
 
         # initialize the new tokens for textual inversion
-        embedding_handler = TokenEmbeddingsHandler(
-            [text_encoder_one], [tokenizer_one]
-        )
+        embedding_handler = TokenEmbeddingsHandler([text_encoder_one], [tokenizer_one])
         inserting_toks = []
         for new_tok in token_abstraction_dict.values():
             inserting_toks.extend(new_tok)
@@ -1452,23 +1449,18 @@ def main(args):
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
     if freeze_text_encoder and not train_dataset.custom_instance_prompts:
-        instance_prompt_hidden_states = compute_text_embeddings(
-            args.instance_prompt, text_encoders, tokenizers
-        )
+        instance_prompt_hidden_states = compute_text_embeddings(args.instance_prompt, text_encoders, tokenizers)
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
         if freeze_text_encoder:
-            class_prompt_hidden_states = compute_text_embeddings(
-                args.class_prompt, text_encoders, tokenizers
-            )
+            class_prompt_hidden_states = compute_text_embeddings(args.class_prompt, text_encoders, tokenizers)
 
     # Clear the memory here
     if freeze_text_encoder and not train_dataset.custom_instance_prompts:
         del tokenizers, text_encoders
         gc.collect()
         torch.cuda.empty_cache()
-
 
     # if --train_text_encoder_ti we need add_special_tokens to be True for textual inversion
     add_special_tokens = True if args.train_text_encoder_ti else False
@@ -1623,9 +1615,7 @@ def main(args):
                 # encode batch prompts when custom prompts are provided for each image -
                 if train_dataset.custom_instance_prompts:
                     if freeze_text_encoder:
-                        prompt_embeds = compute_text_embeddings(
-                            prompts, text_encoders, tokenizers
-                        )
+                        prompt_embeds = compute_text_embeddings(prompts, text_encoders, tokenizers)
 
                     else:
                         tokens_one = tokenize_prompt(tokenizer_one, prompts, add_special_tokens)
@@ -1663,11 +1653,7 @@ def main(args):
                 # Predict the noise residual
                 if freeze_text_encoder:
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
-                    model_pred = unet(
-                        noisy_model_input,
-                        timesteps,
-                        prompt_embeds_input
-                    ).sample
+                    model_pred = unet(noisy_model_input, timesteps, prompt_embeds_input).sample
                 else:
                     prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one],
@@ -1676,9 +1662,7 @@ def main(args):
                         text_input_ids_list=[tokens_one],
                     )
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
-                    model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds_input
-                    ).sample
+                    model_pred = unet(noisy_model_input, timesteps, prompt_embeds_input).sample
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
