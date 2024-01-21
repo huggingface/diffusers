@@ -65,6 +65,9 @@ from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
 
+if is_wandb_available():
+    import wandb
+
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.26.0.dev0")
 
@@ -134,9 +137,7 @@ def log_validation(
 
         scheduler_args["variance_type"] = variance_type
 
-    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-        pipeline.scheduler.config, **scheduler_args
-    )
+    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -164,12 +165,10 @@ def log_validation(
             np_images = np.stack([np.asarray(img) for img in images])
             tracker.writer.add_images(phase_name, np_images, epoch, dataformats="NHWC")
         if tracker.name == "wandb":
-            import wandb
             tracker.log(
                 {
                     phase_name: [
-                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}")
-                        for i, image in enumerate(images)
+                        wandb.Image(image, caption=f"{i}: {args.validation_prompt}") for i, image in enumerate(images)
                     ]
                 }
             )
@@ -745,7 +744,6 @@ def main(args):
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
 
     # Currently, it's not possible to do gradient accumulation when training two models with accelerate.accumulate
     # This will be enabled soon in accelerate. For now, we don't allow gradient accumulation when training two models.
