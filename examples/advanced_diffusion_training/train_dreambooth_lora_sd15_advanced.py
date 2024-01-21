@@ -74,6 +74,7 @@ check_min_version("0.25.0.dev0")
 
 logger = get_logger(__name__)
 
+
 def save_model_card(
     repo_id: str,
     images=None,
@@ -151,7 +152,7 @@ license: openrail++
 """
 
     model_card = f"""
-# SDXL LoRA DreamBooth - {repo_id}
+# SD1.5 LoRA DreamBooth - {repo_id}
 
 <Gallery />
 
@@ -189,7 +190,7 @@ For more details, including weighting, merging and fusing LoRAs, check the [docu
 ## Details
 All [Files & versions](/{repo_id}/tree/main).
 
-The weights were trained using [🧨 diffusers Advanced Dreambooth Training Script](https://github.com/huggingface/diffusers/blob/main/examples/advanced_diffusion_training/train_dreambooth_lora_sdxl_advanced.py).
+The weights were trained using [🧨 diffusers Advanced Dreambooth Training Script](https://github.com/huggingface/diffusers/blob/main/examples/advanced_diffusion_training/train_dreambooth_lora_sd15_advanced.py).
 
 LoRA for the text encoder was enabled. {train_text_encoder}.
 
@@ -393,18 +394,6 @@ def parse_args(input_args=None):
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
         ),
-    )
-    parser.add_argument(
-        "--crops_coords_top_left_h",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
-    )
-    parser.add_argument(
-        "--crops_coords_top_left_w",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
     )
     parser.add_argument(
         "--center_crop",
@@ -1022,7 +1011,8 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
             text_input_ids.to(text_encoder.device),
             output_hidden_states=True,
         )
-    return prompt_embeds[0] 
+
+    return prompt_embeds[0]
 
 
 def main(args):
@@ -1082,7 +1072,6 @@ def main(args):
                 revision=args.revision,
                 variant=args.variant,
             )
-            pipeline.safety_checker = lambda images, clip_input: (images, False)
             pipeline.set_progress_bar_config(disable=True)
 
             num_new_images = args.num_class_images - cur_class_images
@@ -1315,7 +1304,6 @@ def main(args):
             text_encoder_state_dict, network_alphas=network_alphas, text_encoder=text_encoder_one_
         )
 
-
     accelerator.register_save_state_pre_hook(save_model_hook)
     accelerator.register_load_state_pre_hook(load_model_hook)
 
@@ -1407,7 +1395,7 @@ def main(args):
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
             )
-            # changes the learning rate of text_encoder_parameters_one and text_encoder_parameters_two to be
+            # changes the learning rate of text_encoder_parameters_one to be
             # --learning_rate
             params_to_optimize[1]["lr"] = args.learning_rate
 
@@ -1450,7 +1438,6 @@ def main(args):
         num_workers=args.dataloader_num_workers,
     )
 
-
     if not args.train_text_encoder:
         tokenizers = [tokenizer_one]
         text_encoders = [text_encoder_one]
@@ -1460,7 +1447,6 @@ def main(args):
                 prompt_embeds = encode_prompt(text_encoders, tokenizers, prompt)
                 prompt_embeds = prompt_embeds.to(accelerator.device)
             return prompt_embeds
-
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
@@ -1483,11 +1469,8 @@ def main(args):
         gc.collect()
         torch.cuda.empty_cache()
 
-    # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
-    # pack the statically computed variables appropriately here. This is so that we don't
-    # have to pass them to the dataloader.
 
-    # if --train_text_encoder_ti we need add_special_tokens to be True fo textual inversion
+    # if --train_text_encoder_ti we need add_special_tokens to be True for textual inversion
     add_special_tokens = True if args.train_text_encoder_ti else False
 
     if not train_dataset.custom_instance_prompts:
@@ -1496,7 +1479,7 @@ def main(args):
             if args.with_prior_preservation:
                 prompt_embeds = torch.cat([prompt_embeds, class_prompt_hidden_states], dim=0)
 
-        # if we're optmizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
+        # if we're optimizing the text encoder (both if instance prompt is used for all images or custom prompts) we need to tokenize and encode the
         # batch prompts on all training steps
         else:
             tokens_one = tokenize_prompt(tokenizer_one, args.instance_prompt, add_special_tokens)
