@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import gc
 import os
 import random
 import tempfile
@@ -1663,11 +1664,9 @@ class UNet3DConditionLoRAModelTests(unittest.TestCase):
 @require_torch_gpu
 class LoraIntegrationTests(unittest.TestCase):
     def tearDown(self):
-        import gc
-
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
     def test_dreambooth_old_format(self):
         generator = torch.Generator("cpu").manual_seed(0)

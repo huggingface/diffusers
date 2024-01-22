@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import gc
 import importlib
 import os
 import tempfile
@@ -1206,11 +1207,9 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     }
 
     def tearDown(self):
-        import gc
-
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
     @slow
     @require_torch_gpu
@@ -1442,11 +1441,9 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     }
 
     def tearDown(self):
-        import gc
-
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
 
 @slow
@@ -1482,11 +1479,9 @@ class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     }
 
     def tearDown(self):
-        import gc
-
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
     def test_dreambooth_old_format(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -1771,11 +1766,9 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     }
 
     def tearDown(self):
-        import gc
-
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
     def test_sdxl_0_9_lora_one(self):
         generator = torch.Generator().manual_seed(0)
