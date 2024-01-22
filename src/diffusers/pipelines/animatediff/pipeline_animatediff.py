@@ -67,7 +67,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def tensor2vid(video: torch.Tensor, processor, output_type="np"):
+def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
     for batch_idx in range(batch_size):
@@ -79,8 +79,11 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
     if output_type == "np":
         outputs = np.stack(outputs)
 
-    if output_type == "pt":
+    elif output_type == "pt":
         outputs = torch.stack(outputs)
+
+    elif not output_type == "pil":
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
 
     return outputs
 
