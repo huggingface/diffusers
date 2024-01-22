@@ -1610,6 +1610,7 @@ class SlicedAttnProcessor:
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
+        temb = None, # other users of attention pass a kwarg for token embedding (like UNetMidBlock2D), which python requires to be expected; this is not the right place to fix this problem
     ) -> torch.FloatTensor:
         residual = hidden_states
 
