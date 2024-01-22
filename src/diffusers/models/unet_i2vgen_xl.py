@@ -772,7 +772,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             sample = self.mid_block(
                 sample,
                 emb,
-                encoder_hidden_states=encoder_hidden_states,
+                encoder_hidden_states=context,
                 attention_mask=attention_mask,
                 num_frames=num_frames,
                 cross_attention_kwargs=cross_attention_kwargs,
@@ -798,7 +798,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
-                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_hidden_states=context,
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
                     num_frames=num_frames,
