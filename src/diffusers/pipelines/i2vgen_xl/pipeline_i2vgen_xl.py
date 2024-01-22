@@ -80,6 +80,8 @@ class I2VGenXLPipelineOutput(BaseOutput):
             a `torch` tensor. The length of the list denotes the video length (the number of frames).
     """
 
+    frames: Union[List[np.ndarray], torch.FloatTensor]
+
 
 class I2VGenXLPipeline(DiffusionPipeline):
     r"""
