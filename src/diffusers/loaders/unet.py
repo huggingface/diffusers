@@ -501,8 +501,8 @@ class UNet2DConditionLoadersMixin:
                 weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME if is_custom_diffusion else LORA_WEIGHT_NAME
 
         # Save the model
-        save_function(state_dict, os.path.join(save_directory, weight_name))
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
+        save_function(state_dict, Path(save_directory, weight_name).as_posix())
+        logger.info(f"Model weights saved in {Path(save_directory, weight_name).as_posix()}")
 
     def fuse_lora(self, lora_scale=1.0, safe_fusing=False):
         self.lora_scale = lora_scale
