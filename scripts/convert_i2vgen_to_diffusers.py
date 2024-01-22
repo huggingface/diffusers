@@ -17,8 +17,14 @@
 import argparse
 
 import torch
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from diffusers import DDIMScheduler, StableDiffusionPipeline
 from diffusers.models.unet_i2vgen_xl import I2VGenXLUNet
+from diffusers.pipelines.i2vgen_xl.pipeline_i2vgen_xl import I2VGenXLPipeline
+
+
+CLIP_ID = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
 
 
 def assign_to_checkpoint(
@@ -442,13 +448,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
+        "--unet_checkpoint_path", default=None, type=str, required=True, help="Path to the checkpoint to convert."
     )
     parser.add_argument("--dump_path", default=None, type=str, required=True, help="Path to the output model.")
     parser.add_argument("--push_to_hub", action="store_true")
     args = parser.parse_args()
 
-    unet_checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
+    # UNet
+    unet_checkpoint = torch.load(args.unet_checkpoint_path, map_location="cpu")
     unet_checkpoint = unet_checkpoint["state_dict"]
     unet = I2VGenXLUNet(sample_size=32)
 
@@ -459,9 +466,36 @@ if __name__ == "__main__":
 
     assert len(diff_0) == len(diff_1) == 0, "Converted weights don't match"
 
-    # load state_dict
     unet.load_state_dict(converted_ckpt, strict=True)
 
-    unet.save_pretrained(args.dump_path, push_to_hub=args.push_to_hub)
+    # vae
+    temp_pipe = StableDiffusionPipeline.from_single_file(
+        "https://huggingface.co/ali-vilab/i2vgen-xl/blob/main/models/v2-1_512-ema-pruned.ckpt"
+    )
+    vae = temp_pipe.vae
+    del temp_pipe
 
-    # -- finish converting the unet --
+    # text encoder and tokenizer
+    text_encoder = CLIPTextModel.from_pretrained(CLIP_ID)
+    tokenizer = CLIPTokenizer.from_pretrained(CLIP_ID)
+
+    # image encoder and feature extractor
+    image_encoder = CLIPVisionModelWithProjection.from_pretrained(CLIP_ID)
+    feature_extractor = CLIPImageProcessor.from_pretrained(CLIP_ID)
+
+    # scheduler
+    # https://github.com/ali-vilab/i2vgen-xl/blob/main/configs/i2vgen_xl_train.yaml
+    scheduler = DDIMScheduler(beta_schedule="squaredcos_cap_v2")
+
+    # final
+    pipeline = I2VGenXLPipeline(
+        unet=unet,
+        vae=vae,
+        image_encoder=image_encoder,
+        feature_extractor=feature_extractor,
+        text_encoder=text_encoder,
+        tokenizer=tokenizer,
+        scheduler=scheduler,
+    )
+
+    pipeline.save_pretrained(args.dump_path, push_to_hub=args.push_to_hub)
