@@ -900,7 +900,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         Only considers the model-level components of the underlying pipeline and not the scheduler.
 
-        <Tip>
+        </Tip>
 
         Examples:
 
