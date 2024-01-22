@@ -400,7 +400,7 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         elif self.config.prediction_type == "sample":  # x-prediction
             predicted_original_sample = model_output
         elif self.config.prediction_type == "v_prediction":  # v-prediction
-            predicted_original_sample = jnp.sqrt(alpha_prod_t) * sample - jnp.sqrt(beta_prod_t.sqrt) * model_output
+            predicted_original_sample = jnp.sqrt(alpha_prod_t) * sample - jnp.sqrt(beta_prod_t) * model_output
         else:
             raise ValueError(
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample` or `v_prediction` for `LCMScheduler`."
