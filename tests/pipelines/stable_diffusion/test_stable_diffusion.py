@@ -180,13 +180,12 @@ class StableDiffusionPipelineFastTests(
             "output_type": "numpy",
         }
         return inputs
-    
+
     def test_memory_footprint(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionPipeline(**components)
         pipeline_memory_footprint = sd_pipe.get_memory_footprint()
-        print(f"Memory footprint: {pipeline_memory_footprint}")
-        assert pipeline_memory_footprint == 0
+        assert pipeline_memory_footprint == 362420
 
     def test_stable_diffusion_ddim(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
