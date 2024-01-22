@@ -22,7 +22,7 @@ from .single_file_utils import (
 
 class FromOriginalVAEMixin:
     """
-    Load pretrained AutoencoderKL weights saved in the `.ckpt` or `.safetensors` format into a [`ControlNetModel`].
+    Load pretrained AutoencoderKL weights saved in the `.ckpt` or `.safetensors` format into a [`AutoencoderKL`].
     """
 
     @classmethod
