@@ -753,14 +753,14 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
     def test_download_ckpt_diff_format_is_same(self):
         ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
 
-        pipe = StableDiffusionInpaintPipeline.from_single_file(ckpt_path)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
+        sf_pipe = StableDiffusionInpaintPipeline.from_single_file(ckpt_path)
+        sf_pipe.scheduler = DDIMScheduler.from_config(sf_pipe.scheduler.config)
+        sf_pipe.unet.set_attn_processor(AttnProcessor())
+        sf_pipe.to("cuda")
 
         inputs = self.get_inputs(torch_device)
         inputs["num_inference_steps"] = 5
-        image_ckpt = pipe(**inputs).images[0]
+        image_ckpt = sf_pipe(**inputs).images[0]
 
         pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)

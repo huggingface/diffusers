@@ -191,14 +191,14 @@ SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
 ]
 
 
-VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
+VALID_HF_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
 
 
 def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
     pattern = r"([^/]+)/([^/]+)/(?:blob/main/)?(.+)"
     weights_name = None
     repo_id = (None,)
-    for prefix in VALID_URL_PREFIXES:
+    for prefix in VALID_HF_URL_PREFIXES:
         pretrained_model_name_or_path = pretrained_model_name_or_path.replace(prefix, "")
     match = re.match(pattern, pretrained_model_name_or_path)
     if not match:
