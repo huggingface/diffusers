@@ -728,15 +728,16 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # 4. pre-process
         sample = torch.cat([sample, concat], dim=1)
         sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
-        print(f"Before passing off to the blocks: {sample.shape}")
         sample = self.conv_in(sample)
 
+        print(f"Before passing off to transformer_in: {sample.shape}")
         sample = self.transformer_in(
             sample,
             num_frames=num_frames,
             cross_attention_kwargs=cross_attention_kwargs,
             return_dict=False,
         )[0]
+        print(f"After passing off to transformer_in: {sample.shape}")
 
         # 5. down
         down_block_res_samples = (sample,)
