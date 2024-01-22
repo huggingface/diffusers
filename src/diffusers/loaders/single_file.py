@@ -48,7 +48,7 @@ def build_sub_model_components(
     if component_name in pipeline_components:
         return {}
 
-    model_type = kwargs.get("model_type", None)
+    model_type = kwargs.pop("model_type", None)
     image_size = kwargs.pop("image_size", None)
 
     if component_name == "unet":
