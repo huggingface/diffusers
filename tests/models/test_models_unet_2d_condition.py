@@ -269,6 +269,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
+    
+    def test_memory_footprint(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        memory_footprint = model.get_memory_footprint()
+        print(f"Memory footprint: {memory_footprint}")
+        assert memory_footprint == 0
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
