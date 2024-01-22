@@ -740,6 +740,10 @@ def main(args):
             # Resize.
             combined_im = train_resize(combined_im)
 
+            # Flipping.
+            if not args.no_flip and random.random() < 0.5:
+                combined_im = train_flip(combined_im)
+
             # Cropping.
             if not args.random_crop:
                 y1 = max(0, int(round((combined_im.shape[1] - args.resolution) / 2.0)))
@@ -748,11 +752,6 @@ def main(args):
             else:
                 y1, x1, h, w = train_crop.get_params(combined_im, (args.resolution, args.resolution))
                 combined_im = crop(combined_im, y1, x1, h, w)
-
-            # Flipping.
-            if random.random() < 0.5:
-                x1 = combined_im.shape[2] - x1
-                combined_im = train_flip(combined_im)
 
             crop_top_left = (y1, x1)
             crop_top_lefts.append(crop_top_left)
