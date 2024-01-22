@@ -725,6 +725,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             context = torch.cat([context, image_context], dim=1)
         context = context.repeat_interleave(repeats=num_frames, dim=0)
 
+        print(f"Before passing off to the blocks: {sample.shape}")
+
         # 4. pre-process
         sample = torch.cat([sample, concat], dim=1)
         sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
@@ -736,7 +738,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             cross_attention_kwargs=cross_attention_kwargs,
             return_dict=False,
         )[0]
-        print(f"Before passing off to the blocks: {sample.shape}")
 
         # 5. down
         down_block_res_samples = (sample,)
