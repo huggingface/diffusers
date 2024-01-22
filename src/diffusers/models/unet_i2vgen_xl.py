@@ -736,6 +736,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             cross_attention_kwargs=cross_attention_kwargs,
             return_dict=False,
         )[0]
+        print(f"Before passing off to the blocks: {sample.shape}")
 
         # 5. down
         down_block_res_samples = (sample,)
