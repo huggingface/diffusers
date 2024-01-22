@@ -533,7 +533,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         Args:
             sample (`torch.FloatTensor`):
-                The noisy input tensor with the following shape `(batch, channel, num_frames, height, width)`.
+                The noisy input tensor with the following shape `(batch, num_frames, channel, height, width`.
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.FloatTensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
