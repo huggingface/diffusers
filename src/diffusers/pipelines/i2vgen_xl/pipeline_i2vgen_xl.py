@@ -406,7 +406,8 @@ class I2VGenXLPipeline(DiffusionPipeline):
         do_classifier_free_guidance,
     ):
         image = image.to(device=device)
-        image_latents = self.vae.encode(image).latent_dist.mode()
+        image_latents = self.vae.encode(image).latent_dist.sample()
+        image_latents = image_latents * self.vae.config.scaling_factor
 
         if do_classifier_free_guidance:
             negative_image_latents = torch.zeros_like(image_latents)
@@ -626,7 +627,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            prompt, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
+            prompt, image, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
         )
 
         # 2. Define call parameters
