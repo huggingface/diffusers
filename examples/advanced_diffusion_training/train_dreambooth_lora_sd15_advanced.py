@@ -138,8 +138,8 @@ to trigger concept `{key}` → use `{tokens}` in your prompt \n
 
     yaml = f"""---
 tags:
-- stable-diffusion-xl
-- stable-diffusion-xl-diffusers
+- stable-diffusion
+- stable-diffusion-diffusers
 - text-to-image
 - diffusers
 - lora
@@ -175,7 +175,7 @@ license: openrail++
 from diffusers import AutoPipelineForText2Image
 import torch
 {diffusers_imports_pivotal}
-pipeline = AutoPipelineForText2Image.from_pretrained('stabilityai/stable-diffusion-xl-base-1.0', torch_dtype=torch.float16).to('cuda')
+pipeline = AutoPipelineForText2Image.from_pretrained('runwayml/stable-diffusion-v1-5', torch_dtype=torch.float16).to('cuda')
 pipeline.load_lora_weights('{repo_id}', weight_name='pytorch_lora_weights.safetensors')
 {diffusers_example_pivotal}
 image = pipeline('{validation_prompt if validation_prompt else instance_prompt}').images[0]
@@ -1535,7 +1535,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth-lora-sd-xl", config=vars(args))
+        accelerator.init_trackers("dreambooth-lora-sd-15", config=vars(args))
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
