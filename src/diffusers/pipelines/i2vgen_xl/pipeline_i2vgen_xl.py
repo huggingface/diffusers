@@ -397,7 +397,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         return image_embeddings
 
-    # Todo: Add copied from
     def _encode_vae_image(
         self,
         image: torch.Tensor,
