@@ -43,13 +43,12 @@ def build_sub_model_components(
     checkpoint,
     local_files_only=False,
     load_safety_checker=False,
+    model_type=None,
+    image_size=None,
     **kwargs,
 ):
     if component_name in pipeline_components:
         return {}
-
-    model_type = kwargs.pop("model_type", None)
-    image_size = kwargs.pop("image_size", None)
 
     if component_name == "unet":
         num_in_channels = kwargs.pop("num_in_channels", None)
@@ -112,10 +111,9 @@ def build_sub_model_components(
 def set_additional_components(
     pipeline_class_name,
     original_config,
-    **kwargs,
+    model_type=None,
 ):
     components = {}
-    model_type = kwargs.get("model_type", None)
     if pipeline_class_name in REFINER_PIPELINES:
         model_type = infer_model_type(original_config, model_type=model_type)
         is_refiner = model_type == "SDXL-Refiner"
@@ -235,6 +233,9 @@ class FromSingleFileMixin:
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
 
+        model_type = kwargs.pop("model_type", None)
+        image_size = kwargs.pop("image_size", None)
+
         init_kwargs = {}
         for name in expected_modules:
             if name in passed_class_obj:
@@ -247,13 +248,15 @@ class FromSingleFileMixin:
                     original_config,
                     checkpoint,
                     pretrained_model_link_or_path,
+                    model_type=model_type,
+                    image_size=image_size,
                     **kwargs,
                 )
                 if not components:
                     continue
                 init_kwargs.update(components)
 
-        additional_components = set_additional_components(class_name, original_config, **kwargs)
+        additional_components = set_additional_components(class_name, original_config, model_type=model_type)
         if additional_components:
             init_kwargs.update(additional_components)
 
