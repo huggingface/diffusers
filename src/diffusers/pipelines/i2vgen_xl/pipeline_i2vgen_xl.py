@@ -672,14 +672,13 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         # 3.2.2 Image latents.
         resized_image = _center_crop_wide(image, (width, height))
-        image = self.image_processor.preprocess(resized_image).to(device)
+        image = self.image_processor.preprocess(resized_image).to(device=device, dtype=image_embeddings.dtype)
         image_latents = self._encode_vae_image(
             image,
             device=device,
             num_videos_per_prompt=num_videos_per_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
         )
-        image_latents = image_latents.to(image_embeddings.dtype)
 
         # 3.3 Prepare additional conditions for the UNet.
         added_cond_kwargs = {
