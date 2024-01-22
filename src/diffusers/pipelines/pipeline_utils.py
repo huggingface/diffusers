@@ -887,6 +887,38 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 )
         return self
 
+    def get_memory_footprint(self, return_buffers=True) -> float:
+        """Returns the memory footprint of a pipeline in bytes.
+
+        Arguments:
+            return_buffers (`bool`, *optional*, defaults to `True`):
+                Whether to return the size of the buffer tensors in the computation of the memory footprint. Buffers
+                are tensors that do not require gradients and not registered as parameters. E.g. mean and std in batch
+                norm layers. Please see: https://discuss.pytorch.org/t/what-pytorch-means-by-buffers/120266/2
+
+        <Tip>
+
+        Only considers the model-level components of the underlying pipeline and not the scheduler.
+
+        <Tip>
+
+        Examples:
+
+        ```py
+        >>> from diffusers import DiffusionPipeline
+
+        >>> pipeline = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> print(pipeline.get_memory_footprint())
+
+        ```
+
+        """
+        model_level_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
+        mem = sum(
+            [model.get_memory_footprint(return_buffers=return_buffers) for _, model in model_level_components.items()]
+        )
+        return mem
+
     @property
     def device(self) -> torch.device:
         r"""
