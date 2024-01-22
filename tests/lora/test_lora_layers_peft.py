@@ -1205,6 +1205,13 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "latent_channels": 4,
     }
 
+    def tearDown(self):
+        import gc
+
+        gc.collect()
+        torch.cuda.empty_cache()
+        gc.collect()
+
     @slow
     @require_torch_gpu
     def test_integration_move_lora_cpu(self):
@@ -1433,6 +1440,13 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "latent_channels": 4,
         "sample_size": 128,
     }
+
+    def tearDown(self):
+        import gc
+
+        gc.collect()
+        torch.cuda.empty_cache()
+        gc.collect()
 
 
 @slow

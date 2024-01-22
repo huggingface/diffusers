@@ -1662,6 +1662,13 @@ class UNet3DConditionLoRAModelTests(unittest.TestCase):
 @deprecate_after_peft_backend
 @require_torch_gpu
 class LoraIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        import gc
+
+        gc.collect()
+        torch.cuda.empty_cache()
+        gc.collect()
+
     def test_dreambooth_old_format(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
