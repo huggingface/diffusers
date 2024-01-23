@@ -110,6 +110,12 @@ DIFFUSERS_TO_LDM_MAPPING = {
     },
     "controlnet": {
         "layers": {
+            "time_embedding.linear_1.weight": "time_embed.0.weight",
+            "time_embedding.linear_1.bias": "time_embed.0.bias",
+            "time_embedding.linear_2.weight": "time_embed.2.weight",
+            "time_embedding.linear_2.bias": "time_embed.2.bias",
+            "conv_in.weight": "input_blocks.0.0.weight",
+            "conv_in.bias": "input_blocks.0.0.bias",
             "controlnet_cond_embedding.conv_in.weight": "input_hint_block.0.weight",
             "controlnet_cond_embedding.conv_in.bias": "input_hint_block.0.bias",
             "controlnet_cond_embedding.conv_out.weight": "input_hint_block.14.weight",
@@ -787,6 +793,38 @@ def convert_controlnet_checkpoint(
         new_checkpoint[f"controlnet_down_blocks.{i}.weight"] = controlnet_state_dict.pop(f"zero_convs.{i}.0.weight")
         new_checkpoint[f"controlnet_down_blocks.{i}.bias"] = controlnet_state_dict.pop(f"zero_convs.{i}.0.bias")
 
+    # Retrieves the keys for the middle blocks only
+    num_middle_blocks = len(
+        {".".join(layer.split(".")[:2]) for layer in controlnet_state_dict if "middle_block" in layer}
+    )
+    middle_blocks = {
+        layer_id: [key for key in controlnet_state_dict if f"middle_block.{layer_id}" in key]
+        for layer_id in range(num_middle_blocks)
+    }
+    if middle_blocks:
+        resnet_0 = middle_blocks[0]
+        attentions = middle_blocks[1]
+        resnet_1 = middle_blocks[2]
+
+        update_unet_resnet_ldm_to_diffusers(
+            resnet_0,
+            new_checkpoint,
+            controlnet_state_dict,
+            mapping={"old": "middle_block.0", "new": "mid_block.resnets.0"},
+        )
+        update_unet_resnet_ldm_to_diffusers(
+            resnet_1,
+            new_checkpoint,
+            controlnet_state_dict,
+            mapping={"old": "middle_block.2", "new": "mid_block.resnets.1"},
+        )
+        update_unet_attention_ldm_to_diffusers(
+            attentions,
+            new_checkpoint,
+            controlnet_state_dict,
+            mapping={"old": "middle_block.1", "new": "mid_block.attentions.0"},
+        )
+
     # mid block
     new_checkpoint["controlnet_mid_block.weight"] = controlnet_state_dict.pop("middle_block_out.0.weight")
     new_checkpoint["controlnet_mid_block.bias"] = controlnet_state_dict.pop("middle_block_out.0.bias")
@@ -799,7 +837,7 @@ def convert_controlnet_checkpoint(
     }
     num_cond_embedding_blocks = len(cond_embedding_blocks)
 
-    for idx in range(1, num_cond_embedding_blocks):
+    for idx in range(1, num_cond_embedding_blocks + 1):
         diffusers_idx = idx - 1
         cond_block_id = 2 * idx
 
