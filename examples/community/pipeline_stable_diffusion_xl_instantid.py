@@ -13,38 +13,34 @@
 # limitations under the License.
 
 
+import math
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import cv2
-import math
-
 import numpy as np
 import PIL.Image
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
+from diffusers import StableDiffusionXLControlNetPipeline
 from diffusers.image_processor import PipelineImageInput
-
 from diffusers.models import ControlNetModel
-
+from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
+from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
 from diffusers.utils import (
     deprecate,
     logging,
     replace_example_docstring,
 )
-from diffusers.utils.torch_utils import is_compiled_module, is_torch_version
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
-
-from diffusers import StableDiffusionXLControlNetPipeline
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import is_compiled_module, is_torch_version
+
 
 try:
     import xformers
     import xformers.ops
     xformers_available = True
-except Exception as e:
+except Exception:
     xformers_available = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -93,13 +89,13 @@ class PerceiverAttention(nn.Module):
         """
         x = self.norm1(x)
         latents = self.norm2(latents)
-        
+
         b, l, _ = latents.shape
 
         q = self.to_q(latents)
         kv_input = torch.cat((x, latents), dim=-2)
         k, v = self.to_kv(kv_input).chunk(2, dim=-1)
-        
+
         q = reshape_tensor(q, self.heads)
         k = reshape_tensor(k, self.heads)
         v = reshape_tensor(v, self.heads)
@@ -109,7 +105,7 @@ class PerceiverAttention(nn.Module):
         weight = (q * scale) @ (k * scale).transpose(-2, -1) # More stable with f16 than dividing afterwards
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
         out = weight @ v
-        
+
         out = out.permute(0, 2, 1, 3).reshape(b, l, -1)
 
         return self.to_out(out)
@@ -127,14 +123,14 @@ class Resampler(nn.Module):
         ff_mult=4,
     ):
         super().__init__()
-        
+
         self.latents = nn.Parameter(torch.randn(1, num_queries, dim) / dim**0.5)
-        
+
         self.proj_in = nn.Linear(embedding_dim, dim)
 
         self.proj_out = nn.Linear(dim, output_dim)
         self.norm_out = nn.LayerNorm(output_dim)
-        
+
         self.layers = nn.ModuleList([])
         for _ in range(depth):
             self.layers.append(
@@ -153,7 +149,7 @@ class Resampler(nn.Module):
         for attn, ff in self.layers:
             latents = attn(x, latents) + latents
             latents = ff(latents) + latents
-            
+
         latents = self.proj_out(latents)
         return self.norm_out(latents)
 
@@ -227,8 +223,8 @@ class AttnProcessor(nn.Module):
         hidden_states = hidden_states / attn.rescale_output_factor
 
         return hidden_states
-    
-    
+
+
 class IPAttnProcessor(nn.Module):
     r"""
     Attention processor for IP-Adapater.
@@ -305,14 +301,14 @@ class IPAttnProcessor(nn.Module):
             attention_probs = attn.get_attention_scores(query, key, attention_mask)
             hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
-        
+
         # for ip-adapter
         ip_key = self.to_k_ip(ip_hidden_states)
         ip_value = self.to_v_ip(ip_hidden_states)
-        
+
         ip_key = attn.head_to_batch_dim(ip_key)
         ip_value = attn.head_to_batch_dim(ip_value)
-        
+
         if xformers_available:
             ip_hidden_states = self._memory_efficient_attention_xformers(query, ip_key, ip_value, None)
         else:
@@ -357,26 +353,26 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> import numpy as np
         >>> from PIL import Image
-        
+
         >>> from insightface.app import FaceAnalysis
         >>> from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPipeline, draw_kps
 
         >>> # download 'antelopev2' under ./models
         >>> app = FaceAnalysis(name='antelopev2', root='./', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
         >>> app.prepare(ctx_id=0, det_size=(640, 640))
-        
+
         >>> # download models under ./checkpoints
         >>> face_adapter = f'./checkpoints/ip-adapter.bin'
         >>> controlnet_path = f'./checkpoints/ControlNetModel'
-        
+
         >>> # load IdentityNet
         >>> controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
-        
+
         >>> pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
         ... )
         >>> pipe.cuda()
-        
+
         >>> # load adapter
         >>> pipe.load_ip_adapter_instantid(face_adapter)
 
@@ -385,11 +381,11 @@ EXAMPLE_DOC_STRING = """
 
         >>> # load an image
         >>> image = load_image("your-example.jpg")
-        
+
         >>> face_info = app.get(cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR))[-1]
         >>> face_emb = face_info['embedding']
         >>> face_kps = draw_kps(face_image, face_info['kps'])
-        
+
         >>> pipe.set_ip_adapter_scale(0.8)
 
         >>> # generate image
@@ -400,7 +396,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,255,0), (255,0,255)]):
-    
+
     stickwidth = 4
     limbSeq = np.array([[0, 2], [1, 2], [3, 2], [4, 2]])
     kps = np.array(kps)
@@ -427,15 +423,15 @@ def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,2
 
     out_img_pil = PIL.Image.fromarray(out_img.astype(np.uint8))
     return out_img_pil
-    
+
 class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
-    
+
     def cuda(self, dtype=torch.float16, use_xformers=False):
         self.to('cuda', dtype)
-        
+
         if hasattr(self, 'image_proj_model'):
             self.image_proj_model.to(self.unet.device).to(self.unet.dtype)
-        
+
         if use_xformers:
             if is_xformers_available():
                 import xformers
@@ -449,13 +445,13 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
                 self.enable_xformers_memory_efficient_attention()
             else:
                 raise ValueError("xformers is not available. Make sure it is installed correctly")
-    
-    def load_ip_adapter_instantid(self, model_ckpt, image_emb_dim=512, num_tokens=16, scale=0.5):     
+
+    def load_ip_adapter_instantid(self, model_ckpt, image_emb_dim=512, num_tokens=16, scale=0.5):
         self.set_image_proj_model(model_ckpt, image_emb_dim, num_tokens)
         self.set_ip_adapter(model_ckpt, num_tokens, scale)
-        
+
     def set_image_proj_model(self, model_ckpt, image_emb_dim=512, num_tokens=16):
-        
+
         image_proj_model = Resampler(
             dim=1280,
             depth=4,
@@ -468,17 +464,17 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         )
 
         image_proj_model.eval()
-        
+
         self.image_proj_model = image_proj_model.to(self.device, dtype=self.dtype)
         state_dict = torch.load(model_ckpt, map_location="cpu")
         if 'image_proj' in state_dict:
             state_dict = state_dict["image_proj"]
         self.image_proj_model.load_state_dict(state_dict)
-        
+
         self.image_proj_model_in_features = image_emb_dim
-    
+
     def set_ip_adapter(self, model_ckpt, num_tokens, scale):
-        
+
         unet = self.unet
         attn_procs = {}
         for name in unet.attn_processors.keys():
@@ -494,18 +490,18 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
             if cross_attention_dim is None:
                 attn_procs[name] = AttnProcessor().to(unet.device, dtype=unet.dtype)
             else:
-                attn_procs[name] = IPAttnProcessor(hidden_size=hidden_size, 
-                                                   cross_attention_dim=cross_attention_dim, 
+                attn_procs[name] = IPAttnProcessor(hidden_size=hidden_size,
+                                                   cross_attention_dim=cross_attention_dim,
                                                    scale=scale,
                                                    num_tokens=num_tokens).to(unet.device, dtype=unet.dtype)
         unet.set_attn_processor(attn_procs)
-        
+
         state_dict = torch.load(model_ckpt, map_location="cpu")
         ip_layers = torch.nn.ModuleList(self.unet.attn_processors.values())
         if 'ip_adapter' in state_dict:
             state_dict = state_dict['ip_adapter']
         ip_layers.load_state_dict(state_dict)
-    
+
     def set_ip_adapter_scale(self, scale):
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         for attn_processor in unet.attn_processors.values():
@@ -513,20 +509,20 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
                 attn_processor.scale = scale
 
     def _encode_prompt_image_emb(self, prompt_image_emb, device, dtype, do_classifier_free_guidance):
-        
+
         if isinstance(prompt_image_emb, torch.Tensor):
             prompt_image_emb = prompt_image_emb.clone().detach()
         else:
             prompt_image_emb = torch.tensor(prompt_image_emb)
-            
+
         prompt_image_emb = prompt_image_emb.to(device=device, dtype=dtype)
         prompt_image_emb = prompt_image_emb.reshape([1, -1, self.image_proj_model_in_features])
-        
+
         if do_classifier_free_guidance:
             prompt_image_emb = torch.cat([torch.zeros_like(prompt_image_emb), prompt_image_emb], dim=0)
         else:
             prompt_image_emb = torch.cat([prompt_image_emb], dim=0)
-        
+
         prompt_image_emb = self.image_proj_model(prompt_image_emb)
         return prompt_image_emb
 
@@ -799,13 +795,13 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
             lora_scale=text_encoder_lora_scale,
             clip_skip=self.clip_skip,
         )
-        
+
         # 3.2 Encode image prompt
-        prompt_image_emb = self._encode_prompt_image_emb(image_embeds, 
+        prompt_image_emb = self._encode_prompt_image_emb(image_embeds,
                                                          device,
                                                          self.unet.dtype,
                                                          self.do_classifier_free_guidance)
-        
+
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
             image = self.prepare_image(
@@ -928,7 +924,7 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         is_unet_compiled = is_compiled_module(self.unet)
         is_controlnet_compiled = is_compiled_module(self.controlnet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
-                
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # Relevant thread:
@@ -955,7 +951,7 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
                     control_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
                     controlnet_added_cond_kwargs = added_cond_kwargs
-                
+
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
@@ -1019,19 +1015,19 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
-        
+
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
             if needs_upcasting:
                 self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-            
+
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
 
             # cast back to fp16 if needed
             if needs_upcasting:
-                self.vae.to(dtype=torch.float16)            
+                self.vae.to(dtype=torch.float16)
         else:
             image = latents
 
