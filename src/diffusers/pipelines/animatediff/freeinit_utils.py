@@ -45,7 +45,7 @@ class FreeInitMixin:
         spatial_stop_frequency: float = 0.25,
         temporal_stop_frequency: float = 0.25,
     ):
-        """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
+        r"""Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
 
         This implementation has been adapted from the [official repository](https://github.com/TianxingWu/FreeInit).
 
@@ -156,7 +156,7 @@ class FreeInitMixin:
         device: Union[str, torch.dtype],
         generator: torch.Generator,
     ):
-        """Denoising loop for AnimateDiff using FreeInit noise reinitialization technique."""
+        r"""Denoising loop for AnimateDiff using FreeInit noise reinitialization technique."""
 
         latents = denoise_args.get("latents")
         prompt_embeds = denoise_args.get("prompt_embeds")
