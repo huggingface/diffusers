@@ -1145,7 +1145,7 @@ class PipelinePushToHubTester(unittest.TestCase):
 
     @unittest.skipIf(
         not is_jinja_available(),
-        reason="Model card tests cannot be performed with Jinja installed.",
+        reason="Model card tests cannot be performed without Jinja installed.",
     )
     def test_push_to_hub_library_name(self):
         components = self.get_pipeline_components()
