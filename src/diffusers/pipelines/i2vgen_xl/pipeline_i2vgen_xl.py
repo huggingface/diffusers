@@ -50,7 +50,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
 def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
@@ -58,7 +57,7 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
         batch_vid = video[batch_idx].permute(1, 0, 2, 3)
         batch_output = processor.postprocess(batch_vid, output_type)
 
-        outputs.append(batch_output)
+        outputs.append(batch_output.squeeze(0))
 
     if output_type == "np":
         outputs = np.stack(outputs)
