@@ -41,7 +41,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import PushToHubMixin
+from ..utils.hub_utils import PushToHubMixin, create_and_tag_model_card
 
 
 logger = logging.get_logger(__name__)
@@ -375,6 +375,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
 
         if push_to_hub:
+            # Create a new empty model card and eventually tag it
+            model_card = create_and_tag_model_card(repo_id, token=token)
+            # Update model card if needed:
+            model_card.save(os.path.join(save_directory, "README.md"))
+
             self._upload_folder(
                 save_directory,
                 repo_id,

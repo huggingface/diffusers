@@ -145,7 +145,7 @@ def create_model_card(args, model_name):
 
 
 # Taken from `transformers`
-def create_and_tag_model_card(repo_id: str, token: Optional[str] = None):
+def create_and_tag_model_card(repo_id: str, token: Optional[str] = None, is_pipeline=False):
     """
     Creates or loads an existing model card and tags it with the `library_name`.
 
@@ -154,13 +154,16 @@ def create_and_tag_model_card(repo_id: str, token: Optional[str] = None):
             The repo_id where to look for the model card.
         token (`str`, *optional*):
             Authentication token, obtained with `huggingface_hub.HfApi.login` method. Will default to the stored token.
+        is_pipeline (`bool`, *optional*):
+            Boolean to indicate if we're adding tag to a [`DiffusionPipeline`].
     """
     try:
         # Check if the model card is present on the remote repo
         model_card = ModelCard.load(repo_id, token=token, ignore_metadata_errors=False)
     except EntryNotFoundError:
         # Otherwise create a simple model card from template
-        model_description = "This is the model card of a 🧨 diffusers model that has been pushed on the Hub. This model card has been automatically generated."
+        component = "pipeline" if is_pipeline else "model"
+        model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
         card_data = ModelCardData(library_name="diffusers")
         model_card = ModelCard.from_template(card_data, model_description=model_description)
 
