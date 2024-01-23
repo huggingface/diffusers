@@ -21,7 +21,7 @@ import tempfile
 import traceback
 import warnings
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
@@ -142,6 +142,36 @@ def create_model_card(args, model_name):
 
     card_path = os.path.join(args.output_dir, "README.md")
     model_card.save(card_path)
+
+
+# Taken from `transformers`
+def create_and_tag_model_card(repo_id: str, token: Optional[str] = None):
+    """
+    Creates or loads an existing model card and tags it with the `library_name`.
+
+    Args:
+        repo_id (`str`):
+            The repo_id where to look for the model card.
+        token (`str`, *optional*):
+            Authentication token, obtained with `huggingface_hub.HfApi.login` method. Will default to the stored token.
+    """
+    if not is_jinja_available():
+        raise ValueError(
+            "Modelcard rendering is based on Jinja templates."
+            " Please make sure to have `jinja` installed before using `create_and_tag_model_card`."
+            " To install it, please run `pip install Jinja2`."
+        )
+
+    try:
+        # Check if the model card is present on the remote repo
+        model_card = ModelCard.load(repo_id, token=token, ignore_metadata_errors=False)
+    except EntryNotFoundError:
+        # Otherwise create a simple model card from template
+        model_description = "This is the model card of a 🧨 diffusers model that has been pushed on the Hub. This model card has been automatically generated."
+        card_data = ModelCardData(library_name="diffusers")
+        model_card = ModelCard.from_template(card_data, model_description=model_description)
+
+    return model_card
 
 
 def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str] = None):
@@ -396,6 +426,7 @@ class PushToHubMixin:
         create_pr: bool = False,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
+        tags: Optional[List[str]] = None,
     ) -> str:
         """
         Upload model, scheduler, or pipeline files to the 🤗 Hugging Face Hub.
@@ -435,6 +466,9 @@ class PushToHubMixin:
         """
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
 
+        # Create a new empty model card and eventually tag it
+        model_card = create_and_tag_model_card(repo_id, tags, token=token)
+
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}
         if "Scheduler" not in self.__class__.__name__:
@@ -442,6 +476,9 @@ class PushToHubMixin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             self.save_pretrained(tmpdir, **save_kwargs)
+
+            # Update model card if needed:
+            model_card.save(os.path.join(tmpdir, "README.md"))
 
             return self._upload_folder(
                 tmpdir,

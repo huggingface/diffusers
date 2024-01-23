@@ -13,7 +13,8 @@ from typing import Callable, Union
 import numpy as np
 import PIL.Image
 import torch
-from huggingface_hub import delete_repo
+from huggingface_hub import ModelCard, delete_repo
+from huggingface_hub.utils import is_jinja_available
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
@@ -1141,6 +1142,18 @@ class PipelinePushToHubTester(unittest.TestCase):
 
         # Reset repo
         delete_repo(self.org_repo_id, token=TOKEN)
+
+    @unittest.skipIf(
+        not is_jinja_available(),
+        reason="Model card tests cannot be performed with Jinja installed.",
+    )
+    def test_push_to_hub_library_name(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub(self.repo_id, token=TOKEN)
+
+        model_card = ModelCard.load(self.repo_id).data
+        assert model_card.library_name == "diffusers"
 
 
 # For SDXL and its derivative pipelines (such as ControlNet), we have the text encoders
