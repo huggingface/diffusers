@@ -155,13 +155,6 @@ def create_and_tag_model_card(repo_id: str, token: Optional[str] = None):
         token (`str`, *optional*):
             Authentication token, obtained with `huggingface_hub.HfApi.login` method. Will default to the stored token.
     """
-    if not is_jinja_available():
-        raise ValueError(
-            "Modelcard rendering is based on Jinja templates."
-            " Please make sure to have `jinja` installed before using `create_and_tag_model_card`."
-            " To install it, please run `pip install Jinja2`."
-        )
-
     try:
         # Check if the model card is present on the remote repo
         model_card = ModelCard.load(repo_id, token=token, ignore_metadata_errors=False)
