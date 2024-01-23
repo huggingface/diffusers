@@ -683,9 +683,11 @@ class StableDiffusionControlNetInpaintPipeline(
         self,
         prompt,
         image,
+        mask_image,
         height,
         width,
         callback_steps,
+        output_type,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -693,6 +695,7 @@ class StableDiffusionControlNetInpaintPipeline(
         control_guidance_start=0.0,
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
+        padding_mask_crop=None,
     ):
         if height is not None and height % 8 != 0 or width is not None and width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -735,6 +738,19 @@ class StableDiffusionControlNetInpaintPipeline(
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        if padding_mask_crop is not None:
+            if not isinstance(image, PIL.Image.Image):
+                raise ValueError(
+                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                )
+            if not isinstance(mask_image, PIL.Image.Image):
+                raise ValueError(
+                    f"The mask image should be a PIL image when inpainting mask crop, but is of type"
+                    f" {type(mask_image)}."
+                )
+            if output_type != "pil":
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
 
         # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
@@ -862,7 +878,6 @@ class StableDiffusionControlNetInpaintPipeline(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_control_image(
         self,
         image,
@@ -872,10 +887,14 @@ class StableDiffusionControlNetInpaintPipeline(
         num_images_per_prompt,
         device,
         dtype,
+        crops_coords,
+        resize_mode,
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        image = self.control_image_processor.preprocess(
+            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
+        ).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
@@ -1074,6 +1093,7 @@ class StableDiffusionControlNetInpaintPipeline(
         control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        padding_mask_crop: Optional[int] = None,
         strength: float = 1.0,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
@@ -1130,6 +1150,12 @@ class StableDiffusionControlNetInpaintPipeline(
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
+            padding_mask_crop (`int`, *optional*, defaults to `None`):
+                The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to image and mask_image. If
+                `padding_mask_crop` is not `None`, it will first find a rectangular region with the same aspect ration of the image and
+                contains all masked area, and then expand that area based on `padding_mask_crop`. The image and mask_image will then be cropped based on
+                the expanded area before resizing to the original image size for inpainting. This is useful when the masked area is small while the image is large
+                and contain information inreleant for inpainging, such as background.
             strength (`float`, *optional*, defaults to 1.0):
                 Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
                 starting point and more noise is added the higher the `strength`. The number of denoising steps depends
@@ -1240,9 +1266,11 @@ class StableDiffusionControlNetInpaintPipeline(
         self.check_inputs(
             prompt,
             control_image,
+            mask_image,
             height,
             width,
             callback_steps,
+            output_type,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
@@ -1250,6 +1278,7 @@ class StableDiffusionControlNetInpaintPipeline(
             control_guidance_start,
             control_guidance_end,
             callback_on_step_end_tensor_inputs,
+            padding_mask_crop,
         )
 
         self._guidance_scale = guidance_scale
@@ -1263,6 +1292,14 @@ class StableDiffusionControlNetInpaintPipeline(
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+
+        if padding_mask_crop is not None:
+            height, width = self.image_processor.get_default_height_width(image, height, width)
+            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
+            resize_mode = "fill"
+        else:
+            crops_coords = None
+            resize_mode = "default"
 
         device = self._execution_device
 
@@ -1315,6 +1352,8 @@ class StableDiffusionControlNetInpaintPipeline(
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
+                crops_coords=crops_coords,
+                resize_mode=resize_mode,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
@@ -1330,6 +1369,8 @@ class StableDiffusionControlNetInpaintPipeline(
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
+                    crops_coords=crops_coords,
+                    resize_mode=resize_mode,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
@@ -1341,10 +1382,15 @@ class StableDiffusionControlNetInpaintPipeline(
             assert False
 
         # 4.1 Preprocess mask and image - resizes image and mask w.r.t height and width
-        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        original_image = image
+        init_image = self.image_processor.preprocess(
+            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
+        )
         init_image = init_image.to(dtype=torch.float32)
 
-        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+        mask = self.mask_processor.preprocess(
+            mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+        )
 
         masked_image = init_image * (mask < 0.5)
         _, _, height, width = init_image.shape
@@ -1533,6 +1579,9 @@ class StableDiffusionControlNetInpaintPipeline(
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+
+        if padding_mask_crop is not None:
+            image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
 
         # Offload all models
         self.maybe_free_model_hooks()
