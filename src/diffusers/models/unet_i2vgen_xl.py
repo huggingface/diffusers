@@ -663,7 +663,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         fps = fps.expand(fps.shape[0])
-        fps_emb = self.fps_embedding(self.time_proj(fps).to(self.dtype))
+        fps_emb = self.fps_embedding(self.time_proj(fps).to(dtype=self.dtype))
         emb = t_emb + fps_emb
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
 
