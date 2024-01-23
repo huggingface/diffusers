@@ -22,10 +22,10 @@ The abstract from the paper is:
 [[autodoc]] UNet2DConditionModel
 
 ## UNet2DConditionOutput
-[[autodoc]] models.unet_2d_condition.UNet2DConditionOutput
+[[autodoc]] models.unets.unet_2d_condition.UNet2DConditionOutput
 
 ## FlaxUNet2DConditionModel
-[[autodoc]] models.unet_2d_condition_flax.FlaxUNet2DConditionModel
+[[autodoc]] models.unets.unet_2d_condition_flax.FlaxUNet2DConditionModel
 
 ## FlaxUNet2DConditionOutput
-[[autodoc]] models.unet_2d_condition_flax.FlaxUNet2DConditionOutput
+[[autodoc]] models.unets.unet_2d_condition_flax.FlaxUNet2DConditionOutput

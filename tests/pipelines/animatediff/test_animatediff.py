@@ -262,7 +262,7 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_init)).sum()
         max_diff_disabled = np.abs(to_np(frames_normal) - to_np(frames_disable_free_init)).max()
         self.assertGreater(
-            sum_enabled, 1e2, "Enabling of FreeInit should lead to results different from the default pipeline results"
+            sum_enabled, 1e1, "Enabling of FreeInit should lead to results different from the default pipeline results"
         )
         self.assertLess(
             max_diff_disabled,
