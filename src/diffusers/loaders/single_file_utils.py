@@ -1348,8 +1348,6 @@ def create_scheduler_from_ldm(
         scheduler_config["clip_sample"] = False
         scheduler_config["set_alpha_to_one"] = False
 
-        scheduler_type = "ddim"
-
     if scheduler_type == "pndm":
         scheduler_config["skip_prk_steps"] = True
         scheduler = PNDMScheduler.from_config(scheduler_config)
