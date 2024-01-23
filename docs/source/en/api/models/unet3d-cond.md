@@ -22,4 +22,4 @@ The abstract from the paper is:
 [[autodoc]] UNet3DConditionModel
 
 ## UNet3DConditionOutput
-[[autodoc]] models.unet_3d_condition.UNet3DConditionOutput
+[[autodoc]] models.unets.unet_3d_condition.UNet3DConditionOutput

@@ -22,7 +22,7 @@ from ...utils import BaseOutput, is_torch_version
 from ...utils.torch_utils import randn_tensor
 from ..activations import get_activation
 from ..attention_processor import SpatialNorm
-from ..unet_2d_blocks import (
+from ..unets.unet_2d_blocks import (
     AutoencoderTinyBlock,
     UNetMidBlock2D,
     get_down_block,

@@ -15,8 +15,8 @@
 import flax.linen as nn
 import jax.numpy as jnp
 
-from .attention_flax import FlaxTransformer2DModel
-from .resnet_flax import FlaxDownsample2D, FlaxResnetBlock2D, FlaxUpsample2D
+from ..attention_flax import FlaxTransformer2DModel
+from ..resnet_flax import FlaxDownsample2D, FlaxResnetBlock2D, FlaxUpsample2D
 
 
 class FlaxCrossAttnDownBlock2D(nn.Module):

@@ -26,7 +26,7 @@ from diffusers.models.attention_processor import USE_PEFT_BACKEND, AttentionProc
 from diffusers.models.autoencoders import AutoencoderKL
 from diffusers.models.lora import LoRACompatibleConv
 from diffusers.models.modeling_utils import ModelMixin
-from diffusers.models.unet_2d_blocks import (
+from diffusers.models.unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     DownBlock2D,
@@ -36,7 +36,7 @@ from diffusers.models.unet_2d_blocks import (
     UpBlock2D,
     Upsample2D,
 )
-from diffusers.models.unet_2d_condition import UNet2DConditionModel
+from diffusers.models.unets.unet_2d_condition import UNet2DConditionModel
 from diffusers.utils import BaseOutput, logging
 
 

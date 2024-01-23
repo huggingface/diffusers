@@ -8,7 +8,7 @@ import torch
 
 from diffusers import StableDiffusionXLPipeline
 from diffusers.models.attention import BasicTransformerBlock
-from diffusers.models.unet_2d_blocks import (
+from diffusers.models.unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     CrossAttnUpBlock2D,
     DownBlock2D,

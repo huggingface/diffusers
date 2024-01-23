@@ -4,12 +4,12 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import UNet2DConditionLoadersMixin
-from ..utils import BaseOutput, logging
-from .attention_processor import CROSS_ATTENTION_PROCESSORS, AttentionProcessor, AttnProcessor
-from .embeddings import TimestepEmbedding, Timesteps
-from .modeling_utils import ModelMixin
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import UNet2DConditionLoadersMixin
+from ...utils import BaseOutput, logging
+from ..attention_processor import CROSS_ATTENTION_PROCESSORS, AttentionProcessor, AttnProcessor
+from ..embeddings import TimestepEmbedding, Timesteps
+from ..modeling_utils import ModelMixin
 from .unet_3d_blocks import UNetMidBlockSpatioTemporal, get_down_block, get_up_block
 
 
@@ -323,7 +323,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
-    # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward

@@ -17,19 +17,19 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import UNet2DConditionLoadersMixin
-from ..utils import logging
-from .attention_processor import (
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import UNet2DConditionLoadersMixin
+from ...utils import logging
+from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .embeddings import TimestepEmbedding, Timesteps
-from .modeling_utils import ModelMixin
-from .transformer_temporal import TransformerTemporalModel
+from ..embeddings import TimestepEmbedding, Timesteps
+from ..modeling_utils import ModelMixin
+from ..transformer_temporal import TransformerTemporalModel
 from .unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unet_2d_condition import UNet2DConditionModel
 from .unet_3d_blocks import (
@@ -524,7 +524,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         )
 
     @property
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
@@ -548,7 +548,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         return processors
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
@@ -583,7 +583,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
@@ -613,7 +613,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for module in self.children():
             fn_recursive_feed_forward(module, chunk_size, dim)
 
-    # Copied from diffusers.models.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
     def disable_forward_chunking(self) -> None:
         def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
             if hasattr(module, "set_chunk_feed_forward"):
@@ -625,7 +625,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for module in self.children():
             fn_recursive_feed_forward(module, None, 0)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self) -> None:
         """
         Disables custom attention processors and sets the default attention implementation.
@@ -645,7 +645,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if isinstance(module, (CrossAttnDownBlockMotion, DownBlockMotion, CrossAttnUpBlockMotion, UpBlockMotion)):
             module.gradient_checkpointing = value
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.enable_freeu
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float) -> None:
         r"""Enables the FreeU mechanism from https://arxiv.org/abs/2309.11497.
 
@@ -670,7 +670,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             setattr(upsample_block, "b1", b1)
             setattr(upsample_block, "b2", b2)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.disable_freeu
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.disable_freeu
     def disable_freeu(self) -> None:
         """Disables the FreeU mechanism."""
         freeu_keys = {"s1", "s2", "b1", "b2"}

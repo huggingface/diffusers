@@ -22,4 +22,4 @@ The abstract from the paper is:
 [[autodoc]] UNet1DModel
 
 ## UNet1DOutput
-[[autodoc]] models.unet_1d.UNet1DOutput
+[[autodoc]] models.unets.unet_1d.UNet1DOutput

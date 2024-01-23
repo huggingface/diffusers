@@ -17,19 +17,19 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from ..utils import is_torch_version
-from ..utils.torch_utils import apply_freeu
-from .attention import Attention
-from .dual_transformer_2d import DualTransformer2DModel
-from .resnet import (
+from ...utils import is_torch_version
+from ...utils.torch_utils import apply_freeu
+from ..attention import Attention
+from ..dual_transformer_2d import DualTransformer2DModel
+from ..resnet import (
     Downsample2D,
     ResnetBlock2D,
     SpatioTemporalResBlock,
     TemporalConvLayer,
     Upsample2D,
 )
-from .transformer_2d import Transformer2DModel
-from .transformer_temporal import (
+from ..transformer_2d import Transformer2DModel
+from ..transformer_temporal import (
     TransformerSpatioTemporalModel,
     TransformerTemporalModel,
 )

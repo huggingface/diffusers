@@ -19,10 +19,10 @@ import jax
 import jax.numpy as jnp
 from flax.core.frozen_dict import FrozenDict
 
-from ..configuration_utils import ConfigMixin, flax_register_to_config
-from ..utils import BaseOutput
-from .embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
-from .modeling_flax_utils import FlaxModelMixin
+from ...configuration_utils import ConfigMixin, flax_register_to_config
+from ...utils import BaseOutput
+from ..embeddings_flax import FlaxTimestepEmbedding, FlaxTimesteps
+from ..modeling_flax_utils import FlaxModelMixin
 from .unet_2d_blocks_flax import (
     FlaxCrossAttnDownBlock2D,
     FlaxCrossAttnUpBlock2D,
@@ -342,14 +342,14 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
             mid_block_additional_residual: (`torch.Tensor`, *optional*):
                 A tensor that if specified is added to the residual of the middle unet block.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
+                Whether or not to return a [`models.unets.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] instead of a
                 plain tuple.
             train (`bool`, *optional*, defaults to `False`):
                 Use deterministic functions and disable dropout when not training.
 
         Returns:
-            [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] or `tuple`:
-            [`~models.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`.
+            [`~models.unets.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] or `tuple`:
+            [`~models.unets.unet_2d_condition_flax.FlaxUNet2DConditionOutput`] if `return_dict` is True, otherwise a `tuple`.
             When returning a tuple, the first element is the sample tensor.
         """
         # 1. time
