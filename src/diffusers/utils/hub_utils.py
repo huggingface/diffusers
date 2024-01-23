@@ -160,14 +160,15 @@ def generate_model_card(repo_id: str, token: Optional[str] = None, is_pipeline: 
     try:
         # Check if the model card is present on the remote repo
         model_card = ModelCard.load(repo_id, token=token)
-        if model_card.data.library_name is None:
-            model_card.data.library_name = "diffusers"
     except EntryNotFoundError:
         # Otherwise create a simple model card from template
         component = "pipeline" if is_pipeline else "model"
         model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
-        card_data = ModelCardData(library_name="diffusers")
+        card_data = ModelCardData()
         model_card = ModelCard.from_template(card_data, model_description=model_description)
+
+    if model_card.data.library_name is None:
+        model_card.data.library_name = "diffusers"
 
     return model_card
 
