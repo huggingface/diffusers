@@ -515,6 +515,16 @@ class TextualInversionLoaderMixin:
         for token_id, token_to_remove in zip(token_ids, tokens):
             del tokenizer._added_tokens_decoder[token_id]
             del tokenizer._added_tokens_encoder[token_to_remove]
+        
+        # Fix token ids in tokenizer
+        key_id = 1
+        for token_id in tokenizer.added_tokens_decoder:
+            if token_id > last_special_token_id and token_id > last_special_token_id + key_id:
+                token = tokenizer._added_tokens_decoder[token_id]
+                tokenizer._added_tokens_decoder[last_special_token_id + key_id] = token
+                del tokenizer._added_tokens_decoder[token_id]
+                tokenizer._added_tokens_encoder[token.content] = last_special_token_id + key_id
+                key_id += 1
         tokenizer._update_trie()
 
         # Delete from text encoder
