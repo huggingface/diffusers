@@ -61,12 +61,11 @@ class CreateModelCardTest(unittest.TestCase):
             with open(os.path.join(tmpdir, "README.md"), "w") as f:
                 f.write(content)
 
-            model_card = create_model_card(tmpdir)
+            model_card = create_model_card(repo_id=tmpdir, training=False)
             assert model_card.data.library_name == "diffusers"
 
     def test_generate_model_card_with_library_name(self):
         with TemporaryDirectory() as tmpdir:
-            model_card = create_model_card(tmpdir)
+            model_card = create_model_card(repo_id=tmpdir, training=False)
 
-        model_card = create_model_card(tmpdir)
         assert model_card.data.library_name == "diffusers"
