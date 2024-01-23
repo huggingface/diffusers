@@ -21,7 +21,7 @@ import tempfile
 import traceback
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
@@ -426,7 +426,6 @@ class PushToHubMixin:
         create_pr: bool = False,
         safe_serialization: bool = True,
         variant: Optional[str] = None,
-        tags: Optional[List[str]] = None,
     ) -> str:
         """
         Upload model, scheduler, or pipeline files to the 🤗 Hugging Face Hub.
@@ -467,7 +466,7 @@ class PushToHubMixin:
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
 
         # Create a new empty model card and eventually tag it
-        model_card = create_and_tag_model_card(repo_id, tags, token=token)
+        model_card = create_and_tag_model_card(repo_id, token=token)
 
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}
