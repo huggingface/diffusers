@@ -33,6 +33,9 @@ model = AutoencoderKL.from_single_file(url)
 ## AutoencoderKL
 
 [[autodoc]] AutoencoderKL
+    - decode
+    - encode
+    - all
 
 ## AutoencoderKLOutput
 
