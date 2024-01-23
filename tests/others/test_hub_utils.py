@@ -12,6 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -56,11 +57,9 @@ class CreateModelCardTest(unittest.TestCase):
 
     def test_generate_existing_model_card_with_library_name(self):
         with TemporaryDirectory() as tmpdir:
-            args = self.create_dummy_args(output_dir=tmpdir)
-
-            # Model card mush be rendered and saved
-            create_model_card(args, model_name="model_name")
-            self.assertTrue((Path(tmpdir) / "README.md").is_file())
+            content = "hello"
+            with open(os.path.join(tmpdir, "README.md"), "w") as f:
+                f.write(content)
 
             model_card = generate_model_card(tmpdir)
             assert model_card.data.library_name == "diffusers"
