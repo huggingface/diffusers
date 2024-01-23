@@ -66,7 +66,6 @@ from .logging import get_logger
 logger = get_logger(__name__)
 
 
-MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 
 
@@ -94,7 +93,9 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     return ua
 
 
-def load_or_create_model_card(repo_id_or_path: Optional[str] = None, token: Optional[str] = None, is_pipeline: bool = False) -> ModelCard:
+def load_or_create_model_card(
+    repo_id_or_path: Optional[str] = None, token: Optional[str] = None, is_pipeline: bool = False
+) -> ModelCard:
     """
     Loads or creates a model card.
 

@@ -16,7 +16,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from diffusers.utils.hub_utils import load_or_create_model_card
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 
 
 class CreateModelCardTest(unittest.TestCase):
