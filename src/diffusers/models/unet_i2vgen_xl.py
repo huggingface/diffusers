@@ -49,19 +49,6 @@ from .unet_3d_blocks import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def sinusoidal_embedding(timesteps, dim):
-    # check input
-    half = dim // 2
-    timesteps = timesteps.float()
-
-    # compute sinusoidal embedding
-    sinusoid = torch.outer(timesteps, torch.pow(10000, -torch.arange(half).to(timesteps).div(half)))
-    x = torch.cat([torch.cos(sinusoid), torch.sin(sinusoid)], dim=1)
-    if dim % 2 != 0:
-        x = torch.cat([x, torch.zeros_like(x[:, :1])], dim=1)
-    return x
-
-
 @dataclass
 class I2VGenXLOutput(BaseOutput):
     """
@@ -662,8 +649,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
-        # t_emb = self.time_proj(timesteps)
-        t_emb = sinusoidal_embedding(timesteps, self.config.block_out_channels[0])
+        t_emb = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
@@ -677,7 +663,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         fps = fps.expand(fps.shape[0])
-        fps_emb = self.fps_embedding(sinusoidal_embedding(fps, self.config.block_out_channels[0]).to(dtype=self.dtype))
+        fps_emb = self.fps_embedding(self.time_proj(fps).to(dtype=self.dtype))
         emb = t_emb + fps_emb
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
 

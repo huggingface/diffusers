@@ -780,13 +780,15 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
 
 # The following utilities are taken from https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
-    
+
+
 def _resize_bilinear(image, resolution):
     if isinstance(image, list):
         image = [u.resize(resolution, PIL.Image.BILINEAR) for u in image]
     else:
         image = image.resize(resolution, PIL.Image.BILINEAR)
     return image
+
 
 def _center_crop_wide(image, resolution):
     if isinstance(image, list):
