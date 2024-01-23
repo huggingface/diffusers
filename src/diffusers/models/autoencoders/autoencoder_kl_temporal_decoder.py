@@ -17,7 +17,6 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import FromOriginalVAEMixin
 from ...utils import is_torch_version
 from ...utils.accelerate_utils import apply_forward_hook
 from ..attention_processor import CROSS_ATTENTION_PROCESSORS, AttentionProcessor, AttnProcessor
@@ -162,7 +161,7 @@ class TemporalDecoder(nn.Module):
         return sample
 
 
-class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
+class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
     r"""
     A VAE model with KL loss for encoding images into latents and decoding latent representations into images.
 
