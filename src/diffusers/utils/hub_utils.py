@@ -94,7 +94,7 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     return ua
 
 
-def load_or_create_model_card(repo_id=None, token=None, is_pipeline=False) -> ModelCard:
+def load_or_create_model_card(repo_id_or_path: Optional[str] = None, token: Optional[str] = None, is_pipeline: bool = False) -> ModelCard:
     """
     Loads or creates a model card.
 
@@ -115,7 +115,7 @@ def load_or_create_model_card(repo_id=None, token=None, is_pipeline=False) -> Mo
 
     try:
         # Check if the model card is present on the remote repo
-        model_card = ModelCard.load(repo_id, token=token)
+        model_card = ModelCard.load(repo_id_or_path, token=token)
     except EntryNotFoundError:
         # Otherwise create a simple model card from template
         component = "pipeline" if is_pipeline else "model"
@@ -425,7 +425,7 @@ class PushToHubMixin:
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
 
         # Create a new empty model card and eventually tag it
-        model_card = load_or_create_model_card(repo_id=repo_id, token=token)
+        model_card = load_or_create_model_card(repo_id, token=token)
         model_card = populate_model_card(model_card)
 
         # Save all files.

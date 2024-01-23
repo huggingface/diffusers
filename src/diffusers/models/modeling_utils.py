@@ -378,7 +378,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
-            model_card = load_or_create_model_card(repo_id=repo_id, token=token)
+            model_card = load_or_create_model_card(repo_id, token=token)
             model_card = populate_model_card(model_card)
             model_card.save(os.path.join(save_directory, "README.md"))
 
