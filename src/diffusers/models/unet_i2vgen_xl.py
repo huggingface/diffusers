@@ -679,12 +679,14 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         concat = sample.new_zeros(batch_size, self.config.in_channels, num_frames, height, width)
 
-        if fps[0] > 1:
+        if num_frames > 1:
             # This one needs to be turned into something humans can understand.
             mask_pos = torch.cat(
                 [
-                    (torch.ones_like(image_latents[:, :, :1]) * ((tpos + 1) / (fps[0] - 1))).to(image_latents.device)
-                    for tpos in range(fps[0] - 1)
+                    (torch.ones_like(image_latents[:, :, :1]) * ((tpos + 1) / (num_frames - 1))).to(
+                        image_latents.device
+                    )
+                    for tpos in range(num_frames - 1)
                 ],
                 dim=2,
             ).to(dtype=image_latents.dtype)
