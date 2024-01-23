@@ -123,7 +123,7 @@ def load_or_create_model_card(repo_id=None, token=None, is_pipeline=False) -> Mo
         card_data = ModelCardData()
         model_card = ModelCard.from_template(card_data, model_description=model_description)
 
-        return model_card
+    return model_card
 
 
 def populate_model_card(model_card: ModelCard) -> ModelCard:
