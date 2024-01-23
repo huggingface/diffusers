@@ -18,7 +18,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import Mock, patch
 
-from diffusers.utils.hub_utils import create_model_card, generate_model_card
+from diffusers.utils.hub_utils import create_model_card
 
 
 class CreateModelCardTest(unittest.TestCase):
@@ -61,12 +61,12 @@ class CreateModelCardTest(unittest.TestCase):
             with open(os.path.join(tmpdir, "README.md"), "w") as f:
                 f.write(content)
 
-            model_card = generate_model_card(tmpdir)
+            model_card = create_model_card(tmpdir)
             assert model_card.data.library_name == "diffusers"
 
     def test_generate_model_card_with_library_name(self):
         with TemporaryDirectory() as tmpdir:
-            model_card = generate_model_card(tmpdir)
+            model_card = create_model_card(tmpdir)
 
-        model_card = generate_model_card(tmpdir)
+        model_card = create_model_card(tmpdir)
         assert model_card.data.library_name == "diffusers"

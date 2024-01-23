@@ -95,61 +95,15 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     return ua
 
 
-def create_model_card(args, model_name):
-    if not is_jinja_available():
-        raise ValueError(
-            "Modelcard rendering is based on Jinja templates."
-            " Please make sure to have `jinja` installed before using `create_model_card`."
-            " To install it, please run `pip install Jinja2`."
-        )
-
-    if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
-        return
-
-    hub_token = args.hub_token if hasattr(args, "hub_token") else None
-    repo_name = get_full_repo_name(model_name, token=hub_token)
-
-    model_card = ModelCard.from_template(
-        card_data=ModelCardData(  # Card metadata object that will be converted to YAML block
-            language="en",
-            license="apache-2.0",
-            library_name="diffusers",
-            tags=[],
-            datasets=args.dataset_name,
-            metrics=[],
-        ),
-        template_path=MODEL_CARD_TEMPLATE_PATH,
-        model_name=model_name,
-        repo_name=repo_name,
-        dataset_name=args.dataset_name if hasattr(args, "dataset_name") else None,
-        learning_rate=args.learning_rate,
-        train_batch_size=args.train_batch_size,
-        eval_batch_size=args.eval_batch_size,
-        gradient_accumulation_steps=(
-            args.gradient_accumulation_steps if hasattr(args, "gradient_accumulation_steps") else None
-        ),
-        adam_beta1=args.adam_beta1 if hasattr(args, "adam_beta1") else None,
-        adam_beta2=args.adam_beta2 if hasattr(args, "adam_beta2") else None,
-        adam_weight_decay=args.adam_weight_decay if hasattr(args, "adam_weight_decay") else None,
-        adam_epsilon=args.adam_epsilon if hasattr(args, "adam_epsilon") else None,
-        lr_scheduler=args.lr_scheduler if hasattr(args, "lr_scheduler") else None,
-        lr_warmup_steps=args.lr_warmup_steps if hasattr(args, "lr_warmup_steps") else None,
-        ema_inv_gamma=args.ema_inv_gamma if hasattr(args, "ema_inv_gamma") else None,
-        ema_power=args.ema_power if hasattr(args, "ema_power") else None,
-        ema_max_decay=args.ema_max_decay if hasattr(args, "ema_max_decay") else None,
-        mixed_precision=args.mixed_precision,
-    )
-
-    card_path = os.path.join(args.output_dir, "README.md")
-    model_card.save(card_path)
-
-
-# Taken from `transformers`
-def generate_model_card(repo_id: str, token: Optional[str] = None, is_pipeline: bool = False) -> ModelCard:
+def create_model_card(
+    args=None, model_name=None, repo_id=None, token=None, training=True, is_pipeline=True
+) -> Union[None, ModelCard]:
     """
     Creates or loads an existing model card and tags it with the `library_name`.
 
     Args:
+        args (`Namespace`): Training arguments.
+        model_name (`str`): Name of the model to create a repository.
         repo_id (`str`):
             The repo_id where to look for the model card.
         token (`str`, *optional*):
@@ -157,20 +111,69 @@ def generate_model_card(repo_id: str, token: Optional[str] = None, is_pipeline: 
         is_pipeline (`bool`, *optional*):
             Boolean to indicate if we're adding tag to a [`DiffusionPipeline`].
     """
-    try:
-        # Check if the model card is present on the remote repo
-        model_card = ModelCard.load(repo_id, token=token)
-    except EntryNotFoundError:
-        # Otherwise create a simple model card from template
-        component = "pipeline" if is_pipeline else "model"
-        model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
-        card_data = ModelCardData()
-        model_card = ModelCard.from_template(card_data, model_description=model_description)
+    if not is_jinja_available():
+        raise ValueError(
+            "Modelcard rendering is based on Jinja templates."
+            " Please make sure to have `jinja` installed before using `create_model_card`."
+            " To install it, please run `pip install Jinja2`."
+        )
 
-    if model_card.data.library_name is None:
-        model_card.data.library_name = "diffusers"
+    if training:
+        if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
+            return
 
-    return model_card
+        hub_token = args.hub_token if hasattr(args, "hub_token") else None
+        repo_name = get_full_repo_name(model_name, token=hub_token)
+
+        model_card = ModelCard.from_template(
+            card_data=ModelCardData(  # Card metadata object that will be converted to YAML block
+                language="en",
+                license="apache-2.0",
+                library_name="diffusers",
+                tags=[],
+                datasets=args.dataset_name,
+                metrics=[],
+            ),
+            template_path=MODEL_CARD_TEMPLATE_PATH,
+            model_name=model_name,
+            repo_name=repo_name,
+            dataset_name=args.dataset_name if hasattr(args, "dataset_name") else None,
+            learning_rate=args.learning_rate,
+            train_batch_size=args.train_batch_size,
+            eval_batch_size=args.eval_batch_size,
+            gradient_accumulation_steps=(
+                args.gradient_accumulation_steps if hasattr(args, "gradient_accumulation_steps") else None
+            ),
+            adam_beta1=args.adam_beta1 if hasattr(args, "adam_beta1") else None,
+            adam_beta2=args.adam_beta2 if hasattr(args, "adam_beta2") else None,
+            adam_weight_decay=args.adam_weight_decay if hasattr(args, "adam_weight_decay") else None,
+            adam_epsilon=args.adam_epsilon if hasattr(args, "adam_epsilon") else None,
+            lr_scheduler=args.lr_scheduler if hasattr(args, "lr_scheduler") else None,
+            lr_warmup_steps=args.lr_warmup_steps if hasattr(args, "lr_warmup_steps") else None,
+            ema_inv_gamma=args.ema_inv_gamma if hasattr(args, "ema_inv_gamma") else None,
+            ema_power=args.ema_power if hasattr(args, "ema_power") else None,
+            ema_max_decay=args.ema_max_decay if hasattr(args, "ema_max_decay") else None,
+            mixed_precision=args.mixed_precision,
+        )
+
+        card_path = os.path.join(args.output_dir, "README.md")
+        model_card.save(card_path)
+
+    else:
+        try:
+            # Check if the model card is present on the remote repo
+            model_card = ModelCard.load(repo_id, token=token)
+        except EntryNotFoundError:
+            # Otherwise create a simple model card from template
+            component = "pipeline" if is_pipeline else "model"
+            model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
+            card_data = ModelCardData()
+            model_card = ModelCard.from_template(card_data, model_description=model_description)
+
+        if model_card.data.library_name is None:
+            model_card.data.library_name = "diffusers"
+
+        return model_card
 
 
 def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str] = None):
@@ -465,7 +468,7 @@ class PushToHubMixin:
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
 
         # Create a new empty model card and eventually tag it
-        model_card = generate_model_card(repo_id, token=token)
+        model_card = create_model_card(repo_id=repo_id, token=token, training=False)
 
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}
