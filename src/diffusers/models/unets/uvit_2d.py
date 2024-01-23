@@ -20,20 +20,20 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import PeftAdapterMixin
-from .attention import BasicTransformerBlock, SkipFFTransformerBlock
-from .attention_processor import (
+from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders import PeftAdapterMixin
+from ..attention import BasicTransformerBlock, SkipFFTransformerBlock
+from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
 )
-from .embeddings import TimestepEmbedding, get_timestep_embedding
-from .modeling_utils import ModelMixin
-from .normalization import GlobalResponseNorm, RMSNorm
-from .resnet import Downsample2D, Upsample2D
+from ..embeddings import TimestepEmbedding, get_timestep_embedding
+from ..modeling_utils import ModelMixin
+from ..normalization import GlobalResponseNorm, RMSNorm
+from ..resnet import Downsample2D, Upsample2D
 
 
 class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
@@ -213,7 +213,7 @@ class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         return logits
 
     @property
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
@@ -237,7 +237,7 @@ class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
 
         return processors
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
@@ -272,7 +272,7 @@ class UVit2DModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
