@@ -352,7 +352,7 @@ def get_class_obj_and_candidates(
 
 def _get_pipeline_class(
     class_obj,
-    config,
+    config=None,
     load_connected_pipeline=False,
     custom_pipeline=None,
     repo_id=None,
@@ -390,7 +390,12 @@ def _get_pipeline_class(
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    class_name = config["_class_name"]
+    class_name = class_name or config["_class_name"]
+    if not class_name:
+        raise ValueError(
+            "The class name could not be found in the configuration file. Please make sure to pass the correct `class_name`."
+        )
+
     class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
     pipeline_cls = getattr(diffusers_module, class_name)
