@@ -947,6 +947,8 @@ class AnimateDiffVideoToVideoPipeline(DiffusionPipeline, TextualInversionLoaderM
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
+                progress_bar.update()
+
         if output_type == "latent":
             return AnimateDiffPipelineOutput(frames=latents)
 
