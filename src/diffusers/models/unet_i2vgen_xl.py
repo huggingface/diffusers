@@ -679,7 +679,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         concat = sample.new_zeros(batch_size, self.config.in_channels, num_frames, height, width)
 
-        if fps > 1:
+        if fps[0] > 1:
             # This one needs to be turned into something humans can understand.
             mask_pos = torch.cat(
                 [
