@@ -16,7 +16,7 @@ import numpy as np
 import torch
 import tqdm
 
-from ...models.unet_1d import UNet1DModel
+from ...models.unets.unet_1d import UNet1DModel
 from ...pipelines import DiffusionPipeline
 from ...utils.dummy_pt_objects import DDPMScheduler
 from ...utils.torch_utils import randn_tensor
