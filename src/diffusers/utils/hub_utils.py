@@ -462,7 +462,7 @@ class PushToHubMixin:
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
 
         # Create a new empty model card and eventually tag it
-        model_card = create_and_tag_model_card(repo_id, token=token)
+        model_card = generate_model_card(repo_id, token=token)
 
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}

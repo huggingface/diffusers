@@ -41,7 +41,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import PushToHubMixin, create_and_tag_model_card
+from ..utils.hub_utils import PushToHubMixin, generate_model_card
 
 
 logger = logging.get_logger(__name__)
@@ -376,7 +376,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
-            model_card = create_and_tag_model_card(repo_id, token=token)
+            model_card = generate_model_card(repo_id, token=token)
             # Update model card if needed:
             model_card.save(os.path.join(save_directory, "README.md"))
 
