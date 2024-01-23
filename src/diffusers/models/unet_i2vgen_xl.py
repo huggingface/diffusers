@@ -549,6 +549,21 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             if hasattr(module, "set_lora_layer"):
                 module.set_lora_layer(None)
 
+    def _tensorify(self, inputs, device):
+        if not torch.is_tensor(inputs):
+            # TODO: this requires sync between CPU and GPU. So try to pass `inputs` as tensors if you can
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = device.type == "mps"
+            if isinstance(inputs, float):
+                dtype = torch.float32 if is_mps else torch.float64
+            else:
+                dtype = torch.int32 if is_mps else torch.int64
+            inputs = torch.tensor([inputs], dtype=dtype, device=device)
+        elif len(inputs.shape) == 0:
+            inputs = inputs[None].to(device)
+
+        return inputs
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -630,21 +645,10 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 1. time
         timesteps = timestep
-        if not torch.is_tensor(timesteps):
-            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if is_mps else torch.float64
-            else:
-                dtype = torch.int32 if is_mps else torch.int64
-            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
-        elif len(timesteps.shape) == 0:
-            timesteps = timesteps[None].to(sample.device)
+        timesteps = self._tensorify(timestep, sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
-
         t_emb = self.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
@@ -655,17 +659,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 2. FPS
         fps = added_cond_kwargs["fps"]
-        if not torch.is_tensor(fps):
-            # TODO: this requires sync between CPU and GPU. So try to pass timesteps as tensors if you can
-            # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            if isinstance(timestep, float):
-                dtype = torch.float32 if is_mps else torch.float64
-            else:
-                dtype = torch.int32 if is_mps else torch.int64
-            fps = torch.tensor([fps], dtype=dtype, device=sample.device)
-        elif len(fps.shape) == 0:
-            fps = fps[None].to(sample.device)
+        fps = self._tensorify(fps, sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         fps = fps.expand(fps.shape[0])
