@@ -28,7 +28,7 @@ from diffusers import (
     StableDiffusionXLControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers.models.unet_2d_blocks import UNetMidBlock2D
+from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, slow, torch_device
