@@ -50,25 +50,21 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
-    batch_size, channels, num_frames, height, width = video.shape
-    outputs = []
-    for batch_idx in range(batch_size):
-        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
-        batch_output = processor.postprocess(batch_vid, output_type)
-
-        outputs.append(batch_output.squeeze(0))
-
-    if output_type == "np":
-        outputs = np.stack(outputs)
-
-    elif output_type == "pt":
-        outputs = torch.stack(outputs)
-
-    elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
-
-    return outputs
+def tensor2vid(video: torch.Tensor) -> List[np.ndarray]:
+    # This code is copied from https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
+    # reshape to ncfhw
+    mean = torch.tensor(mean, device=video.device).reshape(1, -1, 1, 1, 1)
+    std = torch.tensor(std, device=video.device).reshape(1, -1, 1, 1, 1)
+    # unnormalize back to [0,1]
+    video = (video / 2 + 0.5).clamp(0, 1)
+    # prepare the final outputs
+    i, c, f, h, w = video.shape
+    images = video.permute(2, 3, 0, 4, 1).reshape(
+        f, h, i * w, c
+    )  # 1st (frames, h, batch_size, w, c) 2nd (frames, h, batch_size * w, c)
+    images = images.unbind(dim=0)  # prepare a list of indvidual (consecutive frames)
+    images = [(image.cpu().numpy() * 255).astype("uint8") for image in images]  # f h w c
+    return images
 
 
 @dataclass
@@ -770,7 +766,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         if output_type == "pt":
             video = video_tensor
         else:
-            video = tensor2vid(video_tensor, self.image_processor, output_type)
+            video = tensor2vid(video_tensor)
 
         # Offload all models
         self.maybe_free_model_hooks()
