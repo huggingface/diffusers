@@ -39,11 +39,13 @@ from diffusers.utils.torch_utils import is_compiled_module, is_torch_version
 try:
     import xformers
     import xformers.ops
+
     xformers_available = True
 except Exception:
     xformers_available = False
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 def FeedForward(dim, mult=4):
     inner_dim = int(dim * mult)
@@ -54,15 +56,17 @@ def FeedForward(dim, mult=4):
         nn.Linear(inner_dim, dim, bias=False),
     )
 
+
 def reshape_tensor(x, heads):
     bs, length, width = x.shape
-    #(bs, length, width) --> (bs, length, n_heads, dim_per_head)
+    # (bs, length, width) --> (bs, length, n_heads, dim_per_head)
     x = x.view(bs, length, heads, -1)
     # (bs, length, n_heads, dim_per_head) --> (bs, n_heads, length, dim_per_head)
     x = x.transpose(1, 2)
     # (bs, n_heads, length, dim_per_head) --> (bs*n_heads, length, dim_per_head)
     x = x.reshape(bs, heads, length, -1)
     return x
+
 
 class PerceiverAttention(nn.Module):
     def __init__(self, *, dim, dim_head=64, heads=8):
@@ -102,13 +106,14 @@ class PerceiverAttention(nn.Module):
 
         # attention
         scale = 1 / math.sqrt(math.sqrt(self.dim_head))
-        weight = (q * scale) @ (k * scale).transpose(-2, -1) # More stable with f16 than dividing afterwards
+        weight = (q * scale) @ (k * scale).transpose(-2, -1)  # More stable with f16 than dividing afterwards
         weight = torch.softmax(weight.float(), dim=-1).type(weight.dtype)
         out = weight @ v
 
         out = out.permute(0, 2, 1, 3).reshape(b, l, -1)
 
         return self.to_out(out)
+
 
 class Resampler(nn.Module):
     def __init__(
@@ -153,10 +158,12 @@ class Resampler(nn.Module):
         latents = self.proj_out(latents)
         return self.norm_out(latents)
 
+
 class AttnProcessor(nn.Module):
     r"""
     Default processor for performing attention-related computations.
     """
+
     def __init__(
         self,
         hidden_size=None,
@@ -284,7 +291,10 @@ class IPAttnProcessor(nn.Module):
         else:
             # get encoder_hidden_states, ip_hidden_states
             end_pos = encoder_hidden_states.shape[1] - self.num_tokens
-            encoder_hidden_states, ip_hidden_states = encoder_hidden_states[:, :end_pos, :], encoder_hidden_states[:, end_pos:, :]
+            encoder_hidden_states, ip_hidden_states = (
+                encoder_hidden_states[:, :end_pos, :],
+                encoder_hidden_states[:, end_pos:, :],
+            )
             if attn.norm_cross:
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
@@ -341,6 +351,7 @@ class IPAttnProcessor(nn.Module):
         hidden_states = xformers.ops.memory_efficient_attention(query, key, value, attn_bias=attention_mask)
         return hidden_states
 
+
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
@@ -395,8 +406,8 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
-def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,255,0), (255,0,255)]):
 
+def draw_kps(image_pil, kps, color_list=[(255, 0, 0), (0, 255, 0), (0, 0, 255), (255, 255, 0), (255, 0, 255)]):
     stickwidth = 4
     limbSeq = np.array([[0, 2], [1, 2], [3, 2], [4, 2]])
     kps = np.array(kps)
@@ -412,7 +423,9 @@ def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,2
         y = kps[index][:, 1]
         length = ((x[0] - x[1]) ** 2 + (y[0] - y[1]) ** 2) ** 0.5
         angle = math.degrees(math.atan2(y[0] - y[1], x[0] - x[1]))
-        polygon = cv2.ellipse2Poly((int(np.mean(x)), int(np.mean(y))), (int(length / 2), stickwidth), int(angle), 0, 360, 1)
+        polygon = cv2.ellipse2Poly(
+            (int(np.mean(x)), int(np.mean(y))), (int(length / 2), stickwidth), int(angle), 0, 360, 1
+        )
         out_img = cv2.fillConvexPoly(out_img.copy(), polygon, color)
     out_img = (out_img * 0.6).astype(np.uint8)
 
@@ -424,12 +437,12 @@ def draw_kps(image_pil, kps, color_list=[(255,0,0), (0,255,0), (0,0,255), (255,2
     out_img_pil = PIL.Image.fromarray(out_img.astype(np.uint8))
     return out_img_pil
 
+
 class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
-
     def cuda(self, dtype=torch.float16, use_xformers=False):
-        self.to('cuda', dtype)
+        self.to("cuda", dtype)
 
-        if hasattr(self, 'image_proj_model'):
+        if hasattr(self, "image_proj_model"):
             self.image_proj_model.to(self.unet.device).to(self.unet.dtype)
 
         if use_xformers:
@@ -451,7 +464,6 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         self.set_ip_adapter(model_ckpt, num_tokens, scale)
 
     def set_image_proj_model(self, model_ckpt, image_emb_dim=512, num_tokens=16):
-
         image_proj_model = Resampler(
             dim=1280,
             depth=4,
@@ -467,14 +479,13 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
 
         self.image_proj_model = image_proj_model.to(self.device, dtype=self.dtype)
         state_dict = torch.load(model_ckpt, map_location="cpu")
-        if 'image_proj' in state_dict:
+        if "image_proj" in state_dict:
             state_dict = state_dict["image_proj"]
         self.image_proj_model.load_state_dict(state_dict)
 
         self.image_proj_model_in_features = image_emb_dim
 
     def set_ip_adapter(self, model_ckpt, num_tokens, scale):
-
         unet = self.unet
         attn_procs = {}
         for name in unet.attn_processors.keys():
@@ -490,16 +501,18 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
             if cross_attention_dim is None:
                 attn_procs[name] = AttnProcessor().to(unet.device, dtype=unet.dtype)
             else:
-                attn_procs[name] = IPAttnProcessor(hidden_size=hidden_size,
-                                                   cross_attention_dim=cross_attention_dim,
-                                                   scale=scale,
-                                                   num_tokens=num_tokens).to(unet.device, dtype=unet.dtype)
+                attn_procs[name] = IPAttnProcessor(
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    scale=scale,
+                    num_tokens=num_tokens,
+                ).to(unet.device, dtype=unet.dtype)
         unet.set_attn_processor(attn_procs)
 
         state_dict = torch.load(model_ckpt, map_location="cpu")
         ip_layers = torch.nn.ModuleList(self.unet.attn_processors.values())
-        if 'ip_adapter' in state_dict:
-            state_dict = state_dict['ip_adapter']
+        if "ip_adapter" in state_dict:
+            state_dict = state_dict["ip_adapter"]
         ip_layers.load_state_dict(state_dict)
 
     def set_ip_adapter_scale(self, scale):
@@ -509,7 +522,6 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
                 attn_processor.scale = scale
 
     def _encode_prompt_image_emb(self, prompt_image_emb, device, dtype, do_classifier_free_guidance):
-
         if isinstance(prompt_image_emb, torch.Tensor):
             prompt_image_emb = prompt_image_emb.clone().detach()
         else:
@@ -797,10 +809,9 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         )
 
         # 3.2 Encode image prompt
-        prompt_image_emb = self._encode_prompt_image_emb(image_embeds,
-                                                         device,
-                                                         self.unet.dtype,
-                                                         self.do_classifier_free_guidance)
+        prompt_image_emb = self._encode_prompt_image_emb(
+            image_embeds, device, self.unet.dtype, self.do_classifier_free_guidance
+        )
 
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
