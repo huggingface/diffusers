@@ -367,6 +367,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         if not isinstance(image, torch.Tensor):
             # https://github.com/ali-vilab/i2vgen-xl/blob/2539c9262ff8a2a22fa9daecbfd13f0a2dbc32d0/tools/inferences/inference_i2vgen_entrance.py#L114
             image = _center_crop_wide(image, (width, width))
+            image = _resize_bilinear(image, (224, 224))
             image = self.image_processor.pil_to_numpy(image)
             image = self.image_processor.numpy_to_pt(image)
 
@@ -375,7 +376,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
                 images=image,
                 do_normalize=True,
                 do_center_crop=False,
-                do_resize=True,
+                do_resize=False,
                 do_rescale=False,
                 return_tensors="pt",
             ).pixel_values
@@ -778,7 +779,15 @@ class I2VGenXLPipeline(DiffusionPipeline):
         return I2VGenXLPipelineOutput(frames=video)
 
 
-# Taken from https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py
+# The following utilities are taken from https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
+    
+def _resize_bilinear(image, resolution):
+    if isinstance(image, list):
+        image = [u.resize(resolution, PIL.Image.BILINEAR) for u in image]
+    else:
+        image = image.resize(resolution, PIL.Image.BILINEAR)
+    return image
+
 def _center_crop_wide(image, resolution):
     if isinstance(image, list):
         scale = min(image[0].size[0] / resolution[0], image[0].size[1] / resolution[1])
