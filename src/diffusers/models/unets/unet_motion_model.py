@@ -89,6 +89,8 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         motion_norm_num_groups: int = 32,
         motion_max_seq_length: int = 32,
         use_motion_mid_block: bool = True,
+        use_input_conv: bool = False,
+        input_conv_channels: int = 9,
     ):
         """Container to store AnimateDiff Motion Modules
 
@@ -112,6 +114,16 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         super().__init__()
         down_blocks = []
         up_blocks = []
+
+        if use_input_conv:
+            # input
+            conv_in_kernel = 3
+            conv_in_padding = (conv_in_kernel - 1) // 2
+            self.conv_in = nn.Conv2d(
+                input_conv_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+            )
+        else:
+            self.conv_in = None
 
         for i, channel in enumerate(block_out_channels):
             output_channel = block_out_channels[i]
@@ -419,7 +431,12 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not load_weights:
             return model
 
-        model.conv_in.load_state_dict(unet.conv_in.state_dict())
+        if motion_adapter.config["use_input_conv"]:
+            model.conv_in.weight[:, :4, :, :] = unet.conv_in.weight
+            model.conv_in.bias = unet.conv_in.bias
+        else:
+            model.conv_in.load_state_dict(unet.conv_in.state_dict())
+
         model.time_proj.load_state_dict(unet.time_proj.state_dict())
         model.time_embedding.load_state_dict(unet.time_embedding.state_dict())
 
@@ -487,6 +504,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # to support older motion modules that don't have a mid_block
         if hasattr(self.mid_block, "motion_modules"):
             self.mid_block.motion_modules.load_state_dict(motion_adapter.mid_block.motion_modules.state_dict())
+
+        if motion_adapter.config["use_input_conv"]:
+            self.conv_in.load_state_dict(motion_adapter.conv_in.state_dict())
 
     def save_motion_modules(
         self,
