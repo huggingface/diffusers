@@ -424,7 +424,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         image_latents = image_latents.unsqueeze(2).repeat_interleave(num_frames, dim=2)
 
         # duplicate image_latents for each generation per prompt, using mps friendly method
-        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
+        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1, 1)
 
         return image_latents
 
