@@ -14,7 +14,7 @@
 
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..utils import logging
+from ..utils import is_transformers_available, logging
 from .single_file_utils import (
     create_diffusers_unet_model_from_ldm,
     create_diffusers_vae_model_from_ldm,
@@ -33,6 +33,9 @@ REFINER_PIPELINES = [
     "StableDiffusionXLInpaintPipeline",
     "StableDiffusionXLControlNetImg2ImgPipeline",
 ]
+
+if is_transformers_available():
+    from transformers import AutoFeatureExtractor
 
 
 def build_sub_model_components(
@@ -89,8 +92,6 @@ def build_sub_model_components(
 
     if component_name == "safety_checker":
         if load_safety_checker:
-            from transformers import AutoFeatureExtractor
-
             from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
             safety_checker = StableDiffusionSafetyChecker.from_pretrained(
