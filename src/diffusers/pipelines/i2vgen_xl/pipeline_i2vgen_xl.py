@@ -51,10 +51,7 @@ EXAMPLE_DOC_STRING = """
 
 
 def tensor2vid(video: torch.Tensor) -> List[np.ndarray]:
-    # This code is copied from https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
-    # reshape to ncfhw
-    mean = torch.tensor(mean, device=video.device).reshape(1, -1, 1, 1, 1)
-    std = torch.tensor(std, device=video.device).reshape(1, -1, 1, 1, 1)
+    # This code is adapted from https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
     # unnormalize back to [0,1]
     video = (video / 2 + 0.5).clamp(0, 1)
     # prepare the final outputs
