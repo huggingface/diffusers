@@ -60,7 +60,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
-from ..utils.hub_utils import create_model_card
+from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -727,8 +727,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
-            model_card = create_model_card(repo_id=repo_id, token=token, training=False, is_pipeline=True)
-            # Update model card if needed:
+            model_card = load_or_create_model_card(repo_id=repo_id, token=token, is_pipeline=True)
+            model_card = populate_model_card(model_card)
             model_card.save(os.path.join(save_directory, "README.md"))
 
             self._upload_folder(
