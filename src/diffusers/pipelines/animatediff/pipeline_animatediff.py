@@ -24,7 +24,7 @@ from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from ...models.lora import adjust_lora_scale_text_encoder
-from ...models.unet_motion_model import MotionAdapter
+from ...models.unets.unet_motion_model import MotionAdapter
 from ...schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -65,10 +65,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def tensor2vid(video: torch.Tensor, processor, output_type="np"):
-    # Based on:
-    # https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
-
+def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
     for batch_idx in range(batch_size):
@@ -76,6 +73,15 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         batch_output = processor.postprocess(batch_vid, output_type)
 
         outputs.append(batch_output)
+
+    if output_type == "np":
+        outputs = np.stack(outputs)
+
+    elif output_type == "pt":
+        outputs = torch.stack(outputs)
+
+    elif not output_type == "pil":
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
 
     return outputs
 
@@ -798,11 +804,7 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             return AnimateDiffPipelineOutput(frames=latents)
 
         video_tensor = self.decode_latents(latents)
-
-        if output_type == "pt":
-            video = video_tensor
-        else:
-            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+        video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
         if not return_dict:
             return (video,)

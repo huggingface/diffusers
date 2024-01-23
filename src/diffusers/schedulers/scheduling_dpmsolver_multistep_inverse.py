@@ -165,6 +165,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
+        if algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
+            deprecation_message = f"algorithm_type {algorithm_type} is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
+            deprecate("algorithm_types dpmsolver and sde-dpmsolver", "1.0.0", deprecation_message)
+
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -783,7 +787,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = step_index
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.step
     def step(
         self,
         model_output: torch.FloatTensor,
