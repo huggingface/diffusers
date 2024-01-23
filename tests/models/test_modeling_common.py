@@ -751,7 +751,7 @@ class ModelPushToHubTester(unittest.TestCase):
         )
         model.push_to_hub(self.repo_id, token=TOKEN)
 
-        model_card = ModelCard.load(self.repo_id, token=TOKEN).data
+        model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
         assert model_card.library_name == "diffusers"
 
         # Reset repo
