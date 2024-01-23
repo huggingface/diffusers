@@ -1,4 +1,3 @@
-import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
@@ -7,8 +6,7 @@ import jax.numpy as jnp
 import flax
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, logging
-from ..utils.torch_utils import randn_tensor
+from ..utils import logging
 from .scheduling_utils_flax import (
     CommonSchedulerState,
     FlaxKarrasDiffusionSchedulers,
@@ -198,13 +196,6 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         if common is None:
             common = CommonSchedulerState.create(self)
         
-        # if self.trained_betas is not None:
-        #     common.betas = jnp.array(self.trained_betas, dtype = jnp.float32)
-        # elif self.beta_schedule == "linear":
-        #     common.betas = jnp.linspace(self.beta_start, self.beta_end, num=self.num_train_timesteps, endpoint=False, dtype=jnp.float32)
-        # elif self.beta_schedule == "scaled_linar":
-        #     common.betas = jnp.linspace(self.beta_start**0.5, self.beta_end**0.5, num=self.num_train_timesteps, endpoint=False, dtype=jnp.float32) ** 2
-
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
@@ -234,7 +225,6 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         )
     
     def _init_step_index(self, state, timestep):
-        print("init step index")
         (step_index,) = jnp.where(state.timesteps == timestep, size=2)
         step_index = jax.lax.select(len(step_index) > 1, step_index[1], step_index[0])
         return step_index
@@ -286,8 +276,6 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         original_steps = (
             original_inference_steps if original_inference_steps is not None else self.original_inference_steps
         )
-        print("num_inference_steps: ", num_inference_steps)
-        print("original_steps: ", original_steps)
 
         if original_steps > self.config.num_train_timesteps:
             raise ValueError(
@@ -322,7 +310,6 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         inference_indices = jnp.linspace(0, len(lcm_origin_timesteps), num=num_inference_steps, endpoint=False)
         inference_indices = jnp.floor(inference_indices).astype(jnp.int32)
         timesteps = lcm_origin_timesteps[jnp.array(inference_indices)]
-        jax.debug.print("timesteps: {x}", x=timesteps)
         step_ratio = self.config.num_train_timesteps // num_inference_steps
 
         return state.replace(
@@ -333,8 +320,7 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
 
     def get_scalings_for_boundary_condition_discrete(self, timestep):
         self.sigma_data = 0.5  # Default: 0.5
-        jax.debug.print("get_scalings_for... , timestep: {x}",x=timestep)
-        jax.debug.print("get_scalings_for... , timestep_scaling: {x}",x=self.config.timestep_scaling)
+
         scaled_timestep = timestep * self.config.timestep_scaling
 
         c_skip = self.sigma_data**2 / (scaled_timestep**2 + self.sigma_data**2)
@@ -381,11 +367,8 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # 1. get previous step value        
         prev_step_index = step_index + 1
         prev_timestep = jax.lax.select(prev_step_index < len(state.timesteps), state.timesteps[prev_step_index], timestep)
-        jax.debug.print("prev_timestep: {x}", x=prev_timestep)
         # 2. compute alphas, betas
-        jax.debug.print("timestep: {x}",x=timestep)
         alpha_prod_t = state.common.alphas_cumprod[timestep]
-        jax.debug.print("alpha_prod_t: {x}",x=alpha_prod_t)
         alpha_prod_t_prev = jax.lax.select(prev_timestep >=0, state.common.alphas_cumprod[prev_timestep], state.final_alpha_cumprod)
         
         beta_prod_t = 1 - alpha_prod_t
@@ -421,24 +404,16 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         # Noise is not used on the final timestep of the timestep schedule.
         # This also means that noise is not used for one-step sampling.
 
-        jax.debug.print("**step_index: {x}",x=step_index)
-        jax.debug.print("**state.step_index: {x}",x=state.step_index)
-
         def get_noise(key, shape, dtype):
-            jax.debug.print("---------------get_noise")
             return jax.random.normal(key, shape=shape, dtype=dtype)
-        jax.debug.print("state.num_inference_steps - 1: {x}", x=state.num_inference_steps-1)
-        print(step_index != state.num_inference_steps - 1)
+
         prev_sample = jax.lax.select(step_index != state.num_inference_steps - 1, 
                                      jnp.sqrt(alpha_prod_t_prev) * denoised + jnp.sqrt(beta_prod_t_prev) * get_noise(key, model_output.shape, denoised.dtype) , 
                                      denoised)
-        jax.debug.print("prev_sample == denoised {x} : ", x=(prev_sample == denoised))
-
-        # # upon completion increase step index by one
+        # upon completion increase step index by one
         state = state.replace(
             step_index=step_index + 1
         )
-        # jax.debug.print("state.step_index next: {x}",x=state.step_index)
 
         if not return_dict:
             return (prev_sample, state)

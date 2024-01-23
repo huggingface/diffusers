@@ -230,7 +230,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
 
         # Denoising loop
         def loop_body(step, args):
-            latents, scheduler_state = args
+            latents, scheduler_state, prng_seed = args
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
@@ -255,14 +255,15 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
 
             # compute the previous noisy sample x_t -> x_t-1
             latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents, prng_seed).to_tuple()
-            return latents, scheduler_state
+            prng_seed = jax.random.split(prng_seed)[0]
+            return latents, scheduler_state, prng_seed
 
         if DEBUG:
             # run with python for loop
             for i in range(num_inference_steps):
-                latents, scheduler_state = loop_body(i, (latents, scheduler_state))
+                latents, scheduler_state, prng_seed = loop_body(i, (latents, scheduler_state, prng_seed))
         else:
-            latents, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state))
+            latents, _, _ = jax.lax.fori_loop(0, num_inference_steps, loop_body, (latents, scheduler_state, prng_seed))
 
         if return_latents:
             return latents
