@@ -30,8 +30,8 @@ To learn more about how to load single file weights, see the [Load different Sta
 
 ## FromOriginalVAEMixin
 
-[[autodoc]] loaders.single_file.FromOriginalVAEMixin
+[[autodoc]] loaders.autoencoder.FromOriginalVAEMixin
 
 ## FromOriginalControlnetMixin
 
-[[autodoc]] loaders.single_file.FromOriginalControlnetMixin
+[[autodoc]] loaders.controlnet.FromOriginalControlNetMixin

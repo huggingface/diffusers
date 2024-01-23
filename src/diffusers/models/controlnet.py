@@ -19,7 +19,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import FromOriginalControlnetMixin
+from ..loaders import FromOriginalControlNetMixin
 from ..utils import BaseOutput, logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -108,7 +108,7 @@ class ControlNetConditioningEmbedding(nn.Module):
         return embedding
 
 
-class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
+class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
     """
     A ControlNet model.
 

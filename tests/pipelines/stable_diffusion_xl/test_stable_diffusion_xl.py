@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import copy
+import gc
 import tempfile
 import unittest
 
@@ -1024,6 +1025,11 @@ class StableDiffusionXLPipelineFastTests(
 
 @slow
 class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_stable_diffusion_lcm(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel.from_pretrained(
@@ -1049,3 +1055,30 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
 
         assert max_diff < 1e-2
+
+    def test_download_ckpt_diff_format_is_same(self):
+        ckpt_path = (
+            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+        )
+
+        pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
+
+        pipe = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        )
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
+
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+
+        assert max_diff < 6e-3
