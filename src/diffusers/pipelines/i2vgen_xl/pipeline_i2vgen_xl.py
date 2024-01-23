@@ -401,8 +401,9 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
     def _encode_vae_image(
         self,
-        image: torch.Tensor,
+        image,
         device,
+        num_frames,
         num_videos_per_prompt,
         do_classifier_free_guidance,
     ):
@@ -411,12 +412,16 @@ class I2VGenXLPipeline(DiffusionPipeline):
         image_latents = image_latents * self.vae.config.scaling_factor
 
         if do_classifier_free_guidance:
-            negative_image_latents = torch.zeros_like(image_latents)
+            # negative_image_latents = torch.zeros_like(image_latents)
 
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            image_latents = torch.cat([negative_image_latents, image_latents])
+            # image_latents = torch.cat([negative_image_latents, image_latents])
+            image_latents = torch.cat([image_latents, image_latents])
+
+        # expand across concatenation dimension.
+        image_latents = image_latents.unsqueeze(2).repeat_interleave(num_frames, dim=2)
 
         # duplicate image_latents for each generation per prompt, using mps friendly method
         image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1)
@@ -677,13 +682,18 @@ class I2VGenXLPipeline(DiffusionPipeline):
         image_latents = self._encode_vae_image(
             image,
             device=device,
+            num_frames=num_frames,
             num_videos_per_prompt=num_videos_per_prompt,
             do_classifier_free_guidance=self.do_classifier_free_guidance,
         )
 
         # 3.3 Prepare additional conditions for the UNet.
+        if self.do_classifier_free_guidance:
+            fps_tensor = torch.tensor([target_fps, target_fps]).to(device)
+        else:
+            fps_tensor = torch.tensor([target_fps]).to(device)
         added_cond_kwargs = {
-            "fps": torch.tensor([target_fps]).to(device),
+            "fps": fps_tensor,
             "image_latents": image_latents,
             "image_embeddings": image_embeddings,
         }
