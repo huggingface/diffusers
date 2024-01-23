@@ -98,7 +98,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents.
     """
 
-    model_cpu_offload_seq = "text_encoder->unet->vae"
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
 
     def __init__(
         self,
