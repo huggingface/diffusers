@@ -60,8 +60,8 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 |   Rerender A Video Pipeline                                                                                                    | Implementation of [[SIGGRAPH Asia 2023] Rerender A Video: Zero-Shot Text-Guided Video-to-Video Translation](https://arxiv.org/abs/2306.07954)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Rerender A Video Pipeline](#Rerender_A_Video)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 | StyleAligned Pipeline                                                                                                    | Implementation of [Style Aligned Image Generation via Shared Attention](https://arxiv.org/abs/2312.02133)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [StyleAligned Pipeline](#stylealigned-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/15X2E0jFPTajUIjS0FzX50OaHsCbP2lQ0/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 | AnimateDiff Image-To-Video Pipeline | Experimental Image-To-Video support for AnimateDiff (open to improvements) | [AnimateDiff Image To Video Pipeline](#animatediff-image-to-video-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1TvzCDPHhfFtdcJZe4RLloAwyoLKuttWK/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
-
-|   IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
+   IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
+   InstantID Pipeline                                                                                               | Stable Diffusion XL Pipeline that supports InstantID                                                                                                                                                                                                                                                                                                                                                 |  [InstantID Pipeline](#instantid-pipeline) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/InstantX/InstantID) | [Haofan Wang](https://github.com/haofanwang) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -3532,4 +3532,74 @@ images = pipeline(
 
 for i in range(num_images):
     images[i].save(f"c{i}.png")
+```
+
+### InstantID Pipeline
+
+InstantID is a new state-of-the-art tuning-free method to achieve ID-Preserving generation with only single image, supporting various downstream tasks. For any usgae question, please refer to the [official implementation](https://github.com/InstantID/InstantID).
+
+```py
+# !pip install opencv-python transformers accelerate insightface
+import diffusers
+from diffusers.utils import load_image
+from diffusers.models import ControlNetModel
+
+import cv2
+import torch
+import numpy as np
+from PIL import Image
+
+from insightface.app import FaceAnalysis
+from pipeline_stable_diffusion_xl_instantid import StableDiffusionXLInstantIDPipeline, draw_kps
+
+# prepare 'antelopev2' under ./models
+# https://github.com/deepinsight/insightface/issues/1896#issuecomment-1023867304
+app = FaceAnalysis(name='antelopev2', root='./', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+app.prepare(ctx_id=0, det_size=(640, 640))
+
+# prepare models under ./checkpoints
+# https://huggingface.co/InstantX/InstantID
+from huggingface_hub import hf_hub_download
+hf_hub_download(repo_id="InstantX/InstantID", filename="ControlNetModel/config.json", local_dir="./checkpoints")
+hf_hub_download(repo_id="InstantX/InstantID", filename="ControlNetModel/diffusion_pytorch_model.safetensors", local_dir="./checkpoints")
+hf_hub_download(repo_id="InstantX/InstantID", filename="ip-adapter.bin", local_dir="./checkpoints")
+
+face_adapter = f'./checkpoints/ip-adapter.bin'
+controlnet_path = f'./checkpoints/ControlNetModel'
+
+# load IdentityNet
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+
+base_model = 'wangqixun/YamerMIX_v8'
+pipe = StableDiffusionXLInstantIDPipeline.from_pretrained(
+    base_model,
+    controlnet=controlnet,
+    torch_dtype=torch.float16
+)
+pipe.cuda()
+
+# load adapter
+pipe.load_ip_adapter_instantid(face_adapter)
+
+# load an image
+face_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ai_face2.png")
+
+# prepare face emb
+face_info = app.get(cv2.cvtColor(np.array(face_image), cv2.COLOR_RGB2BGR))
+face_info = sorted(face_info, key=lambda x:(x['bbox'][2]-x['bbox'][0])*x['bbox'][3]-x['bbox'][1])[-1]  # only use the maximum face
+face_emb = face_info['embedding']
+face_kps = draw_kps(face_image, face_info['kps'])
+
+# prompt
+prompt = "film noir style, ink sketch|vector, male man, highly detailed, sharp focus, ultra sharpness, monochrome, high contrast, dramatic shadows, 1940s style, mysterious, cinematic"
+negative_prompt = "ugly, deformed, noisy, blurry, low contrast, realism, photorealistic, vibrant, colorful"
+
+# generate image
+pipe.set_ip_adapter_scale(0.8)
+image = pipe(
+    prompt,
+    image_embeds=face_emb,
+    image=face_kps,
+    controlnet_conditioning_scale=0.8,
+).images[0]
 ```
