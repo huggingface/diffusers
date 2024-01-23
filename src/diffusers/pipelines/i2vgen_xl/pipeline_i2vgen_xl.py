@@ -409,7 +409,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         image = image.to(device=device)
         # image_latents = self.vae.encode(image).latent_dist.sample()
         # image_latents = image_latents * self.vae.config.scaling_factor
-        mage_latents = self.vae.encode(image).latent_dist.mode()
+        image_latents = self.vae.encode(image).latent_dist.mode()
 
         if do_classifier_free_guidance:
             negative_image_latents = torch.zeros_like(image_latents)
