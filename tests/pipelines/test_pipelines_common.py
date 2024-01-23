@@ -1152,8 +1152,11 @@ class PipelinePushToHubTester(unittest.TestCase):
         pipeline = StableDiffusionPipeline(**components)
         pipeline.push_to_hub(self.repo_id, token=TOKEN)
 
-        model_card = ModelCard.load(self.repo_id).data
+        model_card = ModelCard.load(self.repo_id, token=TOKEN).data
         assert model_card.library_name == "diffusers"
+
+        # Reset repo
+        delete_repo(self.repo_id, token=TOKEN)
 
 
 # For SDXL and its derivative pipelines (such as ControlNet), we have the text encoders
