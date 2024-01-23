@@ -624,7 +624,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
-        decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else num_frames
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
