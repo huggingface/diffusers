@@ -19,9 +19,7 @@ import argparse
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from diffusers import DDIMScheduler, StableDiffusionPipeline
-from diffusers.models.unet_i2vgen_xl import I2VGenXLUNet
-from diffusers.pipelines.i2vgen_xl.pipeline_i2vgen_xl import I2VGenXLPipeline
+from diffusers import DDIMScheduler, I2VGenXLPipeline, I2VGenXLUNet, StableDiffusionPipeline
 
 
 CLIP_ID = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"

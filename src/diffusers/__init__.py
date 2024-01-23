@@ -81,6 +81,7 @@ else:
             "ConsistencyDecoderVAE",
             "ControlNetModel",
             "I2VGenXLUNet",
+            "I2VGenXLUNet",
             "Kandinsky3UNet",
             "ModelMixin",
             "MotionAdapter",
