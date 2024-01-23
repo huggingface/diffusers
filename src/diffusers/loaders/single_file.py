@@ -97,14 +97,18 @@ def build_sub_model_components(
             safety_checker = StableDiffusionSafetyChecker.from_pretrained(
                 "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
             )
+        else:
+            safety_checker = None
+        return {"safety_checker": safety_checker}
+
+    if component_name == "feature_extractor":
+        if load_safety_checker:
             feature_extractor = AutoFeatureExtractor.from_pretrained(
                 "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
             )
         else:
-            safety_checker = None
             feature_extractor = None
-
-        return {"safety_checker": safety_checker, "feature_extractor": feature_extractor}
+        return {"feature_extractor": feature_extractor}
 
     return
 
@@ -201,7 +205,7 @@ class FromSingleFileMixin:
         proxies = kwargs.pop("proxies", None)
         token = kwargs.pop("token", None)
         cache_dir = kwargs.pop("cache_dir", None)
-        local_files_only = kwargs.pop("local_files_only", None)
+        local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         use_safetensors = kwargs.pop("use_safetensors", True)
@@ -236,6 +240,9 @@ class FromSingleFileMixin:
 
         model_type = kwargs.pop("model_type", None)
         image_size = kwargs.pop("image_size", None)
+        load_safety_checker = (kwargs.pop("load_safety_checker", False)) or (
+            passed_class_obj.get("safety_checker", None) is not None
+        )
 
         init_kwargs = {}
         for name in expected_modules:
@@ -248,9 +255,10 @@ class FromSingleFileMixin:
                     name,
                     original_config,
                     checkpoint,
-                    pretrained_model_link_or_path,
                     model_type=model_type,
                     image_size=image_size,
+                    load_safety_checker=load_safety_checker,
+                    local_files_only=local_files_only,
                     **kwargs,
                 )
                 if not components:
