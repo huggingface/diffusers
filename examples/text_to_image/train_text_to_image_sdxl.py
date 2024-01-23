@@ -580,7 +580,7 @@ def main(args):
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 
     # Set a custom timeout (e.g., 60 minutes)
-    init_pg_kwargs = InitProcessGroupKwargs(timeout=timedelta(days=2))
+    init_pg_kwargs = InitProcessGroupKwargs(timeout=timedelta(days=60))
 
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -829,6 +829,7 @@ def main(args):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
+            trust_remote_code=True
         )
     else:
         data_files = {}
@@ -838,6 +839,7 @@ def main(args):
             "imagefolder",
             data_files=data_files,
             cache_dir=args.cache_dir,
+            trust_remote_code=True
         )
         # See more about loading custom images at
         # https://huggingface.co/docs/datasets/v2.4.0/en/image_load#imagefolder
