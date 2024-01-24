@@ -99,7 +99,7 @@ class UNet1DModel(ModelMixin, ConfigMixin):
         # time
         if time_embedding_type == "fourier":
             self.time_proj = GaussianFourierProjection(
-                embedding_size=8, set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
+                embedding_size=block_out_channels[0], set_W_to_weight=False, log=False, flip_sin_to_cos=flip_sin_to_cos
             )
             timestep_input_dim = 2 * block_out_channels[0]
         elif time_embedding_type == "positional":
