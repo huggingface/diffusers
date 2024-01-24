@@ -62,6 +62,7 @@ prompt-to-prompt | change parts of a prompt and retain image structure (see [pap
 | AnimateDiff Image-To-Video Pipeline | Experimental Image-To-Video support for AnimateDiff (open to improvements) | [AnimateDiff Image To Video Pipeline](#animatediff-image-to-video-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1TvzCDPHhfFtdcJZe4RLloAwyoLKuttWK/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
    IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
    InstantID Pipeline                                                                                               | Stable Diffusion XL Pipeline that supports InstantID                                                                                                                                                                                                                                                                                                                                                 |  [InstantID Pipeline](#instantid-pipeline) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/InstantX/InstantID) | [Haofan Wang](https://github.com/haofanwang) |
+|   UFOGen Scheduler                                                                                               | Scheduler for UFOGen Model (compatible with Stable Diffusion pipelines)                                                                                                                                                                                                                                                                                                                                                 |  [UFOGen Scheduler](#ufogen-scheduler) | - | [dg845](https://github.com/dg845) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 ```py
@@ -3602,4 +3603,33 @@ image = pipe(
     image=face_kps,
     controlnet_conditioning_scale=0.8,
 ).images[0]
+```
+
+### UFOGen Scheduler
+
+[UFOGen](https://arxiv.org/abs/2311.09257) is a generative model designed for fast one-step text-to-image generation, trained via adversarial training starting from an initial pretrained diffusion model such as Stable Diffusion. `scheduling_ufogen.py` implements a onestep and multistep sampling algorithm for UFOGen models compatible with pipelines like `StableDiffusionPipeline`. A usage example is as follows:
+
+```py
+import torch
+from diffusers import StableDiffusionPipeline
+
+from scheduling_ufogen import UFOGenScheduler
+
+# NOTE: currently, I am not aware of any publicly available UFOGen model checkpoints trained from SD v1.5.
+ufogen_model_id_or_path = "/path/to/ufogen/model"
+pipe = StableDiffusionPipeline(
+    ufogen_model_id_or_path,
+    torch_dtype=torch.float16,
+)
+
+# You can initialize a UFOGenScheduler as follows:
+pipe.scheduler = UFOGenScheduler.from_config(pipe.scheduler.config)
+
+prompt = "Three cats having dinner at a table at new years eve, cinematic shot, 8k."
+
+# Onestep sampling
+onestep_image = pipe(prompt, num_inference_steps=1).images[0]
+
+# Multistep sampling
+multistep_image = pipe(prompt, num_inference_steps=4).images[0]
 ```
