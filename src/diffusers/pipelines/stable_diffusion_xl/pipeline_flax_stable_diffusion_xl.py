@@ -26,9 +26,9 @@ from ...models import FlaxAutoencoderKL, FlaxUNet2DConditionModel
 from ...schedulers import (
     FlaxDDIMScheduler,
     FlaxDPMSolverMultistepScheduler,
+    FlaxLCMScheduler,
     FlaxLMSDiscreteScheduler,
     FlaxPNDMScheduler,
-    FlaxLCMScheduler
 )
 from ..pipeline_flax_utils import FlaxDiffusionPipeline
 from .pipeline_output import FlaxStableDiffusionXLPipelineOutput
@@ -50,7 +50,11 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         tokenizer_2: CLIPTokenizer,
         unet: FlaxUNet2DConditionModel,
         scheduler: Union[
-            FlaxDDIMScheduler, FlaxPNDMScheduler, FlaxLMSDiscreteScheduler, FlaxDPMSolverMultistepScheduler, FlaxLCMScheduler
+            FlaxDDIMScheduler,
+            FlaxPNDMScheduler,
+            FlaxLMSDiscreteScheduler,
+            FlaxDPMSolverMultistepScheduler,
+            FlaxLCMScheduler,
         ],
         dtype: jnp.dtype = jnp.float32,
     ):
@@ -99,6 +103,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         neg_prompt_ids: jnp.array = None,
         return_dict: bool = True,
         output_type: str = None,
+        do_classifier_free_guidance: bool = True,
         jit: bool = False,
     ):
         # 0. Default height and width to unet
@@ -125,6 +130,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
                 latents,
                 neg_prompt_ids,
                 return_latents,
+                do_classifier_free_guidance,
             )
         else:
             images = self._generate(
@@ -138,6 +144,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
                 latents,
                 neg_prompt_ids,
                 return_latents,
+                do_classifier_free_guidance,
             )
 
         if not return_dict:
@@ -179,6 +186,7 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         latents: Optional[jnp.array] = None,
         neg_prompt_ids: Optional[jnp.array] = None,
         return_latents=False,
+        do_classifier_free_guidance=True,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -186,22 +194,26 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
         # Encode input prompt
         prompt_embeds, pooled_embeds = self.get_embeddings(prompt_ids, params)
 
-        # Get unconditional embeddings
-        batch_size = prompt_embeds.shape[0]
-        if neg_prompt_ids is None:
-            neg_prompt_embeds = jnp.zeros_like(prompt_embeds)
-            negative_pooled_embeds = jnp.zeros_like(pooled_embeds)
-        else:
-            neg_prompt_embeds, negative_pooled_embeds = self.get_embeddings(neg_prompt_ids, params)
-
         add_time_ids = self._get_add_time_ids(
             (height, width), (0, 0), (height, width), prompt_embeds.shape[0], dtype=prompt_embeds.dtype
         )
 
-        prompt_embeds = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)  # (2, 77, 2048)
-        add_text_embeds = jnp.concatenate([negative_pooled_embeds, pooled_embeds], axis=0)
-        add_time_ids = jnp.concatenate([add_time_ids, add_time_ids], axis=0)
+        # Get unconditional embeddings
+        batch_size = prompt_embeds.shape[0]
 
+        if do_classifier_free_guidance:
+            if neg_prompt_ids is None:
+                neg_prompt_embeds = jnp.zeros_like(prompt_embeds)
+                negative_pooled_embeds = jnp.zeros_like(pooled_embeds)
+            else:
+                neg_prompt_embeds, negative_pooled_embeds = self.get_embeddings(neg_prompt_ids, params)
+
+            prompt_embeds = jnp.concatenate([neg_prompt_embeds, prompt_embeds], axis=0)  # (2, 77, 2048)
+            add_text_embeds = jnp.concatenate([negative_pooled_embeds, pooled_embeds], axis=0)
+            add_time_ids = jnp.concatenate([add_time_ids, add_time_ids], axis=0)
+
+        else:
+            add_text_embeds = pooled_embeds
         # Ensure model output will be `float32` before going into the scheduler
         guidance_scale = jnp.array([guidance_scale], dtype=jnp.float32)
 
@@ -234,7 +246,10 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
             # For classifier free guidance, we need to do two forward passes.
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
-            latents_input = jnp.concatenate([latents] * 2)
+            if do_classifier_free_guidance:
+                latents_input = jnp.concatenate([latents] * 2)
+            else:
+                latents_input = latents
 
             t = jnp.array(scheduler_state.timesteps, dtype=jnp.int32)[step]
             timestep = jnp.broadcast_to(t, latents_input.shape[0])
@@ -249,12 +264,14 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
                 encoder_hidden_states=prompt_embeds,
                 added_cond_kwargs=added_cond_kwargs,
             ).sample
-            # perform guidance
-            noise_pred_uncond, noise_prediction_text = jnp.split(noise_pred, 2, axis=0)
-            noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
 
+            if do_classifier_free_guidance:
+                noise_pred_uncond, noise_prediction_text = jnp.split(noise_pred, 2, axis=0)
+                noise_pred = noise_pred_uncond + guidance_scale * (noise_prediction_text - noise_pred_uncond)
             # compute the previous noisy sample x_t -> x_t-1
-            latents, scheduler_state = self.scheduler.step(scheduler_state, noise_pred, t, latents, prng_seed).to_tuple()
+            latents, scheduler_state = self.scheduler.step(
+                scheduler_state, noise_pred, t, latents, prng_seed
+            ).to_tuple()
             prng_seed = jax.random.split(prng_seed)[0]
             return latents, scheduler_state, prng_seed
 
@@ -280,8 +297,8 @@ class FlaxStableDiffusionXLPipeline(FlaxDiffusionPipeline):
 # Non-static args are (sharded) input tensors mapped over their first dimension (hence, `0`).
 @partial(
     jax.pmap,
-    in_axes=(None, 0, 0, 0, None, None, None, 0, 0, 0, None),
-    static_broadcasted_argnums=(0, 4, 5, 6, 10),
+    in_axes=(None, 0, 0, 0, None, None, None, 0, 0, 0, None, None),
+    static_broadcasted_argnums=(0, 4, 5, 6, 10, 11),
 )
 def _p_generate(
     pipe,
@@ -295,6 +312,7 @@ def _p_generate(
     latents,
     neg_prompt_ids,
     return_latents,
+    do_classifier_free_guidance,
 ):
     return pipe._generate(
         prompt_ids,
@@ -307,4 +325,5 @@ def _p_generate(
         latents,
         neg_prompt_ids,
         return_latents,
+        do_classifier_free_guidance,
     )

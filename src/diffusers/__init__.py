@@ -383,10 +383,10 @@ else:
         [
             "FlaxDDIMScheduler",
             "FlaxDDPMScheduler",
-            "FlaxLCMScheduler",
             "FlaxDPMSolverMultistepScheduler",
             "FlaxEulerDiscreteScheduler",
             "FlaxKarrasVeScheduler",
+            "FlaxLCMScheduler",
             "FlaxLMSDiscreteScheduler",
             "FlaxPNDMScheduler",
             "FlaxSchedulerMixin",
@@ -706,10 +706,10 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .schedulers import (
             FlaxDDIMScheduler,
             FlaxDDPMScheduler,
-            FlaxLCMScheduler,
             FlaxDPMSolverMultistepScheduler,
             FlaxEulerDiscreteScheduler,
             FlaxKarrasVeScheduler,
+            FlaxLCMScheduler,
             FlaxLMSDiscreteScheduler,
             FlaxPNDMScheduler,
             FlaxSchedulerMixin,

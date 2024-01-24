@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import flax
+import jax
 import jax.numpy as jnp
 
 from ..configuration_utils import ConfigMixin, register_to_config
@@ -192,6 +193,7 @@ class FlaxEulerDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
+        key: Optional[jax.Array] = None,
         return_dict: bool = True,
     ) -> Union[FlaxEulerDiscreteSchedulerOutput, Tuple]:
         """

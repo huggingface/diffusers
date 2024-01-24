@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 from typing import List, Optional, Tuple, Union
 
+import flax
 import jax
 import jax.numpy as jnp
-import flax
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import logging
@@ -16,7 +16,9 @@ from .scheduling_utils_flax import (
     get_velocity_common,
 )
 
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
 
 def rescale_zero_terminal_snr(betas: jnp.ndarray) -> jnp.ndarray:
     """
@@ -53,6 +55,7 @@ def rescale_zero_terminal_snr(betas: jnp.ndarray) -> jnp.ndarray:
 
     return betas
 
+
 @flax.struct.dataclass
 class LCMSchedulerState:
     common: CommonSchedulerState
@@ -63,7 +66,7 @@ class LCMSchedulerState:
     timesteps: jnp.ndarray
     num_inference_steps: Optional[int] = None
     custom_timesteps: Optional[bool] = False
-    step_index: Optional[int] = -1 
+    step_index: Optional[int] = -1
 
     @classmethod
     def create(
@@ -73,7 +76,7 @@ class LCMSchedulerState:
         init_noise_sigma: jnp.ndarray,
         timesteps: jnp.ndarray,
         custom_timesteps: bool = False,
-        step_index: int = None
+        step_index: int = None,
     ):
         return cls(
             common=common,
@@ -81,9 +84,9 @@ class LCMSchedulerState:
             init_noise_sigma=init_noise_sigma,
             timesteps=timesteps,
             custom_timesteps=custom_timesteps,
-            step_index=step_index
+            step_index=step_index,
         )
-        
+
 
 @dataclass
 class FlaxLCMSchedulerOutput(FlaxSchedulerOutput):
@@ -152,7 +155,7 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
     """
 
     order = 1
-    
+
     _compatibles = [e.name for e in FlaxKarrasDiffusionSchedulers]
 
     dtype: jnp.dtype
@@ -167,22 +170,21 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         beta_start: float = 0.00085,
         beta_end: float = 0.012,
-        beta_schedule: str = "scaled_linear", 
+        beta_schedule: str = "scaled_linear",
         trained_betas: Optional[Union[jnp.ndarray, List[float]]] = None,
         original_inference_steps: int = 50,  # LCM scheduler
-        clip_sample: bool = False,           # LCM scheduler
-        clip_sample_range: float = 1.0,      # LCM scheduler
+        clip_sample: bool = False,  # LCM scheduler
+        clip_sample_range: float = 1.0,  # LCM scheduler
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
-        thresholding: bool = False,                # LCM scheduler
-        dynamic_thresholding_ratio: float = 0.995, # LCM scheduler
-        sample_max_value: float = 1.0,             # LCM scheduler
-        timestep_spacing: str = "leading",         # LCM scheduler
-        timestep_scaling: float = 10.0,            # LCM scheduler
-        rescale_betas_zero_snr: bool = False,      # LCM scheduler
+        thresholding: bool = False,  # LCM scheduler
+        dynamic_thresholding_ratio: float = 0.995,  # LCM scheduler
+        sample_max_value: float = 1.0,  # LCM scheduler
+        timestep_spacing: str = "leading",  # LCM scheduler
+        timestep_scaling: float = 10.0,  # LCM scheduler
+        rescale_betas_zero_snr: bool = False,  # LCM scheduler
         dtype: jnp.dtype = jnp.float32,
-
     ):
         self.num_train_timesteps = num_train_timesteps
         self.beta_start = beta_start
@@ -195,7 +197,7 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
     def create_state(self, common: Optional[CommonSchedulerState] = None) -> LCMSchedulerState:
         if common is None:
             common = CommonSchedulerState.create(self)
-        
+
         # At every step in ddim, we are looking into the previous alphas_cumprod
         # For the final step, there is no previous alphas_cumprod because we are already at 0
         # `set_alpha_to_one` decides whether we set this parameter simply to one or
@@ -203,7 +205,7 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         final_alpha_cumprod = (
             jnp.array(1.0, dtype=self.dtype) if self.config.set_alpha_to_one else common.alphas_cumprod[0]
         )
-        
+
         # Rescale for zero SNR
         if self.config.rescale_betas_zero_snr:
             common.betas = rescale_zero_terminal_snr(common.betas)
@@ -221,15 +223,17 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
             init_noise_sigma=init_noise_sigma,
             timesteps=timesteps,
             custom_timesteps=custom_timesteps,
-            step_index=step_index
+            step_index=step_index,
         )
-    
+
     def _init_step_index(self, state, timestep):
         (step_index,) = jnp.where(state.timesteps == timestep, size=2)
         step_index = jax.lax.select(len(step_index) > 1, step_index[1], step_index[0])
         return step_index
-   
-    def scale_model_input(self, state: LCMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None) -> jnp.ndarray:
+
+    def scale_model_input(
+        self, state: LCMSchedulerState, sample: jnp.ndarray, timestep: Optional[int] = None
+    ) -> jnp.ndarray:
         """
         Ensures interchangeability with schedulers that need to scale the denoising model input depending on the
         current timestep.
@@ -244,17 +248,16 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
                 A scaled input sample.
         """
         return sample
-    
+
     def set_timesteps(
-        self, 
+        self,
         state: LCMSchedulerState,
         shape: Tuple = (),
         num_inference_steps: Optional[int] = None,
         original_inference_steps: Optional[int] = None,
         timesteps: Optional[List[int]] = None,
-        strength: int = 1.0) -> LCMSchedulerState:
-    
-
+        strength: int = 1.0,
+    ) -> LCMSchedulerState:
         """
         Sets the discrete timesteps used for the diffusion chain. Supporting function to be run before inference.
 
@@ -292,12 +295,12 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         lcm_origin_timesteps = jnp.array(list(range(1, int(original_steps * strength) + 1))) * k - 1
 
         skipping_step = len(lcm_origin_timesteps) // num_inference_steps
-        
+
         if skipping_step < 1:
             raise ValueError(
                 f"The combination of `original_steps x strength`: {original_steps} x {strength} is smaller than `num_inference_steps`: {num_inference_steps}. Make sure to either reduce `num_inference_steps` to a value smaller than {int(original_steps * strength)} or increase `strength` to a value higher than {float(num_inference_steps / original_steps)}."
             )
-    
+
         if num_inference_steps > original_steps:
             raise ValueError(
                 f"`num_inference_steps`: {num_inference_steps} cannot be larger than `original_inference_steps`:"
@@ -310,13 +313,8 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         inference_indices = jnp.linspace(0, len(lcm_origin_timesteps), num=num_inference_steps, endpoint=False)
         inference_indices = jnp.floor(inference_indices).astype(jnp.int32)
         timesteps = lcm_origin_timesteps[jnp.array(inference_indices)]
-        step_ratio = self.config.num_train_timesteps // num_inference_steps
 
-        return state.replace(
-            num_inference_steps=num_inference_steps,
-            timesteps=timesteps,
-            step_index=-1
-        )
+        return state.replace(num_inference_steps=num_inference_steps, timesteps=timesteps, step_index=-1)
 
     def get_scalings_for_boundary_condition_discrete(self, timestep):
         self.sigma_data = 0.5  # Default: 0.5
@@ -356,21 +354,25 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
                 If return_dict is `True`, [`~schedulers.scheduling_lcm.LCMSchedulerOutput`] is returned, otherwise a
                 tuple is returned where the first element is the sample tensor.
         """
-        
+
         if state.num_inference_steps is None:
             raise ValueError(
                 "Number of inference steps is 'None', you need to run 'set_timesteps' after creating the scheduler"
             )
-        
+
         step_index = jax.lax.select(state.step_index == -1, self._init_step_index(state, timestep), state.step_index)
-        
-        # 1. get previous step value        
+
+        # 1. get previous step value
         prev_step_index = step_index + 1
-        prev_timestep = jax.lax.select(prev_step_index < len(state.timesteps), state.timesteps[prev_step_index], timestep)
+        prev_timestep = jax.lax.select(
+            prev_step_index < len(state.timesteps), state.timesteps[prev_step_index], timestep
+        )
         # 2. compute alphas, betas
         alpha_prod_t = state.common.alphas_cumprod[timestep]
-        alpha_prod_t_prev = jax.lax.select(prev_timestep >=0, state.common.alphas_cumprod[prev_timestep], state.final_alpha_cumprod)
-        
+        alpha_prod_t_prev = jax.lax.select(
+            prev_timestep >= 0, state.common.alphas_cumprod[prev_timestep], state.final_alpha_cumprod
+        )
+
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
@@ -407,13 +409,14 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
         def get_noise(key, shape, dtype):
             return jax.random.normal(key, shape=shape, dtype=dtype)
 
-        prev_sample = jax.lax.select(step_index != state.num_inference_steps - 1, 
-                                     jnp.sqrt(alpha_prod_t_prev) * denoised + jnp.sqrt(beta_prod_t_prev) * get_noise(key, model_output.shape, denoised.dtype) , 
-                                     denoised)
-        # upon completion increase step index by one
-        state = state.replace(
-            step_index=step_index + 1
+        prev_sample = jax.lax.select(
+            step_index != state.num_inference_steps - 1,
+            jnp.sqrt(alpha_prod_t_prev) * denoised
+            + jnp.sqrt(beta_prod_t_prev) * get_noise(key, model_output.shape, denoised.dtype),
+            denoised,
         )
+        # upon completion increase step index by one
+        state = state.replace(step_index=step_index + 1)
 
         if not return_dict:
             return (prev_sample, state)
@@ -430,13 +433,11 @@ class FlaxLCMScheduler(FlaxSchedulerMixin, ConfigMixin):
     ) -> jnp.ndarray:
         return add_noise_common(state.common, original_samples, noise, timesteps)
 
-
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.get_velocity
     def get_velocity(
         self, state: LCMSchedulerState, sample: jnp.ndarray, noise: jnp.ndarray, timesteps: jnp.ndarray
     ) -> jnp.ndarray:
         return get_velocity_common(state.common, sample, noise, timesteps)
-
 
     def __len__(self):
         return self.config.num_train_timesteps

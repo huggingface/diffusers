@@ -481,6 +481,7 @@ class FlaxDPMSolverMultistepScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
+        key: Optional[jax.Array] = None,
         return_dict: bool = True,
     ) -> Union[FlaxDPMSolverMultistepSchedulerOutput, Tuple]:
         """
