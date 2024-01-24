@@ -970,12 +970,17 @@ class DreamBoothDataset(Dataset):
     def __getitem__(self, index):
         example = {}
         instance_image = self.pixel_values[index % self.num_instance_images]
+        original_size = self.original_sizes[index % self.num_instance_images]
+        crop_top_left = self.crop_top_left[index % self.num_instance_images]
         # instance_image = exif_transpose(instance_image)
         #
         # if not instance_image.mode == "RGB":
         #     instance_image = instance_image.convert("RGB")
         # example["instance_images"] = self.image_transforms(instance_image)
         example["instance_images"] = instance_image
+        example["original_size"] = original_size
+        example["crop_top_left"] = crop_top_left
+
 
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
@@ -1006,6 +1011,8 @@ class DreamBoothDataset(Dataset):
 def collate_fn(examples, with_prior_preservation=False):
     pixel_values = [example["instance_images"] for example in examples]
     prompts = [example["instance_prompt"] for example in examples]
+    original_sizes = [example["original_size"] for example in examples]
+    crop_top_lefts = [example["crop_top_left"] for example in examples]
 
     # Concat class and instance examples for prior preservation.
     # We do this to avoid doing two forward passes.
@@ -1016,7 +1023,8 @@ def collate_fn(examples, with_prior_preservation=False):
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    batch = {"pixel_values": pixel_values, "prompts": prompts}
+    batch = {"pixel_values": pixel_values, "prompts": prompts, "original_sizes": original_sizes,
+            "crop_top_lefts": crop_top_lefts}
     return batch
 
 
@@ -1579,11 +1587,13 @@ def main(args):
     # pooled text embeddings
     # time ids
 
-    def compute_time_ids():
+    def compute_time_ids(original_size=None, crops_coords_top_left=None):
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-        original_size = (args.resolution, args.resolution)
+        if original_size is None:
+            original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
-        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
+        if crops_coords_top_left is None:
+            crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids])
         add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
@@ -1834,6 +1844,11 @@ def main(args):
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
+
+                # time ids
+                add_time_ids = torch.cat(
+                    [compute_time_ids(s, c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
+                )
 
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
                 if not train_dataset.custom_instance_prompts:
