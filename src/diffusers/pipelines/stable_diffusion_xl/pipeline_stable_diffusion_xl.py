@@ -1166,14 +1166,14 @@ class StableDiffusionXLPipeline(
             if not isinstance(ip_adapter_image, list):
                 ip_adapter_image = [ip_adapter_image]
 
-            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.ImageProjectionLayers):
+            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
                 raise ValueError(
-                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.ImageProjectionLayers)} IP Adapters."
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
                 )
 
             image_embeds = []
             for single_ip_adapter_image, image_proj_layer in zip(
-                ip_adapter_image, self.unet.encoder_hid_proj.ImageProjectionLayers
+                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
             ):
                 output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
