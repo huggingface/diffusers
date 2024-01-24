@@ -54,7 +54,7 @@ class UNet3DConditionOutput(BaseOutput):
     The output of [`UNet3DConditionModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_frames, num_channels, height, width)`):
+        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, num_frames, height, width)`):
             The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
     """
 
@@ -533,7 +533,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         Args:
             sample (`torch.FloatTensor`):
-                The noisy input tensor with the following shape `(batch, channel, num_frames, height, width`.
+                The noisy input tensor with the following shape `(batch, num_channels, num_frames, height, width`.
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.FloatTensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
