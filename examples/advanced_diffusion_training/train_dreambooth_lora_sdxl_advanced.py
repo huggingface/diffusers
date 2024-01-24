@@ -1527,6 +1527,55 @@ def main(args):
         center_crop=args.center_crop,
     )
 
+    # Preprocessing the datasets.
+    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+    train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
+    train_flip = transforms.RandomHorizontalFlip(p=1.0)
+    train_transforms = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize([0.5], [0.5]),
+        ]
+    )
+
+    def preprocess_train(examples):
+        images = [image.convert("RGB") for image in examples[image_column]]
+        # image aug
+        original_sizes = []
+        all_images = []
+        crop_top_lefts = []
+        for image in images:
+            original_sizes.append((image.height, image.width))
+            image = train_resize(image)
+            if args.random_flip and random.random() < 0.5:
+                # flip
+                image = train_flip(image)
+            if args.center_crop:
+                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
+                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+                image = train_crop(image)
+            else:
+                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                image = crop(image, y1, x1, h, w)
+            crop_top_left = (y1, x1)
+            crop_top_lefts.append(crop_top_left)
+            image = train_transforms(image)
+            all_images.append(image)
+
+        examples["original_sizes"] = original_sizes
+        examples["crop_top_lefts"] = crop_top_lefts
+        examples["pixel_values"] = all_images
+        # tokens_one, tokens_two = tokenize_captions(examples)
+        # examples["input_ids_one"] = tokens_one
+        # examples["input_ids_two"] = tokens_two
+        return examples
+
+    with accelerator.main_process_first():
+        # if args.max_train_samples is not None:
+        #     dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
+        # # Set the training transforms
+        train_dataset = dataset["train"].with_transform(preprocess_train)
+
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=args.train_batch_size,
