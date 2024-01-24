@@ -139,21 +139,12 @@ More information on all the CLI arguments and the environment are available on y
         f.write(yaml + model_card)
 
 
-def log_validation(unet, vae, text_encoder, tokenizer, args, accelerator, weight_dtype, epoch, is_final_validation=False):
-    logger.info(f"Running validation... \n Generating {args.num_validation_images} images with prompt:"f" {args.validation_prompt}.")
-
-    # initialize pipeline
-    pipeline = StableDiffusionPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        vae=accelerator.unwrap_model(vae),
-        text_encoder=accelerator.unwrap_model(text_encoder),
-        tokenizer=tokenizer,
-        unet=accelerator.unwrap_model(unet),
-        safety_checker=None,
-        revision=args.revision,
-        variant=args.variant,
-        torch_dtype=weight_dtype,
+def log_validation(pipeline, args, accelerator, generator, epoch, is_final_validation=False):
+    logger.info(
+        f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
+        f" {args.validation_prompt}."
     )
+
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
@@ -169,6 +160,7 @@ def log_validation(unet, vae, text_encoder, tokenizer, args, accelerator, weight
 
     for i, prompt in enumerate(len(args.validation_prompts)):
         with torch.autocast("cuda"):
+            # run inference
             image = pipeline(args.validation_prompts[i], num_inference_steps=20, generator=generator).images[0]
 
         image_logs.append({"validation_prompt": prompt, "images": image})
@@ -183,7 +175,6 @@ def log_validation(unet, vae, text_encoder, tokenizer, args, accelerator, weight
                     formatted_images.append(np.asarray(image))
 
                 formatted_images = np.stack(formatted_images)
-
                 tracker.writer.add_images(validation_prompt, formatted_images, epoch, dataformats="NHWC")
         elif tracker.name == "wandb":
             formatted_images = []
@@ -1022,18 +1013,6 @@ def main():
                         accelerator.save_state(save_path)
                         logger.info(f"Saved state to {save_path}")
 
-                    if global_step % args.validation_steps == 0:
-                        log_validation(
-                            vae,
-                            text_encoder,
-                            tokenizer,
-                            args,
-                            accelerator,
-                            weight_dtype,
-                            epoch=global_step,
-                            unet=ema_unet,
-                            is_final_validation=False,
-                        )
             logs = {"step_loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
 
@@ -1047,6 +1026,27 @@ def main():
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
 
+                pipeline = StableDiffusionPipeline.from_pretrained(
+                    args.pretrained_model_name_or_path,
+                    vae=unwrap_model(vae),
+                    text_encoder=unwrap_model(text_encoder),
+                    tokenizer=tokenizer,
+                    unet=unwrap_model(unet),
+                    safety_checker=None,
+                    revision=args.revision,
+                    variant=args.variant,
+                    torch_dtype=weight_dtype,
+                )
+                pipeline = pipeline.to(accelerator.device)
+                log_validation(
+                    pipeline,
+                    args,
+                    accelerator,
+                    weight_dtype,
+                    epoch=global_step,
+                    unet=unet,
+                    is_final_validation=True,
+                )
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
                     ema_unet.restore(unet.parameters())
@@ -1076,16 +1076,11 @@ def main():
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
-        del unet
-        torch.cuda.empty_cache()
-
         # Run a final round of inference.
         if args.validation_steps is not None:
             log_validation(
-                vae,
+                pipeline,
                 args,
-                text_encoder,
-                tokenizer,
                 accelerator,
                 weight_dtype,
                 epoch=global_step,
