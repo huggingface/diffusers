@@ -1404,11 +1404,6 @@ class StableDiffusionXLControlNetPipeline(
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
-        # manually for max memory savings
-        if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
-            self.upcast_vae()
-            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
