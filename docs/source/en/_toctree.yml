@@ -300,6 +300,8 @@
       title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: Paint by Example
+    - local: api/pipelines/pia
+      title: Personalized Image Animator (PIA)
     - local: api/pipelines/pixart
       title: PixArt-α
     - local: api/pipelines/self_attention_guidance
