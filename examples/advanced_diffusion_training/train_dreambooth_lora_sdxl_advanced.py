@@ -419,6 +419,11 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--random_flip",
+        action="store_true",
+        help="whether to randomly flip images horizontally",
+    )
+    parser.add_argument(
         "--train_text_encoder",
         action="store_true",
         help="Whether to train the text encoder. If set, the text encoder should be float32 precision.",
@@ -902,6 +907,39 @@ class DreamBoothDataset(Dataset):
         self.instance_images = []
         for img in instance_images:
             self.instance_images.extend(itertools.repeat(img, repeats))
+
+        # image processing to prepare for using SD-XL micro-conditioning
+        self.original_sizes = []
+        self.crop_top_lefts = []
+        self.pixel_values = []
+        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+        train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
+        train_flip = transforms.RandomHorizontalFlip(p=1.0)
+        train_transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+        for image in self.instance_images:
+            image = exif_transpose(image)
+            self.original_sizes.append((image.height, image.width))
+            image = train_resize(image)
+            if args.random_flip and random.random() < 0.5:
+                # flip
+                image = train_flip(image)
+            if args.center_crop:
+                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
+                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+                image = train_crop(image)
+            else:
+                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                image = crop(image, y1, x1, h, w)
+            crop_top_left = (y1, x1)
+            self.crop_top_lefts.append(crop_top_left)
+            image = train_transforms(image)
+            self.pixel_values.append(image)
+
         self.num_instance_images = len(self.instance_images)
         self._length = self.num_instance_images
 
@@ -931,12 +969,13 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = self.instance_images[index % self.num_instance_images]
-        instance_image = exif_transpose(instance_image)
-
-        if not instance_image.mode == "RGB":
-            instance_image = instance_image.convert("RGB")
-        example["instance_images"] = self.image_transforms(instance_image)
+        instance_image = self.pixel_values[index % self.num_instance_images]
+        # instance_image = exif_transpose(instance_image)
+        #
+        # if not instance_image.mode == "RGB":
+        #     instance_image = instance_image.convert("RGB")
+        # example["instance_images"] = self.image_transforms(instance_image)
+        example["instance_images"] = instance_image
 
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
@@ -1526,55 +1565,6 @@ def main(args):
         repeats=args.repeats,
         center_crop=args.center_crop,
     )
-
-    # Preprocessing the datasets.
-    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
-    train_crop = transforms.CenterCrop(args.resolution) if args.center_crop else transforms.RandomCrop(args.resolution)
-    train_flip = transforms.RandomHorizontalFlip(p=1.0)
-    train_transforms = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),
-        ]
-    )
-
-    def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
-        # image aug
-        original_sizes = []
-        all_images = []
-        crop_top_lefts = []
-        for image in images:
-            original_sizes.append((image.height, image.width))
-            image = train_resize(image)
-            if args.random_flip and random.random() < 0.5:
-                # flip
-                image = train_flip(image)
-            if args.center_crop:
-                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
-                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
-                image = train_crop(image)
-            else:
-                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
-                image = crop(image, y1, x1, h, w)
-            crop_top_left = (y1, x1)
-            crop_top_lefts.append(crop_top_left)
-            image = train_transforms(image)
-            all_images.append(image)
-
-        examples["original_sizes"] = original_sizes
-        examples["crop_top_lefts"] = crop_top_lefts
-        examples["pixel_values"] = all_images
-        # tokens_one, tokens_two = tokenize_captions(examples)
-        # examples["input_ids_one"] = tokens_one
-        # examples["input_ids_two"] = tokens_two
-        return examples
-
-    with accelerator.main_process_first():
-        # if args.max_train_samples is not None:
-        #     dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
