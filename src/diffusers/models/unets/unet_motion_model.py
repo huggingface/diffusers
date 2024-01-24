@@ -432,8 +432,12 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             return model
 
         if motion_adapter.config["use_input_conv"]:
-            model.conv_in.weight[:, :4, :, :] = unet.conv_in.weight
-            model.conv_in.bias = unet.conv_in.bias
+            model.conv_in = motion_adapter.conv_in
+            updated_conv_in_weight = torch.cat(
+                [unet.conv_in.weight, motion_adapter.conv_in.weight[:, 4:, :, :]], dim=1
+            )
+            model.conv_in.load_state_dict({"weight": updated_conv_in_weight, "bias": unet.conv_in.bias})
+
         else:
             model.conv_in.load_state_dict(unet.conv_in.state_dict())
 
