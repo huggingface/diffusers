@@ -45,6 +45,7 @@ from PIL.ImageOps import exif_transpose
 from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
+from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
