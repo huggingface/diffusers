@@ -54,15 +54,39 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
-        >>> from diffusers.utils import export_to_gif
-
-        >>> adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
-        >>> pipe = AnimateDiffPipeline.from_pretrained("frankjoshua/toonyou_beta6", motion_adapter=adapter)
-        >>> pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False)
-        >>> output = pipe(prompt="A corgi walking in the park")
+        >>> from diffusers import (
+        ...     DDIMScheduler,
+        ...     MotionAdapter,
+        ...     PIAPipeline,
+        ... )
+        >>> from diffusers.utils import export_to_gif, load_image
+        >>> adapter = MotionAdapter.from_pretrained("../checkpoints/pia-diffusers")
+        >>> pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter)
+        >>> pipe.scheduler = DDIMScheduler(
+        ...     clip_sample=False,
+        ...     steps_offset=1,
+        ...     timestep_spacing="leading",
+        ...     beta_schedule="linear",
+        ...     beta_start=0.00085,
+        ...     beta_end=0.012,
+        ... )
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
+        ... )
+        >>> image = image.resize((512, 512))
+        >>> prompt = "cat in a hat"
+        >>> negative_prompt = "wrong white balance, dark, sketches,worst quality,low quality, deformed, distorted, disfigured, bad eyes, wrong lips,weird mouth, bad teeth, mutated hands and fingers, bad anatomy,wrong anatomy, amputation, extra limb, missing limb, floating,limbs, disconnected limbs, mutation, ugly, disgusting, bad_pictures, negative_hand-neg"
+        >>> generator = torch.Generator("cpu").manual_seed(0)
+        >>> output = pipe(
+        ...     image=image,
+        ...     prompt=prompt,
+        ...     guidance_scale=7.5,
+        ...     num_inference_steps=25,
+        ...     motion_scale=0,
+        ...     generator=generator,
+        ... )
         >>> frames = output.frames[0]
-        >>> export_to_gif(frames, "animation.gif")
+        >>> export_to_gif(frames, "pia-animation.gif")
         ```
 """
 
@@ -73,12 +97,13 @@ RANGE_LIST = [
     [1.0, 0.9, 0.85, 0.85, 0.85, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.85, 0.85, 0.9, 1.0],  # Loop
     [1.0, 0.8, 0.8, 0.8, 0.79, 0.78, 0.75, 0.75, 0.75, 0.75, 0.75, 0.78, 0.79, 0.8, 0.8, 1.0],  # Loop
     [1.0, 0.8, 0.7, 0.7, 0.7, 0.7, 0.6, 0.5, 0.5, 0.6, 0.7, 0.7, 0.7, 0.7, 0.8, 1.0],  # Loop
-    [0.5, 0.2],  # Style Transfer Large Motion
-    [0.5, 0.4, 0.4, 0.4, 0.35, 0.35, 0.3, 0.25, 0.2],  # Style Transfer Moderate Motion
     [0.5, 0.4, 0.4, 0.4, 0.35, 0.3],  # Style Transfer Candidate Small Motion
+    [0.5, 0.4, 0.4, 0.4, 0.35, 0.35, 0.3, 0.25, 0.2],  # Style Transfer Moderate Motion
+    [0.5, 0.2],  # Style Transfer Large Motion
 ]
 
 
+# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
 def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
@@ -100,16 +125,16 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
     return outputs
 
 
-def prepare_mask_coef_by_statistics(num_frames: int, cond_frame: int, sim_range: int):
+def prepare_mask_coef_by_statistics(num_frames: int, cond_frame: int, motion_scale: int):
     assert num_frames > 0, "video_length should be greater than 0"
 
     assert num_frames > cond_frame, "video_length should be greater than cond_frame"
 
     range_list = RANGE_LIST
 
-    assert sim_range < len(range_list), f"sim_range type{sim_range} not implemented"
+    assert motion_scale < len(range_list), f"motion_scale type{motion_scale} not implemented"
 
-    coef = range_list[sim_range]
+    coef = range_list[motion_scale]
     coef = coef + ([coef[-1]] * (num_frames - len(coef)))
 
     order = [abs(i - cond_frame) for i in range(num_frames)]
@@ -717,12 +742,8 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         dtype,
         device,
         generator,
-        latent_timestep,
-        strength=1.0,
-        mask_sim_template_idx=0,
-        cond_frame=0,
+        motion_scale=0,
     ):
-
         shape = (
             batch_size,
             num_channels_latents,
@@ -745,10 +766,10 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
 
         image_latent = image_latent.to(device=device, dtype=dtype)
         image_latent = torch.nn.functional.interpolate(image_latent, size=[scaled_height, scaled_width])
-        image_latent_padding = image_latent.clone() * 0.18215
+        image_latent_padding = image_latent.clone() * self.vae.config.scaling_factor
 
         mask = torch.zeros((batch_size, 1, num_frames, scaled_height, scaled_width)).to(device=device, dtype=dtype)
-        mask_coef = prepare_mask_coef_by_statistics(num_frames, cond_frame, mask_sim_template_idx)
+        mask_coef = prepare_mask_coef_by_statistics(num_frames, 0, motion_scale)
         masked_image = torch.zeros(batch_size, 4, num_frames, scaled_height, scaled_width).to(
             device=device, dtype=self.unet.dtype
         )
@@ -758,13 +779,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
 
         mask = torch.cat([mask] * 2) if self.do_classifier_free_guidance else mask
         masked_image = torch.cat([masked_image] * 2) if self.do_classifier_free_guidance else masked_image
-
-        """
-        if strength < 1.0:
-            noise = torch.randn_like(latents)
-            latents = self.scheduler.add_noise(masked_image[0], noise, latent_timestep)
-        """
-        #latents = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
         return mask, masked_image
 
@@ -788,7 +802,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         callback_on_step_end,
         callback_on_step_end_tensor_inputs,
     ):
-        """Denoising loop for AnimateDiff."""
+        """Denoising loop for PIA."""
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -836,13 +850,12 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         height,
         width,
         num_frames,
-        num_channels_latents,
         batch_size,
         num_videos_per_prompt,
         denoise_args,
         device,
     ):
-        """Denoising loop for AnimateDiff using FreeInit noise reinitialization technique."""
+        """Denoising loop for PIA using FreeInit noise reinitialization technique."""
 
         latents = denoise_args.get("latents")
         prompt_embeds = denoise_args.get("prompt_embeds")
@@ -851,14 +864,14 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
 
         latent_shape = (
             batch_size * num_videos_per_prompt,
-            num_channels_latents,
+            4,
             num_frames,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
         )
         free_init_filter_shape = (
             1,
-            num_channels_latents,
+            4,
             num_frames,
             height // self.vae_scale_factor,
             width // self.vae_scale_factor,
@@ -975,8 +988,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
-        mask_sim_template_idx: int = 0,
-        cond_frame: int = 0,
+        motion_scale: int = 0,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -989,8 +1001,11 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         The call function to the pipeline for generation.
 
         Args:
+            image (`PipelineImageInput`):
+                The input image to be used for video generation.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
+            strength (`float`, *optional*, defaults to 1.0): Indicates extent to transform the reference `image`. Must be between 0 and 1.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated video.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -1026,6 +1041,12 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
+            motion_scale: (`int`, *optional*, defaults to 0):
+                Parameter that controls the amount and type of motion that is added to the image. Increasing the value increases the amount of motion, while specific
+                ranges of values control the type of motion that is added. Must be between 0 and 8.
+                Set between 0-2 to only increase the amount of motion.
+                Set between 3-5 to create looping motion.
+                Set between 6-8 to perform motion with image style transfer.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
                 `np.array`.
@@ -1140,7 +1161,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         self._num_timesteps = len(timesteps)
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
             4,
@@ -1150,7 +1170,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             prompt_embeds.dtype,
             device,
             generator,
-            latents=latents
+            latents=latents,
         )
         mask, masked_image = self.prepare_masked_condition(
             image,
@@ -1162,10 +1182,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             dtype=self.unet.dtype,
             device=device,
             generator=generator,
-            latent_timestep=latent_timestep,
-            strength=strength,
-            mask_sim_template_idx=mask_sim_template_idx,
-            cond_frame=cond_frame,
+            motion_scale=motion_scale,
         )
         if strength < 1.0:
             noise = torch.randn_like(latents)
@@ -1204,7 +1221,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
                 height=height,
                 width=width,
                 num_frames=num_frames,
-                num_channels_latents=num_channels_latents,
                 batch_size=batch_size,
                 num_videos_per_prompt=num_videos_per_prompt,
                 denoise_args=denoise_args,

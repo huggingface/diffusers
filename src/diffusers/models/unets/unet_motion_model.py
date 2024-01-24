@@ -426,16 +426,24 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not config.get("num_attention_heads"):
             config["num_attention_heads"] = config["attention_head_dim"]
 
+        if motion_adapter.config["use_input_conv"]:
+            config["in_channels"] = motion_adapter.config["input_conv_channels"]
+
         model = cls.from_config(config)
 
         if not load_weights:
             return model
 
-        if motion_adapter.config["use_input_conv"]:
+        # The check for the unet.conv_in weight shape is meant to handle cases where
+        # `save_pretrained` was used with the PIAPipeline, resulting in the PIA weights
+        # being fused UNet conv_in weights. In such a case we would load the fused weights
+        # directly into model.conv_in
+        if motion_adapter.config["use_input_conv"] and unet.conv_in.weight.shape[1] == 4:
             model.conv_in = motion_adapter.conv_in
             updated_conv_in_weight = torch.cat(
                 [unet.conv_in.weight, motion_adapter.conv_in.weight[:, 4:, :, :]], dim=1
             )
+
             model.conv_in.load_state_dict({"weight": updated_conv_in_weight, "bias": unet.conv_in.bias})
 
         else:
