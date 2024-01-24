@@ -972,7 +972,7 @@ class DreamBoothDataset(Dataset):
         example = {}
         instance_image = self.pixel_values[index % self.num_instance_images]
         original_size = self.original_sizes[index % self.num_instance_images]
-        crop_top_left = self.crop_top_left[index % self.num_instance_images]
+        crop_top_left = self.crop_top_lefts[index % self.num_instance_images]
         # instance_image = exif_transpose(instance_image)
         #
         # if not instance_image.mode == "RGB":
