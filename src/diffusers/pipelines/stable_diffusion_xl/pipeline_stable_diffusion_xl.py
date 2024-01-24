@@ -1175,7 +1175,7 @@ class StableDiffusionXLPipeline(
             for single_ip_adapter_image, image_proj_layer in zip(
                 ip_adapter_image, self.unet.encoder_hid_proj.ImageProjectionLayers
             ):
-                output_hidden_state = False if isinstance(image_proj_layer, ImageProjection) else True
+                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
                 single_image_embeds, single_negative_image_embeds = self.encode_image(
                     single_ip_adapter_image, device, num_images_per_prompt, output_hidden_state
                 )

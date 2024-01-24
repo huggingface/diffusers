@@ -2100,13 +2100,13 @@ class IPAdapterAttnProcessor(nn.Module):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=[4], scale=1.0):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0):
         super().__init__()
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
 
-        if not isinstance(num_tokens, list):
+        if not isinstance(num_tokens, (tuple, list)):
             raise ValueError("`num_tokens` should be a list of integers.")
         self.num_tokens = num_tokens
 
@@ -2215,7 +2215,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=[4], scale=1.0):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0):
         super().__init__()
 
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2226,7 +2226,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
 
-        if not isinstance(num_tokens, list):
+        if not isinstance(num_tokens, (tuple, list)):
             raise ValueError("`num_tokens` should be a list of integers.")
         self.num_tokens = num_tokens
 

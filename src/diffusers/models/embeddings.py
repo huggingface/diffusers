@@ -883,7 +883,7 @@ class IPAdapterPlusImageProjection(nn.Module):
 class MultiIPAdapterImageProjection(nn.Module):
     def __init__(self, IPAdapterImageProjectionLayers: Union[List[nn.Module], Tuple[nn.Module]]):
         super().__init__()
-        self.ImageProjectionLayers = nn.ModuleList(IPAdapterImageProjectionLayers)
+        self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
 
     def forward(self, image_embeds: List[torch.FloatTensor]):
         projected_image_embeds = []

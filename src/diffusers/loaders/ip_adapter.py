@@ -53,8 +53,7 @@ class IPAdapterMixin:
     ):
         """
         Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `
-            .PathLike` or `dict`):
+            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
                 Can be either:
 
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
