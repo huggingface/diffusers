@@ -92,7 +92,7 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         local_files_only = kwargs.pop("local_files_only", False)
         token = kwargs.pop("token", None)
         variant = kwargs.pop("variant", None)
-        revision = kwargs.pop("revision",None)
+        revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         device_map = kwargs.pop("device_map", None)
 
@@ -176,7 +176,10 @@ class CheckpointMergerPipeline(DiffusionPipeline):
         # Step 3:-
         # Load the first checkpoint as a diffusion pipeline and modify its module state_dict in place
         final_pipe = DiffusionPipeline.from_pretrained(
-            cached_folders[0], torch_dtype=torch_dtype, device_map=device_map, variant=variant,
+            cached_folders[0],
+            torch_dtype=torch_dtype,
+            device_map=device_map,
+            variant=variant,
         )
         final_pipe.to(self.device)
 
