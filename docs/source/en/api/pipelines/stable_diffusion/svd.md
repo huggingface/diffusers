@@ -34,4 +34,4 @@ Check out the [Stability AI](https://huggingface.co/stabilityai) Hub organizatio
 
 ## StableVideoDiffusionPipelineOutput
 
-[[autodoc]] StableVideoDiffusionPipelineOutput
+[[autodoc]] pipelines.stable_video_diffusion.StableVideoDiffusionPipelineOutput
