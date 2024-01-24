@@ -32,6 +32,7 @@ from .. import __version__
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
+    SAFETENSORS_FILE_EXTENSION,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     _add_variant,
@@ -102,10 +103,11 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
     try:
-        if os.path.basename(checkpoint_file) == _add_variant(WEIGHTS_NAME, variant):
-            return torch.load(checkpoint_file, map_location="cpu")
-        else:
+        file_extension = os.path.basename(checkpoint_file).split(".")[-1]
+        if file_extension == SAFETENSORS_FILE_EXTENSION:
             return safetensors.torch.load_file(checkpoint_file, device="cpu")
+        else:
+            return torch.load(checkpoint_file, map_location="cpu")
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
