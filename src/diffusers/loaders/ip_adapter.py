@@ -173,8 +173,8 @@ class IPAdapterMixin:
 
             # create feature extractor if it has not been registered to the pipeline yet
             if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
-                self.feature_extractor = CLIPImageProcessor()
-                self.register_to_config(feature_extractor=["transformers", "CLIPImageProcessor"])
+                feature_extractor = CLIPImageProcessor()
+                self.register_modules(feature_extractor=feature_extractor)
 
             # load ip-adapter into unet
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet

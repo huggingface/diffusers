@@ -2130,7 +2130,7 @@ class IPAdapterAttnProcessor(nn.Module):
         encoder_hidden_states,
         attention_mask=None,
         temb=None,
-        **kwargs,
+        scale=1.0,
     ):
         residual = hidden_states
 
@@ -2250,7 +2250,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         encoder_hidden_states,
         attention_mask=None,
         temb=None,
-        **kwargs,
+        scale=1.0,
     ):
         residual = hidden_states
 
