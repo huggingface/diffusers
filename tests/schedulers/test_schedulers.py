@@ -343,7 +343,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
         return model
 
-    def check_over_configs(self, time_step=None, **config):
+    def check_over_configs(self, time_step=0, **config):
         kwargs = dict(self.forward_default_kwargs)
 
         num_inference_steps = kwargs.pop("num_inference_steps", None)
@@ -401,7 +401,7 @@ class SchedulerCommonTest(unittest.TestCase):
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
-    def check_over_forward(self, time_step=None, **forward_kwargs):
+    def check_over_forward(self, time_step=0, **forward_kwargs):
         kwargs = dict(self.forward_default_kwargs)
         kwargs.update(forward_kwargs)
 
