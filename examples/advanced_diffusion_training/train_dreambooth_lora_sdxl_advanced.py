@@ -982,7 +982,6 @@ class DreamBoothDataset(Dataset):
         example["original_size"] = original_size
         example["crop_top_left"] = crop_top_left
 
-
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
             if caption:
@@ -1024,8 +1023,12 @@ def collate_fn(examples, with_prior_preservation=False):
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    batch = {"pixel_values": pixel_values, "prompts": prompts, "original_sizes": original_sizes,
-            "crop_top_lefts": crop_top_lefts}
+    batch = {
+        "pixel_values": pixel_values,
+        "prompts": prompts,
+        "original_sizes": original_sizes,
+        "crop_top_lefts": crop_top_lefts,
+    }
     return batch
 
 
@@ -1872,7 +1875,7 @@ def main(args):
                     ).sample
                 else:
                     unet_added_conditions = {"time_ids": add_time_ids}
-                    #unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
+                    # unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
                         tokenizers=None,
@@ -2141,10 +2144,18 @@ def main(args):
                 all_new_tokens = []
                 for key, value in token_abstraction_dict.items():
                     all_new_tokens.extend(value)
-                pipeline.load_textual_inversion(state_dict["clip_l"], token=all_new_tokens,
-                                                text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
-                pipeline.load_textual_inversion(state_dict["clip_g"], token=all_new_tokens,
-                                                text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
+                pipeline.load_textual_inversion(
+                    state_dict["clip_l"],
+                    token=all_new_tokens,
+                    text_encoder=pipeline.text_encoder,
+                    tokenizer=pipeline.tokenizer,
+                )
+                pipeline.load_textual_inversion(
+                    state_dict["clip_g"],
+                    token=all_new_tokens,
+                    text_encoder=pipeline.text_encoder_2,
+                    tokenizer=pipeline.tokenizer_2,
+                )
 
             # run inference
             pipeline = pipeline.to(accelerator.device)

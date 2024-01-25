@@ -745,7 +745,6 @@ class TokenEmbeddingsHandler:
 
             idx += 1
 
-
     # copied from train_dreambooth_lora_sdxl_advanced.py
     def save_embeddings(self, file_path: str):
         assert self.train_ids is not None, "Initialize new tokens before saving embeddings."
@@ -1914,8 +1913,12 @@ def main(args):
                 all_new_tokens = []
                 for key, value in token_abstraction_dict.items():
                     all_new_tokens.extend(value)
-                pipeline.load_textual_inversion(state_dict["clip_l"], token=all_new_tokens,
-                                                    text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+                pipeline.load_textual_inversion(
+                    state_dict["clip_l"],
+                    token=all_new_tokens,
+                    text_encoder=pipeline.text_encoder,
+                    tokenizer=pipeline.tokenizer,
+                )
             # run inference
             pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
