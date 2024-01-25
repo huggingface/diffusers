@@ -107,6 +107,7 @@ RANGE_LIST = [
 def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
+
     for batch_idx in range(batch_size):
         batch_vid = video[batch_idx].permute(1, 0, 2, 3)
         batch_output = processor.postprocess(batch_vid, output_type)
@@ -243,7 +244,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
-    _optional_components = ["feature_extractor", "image_encoder"]
+    _optional_components = ["feature_extractor", "image_encoder", "motion_adapter"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -251,8 +252,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
-        motion_adapter: MotionAdapter,
+        unet: Union[UNet2DConditionModel, UNetMotionModel],
         scheduler: Union[
             DDIMScheduler,
             PNDMScheduler,
@@ -261,11 +261,13 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             EulerAncestralDiscreteScheduler,
             DPMSolverMultistepScheduler,
         ],
+        motion_adapter: Optional[MotionAdapter] = None,
         feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
-        unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
+        if isinstance(unet, UNet2DConditionModel):
+            unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
 
         self.register_modules(
             vae=vae,
@@ -695,6 +697,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
                     f" {negative_prompt_embeds.shape}."
                 )
 
+    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -715,7 +718,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             width // self.vae_scale_factor,
         )
 
-        _, _, _, scaled_height, scaled_width = shape
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
                 f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -797,8 +799,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         cross_attention_kwargs,
         added_cond_kwargs,
         extra_step_kwargs,
-        callback,
-        callback_steps,
         callback_on_step_end,
         callback_on_step_end_tensor_inputs,
     ):
@@ -840,8 +840,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        callback(i, t, latents)
 
         return latents
 
@@ -923,6 +921,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
 
         return latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -1210,8 +1209,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             "cross_attention_kwargs": self.cross_attention_kwargs,
             "added_cond_kwargs": added_cond_kwargs,
             "extra_step_kwargs": extra_step_kwargs,
-            "callback": callback,
-            "callback_steps": callback_steps,
             "callback_on_step_end": callback_on_step_end,
             "callback_on_step_end_tensor_inputs": callback_on_step_end_tensor_inputs,
         }

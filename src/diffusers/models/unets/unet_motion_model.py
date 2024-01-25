@@ -89,8 +89,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         motion_norm_num_groups: int = 32,
         motion_max_seq_length: int = 32,
         use_motion_mid_block: bool = True,
-        use_input_conv: bool = False,
-        input_conv_channels: int = 9,
+        conv_in_channels: Optional[int] = None,
     ):
         """Container to store AnimateDiff Motion Modules
 
@@ -115,12 +114,12 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         down_blocks = []
         up_blocks = []
 
-        if use_input_conv:
+        if conv_in_channels:
             # input
             conv_in_kernel = 3
             conv_in_padding = (conv_in_kernel - 1) // 2
             self.conv_in = nn.Conv2d(
-                input_conv_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
+                conv_in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
             )
         else:
             self.conv_in = None
@@ -422,30 +421,27 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             config["motion_max_seq_length"] = motion_adapter.config["motion_max_seq_length"]
             config["use_motion_mid_block"] = motion_adapter.config["use_motion_mid_block"]
 
+            # For PIA UNets we need to set the number input channels to 9
+            if motion_adapter.config["conv_in_channels"]:
+                config["in_channels"] = motion_adapter.config["conv_in_channels"]
+
         # Need this for backwards compatibility with UNet2DConditionModel checkpoints
         if not config.get("num_attention_heads"):
             config["num_attention_heads"] = config["attention_head_dim"]
-
-        if motion_adapter.config["use_input_conv"]:
-            config["in_channels"] = motion_adapter.config["input_conv_channels"]
 
         model = cls.from_config(config)
 
         if not load_weights:
             return model
 
-        # The check for the unet.conv_in weight shape is meant to handle cases where
-        # `save_pretrained` was used with the PIAPipeline, resulting in the PIA weights
-        # being fused UNet conv_in weights. In such a case we would load the fused weights
-        # directly into model.conv_in
-        if motion_adapter.config["use_input_conv"] and unet.conv_in.weight.shape[1] == 4:
+        # Logic for loading PIA UNets which allow the first 4 channels to be any UNet2DConditionModel conv_in weight
+        # while the last 5 channels must be PIA conv_in weights.
+        if has_motion_adapter and motion_adapter.config["conv_in_channels"]:
             model.conv_in = motion_adapter.conv_in
             updated_conv_in_weight = torch.cat(
                 [unet.conv_in.weight, motion_adapter.conv_in.weight[:, 4:, :, :]], dim=1
             )
-
             model.conv_in.load_state_dict({"weight": updated_conv_in_weight, "bias": unet.conv_in.bias})
-
         else:
             model.conv_in.load_state_dict(unet.conv_in.state_dict())
 
@@ -516,9 +512,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # to support older motion modules that don't have a mid_block
         if hasattr(self.mid_block, "motion_modules"):
             self.mid_block.motion_modules.load_state_dict(motion_adapter.mid_block.motion_modules.state_dict())
-
-        if motion_adapter.config["use_input_conv"]:
-            self.conv_in.load_state_dict(motion_adapter.conv_in.state_dict())
 
     def save_motion_modules(
         self,
