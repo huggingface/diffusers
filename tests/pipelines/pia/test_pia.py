@@ -100,8 +100,7 @@ class PIAPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             motion_layers_per_block=2,
             motion_norm_num_groups=2,
             motion_num_attention_heads=4,
-            use_input_conv=True,
-            input_conv_channels=9,
+            conv_in_channels=9,
         )
 
         components = {
