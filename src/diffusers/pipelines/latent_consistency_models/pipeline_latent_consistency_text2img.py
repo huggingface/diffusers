@@ -729,10 +729,24 @@ class LatentConsistencyModelPipeline(
         # do_classifier_free_guidance = guidance_scale > 1.0
 
         if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
-            )
+            if not isinstance(ip_adapter_image, list):
+                ip_adapter_image = [ip_adapter_image]
+
+            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+                raise ValueError(
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                )
+
+            image_embeds = []
+            for single_ip_adapter_image, image_proj_layer in zip(
+                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+            ):
+                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+                single_image_embeds, single_negative_image_embeds = self.encode_image(
+                    single_ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+                )
+
+                image_embeds.append(single_image_embeds)
 
         # 3. Encode input prompt
         lora_scale = (
