@@ -817,7 +817,7 @@ class LEditsPPPipelineStableDiffusion(
             self.attention_store = AttentionStore(
                 average=store_averaged_over_steps,
                 batch_size=batch_size,
-                max_size=16 * 16,
+                max_size=(latents.shape[-2] / 4.0) * (latents.shape[-1] / 4.0),
                 max_resolution=None,
             )
             self.prepare_unet(self.attention_store, PnP=False)
