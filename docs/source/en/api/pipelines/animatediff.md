@@ -118,7 +118,7 @@ from PIL import Image
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
 # load SD 1.5 based finetuned model
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-pipe = AnimateDiffVideoToVideoPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
+pipe = AnimateDiffVideoToVideoPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16).to("cuda")
 scheduler = DDIMScheduler.from_pretrained(
     model_id,
     subfolder="scheduler",
@@ -411,12 +411,24 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 ## AnimateDiffPipeline
 
 [[autodoc]] AnimateDiffPipeline
-	- all
-	- __call__
+  - all
+  - __call__
     - enable_freeu
     - disable_freeu
     - enable_free_init
     - disable_free_init
+    - enable_vae_slicing
+    - disable_vae_slicing
+    - enable_vae_tiling
+    - disable_vae_tiling
+
+## AnimateDiffVideoToVideoPipeline
+
+[[autodoc]] AnimateDiffVideoToVideoPipeline
+  - all
+  - __call__
+    - enable_freeu
+    - disable_freeu
     - enable_vae_slicing
     - disable_vae_slicing
     - enable_vae_tiling
