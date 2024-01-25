@@ -37,6 +37,7 @@ from transformers import (
 from ...models import (
     AutoencoderKL,
     ControlNetModel,
+    PromptDiffusionControlNetModel,
     PriorTransformer,
     UNet2DConditionModel,
 )
@@ -386,7 +387,7 @@ def create_ldm_bert_config(original_config):
 
 
 def convert_ldm_unet_checkpoint(
-    checkpoint, config, path=None, extract_ema=False, controlnet=False, skip_extract_state_dict=False
+    checkpoint, config, path=None, extract_ema=False, controlnet=False, skip_extract_state_dict=False,promptdiffusion=False,
 ):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
@@ -588,7 +589,7 @@ def convert_ldm_unet_checkpoint(
 
                 new_checkpoint[new_path] = unet_state_dict[old_path]
 
-    if controlnet:
+    if controlnet and not promptdiffusion:
         # conditioning embedding
 
         orig_index = 0
@@ -621,6 +622,66 @@ def convert_ldm_unet_checkpoint(
             f"input_hint_block.{orig_index}.bias"
         )
 
+        # down blocks
+        for i in range(num_input_blocks):
+            new_checkpoint[f"controlnet_down_blocks.{i}.weight"] = unet_state_dict.pop(f"zero_convs.{i}.0.weight")
+            new_checkpoint[f"controlnet_down_blocks.{i}.bias"] = unet_state_dict.pop(f"zero_convs.{i}.0.bias")
+
+        # mid block
+        new_checkpoint["controlnet_mid_block.weight"] = unet_state_dict.pop("middle_block_out.0.weight")
+        new_checkpoint["controlnet_mid_block.bias"] = unet_state_dict.pop("middle_block_out.0.bias")
+
+    if promptdiffusion:
+        # conditioning embedding
+
+        orig_index = 0
+
+        new_checkpoint["controlnet_cond_embedding.conv_in.weight"] = unet_state_dict.pop(
+            f"input_hint_block.{orig_index}.weight"
+        )
+        new_checkpoint["controlnet_cond_embedding.conv_in.bias"] = unet_state_dict.pop(
+            f"input_hint_block.{orig_index}.bias"
+        )
+
+        new_checkpoint["controlnet_query_cond_embedding.conv_in.weight"] = unet_state_dict.pop(
+            f"input_cond_block.{orig_index}.weight"
+        )
+        new_checkpoint["controlnet_query_cond_embedding.conv_in.bias"] = unet_state_dict.pop(
+            f"input_cond_block.{orig_index}.bias"
+        )
+        orig_index += 2
+
+        diffusers_index = 0
+
+        while diffusers_index < 6:
+            new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_index}.weight"] = unet_state_dict.pop(
+                f"input_hint_block.{orig_index}.weight"
+            )
+            new_checkpoint[f"controlnet_cond_embedding.blocks.{diffusers_index}.bias"] = unet_state_dict.pop(
+                f"input_hint_block.{orig_index}.bias"
+            )
+            new_checkpoint[f"controlnet_query_cond_embedding.blocks.{diffusers_index}.weight"] = unet_state_dict.pop(
+                f"input_cond_block.{orig_index}.weight"
+            )
+            new_checkpoint[f"controlnet_query_cond_embedding.blocks.{diffusers_index}.bias"] = unet_state_dict.pop(
+                f"input_cond_block.{orig_index}.bias"
+            )
+            diffusers_index += 1
+            orig_index += 2
+
+        new_checkpoint["controlnet_cond_embedding.conv_out.weight"] = unet_state_dict.pop(
+            f"input_hint_block.{orig_index}.weight"
+        )
+        new_checkpoint["controlnet_cond_embedding.conv_out.bias"] = unet_state_dict.pop(
+            f"input_hint_block.{orig_index}.bias"
+        )
+
+        new_checkpoint["controlnet_query_cond_embedding.conv_out.weight"] = unet_state_dict.pop(
+            f"input_cond_block.{orig_index}.weight"
+        )
+        new_checkpoint["controlnet_query_cond_embedding.conv_out.bias"] = unet_state_dict.pop(
+            f"input_cond_block.{orig_index}.bias"
+        )
         # down blocks
         for i in range(num_input_blocks):
             new_checkpoint[f"controlnet_down_blocks.{i}.weight"] = unet_state_dict.pop(f"zero_convs.{i}.0.weight")
@@ -1134,6 +1195,55 @@ def convert_controlnet_checkpoint(
 
     return controlnet
 
+def convert_promptdiffusion_checkpoint(
+    checkpoint,
+    original_config,
+    checkpoint_path,
+    image_size,
+    upcast_attention,
+    extract_ema,
+    use_linear_projection=None,
+    cross_attention_dim=None,
+):
+    ctrlnet_config = create_unet_diffusers_config(original_config, image_size=image_size, controlnet=True)
+    ctrlnet_config["upcast_attention"] = upcast_attention
+
+    ctrlnet_config.pop("sample_size")
+
+    if use_linear_projection is not None:
+        ctrlnet_config["use_linear_projection"] = use_linear_projection
+
+    if cross_attention_dim is not None:
+        ctrlnet_config["cross_attention_dim"] = cross_attention_dim
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        controlnet = PromptDiffusionControlNetModel(**ctrlnet_config)
+
+    # Some controlnet ckpt files are distributed independently from the rest of the
+    # model components i.e. https://huggingface.co/thibaud/controlnet-sd21/
+    if "time_embed.0.weight" in checkpoint:
+        skip_extract_state_dict = True
+    else:
+        skip_extract_state_dict = False
+
+    converted_ctrl_checkpoint = convert_ldm_unet_checkpoint(
+        checkpoint,
+        ctrlnet_config,
+        path=checkpoint_path,
+        extract_ema=extract_ema,
+        promptdiffusion=True,
+        controlnet=True,
+        skip_extract_state_dict=skip_extract_state_dict,
+    )
+
+    if is_accelerate_available():
+        for param_name, param in converted_ctrl_checkpoint.items():
+            set_module_tensor_to_device(controlnet, param_name, "cpu", value=param)
+    else:
+        controlnet.load_state_dict(converted_ctrl_checkpoint)
+
+    return controlnet
 
 def download_from_original_stable_diffusion_ckpt(
     checkpoint_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -1844,6 +1954,57 @@ def download_controlnet_from_original_ckpt(
         raise ValueError("`control_stage_config` not present in original config")
 
     controlnet = convert_controlnet_checkpoint(
+        checkpoint,
+        original_config,
+        checkpoint_path,
+        image_size,
+        upcast_attention,
+        extract_ema,
+        use_linear_projection=use_linear_projection,
+        cross_attention_dim=cross_attention_dim,
+    )
+
+    return controlnet
+
+def download_promptdiffusion_from_original_ckpt(
+    checkpoint_path: str,
+    original_config_file: str,
+    image_size: int = 512,
+    extract_ema: bool = False,
+    num_in_channels: Optional[int] = None,
+    upcast_attention: Optional[bool] = None,
+    device: str = None,
+    from_safetensors: bool = False,
+    use_linear_projection: Optional[bool] = None,
+    cross_attention_dim: Optional[bool] = None,
+) -> DiffusionPipeline:
+    if from_safetensors:
+        from safetensors import safe_open
+
+        checkpoint = {}
+        with safe_open(checkpoint_path, framework="pt", device="cpu") as f:
+            for key in f.keys():
+                checkpoint[key] = f.get_tensor(key)
+    else:
+        if device is None:
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+        else:
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+
+    # NOTE: this while loop isn't great but this controlnet checkpoint has one additional
+    # "state_dict" key https://huggingface.co/thibaud/controlnet-canny-sd21
+    while "state_dict" in checkpoint:
+        checkpoint = checkpoint["state_dict"]
+
+    original_config = yaml.safe_load(open(original_config_file))
+
+    if num_in_channels is not None:
+        original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
+    if "control_stage_config" not in original_config["model"]["params"]:
+        raise ValueError("`control_stage_config` not present in original config")
+
+    controlnet = convert_promptdiffusion_checkpoint(
         checkpoint,
         original_config,
         checkpoint_path,
