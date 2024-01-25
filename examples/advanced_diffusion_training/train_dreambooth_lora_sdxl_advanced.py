@@ -2014,6 +2014,8 @@ def main(args):
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
+                    tokenizer=tokenizer_one,
+                    tokenizer_2=tokenizer_two,
                     text_encoder=accelerator.unwrap_model(text_encoder_one),
                     text_encoder_2=accelerator.unwrap_model(text_encoder_two),
                     unet=accelerator.unwrap_model(unet),
@@ -2093,6 +2095,11 @@ def main(args):
             text_encoder_lora_layers=text_encoder_lora_layers,
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
+
+        if args.train_text_encoder_ti:
+            embeddings_path = f"{args.output_dir}/learned_embeds.safetensors"
+            embedding_handler.save_embeddings(embeddings_path)
+
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
             # Final inference
@@ -2127,6 +2134,17 @@ def main(args):
 
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
+
+            # load new tokens
+            if args.train_text_encoder_ti:
+                state_dict = load_file(embeddings_path)
+                all_new_tokens = []
+                for key, value in token_abstraction_dict.items():
+                    all_new_tokens.extend(value)
+                pipeline.load_textual_inversion(state_dict["clip_l"], token=all_new_tokens,
+                                                text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+                pipeline.load_textual_inversion(state_dict["clip_g"], token=all_new_tokens,
+                                                text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
 
             # run inference
             pipeline = pipeline.to(accelerator.device)
