@@ -25,7 +25,11 @@ from parameterized import parameterized
 from pytest import mark
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, IPAdapterAttnProcessor
+from diffusers.models.attention_processor import (
+    CustomDiffusionAttnProcessor,
+    IPAdapterAttnProcessor,
+    IPAdapterAttnProcessor2_0,
+)
 from diffusers.models.embeddings import ImageProjection, IPAdapterPlusImageProjection
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
@@ -805,9 +809,21 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             sample4 = model(**inputs_dict).sample
 
+        # forward pass with multiple ip-adapters and multiple images
+        model._load_ip_adapter_weights([ip_adapter_1, ip_adapter_2])
+        # set the scale for ip_adapter_2 to 0 so that result should be same as only load ip_adapter_1
+        for attn_processor in model.attn_processors.values():
+            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+                attn_processor.scale = [1, 0]
+        image_embeds = image_embeds.repeat(1, 2, 1, 1)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds, image_embeds]}
+        with torch.no_grad():
+            sample5 = model(**inputs_dict).sample
+
         assert not sample1.allclose(sample2, atol=1e-4, rtol=1e-4)
         assert not sample2.allclose(sample3, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample4, atol=1e-4, rtol=1e-4)
+        assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
 
     def test_ip_adapter_plus(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -855,9 +871,21 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         with torch.no_grad():
             sample4 = model(**inputs_dict).sample
 
+        # forward pass with multiple ip-adapters and multiple images
+        model._load_ip_adapter_weights([ip_adapter_1, ip_adapter_2])
+        # set the scale for ip_adapter_2 to 0 so that result should be same as only load ip_adapter_1
+        for attn_processor in model.attn_processors.values():
+            if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+                attn_processor.scale = [1, 0]
+        image_embeds = image_embeds.repeat(1, 2, 1, 1)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds, image_embeds]}
+        with torch.no_grad():
+            sample5 = model(**inputs_dict).sample
+
         assert not sample1.allclose(sample2, atol=1e-4, rtol=1e-4)
         assert not sample2.allclose(sample3, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample4, atol=1e-4, rtol=1e-4)
+        assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
 
 
 @slow

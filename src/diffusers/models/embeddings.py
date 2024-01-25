@@ -888,6 +888,11 @@ class MultiIPAdapterImageProjection(nn.Module):
     def forward(self, image_embeds: List[torch.FloatTensor]):
         projected_image_embeds = []
 
+        if len(image_embeds) != len(self.image_projection_layers):
+            raise ValueError(
+                f"image_embeds must have the same length as image_projection_layers, got {len(image_embeds)} and {len(self.image_projection_layers)}"
+            )
+
         for image_embed, image_projection_layer in zip(image_embeds, self.image_projection_layers):
             if image_embed.ndim != 4:
                 raise ValueError(f"image_embeds must be 4-dimensional, got {image_embed.shape}")
