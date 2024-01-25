@@ -80,6 +80,7 @@ else:
             "AutoencoderTiny",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
+            "PromptDiffusionControlNetModel",
             "Kandinsky3UNet",
             "ModelMixin",
             "MotionAdapter",
