@@ -73,8 +73,8 @@ def create_ip_adapter_state_dict(model):
             ).state_dict()
             ip_cross_attn_state_dict.update(
                 {
-                    f"{key_id}.to_k_ip.weight": sd["to_k_ip.weight"],
-                    f"{key_id}.to_v_ip.weight": sd["to_v_ip.weight"],
+                    f"{key_id}.to_k_ip.weight": sd["to_k_ip.0.weight"],
+                    f"{key_id}.to_v_ip.weight": sd["to_v_ip.0.weight"],
                 }
             )
 
@@ -124,8 +124,8 @@ def create_ip_adapter_plus_state_dict(model):
             ).state_dict()
             ip_cross_attn_state_dict.update(
                 {
-                    f"{key_id}.to_k_ip.weight": sd["to_k_ip.weight"],
-                    f"{key_id}.to_v_ip.weight": sd["to_v_ip.weight"],
+                    f"{key_id}.to_k_ip.weight": sd["to_k_ip.0.weight"],
+                    f"{key_id}.to_v_ip.weight": sd["to_v_ip.0.weight"],
                 }
             )
 
@@ -773,8 +773,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
-        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
-        inputs_dict["added_cond_kwargs"] = {"image_embeds": image_embeds}
+        image_embeds = floats_tensor((batch_size, 1, 1, model.cross_attention_dim)).to(torch_device)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
         # make ip_adapter_1 and ip_adapter_2
         ip_adapter_1 = create_ip_adapter_state_dict(model)
@@ -785,7 +785,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         ip_adapter_2.update({"image_proj": image_proj_state_dict_2, "ip_adapter": cross_attn_state_dict_2})
 
         # forward pass ip_adapter_1
-        model._load_ip_adapter_weights(ip_adapter_1)
+        model._load_ip_adapter_weights([ip_adapter_1])
         assert model.config.encoder_hid_dim_type == "ip_image_proj"
         assert model.encoder_hid_proj is not None
         assert model.down_blocks[0].attentions[0].transformer_blocks[0].attn2.processor.__class__.__name__ in (
@@ -796,12 +796,12 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             sample2 = model(**inputs_dict).sample
 
         # forward pass with ip_adapter_2
-        model._load_ip_adapter_weights(ip_adapter_2)
+        model._load_ip_adapter_weights([ip_adapter_2])
         with torch.no_grad():
             sample3 = model(**inputs_dict).sample
 
         # forward pass with ip_adapter_1 again
-        model._load_ip_adapter_weights(ip_adapter_1)
+        model._load_ip_adapter_weights([ip_adapter_1])
         with torch.no_grad():
             sample4 = model(**inputs_dict).sample
 
@@ -823,8 +823,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
-        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
-        inputs_dict["added_cond_kwargs"] = {"image_embeds": image_embeds}
+        image_embeds = floats_tensor((batch_size, 1, 1, model.cross_attention_dim)).to(torch_device)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
         # make ip_adapter_1 and ip_adapter_2
         ip_adapter_1 = create_ip_adapter_plus_state_dict(model)
@@ -835,7 +835,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         ip_adapter_2.update({"image_proj": image_proj_state_dict_2, "ip_adapter": cross_attn_state_dict_2})
 
         # forward pass ip_adapter_1
-        model._load_ip_adapter_weights(ip_adapter_1)
+        model._load_ip_adapter_weights([ip_adapter_1])
         assert model.config.encoder_hid_dim_type == "ip_image_proj"
         assert model.encoder_hid_proj is not None
         assert model.down_blocks[0].attentions[0].transformer_blocks[0].attn2.processor.__class__.__name__ in (
@@ -846,12 +846,12 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             sample2 = model(**inputs_dict).sample
 
         # forward pass with ip_adapter_2
-        model._load_ip_adapter_weights(ip_adapter_2)
+        model._load_ip_adapter_weights([ip_adapter_2])
         with torch.no_grad():
             sample3 = model(**inputs_dict).sample
 
         # forward pass with ip_adapter_1 again
-        model._load_ip_adapter_weights(ip_adapter_1)
+        model._load_ip_adapter_weights([ip_adapter_1])
         with torch.no_grad():
             sample4 = model(**inputs_dict).sample
 
