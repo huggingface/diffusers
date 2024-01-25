@@ -228,6 +228,8 @@
       title: UNet3DConditionModel
     - local: api/models/unet-motion
       title: UNetMotionModel
+    - local: api/models/uvit2d
+      title: UViT2DModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
