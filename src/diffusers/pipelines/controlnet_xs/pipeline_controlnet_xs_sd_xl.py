@@ -143,8 +143,7 @@ class StableDiffusionXLControlNetXSPipeline(
         text_encoder_2: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
-        unet: UNet2DConditionModel,
-        controlnet_addon: ControlNetXSAddon,
+        controlnet: ControlNetXSModel,
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
@@ -155,7 +154,7 @@ class StableDiffusionXLControlNetXSPipeline(
             vae_compatible,
             cnxs_condition_downsample_factor,
             vae_downsample_factor,
-        ) = controlnet_addon._check_if_vae_compatible(vae)
+        ) = controlnet._check_if_vae_compatible(vae)
         if not vae_compatible:
             raise ValueError(
                 f"The downsampling factors of the VAE ({vae_downsample_factor}) and the conditioning part of ControlNetXSAddon model ({cnxs_condition_downsample_factor}) need to be equal. Consider building the ControlNetXSAddon model with different `conditioning_embedding_out_channels`."
@@ -167,11 +166,9 @@ class StableDiffusionXLControlNetXSPipeline(
             text_encoder_2=text_encoder_2,
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
-            unet=unet,
-            controlnet_addon=controlnet_addon,
+            controlnet=controlnet,
             scheduler=scheduler,
-        )
-        self.controlnet = ControlNetXSModel(base_model=unet, ctrl_model=controlnet_addon)        
+        )       
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
@@ -185,6 +182,28 @@ class StableDiffusionXLControlNetXSPipeline(
             self.watermark = None
 
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
+
+    def from_pretrained(components_path, addon_path, components_kwargs={}, addon_kwargs={}):
+        """
+            todo: docstring
+        """
+        from ..stable_diffusion import StableDiffusionXLPipeline # todo Q: need to import here to avoid circular dependency?
+
+        components = StableDiffusionXLPipeline.from_pretrained(components_path, **components_kwargs).components
+        controlnet_addon = ControlNetXSAddon.from_pretrained(addon_path, **addon_kwargs)
+
+        # todo: what if StableDiffusionXLPipeline has more params than StableDiffusionControlNetXSPipeline
+        # eg if some features are not implemented in cnxs yet?
+
+        unet = components["unet"]
+        components = {k:v for k,v in components.items() if k != "unet"}
+
+        controlnet = ControlNetXSModel(unet, controlnet_addon)
+        return StableDiffusionXLControlNetXSPipeline(controlnet=controlnet, **components)
+
+    def save_pretrained(*args, **kwargs):
+        raise RuntimeError("Can't save a `StableDiffusionControlNetXSPipeline`. Save the `controlnet_addon` and all other components separately.")
+
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -219,7 +238,6 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: str,
@@ -415,7 +433,7 @@ class StableDiffusionXLControlNetXSPipeline(
         if self.text_encoder_2 is not None:
             prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
         else:
-            prompt_embeds = prompt_embeds.to(dtype=self.unet.dtype, device=device)
+            prompt_embeds = prompt_embeds.to(dtype=self.controlnet.dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -429,7 +447,7 @@ class StableDiffusionXLControlNetXSPipeline(
             if self.text_encoder_2 is not None:
                 negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
             else:
-                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.unet.dtype, device=device)
+                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.controlnet.dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
@@ -663,16 +681,15 @@ class StableDiffusionXLControlNetXSPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
     def _get_add_time_ids(
         self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         passed_add_embed_dim = (
-            self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
+            self.controlnet.base_addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
         )
-        expected_add_embed_dim = self.unet.add_embedding.linear_1.in_features
+        expected_add_embed_dim = self.controlnet.base_add_embedding.linear_1.in_features
 
         if expected_add_embed_dim != passed_add_embed_dim:
             raise ValueError(
@@ -723,12 +740,13 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         if not hasattr(self, "unet"):
             raise ValueError("The pipeline must have `unet` for using FreeU.")
-        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
+        # todo: check if works
+        self.controlnet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_freeu
     def disable_freeu(self):
         """Disables the FreeU mechanism if enabled."""
-        self.unet.disable_freeu()
+        # todo: check if works
+        self.controlnet.disable_freeu()
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -969,7 +987,7 @@ class StableDiffusionXLControlNetXSPipeline(
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
+        num_channels_latents = self.controlnet.base_in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -1027,14 +1045,13 @@ class StableDiffusionXLControlNetXSPipeline(
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        is_unet_compiled = is_compiled_module(self.unet)
         is_controlnet_compiled = is_compiled_module(self.controlnet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
-                if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
+                if is_controlnet_compiled and is_torch_higher_equal_2_1:
                     torch._inductor.cudagraph_mark_step_begin()
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents

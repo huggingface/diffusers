@@ -520,10 +520,12 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
+        self.condition_downscale_factor = 2 ** (len(ctrl_model.config.conditioning_embedding_out_channels) - 1)
+
         # 1 - Save options
+        self.class_embed_type = base_model.config.class_embed_type
         self.use_ctrl_time_embedding = ctrl_model.config.learn_time_embedding
         self.conditioning_channel_order = ctrl_model.config.conditioning_channel_order
-        self.class_embed_type = base_model.config.class_embed_type
 
         # 2 - Save control model parts
         self.ctrl_time_embedding = ctrl_model.time_embedding
@@ -539,6 +541,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         self.up_zero_convs_c2b = ctrl_model.up_zero_convs_c2b
 
         # 4 - Save base model parts
+        self.base_in_channels = base_model.config.in_channels
         self.base_time_proj = base_model.time_proj
         self.base_time_embedding = base_model.time_embedding
         self.base_class_embedding = base_model.class_embedding
@@ -553,6 +556,8 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             self.base_add_time_proj = base_model.add_time_proj
         if hasattr(base_model, "add_embedding"):
             self.base_add_embedding = base_model.add_embedding
+        if hasattr(base_model.config, "addition_time_embed_dim"):
+            self.base_addition_time_embed_dim = base_model.config.addition_time_embed_dim
 
         # 4.2 - Decompose blocks of base model into subblocks
         for block in base_model.down_blocks:
@@ -593,6 +598,13 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         self.base_conv_out = base_model.conv_out
 
         self.time_embedding_mix = time_embedding_mix
+
+    @torch.no_grad()
+    def _check_if_vae_compatible(self, vae: AutoencoderKL):
+        condition_downscale_factor = self.condition_downscale_factor
+        vae_downscale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
+        compatible = self.condition_downscale_factor == vae_downscale_factor
+        return compatible, condition_downscale_factor, vae_downscale_factor
 
     def forward(
         self,
