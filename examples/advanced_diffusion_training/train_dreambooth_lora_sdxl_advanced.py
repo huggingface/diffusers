@@ -1854,11 +1854,11 @@ def main(args):
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
                 if not train_dataset.custom_instance_prompts:
                     elems_to_repeat_text_embeds = bsz // 2 if args.with_prior_preservation else bsz
-                    #elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
+                    # elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 else:
                     elems_to_repeat_text_embeds = 1
-                    #elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
+                    # elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 # Predict the noise residual
                 if freeze_text_encoder:
