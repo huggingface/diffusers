@@ -1247,7 +1247,9 @@ def main(args):
             args.instance_prompt = args.instance_prompt.replace(token_abs, "".join(token_replacement))
             if args.with_prior_preservation:
                 args.class_prompt = args.class_prompt.replace(token_abs, "".join(token_replacement))
-
+            if args.validation_prompt:
+                args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
+                print("validation prompt:", args.validation_prompt)
         # initialize the new tokens for textual inversion
         embedding_handler = TokenEmbeddingsHandler(
             [text_encoder_one, text_encoder_two], [tokenizer_one, tokenizer_two]
@@ -1663,12 +1665,6 @@ def main(args):
                 class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt, add_special_tokens)
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
-
-    if args.train_text_encoder_ti and args.validation_prompt:
-        # replace instances of --token_abstraction in validation prompt with the new tokens: "<si><si+1>" etc.
-        for token_abs, token_replacement in train_dataset.token_abstraction_dict.items():
-            args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
-    print("validation prompt:", args.validation_prompt)
 
     if args.cache_latents:
         latents_cache = []
