@@ -827,6 +827,8 @@ class UNet2DConditionLoadersMixin:
         return attn_procs
 
     def _load_ip_adapter_weights(self, state_dicts):
+        if not isinstance(state_dicts, list):
+            state_dicts = [state_dicts]
         # Set encoder_hid_proj after loading ip_adapter weights,
         # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None

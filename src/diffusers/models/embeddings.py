@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from ..utils import USE_PEFT_BACKEND
+from ..utils import USE_PEFT_BACKEND, deprecate
 from .activations import get_activation
 from .attention_processor import Attention
 from .lora import LoRACompatibleLinear
@@ -887,6 +887,17 @@ class MultiIPAdapterImageProjection(nn.Module):
 
     def forward(self, image_embeds: List[torch.FloatTensor]):
         projected_image_embeds = []
+
+        # currently, we accept `image_embeds` as
+        #  1. 3-d tensor with shape [batch_size, sequence_length, cross_attention_dim] - this is the legacy api for single ip-adapter & single image
+        #  2. list of `n` 4-d tensors with shape [batch_size, num_images, sequence_length, cross_attention_dim], where `n` is number of ip-adapters
+        if not isinstance(image_embeds, list) and image_embeds.ndim == 3:
+            deprecation_message = (
+                "You have passed a 3-d tensor as `image_embeds`.This is deprecated and will be removed in a future release."
+                " Please make sure to update your script to pass `image_embeds` as a list of 4-d tensors to supress this warning."
+            )
+            deprecate("image_embeds not a list", "1.0.0", deprecation_message, standard_warn=False)
+            image_embeds = [image_embeds[:, None, :, :]]
 
         if len(image_embeds) != len(self.image_projection_layers):
             raise ValueError(

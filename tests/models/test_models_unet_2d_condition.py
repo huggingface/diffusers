@@ -815,15 +815,24 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         for attn_processor in model.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = [1, 0]
-        image_embeds = image_embeds.repeat(1, 2, 1, 1)
-        inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds, image_embeds]}
+        image_embeds_multi = image_embeds.repeat(1, 2, 1, 1)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds_multi, image_embeds_multi]}
         with torch.no_grad():
             sample5 = model(**inputs_dict).sample
+
+        # forward pass with single ip-adapter & single image when image_embeds is a 3-d tensor
+        image_embeds = image_embeds[:,].squeeze(1)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": image_embeds}
+
+        model._load_ip_adapter_weights(ip_adapter_1)
+        with torch.no_grad():
+            sample6 = model(**inputs_dict).sample
 
         assert not sample1.allclose(sample2, atol=1e-4, rtol=1e-4)
         assert not sample2.allclose(sample3, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample4, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
+        assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
     def test_ip_adapter_plus(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
@@ -877,15 +886,24 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         for attn_processor in model.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = [1, 0]
-        image_embeds = image_embeds.repeat(1, 2, 1, 1)
-        inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds, image_embeds]}
+        image_embeds_multi = image_embeds.repeat(1, 2, 1, 1)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds_multi, image_embeds_multi]}
         with torch.no_grad():
             sample5 = model(**inputs_dict).sample
+
+        # forward pass with single ip-adapter & single image when image_embeds is a 3-d tensor
+        image_embeds = image_embeds[:,].squeeze(1)
+        inputs_dict["added_cond_kwargs"] = {"image_embeds": image_embeds}
+
+        model._load_ip_adapter_weights(ip_adapter_1)
+        with torch.no_grad():
+            sample6 = model(**inputs_dict).sample
 
         assert not sample1.allclose(sample2, atol=1e-4, rtol=1e-4)
         assert not sample2.allclose(sample3, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample4, atol=1e-4, rtol=1e-4)
         assert sample2.allclose(sample5, atol=1e-4, rtol=1e-4)
+        assert sample2.allclose(sample6, atol=1e-4, rtol=1e-4)
 
 
 @slow
