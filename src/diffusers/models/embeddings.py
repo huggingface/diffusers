@@ -889,15 +889,15 @@ class MultiIPAdapterImageProjection(nn.Module):
         projected_image_embeds = []
 
         # currently, we accept `image_embeds` as
-        #  1. 3-d tensor with shape [batch_size, sequence_length, cross_attention_dim] - this is the legacy api for single ip-adapter & single image
-        #  2. list of `n` 4-d tensors with shape [batch_size, num_images, sequence_length, cross_attention_dim], where `n` is number of ip-adapters
-        if not isinstance(image_embeds, list) and image_embeds.ndim == 3:
+        #  1. a tensor (deprecated) with shape [batch_size, embed_dim] or [batch_size, sequence_length, embed_dim]
+        #  2. list of `n` tensors where `n` is number of ip-adapters, each tensor can hae shape [batch_size, num_images, embed_dim] or [batch_size, num_images, sequence_length, embed_dim]
+        if not isinstance(image_embeds, list):
             deprecation_message = (
-                "You have passed a 3-d tensor as `image_embeds`.This is deprecated and will be removed in a future release."
-                " Please make sure to update your script to pass `image_embeds` as a list of 4-d tensors to supress this warning."
+                "You have passed a tensor as `image_embeds`.This is deprecated and will be removed in a future release."
+                " Please make sure to update your script to pass `image_embeds` as a list of tensors to supress this warning."
             )
             deprecate("image_embeds not a list", "1.0.0", deprecation_message, standard_warn=False)
-            image_embeds = [image_embeds[:, None, :, :]]
+            image_embeds = [image_embeds.unsqueeze(1)]
 
         if len(image_embeds) != len(self.image_projection_layers):
             raise ValueError(
@@ -905,16 +905,10 @@ class MultiIPAdapterImageProjection(nn.Module):
             )
 
         for image_embed, image_projection_layer in zip(image_embeds, self.image_projection_layers):
-            if image_embed.ndim != 4:
-                raise ValueError(f"image_embeds must be 4-dimensional, got {image_embed.shape}")
-
-            batch_size, num_images, sequence_length, _ = image_embed.shape
-            image_embed = image_embed.reshape(batch_size * num_images, sequence_length, -1)
-
+            batch_size, num_images = image_embed.shape[0], image_embed.shape[1]
+            image_embed = image_embed.reshape((batch_size * num_images,) + image_embed.shape[2:])
             image_embed = image_projection_layer(image_embed)
-
-            _, sequence_length, cross_attention_dim = image_embed.shape
-            image_embed = image_embed.reshape(batch_size, num_images, sequence_length, cross_attention_dim)
+            image_embed = image_embed.reshape((batch_size, num_images) + image_embed.shape[1:])
 
             projected_image_embeds.append(image_embed)
 
