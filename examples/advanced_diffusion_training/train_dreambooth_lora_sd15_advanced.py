@@ -1794,6 +1794,7 @@ def main(args):
                 pipeline = StableDiffusionPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
+                    tokenizer=tokenizer,
                     text_encoder=accelerator.unwrap_model(text_encoder_one),
                     unet=accelerator.unwrap_model(unet),
                     revision=args.revision,
@@ -1866,6 +1867,11 @@ def main(args):
             unet_lora_layers=unet_lora_layers,
             text_encoder_lora_layers=text_encoder_lora_layers,
         )
+
+        if args.train_text_encoder_ti:
+            embeddings_path = f"{args.output_dir}/learned_embeds.safetensors"
+            embedding_handler.save_embeddings(embeddings_path)
+
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
             # Final inference
@@ -1901,6 +1907,17 @@ def main(args):
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
 
+            # load new tokens
+            if args.train_text_encoder_ti:
+                state_dict = load_file(embeddings_path)
+                all_new_tokens = []
+                for key, value in token_abstraction_dict.items():
+                    all_new_tokens.extend(value)
+                pipeline.load_textual_inversion(state_dict["clip_l"], token=all_new_tokens,
+                                                    text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+                pipeline.load_textual_inversion(state_dict["clip_g"], token=all_new_tokens,
+                                                text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+
             # run inference
             pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
@@ -1923,10 +1940,10 @@ def main(args):
                         }
                     )
 
-        if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(
-                f"{args.output_dir}/{args.output_dir}_emb.safetensors",
-            )
+        # if args.train_text_encoder_ti:
+        #     embedding_handler.save_embeddings(
+        #         f"{args.output_dir}/{args.output_dir}_emb.safetensors",
+        #     )
 
         # Conver to WebUI format
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
