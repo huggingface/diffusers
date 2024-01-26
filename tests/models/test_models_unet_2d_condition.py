@@ -777,7 +777,8 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
-        image_embeds = floats_tensor((batch_size, 1, 1, model.cross_attention_dim)).to(torch_device)
+        # for ip-adapter image_embeds has shape [batch_size, num_image, embed_dim]
+        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
         # make ip_adapter_1 and ip_adapter_2
@@ -815,13 +816,13 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         for attn_processor in model.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = [1, 0]
-        image_embeds_multi = image_embeds.repeat(1, 2, 1, 1)
+        image_embeds_multi = image_embeds.repeat(1, 2, 1)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds_multi, image_embeds_multi]}
         with torch.no_grad():
             sample5 = model(**inputs_dict).sample
 
-        # forward pass with single ip-adapter & single image when image_embeds is a 3-d tensor
-        image_embeds = image_embeds[:,].squeeze(1)
+        # forward pass with single ip-adapter & single image when image_embeds is not a list and a 2-d tensor
+        image_embeds = image_embeds.squeeze(1)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": image_embeds}
 
         model._load_ip_adapter_weights(ip_adapter_1)
@@ -848,6 +849,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
+        # for ip-adapter-plus image_embeds has shape [batch_size, num_image, sequence_length, embed_dim]
         image_embeds = floats_tensor((batch_size, 1, 1, model.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
