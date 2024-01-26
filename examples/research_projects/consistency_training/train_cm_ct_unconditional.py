@@ -284,6 +284,31 @@ def parse_args():
         default=None,
         help="The config of the UNet model to train, leave as None to use standard DDPM configuration.",
     )
+    parser.add_argument(
+        "--pretrained_model_name_or_path",
+        type=str,
+        default=None,
+        help=(
+            "If initializing the weights from a pretrained model, the path to the pretrained model or model identifier"
+            " from huggingface.co/models."
+        ),
+    )
+    parser.add_argument(
+        "--revision",
+        type=str,
+        default=None,
+        required=False,
+        help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help=(
+            "Variant of the model files of the pretrained model identifier from huggingface.co/models, e.g. `fp16`,"
+            " `non_ema`, etc.",
+        ),
+    )
     # ------------Dataset Arguments-----------
     parser.add_argument(
         "--train_data_dir",
@@ -824,7 +849,12 @@ def main(args):
     )
 
     # 2. Initialize the student U-Net model.
-    if args.model_config_name_or_path is None:
+    if args.pretrained_model_name_or_path is not None:
+        logger.info(f"Loading pretrained U-Net weights from {args.pretrained_model_name_or_path}... ")
+        unet = UNet2DModel.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+        )
+    elif args.model_config_name_or_path is None:
         # TODO: use default architectures from iCT paper
         if not args.class_conditional and (args.num_classes is not None or args.class_embed_type is not None):
             logger.warn(
@@ -1350,8 +1380,6 @@ def main(args):
                             # Store the student unet weights and load the EMA weights.
                             ema_unet.store(unet.parameters())
                             ema_unet.copy_to(unet.parameters())
-
-                            print(f"unet dtype after copy: {unet.dtype}")
 
                             log_validation(
                                 unet,
