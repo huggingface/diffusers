@@ -49,6 +49,22 @@ from .unet_3d_blocks import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+def _to_tensor(inputs, device):
+    if not torch.is_tensor(inputs):
+        # TODO: this requires sync between CPU and GPU. So try to pass `inputs` as tensors if you can
+        # This would be a good case for the `match` statement (Python 3.10+)
+        is_mps = device.type == "mps"
+        if isinstance(inputs, float):
+            dtype = torch.float32 if is_mps else torch.float64
+        else:
+            dtype = torch.int32 if is_mps else torch.int64
+        inputs = torch.tensor([inputs], dtype=dtype, device=device)
+    elif len(inputs.shape) == 0:
+        inputs = inputs[None].to(device)
+
+    return inputs
+
+
 @dataclass
 class I2VGenXLOutput(BaseOutput):
     """
@@ -549,27 +565,14 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             if hasattr(module, "set_lora_layer"):
                 module.set_lora_layer(None)
 
-    def _tensorify(self, inputs, device):
-        if not torch.is_tensor(inputs):
-            # TODO: this requires sync between CPU and GPU. So try to pass `inputs` as tensors if you can
-            # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = device.type == "mps"
-            if isinstance(inputs, float):
-                dtype = torch.float32 if is_mps else torch.float64
-            else:
-                dtype = torch.int32 if is_mps else torch.int64
-            inputs = torch.tensor([inputs], dtype=dtype, device=device)
-        elif len(inputs.shape) == 0:
-            inputs = inputs[None].to(device)
-
-        return inputs
-
     def forward(
         self,
         sample: torch.FloatTensor,
         timestep: Union[torch.Tensor, float, int],
+        fps: torch.Tensor,
+        image_latents: torch.Tensor,
+        image_embeddings: torch.Tensor,
         encoder_hidden_states: torch.Tensor,
-        added_cond_kwargs: Dict[str, torch.Tensor],
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -614,15 +617,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 If `return_dict` is True, an [`~models.unet_3d_condition.I2VGenXLOutput`] is returned, otherwise
                 a `tuple` is returned where the first element is the sample tensor.
         """
-        required_keys = {"fps", "image_latents", "image_embeddings"}
-        if added_cond_kwargs is None:
-            raise ValueError("`added_cond_kwargs` cannot be None.")
-        if len(added_cond_kwargs) != 3 and required_keys.issubset(added_cond_kwargs.keys()):
-            raise ValueError(
-                "`added_cond_kwargs` is missing the required keys: 'fps', 'image_latents', and 'image_embeddings'."
-            )
-
-        batch_size, num_channels, num_frames, height, width = sample.shape
+        batch_size, channels, num_frames, height, width = sample.shape
 
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
@@ -645,7 +640,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 1. time
         timesteps = timestep
-        timesteps = self._tensorify(timestep, sample.device)
+        timesteps = _to_tensor(timestep, sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
@@ -658,12 +653,12 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         t_emb = self.time_embedding(t_emb, timestep_cond)
 
         # 2. FPS
-        fps = added_cond_kwargs["fps"]
-        fps = self._tensorify(fps, sample.device)
+        fps = _to_tensor(fps, sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         fps = fps.expand(fps.shape[0])
         fps_emb = self.fps_embedding(self.time_proj(fps).to(dtype=self.dtype))
+
         emb = t_emb + fps_emb
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
 
@@ -671,7 +666,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # Taken from the original implementation.
         # Clean it up later.
         # remove einops dep.
-        image_latents = added_cond_kwargs["image_latents"]
         if image_latents.ndim == 5 and image_latents.size(2) > 1:
             image_latents = image_latents[:, :, :1, ...]
         elif image_latents.ndim != 5:
@@ -691,9 +685,9 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 dim=2,
             ).to(dtype=image_latents.dtype)
             _ximg = torch.cat([image_latents[:, :, :1], mask_pos], dim=2)
-            _ximg = rearrange(_ximg, "b c f h w -> (b f) c h w")
-        else:
-            _ximg = rearrange(image_latents, "b c f h w -> (b f) c h w")
+
+        #rearrange(_ximg, "b c f h w -> (b f) c h w")
+        _ximg = _ximg.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         _ximg = self.local_image_concat(_ximg)
         _h = _ximg.shape[2]

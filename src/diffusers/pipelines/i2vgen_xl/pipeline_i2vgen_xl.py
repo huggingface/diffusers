@@ -50,18 +50,26 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-def tensor2vid(video: torch.Tensor) -> List[np.ndarray]:
-    # This code is adapted from https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
-    # unnormalize back to [0,1]
-    video = (video / 2 + 0.5).clamp(0, 1)
-    # prepare the final outputs
-    i, c, f, h, w = video.shape
-    images = video.permute(2, 3, 0, 4, 1).reshape(
-        f, h, i * w, c
-    )  # 1st (frames, h, batch_size, w, c) 2nd (frames, h, batch_size * w, c)
-    images = images.unbind(dim=0)  # prepare a list of indvidual (consecutive frames)
-    images = [(image.cpu().numpy() * 255).astype("uint8") for image in images]  # f h w c
-    return images
+# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
+def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
+    batch_size, channels, num_frames, height, width = video.shape
+    outputs = []
+    for batch_idx in range(batch_size):
+        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
+        batch_output = processor.postprocess(batch_vid, output_type)
+
+        outputs.append(batch_output)
+
+    if output_type == "np":
+        outputs = np.stack(outputs)
+
+    elif output_type == "pt":
+        outputs = torch.stack(outputs)
+
+    elif not output_type == "pil":
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
+
+    return outputs
 
 
 @dataclass
@@ -591,12 +599,12 @@ class I2VGenXLPipeline(DiffusionPipeline):
         negative_prompt: Optional[Union[str, List[str]]] = None,
         eta: float = 0.0,
         num_videos_per_prompt: Optional[int] = 1,
-        decode_chunk_size: Optional[int] = None,
+        decode_chunk_size: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        output_type: Optional[str] = "np",
+        output_type: Optional[str] = "pil",
         return_dict: bool = True,
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
@@ -722,7 +730,9 @@ class I2VGenXLPipeline(DiffusionPipeline):
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    added_cond_kwargs=added_cond_kwargs,
+                    fps=fps_tensor,
+                    image_latents=image_latents,
+                    image_embeddings=image_embeddings,
                     cross_attention_kwargs=cross_attention_kwargs,
                     return_dict=False,
                 )[0]
@@ -758,7 +768,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         if output_type == "pt":
             video = video_tensor
         else:
-            video = tensor2vid(video_tensor)
+            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()
