@@ -216,7 +216,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.is_scale_input_called = False
 
         self._step_index = None
-        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def init_noise_sigma(self):
@@ -300,7 +300,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.timesteps = torch.from_numpy(timesteps).to(device=device)
         self._step_index = None
-        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
