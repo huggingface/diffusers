@@ -118,6 +118,7 @@ def get_down_block(
             raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlockMotion")
         return CrossAttnDownBlockMotion(
             num_layers=num_layers,
+            transformer_layers_per_block=transformer_layers_per_block,
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
@@ -252,6 +253,7 @@ def get_up_block(
             raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlockMotion")
         return CrossAttnUpBlockMotion(
             num_layers=num_layers,
+            transformer_layers_per_block=transformer_layers_per_block,
             in_channels=in_channels,
             out_channels=out_channels,
             prev_output_channel=prev_output_channel,
