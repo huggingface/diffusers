@@ -65,6 +65,22 @@ def _to_tensor(inputs, device):
     return inputs
 
 
+def _collapse_frames_to_batch(sample: torch.Tensor) -> torch.Tensor:
+    batch_size, channels, num_frames, height, width = sample.shape
+    sample = sample.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
+
+    return sample
+
+
+def _expand_batch_frames(sample: torch.Tensor, target_shape: tuple) -> torch.Tensor:
+    batch_frames, channels, height, width = sample.shape
+    batch_size, target_channels, target_num_frames, target_height, target_width = target_shape
+
+    sample = sample.reshape(batch_size, target_num_frames, target_channels, target_height, target_width).permute(0, 2, 1, 3, 4)
+
+    return sample
+
+
 @dataclass
 class I2VGenXLOutput(BaseOutput):
     """
@@ -685,14 +701,11 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 dim=2,
             ).to(dtype=image_latents.dtype)
             _ximg = torch.cat([image_latents[:, :, :1], mask_pos], dim=2)
+        else:
+            _ximg = image_latents
 
-        # rearrange(_ximg, "b c f h w -> (b f) c h w")
-        _ximg = _ximg.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-
+        _ximg = _collapse_frames_to_batch(_ximg)
         _ximg = self.local_image_concat(_ximg)
-        _h = _ximg.shape[2]
-
-        # rearrange(_ximg, "(b f) c h w -> (b h w) f c", b=batch_size)
         _ximg = (
             _ximg[None, :]
             .reshape(batch_size, num_frames, channels, height, width)
@@ -701,28 +714,25 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         )
 
         _ximg = self.local_temporal_encoder(_ximg)
-        _ximg = rearrange(_ximg, "(b h w) f c -> b c f h w", b=batch_size, h=_h)
+        _ximg =  _ximg.reshape(batch_size, height, width, num_frames, channels).permute(0, 4, 3, 1, 2)
         concat += _ximg
         concat += _ximg  # TODO: This is a bug, but it doesn't matter (copied from the original codebase).
 
         # 3.2 context embeddings.
         context = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
-        if encoder_hidden_states is not None:
-            y_context = encoder_hidden_states
-            context = torch.cat([context, y_context], dim=1)
+        context = torch.cat([context, encoder_hidden_states], dim=1)
 
-        local_context = rearrange(image_latents, "b c f h w -> (b f) c h w")
+        local_context = _collapse_frames_to_batch(image_latents)
         local_context = self.local_image_embedding(local_context)
-        h_ = local_context.shape[2]
-        local_context = rearrange(local_context, "b c h w -> b (h w) c", b=batch_size, h=h_)
+
+        _batch_size, _channels, _height, _width = local_context.shape
+        local_context = local_context.permute(0, 2, 3, 1).reshape(_batch_size, _height * _width, _channels)
         context = torch.cat([context, local_context], dim=1)
 
-        # 3.3 image inputs.
-        # this one comes from the vision encoder.
-        if image_embeddings:
-            image_context = self.context_embedding(image_embeddings)
-            image_context = image_context.view(-1, self.config.in_channels, self.config.cross_attention_dim)
-            context = torch.cat([context, image_context], dim=1)
+        image_context = self.context_embedding(image_embeddings)
+        image_context = image_context.view(-1, self.config.in_channels, self.config.cross_attention_dim)
+        context = torch.cat([context, image_context], dim=1)
+
         context = context.repeat_interleave(repeats=num_frames, dim=0)
 
         # 4. pre-process
