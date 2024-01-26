@@ -5,7 +5,7 @@
 A usage example is as follows:
 
 ```bash
-accelerate launch examples/community/train_cm_ct_unconditional.py \
+accelerate launch examples/research_projects/consistency_training/train_cm_ct_unconditional.py \
     --dataset_name="cifar10" \
     --dataset_image_column_name="img" \
     --output_dir="/path/to/output/dir" \
