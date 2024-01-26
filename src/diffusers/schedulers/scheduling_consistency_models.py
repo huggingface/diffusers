@@ -98,7 +98,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.custom_timesteps = False
         self.is_scale_input_called = False
         self._step_index = None
-        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
@@ -231,7 +231,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
         self._step_index = None
-        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Modified _convert_to_karras implementation that takes in ramp as argument
     def _convert_to_karras(self, ramp):
