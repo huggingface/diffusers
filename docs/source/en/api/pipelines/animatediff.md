@@ -427,12 +427,6 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 [[autodoc]] AnimateDiffVideoToVideoPipeline
   - all
   - __call__
-    - enable_freeu
-    - disable_freeu
-    - enable_vae_slicing
-    - disable_vae_slicing
-    - enable_vae_tiling
-    - disable_vae_tiling
 
 ## AnimateDiffPipelineOutput
 
