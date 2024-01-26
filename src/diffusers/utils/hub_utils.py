@@ -28,7 +28,6 @@ from huggingface_hub import (
     ModelCard,
     ModelCardData,
     create_repo,
-    get_full_repo_name,
     hf_hub_download,
     upload_folder,
 )
@@ -67,7 +66,6 @@ from .logging import get_logger
 logger = get_logger(__name__)
 
 
-MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 
 
@@ -95,7 +93,20 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     return ua
 
 
-def create_model_card(args, model_name):
+def load_or_create_model_card(
+    repo_id_or_path: Optional[str] = None, token: Optional[str] = None, is_pipeline: bool = False
+) -> ModelCard:
+    """
+    Loads or creates a model card.
+
+    Args:
+        repo_id (`str`):
+            The repo_id where to look for the model card.
+        token (`str`, *optional*):
+            Authentication token. Will default to the stored token. See https://huggingface.co/settings/token for more details.
+        is_pipeline (`bool`, *optional*):
+            Boolean to indicate if we're adding tag to a [`DiffusionPipeline`].
+    """
     if not is_jinja_available():
         raise ValueError(
             "Modelcard rendering is based on Jinja templates."
@@ -103,45 +114,24 @@ def create_model_card(args, model_name):
             " To install it, please run `pip install Jinja2`."
         )
 
-    if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
-        return
+    try:
+        # Check if the model card is present on the remote repo
+        model_card = ModelCard.load(repo_id_or_path, token=token)
+    except EntryNotFoundError:
+        # Otherwise create a simple model card from template
+        component = "pipeline" if is_pipeline else "model"
+        model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
+        card_data = ModelCardData()
+        model_card = ModelCard.from_template(card_data, model_description=model_description)
 
-    hub_token = args.hub_token if hasattr(args, "hub_token") else None
-    repo_name = get_full_repo_name(model_name, token=hub_token)
+    return model_card
 
-    model_card = ModelCard.from_template(
-        card_data=ModelCardData(  # Card metadata object that will be converted to YAML block
-            language="en",
-            license="apache-2.0",
-            library_name="diffusers",
-            tags=[],
-            datasets=args.dataset_name,
-            metrics=[],
-        ),
-        template_path=MODEL_CARD_TEMPLATE_PATH,
-        model_name=model_name,
-        repo_name=repo_name,
-        dataset_name=args.dataset_name if hasattr(args, "dataset_name") else None,
-        learning_rate=args.learning_rate,
-        train_batch_size=args.train_batch_size,
-        eval_batch_size=args.eval_batch_size,
-        gradient_accumulation_steps=(
-            args.gradient_accumulation_steps if hasattr(args, "gradient_accumulation_steps") else None
-        ),
-        adam_beta1=args.adam_beta1 if hasattr(args, "adam_beta1") else None,
-        adam_beta2=args.adam_beta2 if hasattr(args, "adam_beta2") else None,
-        adam_weight_decay=args.adam_weight_decay if hasattr(args, "adam_weight_decay") else None,
-        adam_epsilon=args.adam_epsilon if hasattr(args, "adam_epsilon") else None,
-        lr_scheduler=args.lr_scheduler if hasattr(args, "lr_scheduler") else None,
-        lr_warmup_steps=args.lr_warmup_steps if hasattr(args, "lr_warmup_steps") else None,
-        ema_inv_gamma=args.ema_inv_gamma if hasattr(args, "ema_inv_gamma") else None,
-        ema_power=args.ema_power if hasattr(args, "ema_power") else None,
-        ema_max_decay=args.ema_max_decay if hasattr(args, "ema_max_decay") else None,
-        mixed_precision=args.mixed_precision,
-    )
 
-    card_path = os.path.join(args.output_dir, "README.md")
-    model_card.save(card_path)
+def populate_model_card(model_card: ModelCard) -> ModelCard:
+    """Populates the `model_card` with library name."""
+    if model_card.data.library_name is None:
+        model_card.data.library_name = "diffusers"
+    return model_card
 
 
 def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str] = None):
@@ -435,6 +425,10 @@ class PushToHubMixin:
         """
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
 
+        # Create a new empty model card and eventually tag it
+        model_card = load_or_create_model_card(repo_id, token=token)
+        model_card = populate_model_card(model_card)
+
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}
         if "Scheduler" not in self.__class__.__name__:
@@ -442,6 +436,9 @@ class PushToHubMixin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             self.save_pretrained(tmpdir, **save_kwargs)
+
+            # Update model card if needed:
+            model_card.save(os.path.join(tmpdir, "README.md"))
 
             return self._upload_folder(
                 tmpdir,
