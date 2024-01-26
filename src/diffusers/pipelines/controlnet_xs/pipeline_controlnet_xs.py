@@ -36,6 +36,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from ..stable_diffusion import StableDiffusionPipeline
 from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
@@ -188,8 +189,6 @@ class StableDiffusionControlNetXSPipeline(
         """
             todo: docstring
         """
-        from ..stable_diffusion import StableDiffusionPipeline # todo Q: need to import here to avoid circular dependency?
-
         components = StableDiffusionPipeline.from_pretrained(components_path, **components_kwargs).components
         controlnet_addon = ControlNetXSAddon.from_pretrained(addon_path, **addon_kwargs)
 

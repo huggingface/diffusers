@@ -19,7 +19,13 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel, 
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers.utils.import_utils import is_invisible_watermark_available
 
@@ -37,6 +43,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import USE_PEFT_BACKEND, logging, replace_example_docstring, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from ..stable_diffusion_xl import StableDiffusionXLPipeline
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -133,9 +140,15 @@ class StableDiffusionXLControlNetXSPipeline(
             watermarker is used.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->controlnet->vae"
-    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
-
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->controlnet->vae"
+    _optional_components = [
+        "tokenizer",
+        "tokenizer_2",
+        "text_encoder",
+        "text_encoder_2",
+        "feature_extractor",
+        "image_encoder",
+    ]
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -147,6 +160,8 @@ class StableDiffusionXLControlNetXSPipeline(
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
+        feature_extractor: CLIPImageProcessor = None,
+        image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
 
@@ -168,6 +183,8 @@ class StableDiffusionXLControlNetXSPipeline(
             tokenizer_2=tokenizer_2,
             controlnet=controlnet,
             scheduler=scheduler,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
         )       
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
@@ -187,8 +204,6 @@ class StableDiffusionXLControlNetXSPipeline(
         """
             todo: docstring
         """
-        from ..stable_diffusion import StableDiffusionXLPipeline # todo Q: need to import here to avoid circular dependency?
-
         components = StableDiffusionXLPipeline.from_pretrained(components_path, **components_kwargs).components
         controlnet_addon = ControlNetXSAddon.from_pretrained(addon_path, **addon_kwargs)
 
@@ -238,6 +253,7 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         self.vae.disable_tiling()
 
+    # todo: check if copy
     def encode_prompt(
         self,
         prompt: str,
@@ -471,6 +487,31 @@ class StableDiffusionXLControlNetXSPipeline(
                 unscale_lora_layers(self.text_encoder_2, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        dtype = next(self.image_encoder.parameters()).dtype
+
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_enc_hidden_states = self.image_encoder(
+                torch.zeros_like(image), output_hidden_states=True
+            ).hidden_states[-2]
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+            return image_enc_hidden_states, uncond_image_enc_hidden_states
+        else:
+            image_embeds = self.image_encoder(image).image_embeds
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_embeds = torch.zeros_like(image_embeds)
+
+            return image_embeds, uncond_image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
