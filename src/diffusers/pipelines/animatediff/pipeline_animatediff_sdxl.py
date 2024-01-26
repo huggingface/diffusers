@@ -152,7 +152,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class AnimateDiffXLPipeline(
+class AnimateDiffSDXLPipeline(
     DiffusionPipeline,
     FromSingleFileMixin,
     StableDiffusionXLLoraLoaderMixin,
