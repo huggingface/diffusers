@@ -687,9 +687,9 @@ class StableDiffusionXLControlNetXSPipeline(
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         passed_add_embed_dim = (
-            self.controlnet.base_addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
+            self.controlnet.base_model.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
         )
-        expected_add_embed_dim = self.controlnet.base_add_embedding.linear_1.in_features
+        expected_add_embed_dim = self.controlnet.base_model.add_embedding.linear_1.in_features
 
         if expected_add_embed_dim != passed_add_embed_dim:
             raise ValueError(
@@ -987,7 +987,7 @@ class StableDiffusionXLControlNetXSPipeline(
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
-        num_channels_latents = self.controlnet.base_in_channels
+        num_channels_latents = self.controlnet.base_model.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -1060,29 +1060,20 @@ class StableDiffusionXLControlNetXSPipeline(
                 added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
 
                 # predict the noise residual
-                dont_control = (
-                    i / len(timesteps) < control_guidance_start or (i + 1) / len(timesteps) > control_guidance_end
+                do_control = (
+                    i / len(timesteps) >= control_guidance_start and (i + 1) / len(timesteps) <= control_guidance_end
                 )
-                if dont_control:
-                    noise_pred = self.unet(
-                        sample=latent_model_input,
-                        timestep=t,
-                        encoder_hidden_states=prompt_embeds,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        added_cond_kwargs=added_cond_kwargs,
-                        return_dict=True,
-                    ).sample
-                else:
-                    noise_pred = self.controlnet(
-                        sample=latent_model_input,
-                        timestep=t,
-                        encoder_hidden_states=prompt_embeds,
-                        controlnet_cond=image,
-                        conditioning_scale=controlnet_conditioning_scale,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        added_cond_kwargs=added_cond_kwargs,
-                        return_dict=True,
-                    ).sample
+                noise_pred = self.controlnet(
+                    sample=latent_model_input,
+                    timestep=t,
+                    encoder_hidden_states=prompt_embeds,
+                    controlnet_cond=image,
+                    conditioning_scale=controlnet_conditioning_scale,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    added_cond_kwargs=added_cond_kwargs,
+                    return_dict=True,
+                    do_control=do_control,
+                ).sample
 
                 # perform guidance
                 if do_classifier_free_guidance:

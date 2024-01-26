@@ -428,18 +428,11 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             "A ControlNetXSAddonModel cannot be run by itself. Pass it into a ControlNetXSModel model instead."
         )
 
-    @torch.no_grad()
-    def _check_if_vae_compatible(self, vae: AutoencoderKL):
-        condition_downscale_factor = 2 ** (len(self.config.conditioning_embedding_out_channels) - 1)
-        vae_downscale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
-        compatible = condition_downscale_factor == vae_downscale_factor
-        return compatible, condition_downscale_factor, vae_downscale_factor
-
     def _make_zero_conv(self, in_channels, out_channels=None):
         return zero_module(nn.Conv2d(in_channels, out_channels, 1, padding=0))
 
 
-class ControlNetXSModel(ModelMixin, ConfigMixin):
+class ControlNetXSModel(nn.Module):
     r"""
     A ControlNet-XS model
 
@@ -511,7 +504,6 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
         return cls(base_model=base_model, ctrl_model=controlnet_addon, time_embedding_mix=time_embedding_mix)
 
-    @register_to_config
     def __init__(
         self,
         base_model: UNet2DConditionModel,
@@ -520,46 +512,14 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        self.condition_downscale_factor = 2 ** (len(ctrl_model.config.conditioning_embedding_out_channels) - 1)
+        self.ctrl_model = ctrl_model
+        self.base_model = base_model
+        self.time_embedding_mix = time_embedding_mix
 
-        # 1 - Save options
-        self.class_embed_type = base_model.config.class_embed_type
-        self.use_ctrl_time_embedding = ctrl_model.config.learn_time_embedding
-        self.conditioning_channel_order = ctrl_model.config.conditioning_channel_order
-
-        # 2 - Save control model parts
-        self.ctrl_time_embedding = ctrl_model.time_embedding
-        self.ctrl_conv_in = ctrl_model.conv_in
-        self.ctrl_controlnet_cond_embedding = ctrl_model.controlnet_cond_embedding
-        self.ctrl_down_subblocks = ctrl_model.down_subblocks
-        self.ctrl_mid_block = ctrl_model.mid_block
-
-        # 3 - Save connections
-        self.down_zero_convs_b2c = ctrl_model.down_zero_convs_b2c
-        self.down_zero_convs_c2b = ctrl_model.down_zero_convs_c2b
-        self.mid_zero_convs_c2b = ctrl_model.mid_zero_convs_c2b
-        self.up_zero_convs_c2b = ctrl_model.up_zero_convs_c2b
-
-        # 4 - Save base model parts
-        self.base_in_channels = base_model.config.in_channels
-        self.base_time_proj = base_model.time_proj
-        self.base_time_embedding = base_model.time_embedding
-        self.base_class_embedding = base_model.class_embedding
-        self.base_addition_embed_type = base_model.config.addition_embed_type
-        self.base_conv_in = base_model.conv_in
+        # Decompose blocks of base model into subblocks
         self.base_down_subblocks = nn.ModuleList()
-        self.base_mid_block = base_model.mid_block
         self.base_up_subblocks = nn.ModuleList()
 
-        # 4.1 - SDXL specific components
-        if hasattr(base_model, "add_time_proj"):
-            self.base_add_time_proj = base_model.add_time_proj
-        if hasattr(base_model, "add_embedding"):
-            self.base_add_embedding = base_model.add_embedding
-        if hasattr(base_model.config, "addition_time_embed_dim"):
-            self.base_addition_time_embed_dim = base_model.config.addition_time_embed_dim
-
-        # 4.2 - Decompose blocks of base model into subblocks
         for block in base_model.down_blocks:
             # Each ResNet / Attention pair is a subblock
             resnets = block.resnets
@@ -593,17 +553,11 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
             for r, a, u in zip(resnets, attentions, upsamplers):
                 self.base_up_subblocks.append(CrossAttnUpSubBlock2D.from_modules(r, a, u))
 
-        self.base_conv_norm_out = base_model.conv_norm_out
-        self.base_conv_act = base_model.conv_act
-        self.base_conv_out = base_model.conv_out
-
-        self.time_embedding_mix = time_embedding_mix
-
     @torch.no_grad()
     def _check_if_vae_compatible(self, vae: AutoencoderKL):
-        condition_downscale_factor = self.condition_downscale_factor
+        condition_downscale_factor = 2 ** (len(self.ctrl_model.config.conditioning_embedding_out_channels) - 1)
         vae_downscale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
-        compatible = self.condition_downscale_factor == vae_downscale_factor
+        compatible = condition_downscale_factor == vae_downscale_factor
         return compatible, condition_downscale_factor, vae_downscale_factor
 
     def forward(
@@ -619,6 +573,7 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         return_dict: bool = True,
+        do_control: bool = True,
     ) -> Union[ControlNetXSOutput, Tuple]:
         """
         The [`ControlNetModel`] forward method.
@@ -659,8 +614,21 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                 tuple is returned where the first element is the sample tensor.
         """
 
+        if not do_control:
+            return self.base_model(
+                sample=sample,
+                timestep=timestep,
+                encoder_hidden_states=encoder_hidden_states,
+                class_labels=class_labels,
+                timestep_cond=timestep_cond,
+                attention_mask=attention_mask,
+                cross_attention_kwargs=cross_attention_kwargs,
+                added_cond_kwargs=added_cond_kwargs,
+                return_dict=return_dict
+            )
+
         # check channel order
-        if self.conditioning_channel_order == "bgr":
+        if self.ctrl_model.config.conditioning_channel_order == "bgr":
             controlnet_cond = torch.flip(controlnet_cond, dims=[1])
 
         # prepare attention_mask
@@ -685,38 +653,38 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
 
-        t_emb = self.base_time_proj(timesteps)
+        t_emb = self.base_model.time_proj(timesteps)
 
         # timesteps does not contain any weights and will always return f32 tensors
         # but time_embedding might actually be running in fp16. so we need to cast here.
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=sample.dtype)
 
-        if self.use_ctrl_time_embedding:
-            ctrl_temb = self.ctrl_time_embedding(t_emb, timestep_cond)
-            base_temb = self.base_time_embedding(t_emb, timestep_cond)
-            interpolation_param = self.config.time_embedding_mix**0.3
+        if self.ctrl_model.config.learn_time_embedding:
+            ctrl_temb = self.ctrl_model.time_embedding(t_emb, timestep_cond)
+            base_temb = self.base_model.time_embedding(t_emb, timestep_cond)
+            interpolation_param = self.time_embedding_mix**0.3
 
             temb = ctrl_temb * interpolation_param + base_temb * (1 - interpolation_param)
         else:
-            temb = self.base_time_embedding(t_emb)
+            temb = self.base_model.time_embedding(t_emb)
 
         # added time & text embeddings
         aug_emb = None
 
-        if self.base_class_embedding is not None:
+        if self.base_model.class_embedding is not None:
             if class_labels is None:
                 raise ValueError("class_labels should be provided when num_class_embeds > 0")
 
-            if self.class_embed_type == "timestep":
+            if self.base_model.config.class_embed_type == "timestep":
                 class_labels = self.base_time_proj(class_labels)
 
-            class_emb = self.base_class_embedding(class_labels).to(dtype=self.dtype)
+            class_emb = self.base_model.class_embedding(class_labels).to(dtype=self.dtype)
             temb = temb + class_emb
 
-        if self.base_addition_embed_type is None:
+        if self.base_model.config.addition_embed_type is None:
             pass
-        elif self.base_addition_embed_type == "text_time":
+        elif self.base_model.config.addition_embed_type == "text_time":
             # SDXL - style
             if "text_embeds" not in added_cond_kwargs:
                 raise ValueError(
@@ -728,14 +696,14 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
                     f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
                 )
             time_ids = added_cond_kwargs.get("time_ids")
-            time_embeds = self.base_add_time_proj(time_ids.flatten())
+            time_embeds = self.base_model.add_time_proj(time_ids.flatten())
             time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
             add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
             add_embeds = add_embeds.to(temb.dtype)
-            aug_emb = self.base_add_embedding(add_embeds)
+            aug_emb = self.base_model.add_embedding(add_embeds)
         else:
             raise ValueError(
-                f"ControlNet-XS currently only supports StableDiffusion and StableDiffusion-XL, so addition_embed_type = {self.base_addition_embed_type} is currently not supported."
+                f"ControlNet-XS currently only supports StableDiffusion and StableDiffusion-XL, so addition_embed_type = {self.base_model.config.addition_embed_type} is currently not supported."
             )
 
         temb = temb + aug_emb if aug_emb is not None else temb
@@ -744,32 +712,41 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
         cemb = encoder_hidden_states
 
         # Preparation
-        guided_hint = self.ctrl_controlnet_cond_embedding(controlnet_cond)
+        guided_hint = self.ctrl_model.controlnet_cond_embedding(controlnet_cond)
 
         h_ctrl = h_base = sample
         hs_base, hs_ctrl = [], []
 
         # Cross Control
+        # Let's first define variables to shorten notation
+        base_down_subblocks = self.base_down_subblocks
+        ctrl_down_subblocks = self.ctrl_model.down_subblocks
+
+        down_zero_convs_b2c = self.ctrl_model.down_zero_convs_b2c
+        down_zero_convs_c2b = self.ctrl_model.down_zero_convs_c2b
+        mid_zero_convs_c2b = self.ctrl_model.mid_zero_convs_c2b
+        up_zero_convs_c2b = self.ctrl_model.up_zero_convs_c2b
+
         # 1 - conv in & down
         # The base -> ctrl connections are "delayed" by 1 subblock, because we want to "wait" to ensure the new information from the last  ctrl -> base connection is also considered
         # Therefore, the connections iterate over:
         #       ctrl -> base:   conv_in | subblock 1  |  ...  | subblock n
         #       base -> ctrl:           | subblock 1  |  ...  | subblock n | mid block
 
-        h_base = self.base_conv_in(h_base)
-        h_ctrl = self.ctrl_conv_in(h_ctrl)
+        h_base = self.base_model.conv_in(h_base)
+        h_ctrl = self.ctrl_model.conv_in(h_ctrl)
         if guided_hint is not None:
             h_ctrl += guided_hint
-        h_base = h_base + self.down_zero_convs_c2b[0](h_ctrl) * conditioning_scale  # add ctrl -> base
+        h_base = h_base + down_zero_convs_c2b[0](h_ctrl) * conditioning_scale  # add ctrl -> base
 
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
 
         for b, c, b2c, c2b in zip(
-            self.base_down_subblocks,
-            self.ctrl_down_subblocks,
-            self.down_zero_convs_b2c[:-1],
-            self.down_zero_convs_c2b[1:],
+            base_down_subblocks,
+            ctrl_down_subblocks,
+            down_zero_convs_b2c[:-1],
+            down_zero_convs_c2b[1:],
         ):
             if isinstance(b, CrossAttnSubBlock2D):
                 additional_params = [temb, cemb, attention_mask, cross_attention_kwargs]
@@ -783,24 +760,24 @@ class ControlNetXSModel(ModelMixin, ConfigMixin):
 
             hs_base.append(h_base)
             hs_ctrl.append(h_ctrl)
-        h_ctrl = torch.cat([h_ctrl, self.down_zero_convs_b2c[-1](h_base)], dim=1)  # concat base -> ctrl
+        h_ctrl = torch.cat([h_ctrl, down_zero_convs_b2c[-1](h_base)], dim=1)  # concat base -> ctrl
 
         # 2 - mid
-        h_base = self.base_mid_block(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # apply base subblock
-        h_ctrl = self.ctrl_mid_block(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # apply ctrl subblock
-        h_base = h_base + self.mid_zero_convs_c2b(h_ctrl) * conditioning_scale  # add ctrl -> base
+        h_base = self.base_model.mid_block(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # apply base subblock
+        h_ctrl = self.ctrl_model.mid_block(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # apply ctrl subblock
+        h_base = h_base + mid_zero_convs_c2b(h_ctrl) * conditioning_scale  # add ctrl -> base
 
         # 3 - up
         for b, c2b, skip_c, skip_b in zip(
-            self.base_up_subblocks, self.up_zero_convs_c2b, reversed(hs_ctrl), reversed(hs_base)
+            self.base_up_subblocks, up_zero_convs_c2b, reversed(hs_ctrl), reversed(hs_base)
         ):
             h_base = h_base + c2b(skip_c) * conditioning_scale  # add info from ctrl encoder
             h_base = torch.cat([h_base, skip_b], dim=1)  # concat info from base encoder+ctrl encoder
             h_base = b(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
 
-        h_base = self.base_conv_norm_out(h_base)
-        h_base = self.base_conv_act(h_base)
-        h_base = self.base_conv_out(h_base)
+        h_base = self.base_model.conv_norm_out(h_base)
+        h_base = self.base_model.conv_act(h_base)
+        h_base = self.base_model.conv_out(h_base)
 
         if not return_dict:
             return h_base
