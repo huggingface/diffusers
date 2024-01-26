@@ -119,7 +119,7 @@ def save_model_card(
         diffusers_imports_pivotal = """from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
         """
-        diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id='{repo_id}', filename='{embeddings_filename}.safetensors' repo_type="model")
+        diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id='{repo_id}', filename='{embeddings_filename}.safetensors', repo_type="model")
 state_dict = load_file(embedding_path)
 pipeline.load_textual_inversion(state_dict["clip_l"], token=[{ti_keys}], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
         """
