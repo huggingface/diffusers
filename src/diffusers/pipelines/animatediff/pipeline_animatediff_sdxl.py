@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import numpy as np
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -67,6 +68,28 @@ EXAMPLE_DOC_STRING = """
         ```py
         ```
 """
+
+
+# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
+def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
+    batch_size, channels, num_frames, height, width = video.shape
+    outputs = []
+    for batch_idx in range(batch_size):
+        batch_vid = video[batch_idx].permute(1, 0, 2, 3)
+        batch_output = processor.postprocess(batch_vid, output_type)
+
+        outputs.append(batch_output)
+
+    if output_type == "np":
+        outputs = np.stack(outputs)
+
+    elif output_type == "pt":
+        outputs = torch.stack(outputs)
+
+    elif not output_type == "pil":
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
+
+    return outputs
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
@@ -818,6 +841,20 @@ class AnimateDiffXLPipeline(
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
 
+    # Copied from diffusers.pipelines.animatediff.AnimateDiffPipeline._retrieve_video_frames
+    def _retrieve_video_frames(self, latents, output_type, return_dict):
+        """Helper function to handle latents to output conversion."""
+        if output_type == "latent":
+            return AnimateDiffPipelineOutput(frames=latents)
+
+        video_tensor = self.decode_latents(latents)
+        video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+
+        if not return_dict:
+            return (video,)
+
+        return AnimateDiffPipelineOutput(frames=video)
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -1239,33 +1276,20 @@ class AnimateDiffXLPipeline(
 
                 progress_bar.update()
 
-        if not output_type == "latent":
-            # make sure the VAE is in float32 mode, as it overflows in float16
-            needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
+        # make sure the VAE is in float32 mode, as it overflows in float16
+        needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
-            if needs_upcasting:
-                self.upcast_vae()
-                latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+        if needs_upcasting:
+            self.upcast_vae()
+            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+        video = self._retrieve_video_frames(latents, output_type, return_dict)
 
-            # cast back to fp16 if needed
-            if needs_upcasting:
-                self.vae.to(dtype=torch.float16)
-        else:
-            image = latents
-
-        if not output_type == "latent":
-            # apply watermark if available
-            if self.watermark is not None:
-                image = self.watermark.apply_watermark(image)
-
-            image = self.image_processor.postprocess(image, output_type=output_type)
+        # cast back to fp16 if needed
+        if needs_upcasting:
+            self.vae.to(dtype=torch.float16)
 
         # Offload all models
         self.maybe_free_model_hooks()
 
-        if not return_dict:
-            return (image,)
-
-        return AnimateDiffPipelineOutput(images=image)
+        return video
