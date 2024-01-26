@@ -22,13 +22,11 @@ import os
 import shutil
 from datetime import timedelta
 from pathlib import Path
-from typing import Optional
 
 import accelerate
 import datasets
 import numpy as np
 import torch
-import torch.nn.functional as F
 from accelerate import Accelerator, InitProcessGroupKwargs
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
@@ -42,13 +40,11 @@ import diffusers
 from diffusers import (
     CMStochasticIterativeScheduler,
     ConsistencyModelPipeline,
-    DDPMPipeline,
-    DDPMScheduler,
     UNet2DModel,
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, resolve_interpolation_mode
-from diffusers.utils import check_min_version, is_accelerate_version, is_tensorboard_available, is_wandb_available
+from diffusers.utils import is_tensorboard_available, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -113,9 +109,9 @@ def get_skip_steps(global_step, initial_skip: int = 1):
 def get_karras_sigmas(
     num_discretization_steps: int,
     sigma_min: float = 0.002,
-    sigma_max: float=80.0,
+    sigma_max: float = 80.0,
     rho: float = 7.0,
-    dtype = torch.float32,
+    dtype=torch.float32,
 ):
     """
     Calculates the Karras sigmas timestep discretization of [sigma_min, sigma_max].
@@ -145,7 +141,7 @@ def get_loss_weighting_schedule(noise_levels: torch.FloatTensor):
     """
     Calculates the loss weighting schedule lambda given a set of noise levels.
     """
-    return 1. / (noise_levels[1:] - noise_levels[:-1])
+    return 1.0 / (noise_levels[1:] - noise_levels[:-1])
 
 
 def add_noise(original_samples: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.FloatTensor):
@@ -184,7 +180,7 @@ def get_input_preconditioning(sigmas, sigma_data=0.5, input_precond_type: str = 
     if input_precond_type == "none":
         return 1
     elif input_precond_type == "cm":
-        return 1. / (sigmas**2 + sigma_data**2)
+        return 1.0 / (sigmas**2 + sigma_data**2)
     else:
         raise ValueError(
             f"Input preconditioning type {input_precond_type} is not current supported. Currently supported input"
@@ -212,12 +208,12 @@ def log_validation(unet, scheduler, args, accelerator, weight_dtype, step, name=
 
     if args.enable_xformers_memory_efficient_attention:
         pipeline.enable_xformers_memory_efficient_attention()
-    
+
     if args.seed is None:
         generator = None
     else:
         generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-    
+
     class_labels = [None]
     if args.class_conditional:
         if args.num_classes is not None:
@@ -227,7 +223,7 @@ def log_validation(unet, scheduler, args, accelerator, weight_dtype, step, name=
                 "The model is class-conditional but the number of classes is not set. The generated images will be"
                 " unconditional rather than class-conditional."
             )
-    
+
     image_logs = []
 
     for class_label in class_labels:
@@ -245,7 +241,7 @@ def log_validation(unet, scheduler, args, accelerator, weight_dtype, step, name=
         else:
             log["class_label"] = "images"
         image_logs.append(log)
-    
+
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             for log in image_logs:
@@ -783,7 +779,6 @@ def main(args):
     elif args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
-        import wandb
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -812,10 +807,11 @@ def main(args):
             repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
-    
+
     # 1. Initialize the noise scheduler.
     initial_discretization_steps = get_discretization_steps(
-        0, args.max_train_steps,
+        0,
+        args.max_train_steps,
         s_0=args.discretization_s_0,
         s_1=args.discretization_s_1,
         constant=args.constant_discretization_steps,
@@ -887,7 +883,7 @@ def main(args):
             model_cls=UNet2DModel,
             model_config=unet.config,
         )
-    
+
     # 3. Initialize the teacher U-Net model from the student U-Net model.
     # Note that following the improved Consistency Training paper, the teacher U-Net is not updated via EMA (e.g. the
     # EMA decay rate is 0.)
@@ -904,17 +900,17 @@ def main(args):
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
         args.mixed_precision = accelerator.mixed_precision
-    
+
     # Cast teacher_unet to weight_dtype if cast_teacher is set.
     if args.cast_teacher:
         teacher_dtype = weight_dtype
     else:
         teacher_dtype = torch.float32
-    
+
     teacher_unet.to(accelerator.device)
     if args.use_ema:
         ema_unet.to(accelerator.device)
-    
+
     # 5. Handle saving and loading of checkpoints.
     # `accelerate` 0.16.0 will have better support for customized saving
     if version.parse(accelerate.__version__) >= version.parse("0.16.0"):
@@ -973,12 +969,12 @@ def main(args):
                 ema_unet.enable_xformers_memory_efficient_attention()
         else:
             raise ValueError("xformers is not available. Make sure it is installed correctly")
-    
+
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
     if args.allow_tf32:
         torch.backends.cuda.matmul.allow_tf32 = True
-    
+
     if args.gradient_checkpointing:
         unet.enable_gradient_checkpointing()
 
@@ -1088,7 +1084,7 @@ def main(args):
             rho=args.rho,
         )
         current_timesteps = get_karras_sigmas(discretization_steps, args.sigma_min, args.sigma_max, args.rho)
-        valid_teacher_timesteps_plus_one = current_timesteps[:len(current_timesteps) - skip_steps + 1]
+        valid_teacher_timesteps_plus_one = current_timesteps[: len(current_timesteps) - skip_steps + 1]
         # timestep_weights are the unnormalized probabilities of sampling the timestep/noise level at each index
         timestep_weights = get_discretized_lognormal_weights(
             valid_teacher_timesteps_plus_one, p_mean=args.p_mean, p_std=args.p_std
@@ -1160,11 +1156,11 @@ def main(args):
             first_epoch = global_step // num_update_steps_per_epoch
     else:
         initial_global_step = 0
-    
+
     # Resolve the c parameter for the Pseudo-Huber loss
     if args.huber_c is None:
         args.huber_c = 0.00054 * args.resolution * math.sqrt(unet.config.in_channels)
-    
+
     # Get current number of discretization steps N according to our discretization curriculum
     current_discretization_steps = get_discretization_steps(
         initial_global_step,
@@ -1186,7 +1182,7 @@ def main(args):
         timestep_weights,
         timestep_loss_weights,
     ) = recalculate_num_discretization_step_values(current_discretization_steps, current_skip_steps)
-    
+
     progress_bar = tqdm(
         range(0, args.max_train_steps),
         initial=initial_global_step,
@@ -1269,7 +1265,8 @@ def main(args):
                     loss = lambda_t * (
                         torch.sqrt(
                             (student_denoise_output.float() - teacher_denoise_output.float()) ** 2 + args.huber_c**2
-                        ) - args.huber_c
+                        )
+                        - args.huber_c
                     )
                     loss = loss.mean()
                 else:
@@ -1318,7 +1315,7 @@ def main(args):
                         ) = recalculate_num_discretization_step_values(new_discretization_steps, current_skip_steps)
                         current_discretization_steps = new_discretization_steps
 
-                    if global_step % args.checkpointing_steps == 0:                    
+                    if global_step % args.checkpointing_steps == 0:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
                             checkpoints = os.listdir(args.output_dir)
@@ -1346,9 +1343,7 @@ def main(args):
                     if global_step % args.validation_steps == 0:
                         # NOTE: since we do not use EMA for the teacher model, the teacher parameters and student
                         # parameters are the same at this point in time
-                        log_validation(
-                            unet, noise_scheduler, args, accelerator, weight_dtype, global_step, "teacher"
-                        )
+                        log_validation(unet, noise_scheduler, args, accelerator, weight_dtype, global_step, "teacher")
                         # teacher_unet.to(dtype=teacher_dtype)
 
                         if args.use_ema:
@@ -1392,12 +1387,12 @@ def main(args):
             ema_unet.copy_to(unet.parameters())
 
             unet.save_pretrained(os.path.join(args.output_dir, "ema_unet"))
-        
+
         if args.push_to_hub:
             upload_folder(
                 repo_id=repo_id,
                 folder_path=args.output_dir,
-                commit_message=f"End of training",
+                commit_message="End of training",
                 ignore_patterns=["step_*", "epoch_*"],
             )
 
