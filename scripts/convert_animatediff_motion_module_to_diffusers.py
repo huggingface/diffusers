@@ -30,6 +30,7 @@ def get_args():
     parser.add_argument("--output_path", type=str, required=True)
     parser.add_argument("--use_motion_mid_block", action="store_true")
     parser.add_argument("--motion_max_seq_length", type=int, default=32)
+    parser.add_argument("--block_out_channels", nargs="+", default=[320, 640, 1280, 1280], type=int)
 
     return parser.parse_args()
 
@@ -43,9 +44,13 @@ if __name__ == "__main__":
 
     conv_state_dict = convert_motion_module(state_dict)
     adapter = MotionAdapter(
-        use_motion_mid_block=args.use_motion_mid_block, motion_max_seq_length=args.motion_max_seq_length
+        block_out_channels=args.block_out_channels,
+        use_motion_mid_block=args.use_motion_mid_block,
+        motion_max_seq_length=args.motion_max_seq_length,
     )
     # skip loading position embeddings
     adapter.load_state_dict(conv_state_dict, strict=False)
     adapter.save_pretrained(args.output_path)
-    adapter.save_pretrained(args.output_path, variant="fp16", torch_dtype=torch.float16)
+
+    adapter.to(dtype=torch.float16)
+    adapter.save_pretrained(args.output_path, variant="fp16")
