@@ -325,10 +325,9 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
-        controlnet_addon = ControlNetXSAddon.from_pretrained("UmerHA/Testing-ConrolNetXS-SDXL-canny")
-
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", controlnet_addon=controlnet_addon
+            components_path="stabilityai/stable-diffusion-xl-base-1.0",
+            addon_path="UmerHA/Testing-ConrolNetXS-SDXL-canny"
         )
         pipe.enable_sequential_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -348,10 +347,9 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     def test_depth(self):
-        controlnet_addon = ControlNetXSAddon.from_pretrained("todo umer")
-
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", controlnet_addon=controlnet_addon
+            components_path="stabilityai/stable-diffusion-xl-base-1.0",
+            addon_path="todo umer"
         )
         pipe.enable_sequential_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
