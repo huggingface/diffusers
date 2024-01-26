@@ -1037,7 +1037,9 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(ip_adapter_image, device, num_videos_per_prompt)
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image, device, batch_size * num_videos_per_prompt
+            )
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)

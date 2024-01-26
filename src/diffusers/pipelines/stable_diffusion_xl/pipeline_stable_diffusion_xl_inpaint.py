@@ -1714,7 +1714,9 @@ class StableDiffusionXLInpaintPipeline(
         add_time_ids = add_time_ids.to(device)
 
         if ip_adapter_image is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(ip_adapter_image, device, num_images_per_prompt)
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image, device, batch_size * num_images_per_prompt
+            )
 
         # 11. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)

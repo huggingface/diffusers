@@ -1030,7 +1030,9 @@ class StableDiffusionImg2ImgPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(ip_adapter_image, device, num_images_per_prompt)
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image, device, batch_size * num_images_per_prompt
+            )
 
         # 4. Preprocess image
         image = self.image_processor.preprocess(image)

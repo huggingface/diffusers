@@ -518,31 +518,6 @@ class AltDiffusionPipeline(
 
             return image_embeds, uncond_image_embeds
 
-    def prepare_ip_adapter_image_embeds(self, ip_adapter_image, device, num_images_per_prompt):
-        if not isinstance(ip_adapter_image, list):
-            ip_adapter_image = [ip_adapter_image]
-
-        if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
-            raise ValueError(
-                f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
-            )
-
-        image_embeds = []
-        for single_ip_adapter_image, image_proj_layer in zip(
-            ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
-        ):
-            output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
-            single_image_embeds, single_negative_image_embeds = self.encode_image(
-                single_ip_adapter_image, device, num_images_per_prompt, output_hidden_state
-            )
-            if self.do_classifier_free_guidance:
-                single_image_embeds = torch.stack([single_negative_image_embeds, single_image_embeds])
-                single_image_embeds = single_image_embeds.to(device)
-
-            image_embeds.append(single_image_embeds)
-
-        return image_embeds
-
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
             has_nsfw_concept = None
@@ -970,7 +945,12 @@ class AltDiffusionPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(ip_adapter_image, device, num_images_per_prompt)
+            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
+            image_embeds, negative_image_embeds = self.encode_image(
+                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+            )
+            if self.do_classifier_free_guidance:
+                image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)

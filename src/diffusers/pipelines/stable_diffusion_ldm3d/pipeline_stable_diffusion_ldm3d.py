@@ -683,7 +683,9 @@ class StableDiffusionLDM3DPipeline(
         do_classifier_free_guidance = guidance_scale > 1.0
 
         if ip_adapter_image is not None:
-            image_embeds = self.prepare_ip_adapter_image_embeds(ip_adapter_image, device, num_images_per_prompt)
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image, device, batch_size * num_images_per_prompt
+            )
 
         # 3. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
