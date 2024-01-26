@@ -311,7 +311,7 @@ class AnimateDiffXLPipeline(
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt with num_images_per_prompt -> num_videos_per_prompt
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt with num_images_per_prompt->num_videos_per_prompt
     def encode_prompt(
         self,
         prompt: str,
@@ -340,7 +340,7 @@ class AnimateDiffXLPipeline(
             device: (`torch.device`):
                 torch device
             num_videos_per_prompt (`int`):
-                number of videos that should be generated per prompt
+                number of images that should be generated per prompt
             do_classifier_free_guidance (`bool`):
                 whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
@@ -841,7 +841,6 @@ class AnimateDiffXLPipeline(
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
 
-    # Copied from diffusers.pipelines.animatediff.AnimateDiffPipeline._retrieve_video_frames
     def _retrieve_video_frames(self, latents, output_type, return_dict):
         """Helper function to handle latents to output conversion."""
         if output_type == "latent":
