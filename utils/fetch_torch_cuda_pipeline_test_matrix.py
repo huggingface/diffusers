@@ -16,6 +16,7 @@ ALWAYS_TEST_PIPELINE_MODULES = [
     "stable_diffusion_2",
     "stable_diffusion_xl",
     "deepfloyd_if",
+    "ip_adapters",
     "kandinsky",
     "kandinsky2_2",
     "text_to_video_synthesis",
