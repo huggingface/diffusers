@@ -24,7 +24,6 @@ from diffusers.utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-
 # ------------------------------------------------------------------------------
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -187,7 +186,7 @@ def pad_tokens_and_weights(tokens, weights, max_length, bos, eos, pad, no_boseos
             else:
                 for j in range(max_embeddings_multiples):
                     w.append(1.0)  # weight for starting token in this chunk
-                    w += weights[i][j * (chunk_length - 2) : min(len(weights[i]), (j + 1) * (chunk_length - 2))]
+                    w += weights[i][j * (chunk_length - 2): min(len(weights[i]), (j + 1) * (chunk_length - 2))]
                     w.append(1.0)  # weight for ending token in this chunk
                 w += [1.0] * (weights_length - len(w))
             weights[i] = w[:]
@@ -196,10 +195,11 @@ def pad_tokens_and_weights(tokens, weights, max_length, bos, eos, pad, no_boseos
 
 
 def get_unweighted_text_embeddings(
-    pipe: DiffusionPipeline,
-    text_input: torch.Tensor,
-    chunk_length: int,
-    no_boseos_middle: Optional[bool] = True,
+        pipe: DiffusionPipeline,
+        text_input: torch.Tensor,
+        chunk_length: int,
+        no_boseos_middle: Optional[bool] = True,
+        clip_skip: Optional[int] = None,
 ):
     """
     When the length of tokens is a multiple of the capacity of the text encoder,
@@ -210,12 +210,17 @@ def get_unweighted_text_embeddings(
         text_embeddings = []
         for i in range(max_embeddings_multiples):
             # extract the i-th chunk
-            text_input_chunk = text_input[:, i * (chunk_length - 2) : (i + 1) * (chunk_length - 2) + 2].clone()
+            text_input_chunk = text_input[:, i * (chunk_length - 2): (i + 1) * (chunk_length - 2) + 2].clone()
 
             # cover the head and the tail by the starting and the ending tokens
             text_input_chunk[:, 0] = text_input[0, 0]
             text_input_chunk[:, -1] = text_input[0, -1]
-            text_embedding = pipe.text_encoder(text_input_chunk)[0]
+            if clip_skip is None:
+                text_embedding = pipe.text_encoder(text_input_chunk)[0]
+            else:
+                text_embedding = pipe.text_encoder(text_input_chunk, output_hidden_states=True)
+                text_embedding = text_embedding[-1][-(clip_skip + 1)]
+                text_embedding = pipe.text_encoder.text_model.final_layer_norm(text_embedding)
 
             if no_boseos_middle:
                 if i == 0:
@@ -229,20 +234,26 @@ def get_unweighted_text_embeddings(
                     text_embedding = text_embedding[:, 1:-1]
 
             text_embeddings.append(text_embedding)
-        text_embeddings = torch.concat(text_embeddings, axis=1)
+        text_embeddings = torch.concat(text_embeddings, dim=1)
     else:
-        text_embeddings = pipe.text_encoder(text_input)[0]
+        if clip_skip is None:
+            text_embeddings = pipe.text_encoder(text_input)[0]
+        else:
+            text_embeddings = pipe.text_encoder(text_input, output_hidden_states=True)
+            text_embeddings = text_embeddings[-1][-(clip_skip + 1)]
+            text_embeddings = pipe.text_encoder.text_model.final_layer_norm(text_embeddings)
     return text_embeddings
 
 
 def get_weighted_text_embeddings(
-    pipe: DiffusionPipeline,
-    prompt: Union[str, List[str]],
-    uncond_prompt: Optional[Union[str, List[str]]] = None,
-    max_embeddings_multiples: Optional[int] = 3,
-    no_boseos_middle: Optional[bool] = False,
-    skip_parsing: Optional[bool] = False,
-    skip_weighting: Optional[bool] = False,
+        pipe: DiffusionPipeline,
+        prompt: Union[str, List[str]],
+        uncond_prompt: Optional[Union[str, List[str]]] = None,
+        max_embeddings_multiples: Optional[int] = 3,
+        no_boseos_middle: Optional[bool] = False,
+        skip_parsing: Optional[bool] = False,
+        skip_weighting: Optional[bool] = False,
+        clip_skip: Optional[int] = None,
 ):
     r"""
     Prompts can be assigned with local weights using brackets. For example,
@@ -268,6 +279,7 @@ def get_weighted_text_embeddings(
             Skip the parsing of brackets.
         skip_weighting (`bool`, *optional*, defaults to `False`):
             Skip the weighting. When the parsing is skipped, it is forced True.
+        clip_skip (`int`, *optional*, defaults to `None`)
     """
     max_length = (pipe.tokenizer.model_max_length - 2) * max_embeddings_multiples + 2
     if isinstance(prompt, str):
@@ -339,6 +351,7 @@ def get_weighted_text_embeddings(
         prompt_tokens,
         pipe.tokenizer.model_max_length,
         no_boseos_middle=no_boseos_middle,
+        clip_skip=clip_skip,
     )
     prompt_weights = torch.tensor(prompt_weights, dtype=text_embeddings.dtype, device=text_embeddings.device)
     if uncond_prompt is not None:
@@ -347,6 +360,7 @@ def get_weighted_text_embeddings(
             uncond_tokens,
             pipe.tokenizer.model_max_length,
             no_boseos_middle=no_boseos_middle,
+            clip_skip=clip_skip,
         )
         uncond_weights = torch.tensor(uncond_weights, dtype=uncond_embeddings.dtype, device=uncond_embeddings.device)
 
@@ -443,15 +457,15 @@ class StableDiffusionLongPromptWeightingPipeline(
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
-        self,
-        vae: AutoencoderKL,
-        text_encoder: CLIPTextModel,
-        tokenizer: CLIPTokenizer,
-        unet: UNet2DConditionModel,
-        scheduler: KarrasDiffusionSchedulers,
-        safety_checker: StableDiffusionSafetyChecker,
-        feature_extractor: CLIPImageProcessor,
-        requires_safety_checker: bool = True,
+            self,
+            vae: AutoencoderKL,
+            text_encoder: CLIPTextModel,
+            tokenizer: CLIPTokenizer,
+            unet: UNet2DConditionModel,
+            scheduler: KarrasDiffusionSchedulers,
+            safety_checker: StableDiffusionSafetyChecker,
+            feature_extractor: CLIPImageProcessor,
+            requires_safety_checker: bool = True,
     ):
         super().__init__()
 
@@ -633,23 +647,24 @@ class StableDiffusionLongPromptWeightingPipeline(
             return self.device
         for module in self.unet.modules():
             if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
+                    hasattr(module, "_hf_hook")
+                    and hasattr(module._hf_hook, "execution_device")
+                    and module._hf_hook.execution_device is not None
             ):
                 return torch.device(module._hf_hook.execution_device)
         return self.device
 
     def _encode_prompt(
-        self,
-        prompt,
-        device,
-        num_images_per_prompt,
-        do_classifier_free_guidance,
-        negative_prompt=None,
-        max_embeddings_multiples=3,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+            self,
+            prompt,
+            device,
+            num_images_per_prompt,
+            do_classifier_free_guidance,
+            negative_prompt=None,
+            max_embeddings_multiples=3,
+            prompt_embeds: Optional[torch.FloatTensor] = None,
+            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+            clip_skip: Optional[int] = None,
     ):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -698,6 +713,7 @@ class StableDiffusionLongPromptWeightingPipeline(
                 prompt=prompt,
                 uncond_prompt=negative_prompt if do_classifier_free_guidance else None,
                 max_embeddings_multiples=max_embeddings_multiples,
+                clip_skip=clip_skip
             )
             if prompt_embeds is None:
                 prompt_embeds = prompt_embeds1
@@ -718,15 +734,15 @@ class StableDiffusionLongPromptWeightingPipeline(
         return prompt_embeds
 
     def check_inputs(
-        self,
-        prompt,
-        height,
-        width,
-        strength,
-        callback_steps,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
+            self,
+            prompt,
+            height,
+            width,
+            strength,
+            callback_steps,
+            negative_prompt=None,
+            prompt_embeds=None,
+            negative_prompt_embeds=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -735,7 +751,7 @@ class StableDiffusionLongPromptWeightingPipeline(
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
 
         if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+                callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
@@ -776,7 +792,7 @@ class StableDiffusionLongPromptWeightingPipeline(
             init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
             t_start = max(num_inference_steps - init_timestep, 0)
-            timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+            timesteps = self.scheduler.timesteps[t_start * self.scheduler.order:]
 
             return timesteps, num_inference_steps - t_start
 
@@ -816,18 +832,18 @@ class StableDiffusionLongPromptWeightingPipeline(
         return extra_step_kwargs
 
     def prepare_latents(
-        self,
-        image,
-        timestep,
-        num_images_per_prompt,
-        batch_size,
-        num_channels_latents,
-        height,
-        width,
-        dtype,
-        device,
-        generator,
-        latents=None,
+            self,
+            image,
+            timestep,
+            num_images_per_prompt,
+            batch_size,
+            num_channels_latents,
+            height,
+            width,
+            dtype,
+            device,
+            generator,
+            latents=None,
     ):
         if image is None:
             batch_size = batch_size * num_images_per_prompt
@@ -864,30 +880,31 @@ class StableDiffusionLongPromptWeightingPipeline(
 
     @torch.no_grad()
     def __call__(
-        self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
-        height: int = 512,
-        width: int = 512,
-        num_inference_steps: int = 50,
-        guidance_scale: float = 7.5,
-        strength: float = 0.8,
-        num_images_per_prompt: Optional[int] = 1,
-        add_predicted_noise: Optional[bool] = False,
-        eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        max_embeddings_multiples: Optional[int] = 3,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            self,
+            prompt: Union[str, List[str]],
+            negative_prompt: Optional[Union[str, List[str]]] = None,
+            image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+            mask_image: Union[torch.FloatTensor, PIL.Image.Image] = None,
+            height: int = 512,
+            width: int = 512,
+            num_inference_steps: int = 50,
+            guidance_scale: float = 7.5,
+            strength: float = 0.8,
+            num_images_per_prompt: Optional[int] = 1,
+            add_predicted_noise: Optional[bool] = False,
+            eta: float = 0.0,
+            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+            latents: Optional[torch.FloatTensor] = None,
+            prompt_embeds: Optional[torch.FloatTensor] = None,
+            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+            max_embeddings_multiples: Optional[int] = 3,
+            output_type: Optional[str] = "pil",
+            return_dict: bool = True,
+            callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+            is_cancelled_callback: Optional[Callable[[], bool]] = None,
+            callback_steps: int = 1,
+            cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            clip_skip: Optional[int] = None,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -968,6 +985,9 @@ class StableDiffusionLongPromptWeightingPipeline(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Returns:
             `None` if cancelled by `is_cancelled_callback`,
@@ -1010,6 +1030,7 @@ class StableDiffusionLongPromptWeightingPipeline(
             max_embeddings_multiples,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
+            clip_skip=clip_skip
         )
         dtype = prompt_embeds.dtype
 
@@ -1122,26 +1143,27 @@ class StableDiffusionLongPromptWeightingPipeline(
         return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)
 
     def text2img(
-        self,
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        height: int = 512,
-        width: int = 512,
-        num_inference_steps: int = 50,
-        guidance_scale: float = 7.5,
-        num_images_per_prompt: Optional[int] = 1,
-        eta: float = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        max_embeddings_multiples: Optional[int] = 3,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            self,
+            prompt: Union[str, List[str]],
+            negative_prompt: Optional[Union[str, List[str]]] = None,
+            height: int = 512,
+            width: int = 512,
+            num_inference_steps: int = 50,
+            guidance_scale: float = 7.5,
+            num_images_per_prompt: Optional[int] = 1,
+            eta: float = 0.0,
+            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+            latents: Optional[torch.FloatTensor] = None,
+            prompt_embeds: Optional[torch.FloatTensor] = None,
+            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+            max_embeddings_multiples: Optional[int] = 3,
+            output_type: Optional[str] = "pil",
+            return_dict: bool = True,
+            callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+            is_cancelled_callback: Optional[Callable[[], bool]] = None,
+            callback_steps: int = 1,
+            cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            clip_skip: Optional[int] = None,
     ):
         r"""
         Function for text-to-image generation.
@@ -1204,6 +1226,9 @@ class StableDiffusionLongPromptWeightingPipeline(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Returns:
             `None` if cancelled by `is_cancelled_callback`,
@@ -1233,28 +1258,30 @@ class StableDiffusionLongPromptWeightingPipeline(
             is_cancelled_callback=is_cancelled_callback,
             callback_steps=callback_steps,
             cross_attention_kwargs=cross_attention_kwargs,
+            clip_skip=clip_skip,
         )
 
     def img2img(
-        self,
-        image: Union[torch.FloatTensor, PIL.Image.Image],
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        strength: float = 0.8,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 7.5,
-        num_images_per_prompt: Optional[int] = 1,
-        eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        max_embeddings_multiples: Optional[int] = 3,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            self,
+            image: Union[torch.FloatTensor, PIL.Image.Image],
+            prompt: Union[str, List[str]],
+            negative_prompt: Optional[Union[str, List[str]]] = None,
+            strength: float = 0.8,
+            num_inference_steps: Optional[int] = 50,
+            guidance_scale: Optional[float] = 7.5,
+            num_images_per_prompt: Optional[int] = 1,
+            eta: Optional[float] = 0.0,
+            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+            prompt_embeds: Optional[torch.FloatTensor] = None,
+            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+            max_embeddings_multiples: Optional[int] = 3,
+            output_type: Optional[str] = "pil",
+            return_dict: bool = True,
+            callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+            is_cancelled_callback: Optional[Callable[[], bool]] = None,
+            callback_steps: int = 1,
+            cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            clip_skip: Optional[int] = None,
     ):
         r"""
         Function for image-to-image generation.
@@ -1345,30 +1372,32 @@ class StableDiffusionLongPromptWeightingPipeline(
             is_cancelled_callback=is_cancelled_callback,
             callback_steps=callback_steps,
             cross_attention_kwargs=cross_attention_kwargs,
+            clip_skip=clip_skip,
         )
 
     def inpaint(
-        self,
-        image: Union[torch.FloatTensor, PIL.Image.Image],
-        mask_image: Union[torch.FloatTensor, PIL.Image.Image],
-        prompt: Union[str, List[str]],
-        negative_prompt: Optional[Union[str, List[str]]] = None,
-        strength: float = 0.8,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 7.5,
-        num_images_per_prompt: Optional[int] = 1,
-        add_predicted_noise: Optional[bool] = False,
-        eta: Optional[float] = 0.0,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        prompt_embeds: Optional[torch.FloatTensor] = None,
-        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        max_embeddings_multiples: Optional[int] = 3,
-        output_type: Optional[str] = "pil",
-        return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        is_cancelled_callback: Optional[Callable[[], bool]] = None,
-        callback_steps: int = 1,
-        cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            self,
+            image: Union[torch.FloatTensor, PIL.Image.Image],
+            mask_image: Union[torch.FloatTensor, PIL.Image.Image],
+            prompt: Union[str, List[str]],
+            negative_prompt: Optional[Union[str, List[str]]] = None,
+            strength: float = 0.8,
+            num_inference_steps: Optional[int] = 50,
+            guidance_scale: Optional[float] = 7.5,
+            num_images_per_prompt: Optional[int] = 1,
+            add_predicted_noise: Optional[bool] = False,
+            eta: Optional[float] = 0.0,
+            generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+            prompt_embeds: Optional[torch.FloatTensor] = None,
+            negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+            max_embeddings_multiples: Optional[int] = 3,
+            output_type: Optional[str] = "pil",
+            return_dict: bool = True,
+            callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+            is_cancelled_callback: Optional[Callable[[], bool]] = None,
+            callback_steps: int = 1,
+            cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+            clip_skip: Optional[int] = None,
     ):
         r"""
         Function for inpaint.
@@ -1439,6 +1468,9 @@ class StableDiffusionLongPromptWeightingPipeline(
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
+            clip_skip (`int`, *optional*):
+                Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
+                the output of the pre-final layer will be used for computing the prompt embeddings.
 
         Returns:
             `None` if cancelled by `is_cancelled_callback`,
@@ -1468,4 +1500,5 @@ class StableDiffusionLongPromptWeightingPipeline(
             is_cancelled_callback=is_cancelled_callback,
             callback_steps=callback_steps,
             cross_attention_kwargs=cross_attention_kwargs,
+            clip_skip=clip_skip,
         )
