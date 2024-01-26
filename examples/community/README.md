@@ -62,7 +62,6 @@ If a community doesn't work as expected, please open an issue and ping the autho
 | AnimateDiff Image-To-Video Pipeline | Experimental Image-To-Video support for AnimateDiff (open to improvements) | [AnimateDiff Image To Video Pipeline](#animatediff-image-to-video-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1TvzCDPHhfFtdcJZe4RLloAwyoLKuttWK/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 |   IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
 |   InstantID Pipeline                                                                                               | Stable Diffusion XL Pipeline that supports InstantID                                                                                                                                                                                                                                                                                                                                                 |  [InstantID Pipeline](#instantid-pipeline) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/InstantX/InstantID) | [Haofan Wang](https://github.com/haofanwang) |
-|   Consistency Training Script                                                                                                    | Implementation of consistency training from [Consistency Models](https://arxiv.org/abs/2303.01469) and [Improved Techniques for Training Consistency Models](https://arxiv.org/abs/2310.14189)                                                                                                          | [Consistency Training](#consistency-training)      | - |              [dg845](https://github.com/dg845) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -3605,29 +3604,4 @@ image = pipe(
     image=face_kps,
     controlnet_conditioning_scale=0.8,
 ).images[0]
-```
-
-### Consistency Training
-
-`train_cm_ct_unconditional.py` trains a consistency model (CM) from scratch following the consistency training (CT) algorithm introduced in [Consistency Models](https://arxiv.org/abs/2303.01469) and refined in [Improved Techniques for Training Consistency Models](https://arxiv.org/abs/2310.14189). Both unconditional and class-conditional training are supported.
-
-A usage example is as follows:
-
-```bash
-accelerate launch examples/community/train_cm_ct_unconditional.py \
-    --dataset_name="cifar10" \
-    --dataset_image_column_name="img" \
-    --output_dir="/path/to/output/dir" \
-    --mixed_precision=fp16 \
-    --resolution=32 \
-    --max_train_steps=1000 --max_train_samples=10000 \
-    --dataloader_num_workers=8 \
-    --noise_precond_type="cm" --input_precond_type="cm" \
-    --train_batch_size=4 \
-    --learning_rate=1e-04 --lr_scheduler="constant" --lr_warmup_steps=0 \
-    --use_8bit_adam \
-    --use_ema \
-    --validation_steps=100 --eval_batch_size=4 \
-    --checkpointing_steps=100 --checkpoints_total_limit=10 \
-    --class_conditional --num_classes=10 \
 ```
