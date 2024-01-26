@@ -89,6 +89,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             conditioning with `class_embed_type` equal to `None`.
     """
 
+    _supports_gradient_checkpointing = True
+
     @register_to_config
     def __init__(
         self,
