@@ -15,6 +15,7 @@ ALWAYS_TEST_PIPELINE_MODULES = [
     "stable_diffusion",
     "stable_diffusion_2",
     "stable_diffusion_xl",
+    "stable_diffusion_adapter",
     "deepfloyd_if",
     "ip_adapters",
     "kandinsky",
