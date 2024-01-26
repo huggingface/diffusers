@@ -553,6 +553,21 @@ class ControlNetXSModel(nn.Module):
             for r, a, u in zip(resnets, attentions, upsamplers):
                 self.base_up_subblocks.append(CrossAttnUpSubBlock2D.from_modules(r, a, u))
 
+    @property
+    def device(self) -> torch.device:
+        """
+        `torch.device`: The device on which the module is (assuming that all the module parameters are on the same
+        device).
+        """
+        return self.base_model.device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        """
+        `torch.dtype`: The dtype of the module (assuming that all the module parameters have the same dtype).
+        """
+        return self.base_model.dtype
+
     @torch.no_grad()
     def _check_if_vae_compatible(self, vae: AutoencoderKL):
         condition_downscale_factor = 2 ** (len(self.ctrl_model.config.conditioning_embedding_out_channels) - 1)

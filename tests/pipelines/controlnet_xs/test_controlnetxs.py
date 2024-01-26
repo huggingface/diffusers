@@ -273,7 +273,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 512, 3)
-
+        
         original_image = image[-3:, -3:, -1].flatten()
         expected_image = np.array([0.1274, 0.1401, 0.147, 0.1185, 0.1555, 0.1492, 0.1565, 0.1474, 0.1701])
         assert np.allclose(original_image, expected_image, atol=1e-04)
