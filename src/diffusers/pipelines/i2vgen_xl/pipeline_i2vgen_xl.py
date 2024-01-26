@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -481,19 +481,12 @@ class I2VGenXLPipeline(DiffusionPipeline):
         image,
         height,
         width,
-        callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
-
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
 
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
@@ -606,8 +599,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
     ):
@@ -629,9 +620,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         width = width or self.unet.config.sample_size * self.vae_scale_factor
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(
-            prompt, image, height, width, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds
-        )
+        self.check_inputs(prompt, image, height, width, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -690,11 +679,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
             fps_tensor = torch.tensor([target_fps, target_fps]).to(device)
         else:
             fps_tensor = torch.tensor([target_fps]).to(device)
-        added_cond_kwargs = {
-            "fps": fps_tensor,
-            "image_latents": image_latents,
-            "image_embeddings": image_embeddings,
-        }
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -743,32 +727,25 @@ class I2VGenXLPipeline(DiffusionPipeline):
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # reshape latents
-                bsz, channel, frames, width, height = latents.shape
-                latents = latents.permute(0, 2, 1, 3, 4).reshape(bsz * frames, channel, width, height)
-                noise_pred = noise_pred.permute(0, 2, 1, 3, 4).reshape(bsz * frames, channel, width, height)
+                batch_size, channel, frames, width, height = latents.shape
+                latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * frames, channel, width, height)
+                noise_pred = noise_pred.permute(0, 2, 1, 3, 4).reshape(batch_size * frames, channel, width, height)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs).prev_sample
 
                 # reshape latents back
-                latents = latents[None, :].reshape(bsz, frames, channel, width, height).permute(0, 2, 1, 3, 4)
+                latents = latents[None, :].reshape(batch_size, frames, channel, width, height).permute(0, 2, 1, 3, 4)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         if output_type == "latent":
             return I2VGenXLPipelineOutput(frames=latents)
 
         video_tensor = self.decode_latents(latents, decode_chunk_size=decode_chunk_size)
-
-        if output_type == "pt":
-            video = video_tensor
-        else:
-            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+        video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
         # Offload all models
         self.maybe_free_model_hooks()

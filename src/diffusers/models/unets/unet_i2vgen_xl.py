@@ -571,8 +571,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         timestep: Union[torch.Tensor, float, int],
         fps: torch.Tensor,
         image_latents: torch.Tensor,
-        image_embeddings: torch.Tensor,
-        encoder_hidden_states: torch.Tensor,
+        image_embeddings: Optional[torch.Tensor] = None,
+        encoder_hidden_states: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -686,12 +686,20 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             ).to(dtype=image_latents.dtype)
             _ximg = torch.cat([image_latents[:, :, :1], mask_pos], dim=2)
 
-        #rearrange(_ximg, "b c f h w -> (b f) c h w")
+        # rearrange(_ximg, "b c f h w -> (b f) c h w")
         _ximg = _ximg.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         _ximg = self.local_image_concat(_ximg)
         _h = _ximg.shape[2]
-        _ximg = rearrange(_ximg, "(b f) c h w -> (b h w) f c", b=batch_size)
+
+        # rearrange(_ximg, "(b f) c h w -> (b h w) f c", b=batch_size)
+        _ximg = (
+            _ximg[None, :]
+            .reshape(batch_size, num_frames, channels, height, width)
+            .permute(0, 3, 4, 1, 2)
+            .reshape(batch_size * height * width, num_frames, channels)
+        )
+
         _ximg = self.local_temporal_encoder(_ximg)
         _ximg = rearrange(_ximg, "(b h w) f c -> b c f h w", b=batch_size, h=_h)
         concat += _ximg
@@ -711,8 +719,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 3.3 image inputs.
         # this one comes from the vision encoder.
-        if "image_embeddings" in added_cond_kwargs and added_cond_kwargs["image_embeddings"] is not None:
-            image_embeddings = added_cond_kwargs["image_embeddings"]
+        if image_embeddings:
             image_context = self.context_embedding(image_embeddings)
             image_context = image_context.view(-1, self.config.in_channels, self.config.cross_attention_dim)
             context = torch.cat([context, image_context], dim=1)
