@@ -281,7 +281,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
     def test_depth(self):
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
             components_path="stabilityai/stable-diffusion-2-1",
-            addon_path="todo umer",
+            addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-depth",
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
