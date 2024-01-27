@@ -692,6 +692,58 @@ class StableDiffusionPipelineFastTests(
             original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
         ), "Original outputs should match when fused QKV projections are disabled."
 
+    def test_pipeline_interrupt(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        prompt = "hey"
+        num_inference_steps = 3
+
+        # store intermediate latents from the generation process
+        class PipelineState:
+            def __init__(self):
+                self.state = []
+
+            def apply(self, pipe, i, t, callback_kwargs):
+                self.state.append(callback_kwargs["latents"])
+                return callback_kwargs
+
+        pipe_state = PipelineState()
+        sd_pipe(
+            prompt,
+            num_inference_steps=num_inference_steps,
+            output_type="np",
+            generator=torch.Generator("cpu").manual_seed(0),
+            callback_on_step_end=pipe_state.apply,
+        ).images
+
+        # interrupt generation at step index
+        interrupt_step_idx = 1
+
+        def callback_on_step_end(pipe, i, t, callback_kwargs):
+            if i == interrupt_step_idx:
+                pipe._interrupt = True
+
+            return callback_kwargs
+
+        output_interrupted = sd_pipe(
+            prompt,
+            num_inference_steps=num_inference_steps,
+            output_type="latent",
+            generator=torch.Generator("cpu").manual_seed(0),
+            callback_on_step_end=callback_on_step_end,
+        ).images
+
+        # fetch intermediate latents at the interrupted step
+        # from the completed generation process
+        intermediate_latent = pipe_state.state[interrupt_step_idx]
+
+        # compare the intermediate latent to the output of the interrupted process
+        # they should be the same
+        assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
+
 
 @slow
 @require_torch_gpu
@@ -784,7 +836,10 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_dpm(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+            sd_pipe.scheduler.config,
+            final_sigmas_type="sigma_min",
+        )
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -1191,9 +1246,12 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         assert image_out.shape == (512, 512, 3)
 
     def test_download_local(self):
-        filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
+        ckpt_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
+        config_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-inference.yaml")
 
-        pipe = StableDiffusionPipeline.from_single_file(filename, torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_single_file(
+            ckpt_filename, config_files={"v1": config_filename}, torch_dtype=torch.float16
+        )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.to("cuda")
 
@@ -1204,13 +1262,13 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
     def test_download_ckpt_diff_format_is_same(self):
         ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
 
-        pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
+        sf_pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
+        sf_pipe.scheduler = DDIMScheduler.from_config(sf_pipe.scheduler.config)
+        sf_pipe.unet.set_attn_processor(AttnProcessor())
+        sf_pipe.to("cuda")
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
+        image_single_file = sf_pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
         pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
@@ -1220,7 +1278,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
         assert max_diff < 1e-3
 

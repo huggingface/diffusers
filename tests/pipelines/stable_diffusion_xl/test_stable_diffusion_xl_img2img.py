@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import random
 import unittest
 
@@ -31,15 +32,19 @@ from transformers import (
 from diffusers import (
     AutoencoderKL,
     AutoencoderTiny,
+    DDIMScheduler,
     EulerDiscreteScheduler,
     LCMScheduler,
     StableDiffusionXLImg2ImgPipeline,
     UNet2DConditionModel,
 )
+from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
+    slow,
     torch_device,
 )
 
@@ -439,6 +444,64 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
             > 1e-4
         )
 
+    def test_pipeline_interrupt(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        prompt = "hey"
+        num_inference_steps = 5
+
+        # store intermediate latents from the generation process
+        class PipelineState:
+            def __init__(self):
+                self.state = []
+
+            def apply(self, pipe, i, t, callback_kwargs):
+                self.state.append(callback_kwargs["latents"])
+                return callback_kwargs
+
+        pipe_state = PipelineState()
+        sd_pipe(
+            prompt,
+            image=inputs["image"],
+            strength=0.8,
+            num_inference_steps=num_inference_steps,
+            output_type="np",
+            generator=torch.Generator("cpu").manual_seed(0),
+            callback_on_step_end=pipe_state.apply,
+        ).images
+
+        # interrupt generation at step index
+        interrupt_step_idx = 1
+
+        def callback_on_step_end(pipe, i, t, callback_kwargs):
+            if i == interrupt_step_idx:
+                pipe._interrupt = True
+
+            return callback_kwargs
+
+        output_interrupted = sd_pipe(
+            prompt,
+            image=inputs["image"],
+            strength=0.8,
+            num_inference_steps=num_inference_steps,
+            output_type="latent",
+            generator=torch.Generator("cpu").manual_seed(0),
+            callback_on_step_end=callback_on_step_end,
+        ).images
+
+        # fetch intermediate latents at the interrupted step
+        # from the completed generation process
+        intermediate_latent = pipe_state.state[interrupt_step_idx]
+
+        # compare the intermediate latent to the output of the interrupted process
+        # they should be the same
+        assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
+
 
 class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
     PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
@@ -705,3 +768,44 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
     def test_save_load_optional_components(self):
         self._test_save_load_optional_components()
+
+
+@slow
+class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_download_ckpt_diff_format_is_same(self):
+        ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0.safetensors"
+        init_image = load_image(
+            "https://huggingface.co/datasets/diffusers/test-arrays/resolve/main"
+            "/stable_diffusion_img2img/sketch-mountains-input.png"
+        )
+
+        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16
+        )
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image = pipe(
+            prompt="mountains", image=init_image, num_inference_steps=5, generator=generator, output_type="np"
+        ).images[0]
+
+        pipe_single_file = StableDiffusionXLImg2ImgPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
+        pipe_single_file.scheduler = DDIMScheduler.from_config(pipe_single_file.scheduler.config)
+        pipe_single_file.unet.set_default_attn_processor()
+        pipe_single_file.enable_model_cpu_offload()
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_single_file = pipe_single_file(
+            prompt="mountains", image=init_image, num_inference_steps=5, generator=generator, output_type="np"
+        ).images[0]
+
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
+
+        assert max_diff < 5e-2
