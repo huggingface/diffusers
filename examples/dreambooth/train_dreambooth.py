@@ -83,20 +83,6 @@ def save_model_card(
             image.save(os.path.join(repo_folder, f"image_{i}.png"))
             img_str += f"![img_{i}](./image_{i}.png)\n"
 
-    #     yaml = f"""
-    # ---
-    # license: creativeml-openrail-m
-    # base_model: {base_model}
-    # instance_prompt: {prompt}
-    # tags:
-    # - {'stable-diffusion' if isinstance(pipeline, StableDiffusionPipeline) else 'if'}
-    # - {'stable-diffusion-diffusers' if isinstance(pipeline, StableDiffusionPipeline) else 'if-diffusers'}
-    # - text-to-image
-    # - diffusers
-    # - dreambooth
-    # inference: true
-    # ---
-    #     """
     model_description = f"""
 # DreamBooth - {repo_id}
 
