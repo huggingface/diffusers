@@ -174,9 +174,9 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         model.enable_gradient_checkpointing()
 
         EXPECTED_SET = {
-            # "AttnUpBlock2D",
-            # "AttnDownBlock2D",
-            # "UNetMidBlock2D",
+            "AttnUpBlock2D",
+            "AttnDownBlock2D",
+            "UNetMidBlock2D",
             "UpBlock2D",
             # "Transformer2DModel",
             "DownBlock2D",
