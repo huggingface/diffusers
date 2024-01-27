@@ -25,6 +25,7 @@ from .controlnet import (
     StableDiffusionControlNetPipeline,
     StableDiffusionUniControlPipeline,
     StableDiffusionXLControlNetImg2ImgPipeline,
+    StableDiffusionXLControlNetInpaintPipeline,
     StableDiffusionXLControlNetPipeline,
 )
 from .deepfloyd_if import IFImg2ImgPipeline, IFInpaintingPipeline, IFPipeline
@@ -98,6 +99,7 @@ AUTO_INPAINT_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyInpaintCombinedPipeline),
         ("kandinsky22", KandinskyV22InpaintCombinedPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetInpaintPipeline),
+        ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetInpaintPipeline),
     ]
 )
 

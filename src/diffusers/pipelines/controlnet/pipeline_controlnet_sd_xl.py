@@ -165,7 +165,7 @@ class StableDiffusionXLControlNetPipeline(
     """
 
     # leave controlnet out on purpose because it iterates with unet
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->unet->vae"
     _optional_components = [
         "tokenizer",
         "tokenizer_2",
@@ -1403,11 +1403,6 @@ class StableDiffusionXLControlNetPipeline(
                     if callback is not None and i % callback_steps == 0:
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
-
-        # manually for max memory savings
-        if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
-            self.upcast_vae()
-            latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16

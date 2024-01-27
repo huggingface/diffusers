@@ -13,7 +13,8 @@ from typing import Callable, Union
 import numpy as np
 import PIL.Image
 import torch
-from huggingface_hub import delete_repo
+from huggingface_hub import ModelCard, delete_repo
+from huggingface_hub.utils import is_jinja_available
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
@@ -437,7 +438,7 @@ class PipelineTesterMixin:
         self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
-        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"]
+        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"], batch_generator=True
     ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -472,7 +473,7 @@ class PipelineTesterMixin:
                 else:
                     batched_input[name] = batch_size * [value]
 
-            if "generator" in inputs:
+            if batch_generator and "generator" in inputs:
                 batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
 
             if "batch_size" in inputs:
@@ -1141,6 +1142,21 @@ class PipelinePushToHubTester(unittest.TestCase):
 
         # Reset repo
         delete_repo(self.org_repo_id, token=TOKEN)
+
+    @unittest.skipIf(
+        not is_jinja_available(),
+        reason="Model card tests cannot be performed without Jinja installed.",
+    )
+    def test_push_to_hub_library_name(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub(self.repo_id, token=TOKEN)
+
+        model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
+        assert model_card.library_name == "diffusers"
+
+        # Reset repo
+        delete_repo(self.repo_id, token=TOKEN)
 
 
 # For SDXL and its derivative pipelines (such as ControlNet), we have the text encoders

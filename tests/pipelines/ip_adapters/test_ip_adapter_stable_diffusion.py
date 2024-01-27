@@ -31,6 +31,7 @@ from diffusers import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
+from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -182,6 +183,33 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
 
+    def test_text_to_image_model_cpu_offload(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+        pipeline.to(torch_device)
+
+        inputs = self.get_dummy_inputs()
+        output_without_offload = pipeline(**inputs).images
+
+        pipeline.enable_model_cpu_offload()
+        inputs = self.get_dummy_inputs()
+        output_with_offload = pipeline(**inputs).images
+        max_diff = np.abs(output_with_offload - output_without_offload).max()
+        self.assertLess(max_diff, 1e-3, "CPU offloading should not affect the inference results")
+
+        offloaded_modules = [
+            v
+            for k, v in pipeline.components.items()
+            if isinstance(v, torch.nn.Module) and k not in pipeline._exclude_from_cpu_offload
+        ]
+        (
+            self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
+            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
+        )
+
     def test_text_to_image_full_face(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
@@ -200,6 +228,25 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         )
 
         assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+
+    def test_unload(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+        pipeline.set_ip_adapter_scale(0.7)
+
+        pipeline.unload_ip_adapter()
+
+        assert getattr(pipeline, "image_encoder") is None
+        assert getattr(pipeline, "feature_extractor") is None
+        processors = [
+            isinstance(attn_proc, (AttnProcessor, AttnProcessor2_0))
+            for name, attn_proc in pipeline.unet.attn_processors.items()
+        ]
+        assert processors == [True] * len(processors)
 
 
 @slow
