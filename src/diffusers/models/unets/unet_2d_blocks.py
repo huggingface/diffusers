@@ -1070,11 +1070,11 @@ class AttnDownBlock2D(nn.Module):
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs):
+                    def custom_forward(*inputs, **kwargs):
                         if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict)
+                            return module(*inputs, return_dict=return_dict, **kwargs)
                         else:
-                            return module(*inputs)
+                            return module(*inputs, **kwargs)
 
                     return custom_forward
 
@@ -1084,6 +1084,7 @@ class AttnDownBlock2D(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
+                    scale=lora_scale,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(hidden_states, **cross_attention_kwargs)
@@ -2313,6 +2314,7 @@ class AttnUpBlock2D(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
+                    scale=scale,
                     **ckpt_kwargs,
                 )
                 cross_attention_kwargs = {"scale": scale}
