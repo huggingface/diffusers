@@ -14,7 +14,6 @@
 
 import inspect
 import math
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -37,7 +36,6 @@ from ...schedulers import (
 )
 from ...utils import (
     USE_PEFT_BACKEND,
-    BaseOutput,
     deprecate,
     logging,
     replace_example_docstring,
@@ -46,6 +44,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from .pipeline_output import AnimateDiffPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -151,11 +150,6 @@ def _freq_mix_3d(x: torch.Tensor, noise: torch.Tensor, LPF: torch.Tensor) -> tor
     x_mixed = fft.ifftn(x_freq_mixed, dim=(-3, -2, -1)).real
 
     return x_mixed
-
-
-@dataclass
-class AnimateDiffPipelineOutput(BaseOutput):
-    frames: Union[torch.Tensor, np.ndarray]
 
 
 class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):
