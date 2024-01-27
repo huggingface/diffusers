@@ -21,7 +21,7 @@ import tempfile
 import traceback
 import warnings
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
@@ -94,14 +94,14 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
 
 
 def load_or_create_model_card(
-    repo_id_or_path: Optional[str] = None, token: Optional[str] = None, is_pipeline: bool = False
+    repo_id_or_path: Optional[str] = None, token: Optional[str] = None, is_pipeline: bool = False, **kwargs
 ) -> ModelCard:
     """
     Loads or creates a model card.
 
     Args:
-        repo_id (`str`):
-            The repo_id where to look for the model card.
+        repo_id_or_path (`str`):
+            The repo id (e.g., "runwayml/stable-diffusion-v1-5") or local path where to look for the model card.
         token (`str`, *optional*):
             Authentication token. Will default to the stored token. See https://huggingface.co/settings/token for more details.
         is_pipeline (`bool`, *optional*):
@@ -110,27 +110,43 @@ def load_or_create_model_card(
     if not is_jinja_available():
         raise ValueError(
             "Modelcard rendering is based on Jinja templates."
-            " Please make sure to have `jinja` installed before using `create_model_card`."
+            " Please make sure to have `jinja` installed before using `load_or_create_model_card`."
             " To install it, please run `pip install Jinja2`."
         )
 
     try:
         # Check if the model card is present on the remote repo
         model_card = ModelCard.load(repo_id_or_path, token=token)
-    except EntryNotFoundError:
-        # Otherwise create a simple model card from template
-        component = "pipeline" if is_pipeline else "model"
-        model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
-        card_data = ModelCardData()
+    except (EntryNotFoundError, RepositoryNotFoundError):
+        # Otherwise create a model card from template
+        if kwargs is not None:
+            model_description = kwargs.pop("model_description", None)
+            card_data = ModelCardData(**kwargs) if kwargs is not None else ModelCardData()
+            component = "pipeline" if is_pipeline else "model"
+        else:
+            model_description = None
+
+        if model_description is None:
+            model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
+
         model_card = ModelCard.from_template(card_data, model_description=model_description)
 
     return model_card
 
 
-def populate_model_card(model_card: ModelCard) -> ModelCard:
-    """Populates the `model_card` with library name."""
+def populate_model_card(model_card: ModelCard, tags: Union[str, List[str]] = None) -> ModelCard:
+    """Populates the `model_card` with library name and optional tags."""
     if model_card.data.library_name is None:
         model_card.data.library_name = "diffusers"
+
+    if tags is not None:
+        if isinstance(tags, str):
+            tags = [tags]
+        if model_card.data.tags is None:
+            model_card.data.tags = []
+        for tag in tags:
+            model_card.data.tags.append(tag)
+
     return model_card
 
 
