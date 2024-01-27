@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import gc
 import math
 import unittest
@@ -25,6 +26,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     require_torch_accelerator,
+    require_torch_accelerator_with_training,
     slow,
     torch_all_close,
     torch_device,
@@ -104,6 +106,84 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
         self.assertIsNotNone(output)
         expected_shape = inputs_dict["sample"].shape
         self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
+
+    @require_torch_accelerator_with_training
+    def test_gradient_checkpointing(self):
+        # enable deterministic behavior for gradient checkpointing
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        model = self.model_class(**init_dict)
+        model.to(torch_device)
+
+        assert not model.is_gradient_checkpointing and model.training
+
+        out = model(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model.zero_grad()
+
+        labels = torch.randn_like(out)
+        loss = (out - labels).mean()
+        loss.backward()
+
+        # re-instantiate the model now enabling gradient checkpointing
+        model_2 = self.model_class(**init_dict)
+        # clone model
+        model_2.load_state_dict(model.state_dict())
+        model_2.to(torch_device)
+        model_2.enable_gradient_checkpointing()
+
+        assert model_2.is_gradient_checkpointing and model_2.training
+
+        out_2 = model_2(**inputs_dict).sample
+        # run the backwards pass on the model. For backwards pass, for simplicity purpose,
+        # we won't calculate the loss and rather backprop on out.sum()
+        model_2.zero_grad()
+        loss_2 = (out_2 - labels).mean()
+        loss_2.backward()
+
+        # compare the output and parameters gradients
+        self.assertTrue((loss - loss_2).abs() < 1e-5)
+        named_params = dict(model.named_parameters())
+        named_params_2 = dict(model_2.named_parameters())
+        for name, param in named_params.items():
+            self.assertTrue(torch_all_close(param.grad.data, named_params_2[name].grad.data, atol=5e-5))
+
+    def test_gradient_checkpointing_is_applied(self):
+        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+
+        # NOTE: UNet2DModel only supports int arguments for `attention_head_dim` currently
+        init_dict["attention_head_dim"] = 8
+
+        model_class_copy = copy.copy(self.model_class)
+
+        modules_with_gc_enabled = {}
+
+        # now monkey patch the following function:
+        #     def _set_gradient_checkpointing(self, module, value=False):
+        #         if hasattr(module, "gradient_checkpointing"):
+        #             module.gradient_checkpointing = value
+
+        def _set_gradient_checkpointing_new(self, module, value=False):
+            if hasattr(module, "gradient_checkpointing"):
+                module.gradient_checkpointing = value
+                modules_with_gc_enabled[module.__class__.__name__] = True
+
+        model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
+
+        model = model_class_copy(**init_dict)
+        model.enable_gradient_checkpointing()
+
+        EXPECTED_SET = {
+            # "AttnUpBlock2D",
+            # "AttnDownBlock2D",
+            # "UNetMidBlock2D",
+            "UpBlock2D",
+            # "Transformer2DModel",
+            "DownBlock2D",
+        }
+
+        assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET
+        assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
 
 
 class UNetLDMModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
