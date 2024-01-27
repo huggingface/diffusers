@@ -815,7 +815,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         t_emb = t_emb.to(dtype=self.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
-        # ------------------------------------------------- (aryan): check this
         aug_emb = None
 
         if self.config.addition_embed_type == "text_time":
@@ -838,7 +837,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             aug_emb = self.add_embedding(add_embeds)
 
         emb = emb if aug_emb is None else emb + aug_emb
-        # -------------------------------------------------
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
 
         if self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
