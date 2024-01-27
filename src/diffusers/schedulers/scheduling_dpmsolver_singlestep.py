@@ -813,6 +813,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise ValueError(f"Order must be 1, 2, 3, got {order}")
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)

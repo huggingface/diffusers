@@ -392,7 +392,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         max_inv_rho = sigma_max ** (1 / rho)
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
-
+    
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)

@@ -284,7 +284,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.derivatives = []
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)

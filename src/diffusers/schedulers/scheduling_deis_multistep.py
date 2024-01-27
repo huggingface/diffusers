@@ -620,6 +620,7 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             raise NotImplementedError("only support log-rho multistep deis now")
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)

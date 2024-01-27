@@ -698,6 +698,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         x_t = x_t.to(x.dtype)
         return x_t
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
