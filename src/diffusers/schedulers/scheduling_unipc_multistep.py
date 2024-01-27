@@ -830,16 +830,20 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = []
-        for timestep in timesteps:
-            index_candidates = (schedule_timesteps == timestep).nonzero()
-            if len(index_candidates) == 0:
-                step_index = len(schedule_timesteps) - 1
-            elif len(index_candidates) > 1:
-                step_index = index_candidates[1].item()
-            else:
-                step_index = index_candidates[0].item()
-            step_indices.append(step_index)
+        # begin_index is None when the scheduler is used for training
+        if self.begin_index is None:
+            step_indices = []
+            for timestep in timesteps:
+                index_candidates = (schedule_timesteps == timestep).nonzero()
+                if len(index_candidates) == 0:
+                    step_index = len(schedule_timesteps) - 1
+                elif len(index_candidates) > 1:
+                    step_index = index_candidates[1].item()
+                else:
+                    step_index = index_candidates[0].item()
+                step_indices.append(step_index)
+        else:
+            step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
