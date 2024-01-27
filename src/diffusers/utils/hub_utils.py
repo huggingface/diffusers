@@ -119,10 +119,11 @@ def load_or_create_model_card(
         model_card = ModelCard.load(repo_id_or_path, token=token)
     except (EntryNotFoundError, RepositoryNotFoundError):
         # Otherwise create a model card from template
+        component = "pipeline" if is_pipeline else "model"
+        
         if kwargs is not None:
             model_description = kwargs.pop("model_description", None)
             card_data = ModelCardData(**kwargs) if kwargs is not None else ModelCardData()
-            component = "pipeline" if is_pipeline else "model"
         else:
             model_description = None
 
