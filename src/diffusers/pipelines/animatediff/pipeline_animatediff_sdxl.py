@@ -66,6 +66,47 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 EXAMPLE_DOC_STRING = """
     Examples:
         ```py
+        import torch
+        from diffusers.models import MotionAdapter
+        from diffusers import AnimateDiffSDXLPipeline, DDIMScheduler
+        from diffusers.utils import export_to_gif
+
+        # TODO(aryan): ask team to move checkpoint to authors account
+        adapter = MotionAdapter.from_pretrained("a-r-r-o-w/animatediff-motion-adapter-sdxl-beta", torch_dtype=torch.float16)
+
+        model_id = "stabilityai/stable-diffusion-xl-base-1.0"
+        scheduler = DDIMScheduler.from_pretrained(
+            model_id,
+            subfolder="scheduler",
+            clip_sample=False,
+            timestep_spacing="linspace",
+            beta_schedule="linear",
+            steps_offset=1,
+        )
+        pipe = AnimateDiffSDXLPipeline.from_pretrained(
+            model_id,
+            motion_adapter=adapter,
+            scheduler=scheduler,
+            torch_dtype=torch.float16,
+            variant="fp16",
+        ).to("cuda")
+
+        # enable memory savings
+        pipe.enable_vae_slicing()
+        pipe.enable_vae_tiling()
+
+        output = pipe(
+            prompt="a panda surfing in the ocean, realistic, high quality",
+            negative_prompt="low quality, worst quality",
+            num_inference_steps=20,
+            guidance_scale=8,
+            width=1024,
+            height=1024,
+            num_frames=16,
+        )
+
+        frames = output.frames[0]
+        export_to_gif(frames, "animation.gif")
         ```
 """
 
@@ -160,7 +201,7 @@ class AnimateDiffSDXLPipeline(
     IPAdapterMixin,
 ):
     r"""
-    Pipeline for text-to-image generation using Stable Diffusion XL.
+    Pipeline for text-to-video generation using Stable Diffusion XL.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
@@ -191,17 +232,14 @@ class AnimateDiffSDXLPipeline(
         tokenizer_2 (`CLIPTokenizer`):
             Second Tokenizer of class
             [CLIPTokenizer](https://huggingface.co/docs/transformers/v4.21.0/en/model_doc/clip#transformers.CLIPTokenizer).
-        unet ([`UNet2DConditionModel`]): Conditional U-Net architecture to denoise the encoded image latents.
+        unet ([`UNet2DConditionModel`]):
+            Conditional U-Net architecture to denoise the encoded image latents.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
         force_zeros_for_empty_prompt (`bool`, *optional*, defaults to `"True"`):
             Whether the negative prompt embeddings shall be forced to always be set to 0. Also see the config of
             `stabilityai/stable-diffusion-xl-base-1-0`.
-        add_watermarker (`bool`, *optional*):
-            Whether to use the [invisible_watermark library](https://github.com/ShieldMnt/invisible-watermark/) to
-            watermark output images. If not defined, it will default to True if the package is installed, otherwise no
-            watermarker will be used.
     """
 
     model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->unet->vae"
@@ -945,23 +983,26 @@ class AnimateDiffSDXLPipeline(
 
         Args:
             prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
+                The prompt or prompts to guide the video generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
             prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts to be sent to the `tokenizer_2` and `text_encoder_2`. If not defined, `prompt` is
                 used in both text-encoders
+            num_frames:
+                The number of video frames that are generated. Defaults to 16 frames which at 8 frames per seconds
+                amounts to 2 seconds of video.
             height (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The height in pixels of the generated image. This is set to 1024 by default for the best results.
+                The height in pixels of the generated video. This is set to 1024 by default for the best results.
                 Anything below 512 pixels won't work well for
                 [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
                 and checkpoints that are not specifically fine-tuned on low resolutions.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
-                The width in pixels of the generated image. This is set to 1024 by default for the best results.
+                The width in pixels of the generated video. This is set to 1024 by default for the best results.
                 Anything below 512 pixels won't work well for
                 [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
                 and checkpoints that are not specifically fine-tuned on low resolutions.
             num_inference_steps (`int`, *optional*, defaults to 50):
-                The number of denoising steps. More denoising steps usually lead to a higher quality image at the
+                The number of denoising steps. More denoising steps usually lead to a higher quality video at the
                 expense of slower inference.
             timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process with schedulers which support a `timesteps` argument
@@ -979,13 +1020,13 @@ class AnimateDiffSDXLPipeline(
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >
                 1`. Higher guidance scale encourages to generate images that are closely linked to the text `prompt`,
-                usually at the expense of lower image quality.
+                usually at the expense of lower video quality.
             negative_prompt (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation. If not defined, one has to pass
+                The prompt or prompts not to guide the video generation. If not defined, one has to pass
                 `negative_prompt_embeds` instead. Ignored when not using guidance (i.e., ignored if `guidance_scale` is
                 less than `1`).
             negative_prompt_2 (`str` or `List[str]`, *optional*):
-                The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
+                The prompt or prompts not to guide the video generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
@@ -996,7 +1037,7 @@ class AnimateDiffSDXLPipeline(
                 One or a list of [torch generator(s)](https://pytorch.org/docs/stable/generated/torch.Generator.html)
                 to make generation deterministic.
             latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for image
+                Pre-generated noisy latents, sampled from a Gaussian distribution, to be used as inputs for video
                 generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
                 tensor will ge generated by sampling using the supplied random `generator`.
             prompt_embeds (`torch.FloatTensor`, *optional*):
@@ -1013,9 +1054,10 @@ class AnimateDiffSDXLPipeline(
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
-            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            ip_adapter_image: (`PipelineImageInput`, *optional*):
+                Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
-                The output format of the generate image. Choose between
+                The output format of the generated video. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion_xl.AnimateDiffPipelineOutput`] instead
@@ -1233,6 +1275,7 @@ class AnimateDiffSDXLPipeline(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
 
+        # 10. Denoising loop
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1301,7 +1344,7 @@ class AnimateDiffSDXLPipeline(
         if needs_upcasting:
             self.vae.to(dtype=torch.float16)
 
-        # Offload all models
+        # 11. Offload all models
         self.maybe_free_model_hooks()
 
         return video
