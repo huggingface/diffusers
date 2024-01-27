@@ -112,7 +112,7 @@ DreamBooth for the text encoder was enabled: {train_text_encoder}.
         base_model=base_model,
         instance_prompt=prompt,
         model_description=model_description,
-        inference="true",
+        inference=True,
     )
 
     tags = ["text-to-image", "dreambooth"]
