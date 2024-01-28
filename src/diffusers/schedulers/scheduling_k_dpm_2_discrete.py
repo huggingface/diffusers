@@ -391,10 +391,6 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.step_index is None:
             self._init_step_index(timestep)
 
-        # advance index counter by 1
-        timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
-        self._index_counter[timestep_int] += 1
-
         if self.state_in_first_order:
             sigma = self.sigmas[self.step_index]
             sigma_interpol = self.sigmas_interpol[self.step_index + 1]
