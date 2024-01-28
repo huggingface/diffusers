@@ -158,11 +158,6 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
 
         modules_with_gc_enabled = {}
 
-        # now monkey patch the following function:
-        #     def _set_gradient_checkpointing(self, module, value=False):
-        #         if hasattr(module, "gradient_checkpointing"):
-        #             module.gradient_checkpointing = value
-
         def _set_gradient_checkpointing_new(self, module, value=False):
             if hasattr(module, "gradient_checkpointing"):
                 module.gradient_checkpointing = value
@@ -178,7 +173,6 @@ class Unet2DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
             "AttnDownBlock2D",
             "UNetMidBlock2D",
             "UpBlock2D",
-            # "Transformer2DModel",
             "DownBlock2D",
         }
 

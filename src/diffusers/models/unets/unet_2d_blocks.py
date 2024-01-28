@@ -2297,6 +2297,7 @@ class AttnUpBlock2D(nn.Module):
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
+            cross_attention_kwargs = {"scale": scale}
 
             if self.training and self.gradient_checkpointing:
 
@@ -2317,11 +2318,9 @@ class AttnUpBlock2D(nn.Module):
                     scale=scale,
                     **ckpt_kwargs,
                 )
-                cross_attention_kwargs = {"scale": scale}
                 hidden_states = attn(hidden_states, **cross_attention_kwargs)
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
-                cross_attention_kwargs = {"scale": scale}
                 hidden_states = attn(hidden_states, **cross_attention_kwargs)
 
         if self.upsamplers is not None:
