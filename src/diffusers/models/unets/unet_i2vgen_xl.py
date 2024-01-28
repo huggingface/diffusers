@@ -714,6 +714,24 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         emb = t_emb + fps_emb
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
 
+        # 3.2 context embeddings.
+        context_embeddings = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
+        context_embeddings = torch.cat([context_embeddings, encoder_hidden_states], dim=1)
+
+        image_latents_context_embeddings = _collapse_frames_into_batch(image_latents[:, :, :1, :])
+        image_latents_context_embeddings = self.local_image_embedding(image_latents_context_embeddings)
+
+        _batch_size, _channels, _height, _width = image_latents_context_embeddings.shape
+        image_latents_context_embeddings = image_latents_context_embeddings.permute(0, 2, 3, 1).reshape(
+            _batch_size, _height * _width, _channels
+        )
+        context_embeddings = torch.cat([context_embeddings, image_latents_context_embeddings], dim=1)
+
+        image_embeddings = self.context_embedding(image_embeddings)
+        image_embeddings = image_embeddings.view(-1, self.config.in_channels, self.config.cross_attention_dim)
+        context_embeddings = torch.cat([context_embeddings, image_embeddings], dim=1)
+        context_embeddings = context_embeddings.repeat_interleave(repeats=num_frames, dim=0)
+
         image_latents = _collapse_frames_into_batch(image_latents)
         image_latents = self.local_image_concat(image_latents)
         image_latents = (
@@ -722,27 +740,12 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             .permute(0, 3, 4, 1, 2)
             .reshape(batch_size * height * width, num_frames, channels)
         )
+        image_latents = self.local_temporal_encoder(image_latents)
+        image_latents = image_latents.reshape(batch_size, height, width, num_frames, channels).permute(0, 4, 3, 1, 2)
 
         concat = sample.new_zeros(batch_size, self.config.in_channels, num_frames, height, width)
-        image_latents = self.local_temporal_encoder(image_latents)
-        image_latents =  image_latents.reshape(batch_size, height, width, num_frames, channels).permute(0, 4, 3, 1, 2)
         concat += image_latents
-
-        # 3.2 context embeddings.
-        context_embeddings = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
-        context_embeddings = torch.cat([context_embeddings, encoder_hidden_states], dim=1)
-
-        image_context = _collapse_frames_into_batch(image_latents[:, :, :1, :])
-        image_context = self.local_image_embedding(image_context)
-
-        _batch_size, _channels, _height, _width = image_context.shape
-        image_context = image_context.permute(0, 2, 3, 1).reshape(_batch_size, _height * _width, _channels)
-        context_embeddings = torch.cat([context_embeddings, image_context], dim=1)
-
-        image_emb = self.context_embedding(image_embeddings)
-        image_emb = image_emb.view(-1, self.config.in_channels, self.config.cross_attention_dim)
-        context_embeddings = torch.cat([context_embeddings, image_emb], dim=1)
-        context_embeddings = context_embeddings.repeat_interleave(repeats=num_frames, dim=0)
+        concat += image_latents
 
         # 4. pre-process
         sample = torch.cat([sample, concat], dim=1)

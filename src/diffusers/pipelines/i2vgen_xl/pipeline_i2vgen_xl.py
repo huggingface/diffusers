@@ -298,7 +298,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         prompt_embeds = prompt_embeds.view(bs_embed * num_videos_per_prompt, seq_len, -1)
 
         # get unconditional embeddings for classifier free guidance
-        if do_classifier_free_guidance and negative_prompt_embeds is None:
+        if self.do_classifier_free_guidance and negative_prompt_embeds is None:
             uncond_tokens: List[str]
             if negative_prompt is None:
                 uncond_tokens = [""] * batch_size
@@ -508,7 +508,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
         # after the intial image latent frame
         frame_position_mask = []
         for frame_idx in range(num_frames - 1):
-            scale = ((frame_idx + 1) / (num_frames - 1))
+            scale = (frame_idx + 1) / (num_frames - 1)
             frame_position_mask.append(torch.ones_like(image_latents[:, :, :1]) * scale)
         if frame_position_mask:
             frame_position_mask = torch.cat(frame_position_mask, dim=2)
@@ -642,7 +642,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
             prompt,
             device,
             num_videos_per_prompt,
-            self.do_classifier_free_guidance,
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -673,7 +672,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         # 3.3 Prepare additional conditions for the UNet.
         if self.do_classifier_free_guidance:
-            fps_tensor = torch.cat([target_fps] * 2).to(device)
+            fps_tensor = torch.tensor([target_fps, target_fps]).to(device)
         else:
             fps_tensor = torch.tensor([target_fps]).to(device)
 
