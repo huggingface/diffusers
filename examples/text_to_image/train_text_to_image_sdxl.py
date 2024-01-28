@@ -898,6 +898,7 @@ def main(args):
             ],
             axis=1
         )
+        precomputed_dataset = precomputed_dataset.with_transform(preprocess_train)
         train_dataset.cleanup_cache_files()
 
     del text_encoders, tokenizers, vae
