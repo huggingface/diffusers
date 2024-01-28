@@ -177,13 +177,11 @@ class I2VGenXLPipeline(DiffusionPipeline):
         """
         self.vae.disable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt with num_images_per_prompt->num_videos_per_prompt
     def encode_prompt(
         self,
         prompt,
         device,
         num_videos_per_prompt,
-        do_classifier_free_guidance,
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -344,7 +342,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
             )
             negative_prompt_embeds = negative_prompt_embeds[0]
 
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
             seq_len = negative_prompt_embeds.shape[1]
 
@@ -388,43 +386,11 @@ class I2VGenXLPipeline(DiffusionPipeline):
         image_embeddings = image_embeddings.repeat(1, num_videos_per_prompt, 1)
         image_embeddings = image_embeddings.view(bs_embed * num_videos_per_prompt, seq_len, -1)
 
-        if do_classifier_free_guidance:
+        if self.do_classifier_free_guidance:
             negative_image_embeddings = torch.zeros_like(image_embeddings)
-
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
             image_embeddings = torch.cat([negative_image_embeddings, image_embeddings])
 
         return image_embeddings
-
-    def _encode_vae_image(
-        self,
-        image,
-        device,
-        num_frames,
-        num_videos_per_prompt,
-        do_classifier_free_guidance,
-    ):
-        image = image.to(device=device)
-        image_latents = self.vae.encode(image).latent_dist.sample()
-        image_latents = image_latents * self.vae.config.scaling_factor
-
-        if do_classifier_free_guidance:
-            negative_image_latents = torch.zeros_like(image_latents)
-
-            # For classifier free guidance, we need to do two forward passes.
-            # Here we concatenate the unconditional and text embeddings into a single batch
-            # to avoid doing two forward passes
-            image_latents = torch.cat([negative_image_latents, image_latents])
-
-        # expand across concatenation dimension.
-        image_latents = image_latents.unsqueeze(2).repeat_interleave(num_frames, dim=2)
-
-        # duplicate image_latents for each generation per prompt, using mps friendly method
-        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1, 1)
-
-        return image_latents
 
     def decode_latents(self, latents, decode_chunk_size=None):
         latents = 1 / self.vae.config.scaling_factor * latents
@@ -523,6 +489,38 @@ class I2VGenXLPipeline(DiffusionPipeline):
                 "`image` has to be of type `torch.FloatTensor` or `PIL.Image.Image` or `List[PIL.Image.Image]` but is"
                 f" {type(image)}"
             )
+
+    def prepare_image_latents(
+        self,
+        image,
+        device,
+        num_frames,
+        num_videos_per_prompt,
+    ):
+        image = image.to(device=device)
+        image_latents = self.vae.encode(image).latent_dist.sample()
+        image_latents = image_latents * self.vae.config.scaling_factor
+
+        # Add frames dimension to image latents
+        image_latents = image_latents.unsqueeze(2)
+
+        # Append a position mask for each subsequent frame
+        # after the intial image latent frame
+        frame_position_mask = []
+        for frame_idx in range(num_frames - 1):
+            scale = ((frame_idx + 1) / (num_frames - 1))
+            frame_position_mask.append(torch.ones_like(image_latents[:, :, :1]) * scale)
+        if frame_position_mask:
+            frame_position_mask = torch.cat(frame_position_mask, dim=2)
+            image_latents = torch.cat([image_latents, frame_position_mask], dim=2)
+
+        # duplicate image_latents for each generation per prompt, using mps friendly method
+        image_latents = image_latents.repeat(num_videos_per_prompt, 1, 1, 1, 1)
+
+        if self.do_classifier_free_guidance:
+            image_latents = torch.cat([image_latents] * 2)
+
+        return image_latents
 
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
@@ -666,17 +664,16 @@ class I2VGenXLPipeline(DiffusionPipeline):
         # 3.2.2 Image latents.
         resized_image = _center_crop_wide(image, (width, height))
         image = self.image_processor.preprocess(resized_image).to(device=device, dtype=image_embeddings.dtype)
-        image_latents = self._encode_vae_image(
+        image_latents = self.prepare_image_latents(
             image,
             device=device,
             num_frames=num_frames,
             num_videos_per_prompt=num_videos_per_prompt,
-            do_classifier_free_guidance=self.do_classifier_free_guidance,
         )
 
         # 3.3 Prepare additional conditions for the UNet.
         if self.do_classifier_free_guidance:
-            fps_tensor = torch.tensor([target_fps, target_fps]).to(device)
+            fps_tensor = torch.cat([target_fps] * 2).to(device)
         else:
             fps_tensor = torch.tensor([target_fps]).to(device)
 
@@ -736,7 +733,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
                 # reshape latents back
                 latents = latents[None, :].reshape(batch_size, frames, channel, width, height).permute(0, 2, 1, 3, 4)
-
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()

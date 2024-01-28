@@ -18,13 +18,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint
-from einops import rearrange
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
 from ...utils import BaseOutput, deprecate, logging
 from ..activations import get_activation
-from ..attention import BasicTransformerBlock
+from ..attention import Attention, FeedForward
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
@@ -65,20 +64,65 @@ def _to_tensor(inputs, device):
     return inputs
 
 
-def _collapse_frames_to_batch(sample: torch.Tensor) -> torch.Tensor:
+def _collapse_frames_into_batch(sample: torch.Tensor) -> torch.Tensor:
     batch_size, channels, num_frames, height, width = sample.shape
     sample = sample.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
     return sample
 
 
-def _expand_batch_frames(sample: torch.Tensor, target_shape: tuple) -> torch.Tensor:
-    batch_frames, channels, height, width = sample.shape
-    batch_size, target_channels, target_num_frames, target_height, target_width = target_shape
+class I2VGenXLTransformerTemporalEncoder(nn.Module):
+    def __init__(
+        self,
+        dim: int,
+        num_attention_heads: int,
+        attention_head_dim: int,
+        activation_fn: str = "geglu",
+        upcast_attention: bool = False,
+        ff_inner_dim: Optional[int] = None,
+        dropout: int = 0.0,
+    ):
+        super().__init__()
+        self.norm1 = nn.LayerNorm(dim, elementwise_affine=True, eps=1e-5)
+        self.attn1 = Attention(
+            query_dim=dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=False,
+            upcast_attention=upcast_attention,
+            out_bias=True,
+        )
+        self.ff = FeedForward(
+            dim,
+            dropout=dropout,
+            activation_fn=activation_fn,
+            final_dropout=False,
+            inner_dim=ff_inner_dim,
+            bias=True,
+        )
 
-    sample = sample.reshape(batch_size, target_num_frames, target_channels, target_height, target_width).permute(0, 2, 1, 3, 4)
+    def forward(
+        self,
+        hidden_states: torch.FloatTensor,
+        attention_mask: Optional[torch.FloatTensor] = None,
+    ) -> torch.FloatTensor:
+        norm_hidden_states = self.norm1(hidden_states)
+        attn_output = self.attn1(
+            norm_hidden_states,
+            encoder_hidden_states=None,
+            attention_mask=attention_mask,
+        )
+        hidden_states = attn_output + hidden_states
+        if hidden_states.ndim == 4:
+            hidden_states = hidden_states.squeeze(1)
 
-    return sample
+        ff_output = self.ff(hidden_states, scale=1.0)
+        hidden_states = ff_output + hidden_states
+        if hidden_states.ndim == 4:
+            hidden_states = hidden_states.squeeze(1)
+
+        return hidden_states
 
 
 @dataclass
@@ -213,8 +257,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             nn.SiLU(),
             nn.Conv2d(in_channels * 4, in_channels, 3, stride=1, padding=1),
         )
-        self.local_temporal_encoder = BasicTransformerBlock(
-            norm_type="layer_norm_i2vgen",
+        self.local_temporal_encoder = I2VGenXLTransformerTemporalEncoder(
             dim=in_channels,
             num_attention_heads=2,
             ff_inner_dim=in_channels * 4,
@@ -607,9 +650,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             class_labels (`torch.Tensor`, *optional*, defaults to `None`):
                 Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
-            timestep_cond: (`torch.Tensor`, *optional*, defaults to `None`):
-                Conditional embeddings for timestep. If provided, the embeddings will be summed with the samples passed
-                through the `self.time_embedding` layer to obtain the timestep embeddings.
             attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
                 An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
                 is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
@@ -618,10 +658,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            down_block_additional_residuals: (`tuple` of `torch.Tensor`, *optional*):
-                A tuple of tensors that if specified are added to the residuals of down unet blocks.
-            mid_block_additional_residual: (`torch.Tensor`, *optional*):
-                A tensor that if specified is added to the residual of the middle unet block.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~models.unet_3d_condition.I2VGenXLOutput`] instead of a plain
                 tuple.
@@ -678,62 +714,35 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         emb = t_emb + fps_emb
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
 
-        # 3.1 image latents.
-        # Taken from the original implementation.
-        # Clean it up later.
-        # remove einops dep.
-        if image_latents.ndim == 5 and image_latents.size(2) > 1:
-            image_latents = image_latents[:, :, :1, ...]
-        elif image_latents.ndim != 5:
-            image_latents = image_latents.unsqueeze(2)
-
-        concat = sample.new_zeros(batch_size, self.config.in_channels, num_frames, height, width)
-
-        if num_frames > 1:
-            # This one needs to be turned into something humans can understand.
-            mask_pos = torch.cat(
-                [
-                    (torch.ones_like(image_latents[:, :, :1]) * ((tpos + 1) / (num_frames - 1))).to(
-                        image_latents.device
-                    )
-                    for tpos in range(num_frames - 1)
-                ],
-                dim=2,
-            ).to(dtype=image_latents.dtype)
-            _ximg = torch.cat([image_latents[:, :, :1], mask_pos], dim=2)
-        else:
-            _ximg = image_latents
-
-        _ximg = _collapse_frames_to_batch(_ximg)
-        _ximg = self.local_image_concat(_ximg)
-        _ximg = (
-            _ximg[None, :]
+        image_latents = _collapse_frames_into_batch(image_latents)
+        image_latents = self.local_image_concat(image_latents)
+        image_latents = (
+            image_latents[None, :]
             .reshape(batch_size, num_frames, channels, height, width)
             .permute(0, 3, 4, 1, 2)
             .reshape(batch_size * height * width, num_frames, channels)
         )
 
-        _ximg = self.local_temporal_encoder(_ximg)
-        _ximg =  _ximg.reshape(batch_size, height, width, num_frames, channels).permute(0, 4, 3, 1, 2)
-        concat += _ximg
-        concat += _ximg  # TODO: This is a bug, but it doesn't matter (copied from the original codebase).
+        concat = sample.new_zeros(batch_size, self.config.in_channels, num_frames, height, width)
+        image_latents = self.local_temporal_encoder(image_latents)
+        image_latents =  image_latents.reshape(batch_size, height, width, num_frames, channels).permute(0, 4, 3, 1, 2)
+        concat += image_latents
 
         # 3.2 context embeddings.
-        context = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
-        context = torch.cat([context, encoder_hidden_states], dim=1)
+        context_embeddings = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
+        context_embeddings = torch.cat([context_embeddings, encoder_hidden_states], dim=1)
 
-        local_context = _collapse_frames_to_batch(image_latents)
-        local_context = self.local_image_embedding(local_context)
+        image_context = _collapse_frames_into_batch(image_latents[:, :, :1, :])
+        image_context = self.local_image_embedding(image_context)
 
-        _batch_size, _channels, _height, _width = local_context.shape
-        local_context = local_context.permute(0, 2, 3, 1).reshape(_batch_size, _height * _width, _channels)
-        context = torch.cat([context, local_context], dim=1)
+        _batch_size, _channels, _height, _width = image_context.shape
+        image_context = image_context.permute(0, 2, 3, 1).reshape(_batch_size, _height * _width, _channels)
+        context_embeddings = torch.cat([context_embeddings, image_context], dim=1)
 
-        image_context = self.context_embedding(image_embeddings)
-        image_context = image_context.view(-1, self.config.in_channels, self.config.cross_attention_dim)
-        context = torch.cat([context, image_context], dim=1)
-
-        context = context.repeat_interleave(repeats=num_frames, dim=0)
+        image_emb = self.context_embedding(image_embeddings)
+        image_emb = image_emb.view(-1, self.config.in_channels, self.config.cross_attention_dim)
+        context_embeddings = torch.cat([context_embeddings, image_emb], dim=1)
+        context_embeddings = context_embeddings.repeat_interleave(repeats=num_frames, dim=0)
 
         # 4. pre-process
         sample = torch.cat([sample, concat], dim=1)
@@ -753,7 +762,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
-                    encoder_hidden_states=context,
+                    encoder_hidden_states=context_embeddings,
                     attention_mask=attention_mask,
                     num_frames=num_frames,
                     cross_attention_kwargs=cross_attention_kwargs,
@@ -763,31 +772,16 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
             down_block_res_samples += res_samples
 
-        if down_block_additional_residuals is not None:
-            new_down_block_res_samples = ()
-
-            for down_block_res_sample, down_block_additional_residual in zip(
-                down_block_res_samples, down_block_additional_residuals
-            ):
-                down_block_res_sample = down_block_res_sample + down_block_additional_residual
-                new_down_block_res_samples += (down_block_res_sample,)
-
-            down_block_res_samples = new_down_block_res_samples
-
         # 6. mid
         if self.mid_block is not None:
             sample = self.mid_block(
                 sample,
                 emb,
-                encoder_hidden_states=context,
+                encoder_hidden_states=context_embeddings,
                 attention_mask=attention_mask,
                 num_frames=num_frames,
                 cross_attention_kwargs=cross_attention_kwargs,
             )
-
-        if mid_block_additional_residual is not None:
-            sample = sample + mid_block_additional_residual
-
         # 7. up
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
@@ -805,7 +799,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
-                    encoder_hidden_states=context,
+                    encoder_hidden_states=context_embeddings,
                     upsample_size=upsample_size,
                     attention_mask=attention_mask,
                     num_frames=num_frames,
@@ -819,7 +813,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     upsample_size=upsample_size,
                     num_frames=num_frames,
                 )
-
         # 8. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
