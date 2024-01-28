@@ -1941,10 +1941,6 @@ def main(args):
                         }
                     )
 
-        # if args.train_text_encoder_ti:
-        #     embedding_handler.save_embeddings(
-        #         f"{args.output_dir}/{args.output_dir}_emb.safetensors",
-        #     )
 
         # Conver to WebUI format
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")

@@ -974,11 +974,6 @@ class DreamBoothDataset(Dataset):
         instance_image = self.pixel_values[index % self.num_instance_images]
         original_size = self.original_sizes[index % self.num_instance_images]
         crop_top_left = self.crop_top_lefts[index % self.num_instance_images]
-        # instance_image = exif_transpose(instance_image)
-        #
-        # if not instance_image.mode == "RGB":
-        #     instance_image = instance_image.convert("RGB")
-        # example["instance_images"] = self.image_transforms(instance_image)
         example["instance_images"] = instance_image
         example["original_size"] = original_size
         example["crop_top_left"] = crop_top_left
@@ -1854,11 +1849,9 @@ def main(args):
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
                 if not train_dataset.custom_instance_prompts:
                     elems_to_repeat_text_embeds = bsz // 2 if args.with_prior_preservation else bsz
-                    # elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 else:
                     elems_to_repeat_text_embeds = 1
-                    # elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 # Predict the noise residual
                 if freeze_text_encoder:
@@ -1876,7 +1869,6 @@ def main(args):
                     ).sample
                 else:
                     unet_added_conditions = {"time_ids": add_time_ids}
-                    # unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
                         tokenizers=None,
@@ -2180,10 +2172,6 @@ def main(args):
                         }
                     )
 
-        # if args.train_text_encoder_ti:
-        #     embedding_handler.save_embeddings(
-        #         f"{args.output_dir}/{args.output_dir}_emb.safetensors",
-        #     )
 
         # Conver to WebUI format
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
