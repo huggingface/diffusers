@@ -741,7 +741,7 @@ def main(args):
             combined_im = train_resize(combined_im)
 
             # Flipping.
-            if not args.no_flip and random.random() < 0.5:
+            if not args.no_hflip and random.random() < 0.5:
                 combined_im = train_flip(combined_im)
 
             # Cropping.
