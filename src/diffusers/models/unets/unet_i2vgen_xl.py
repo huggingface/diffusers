@@ -743,12 +743,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         image_latents = self.local_temporal_encoder(image_latents)
         image_latents = image_latents.reshape(batch_size, height, width, num_frames, channels).permute(0, 4, 3, 1, 2)
 
-        concat = sample.new_zeros(batch_size, self.config.in_channels, num_frames, height, width)
-        concat += image_latents
-        concat += image_latents
-
         # 4. pre-process
-        sample = torch.cat([sample, concat], dim=1)
+        sample = torch.cat([sample, image_latents], dim=1)
         sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
         sample = self.conv_in(sample)
         sample = self.transformer_in(
