@@ -248,6 +248,16 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     def begin_index(self, index):
         self._begin_index = index
 
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
+
     def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
@@ -830,16 +840,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = step_index
         else:
             self._step_index = self._begin_index
-
-    def set_begin_index(self, begin_index: int = 0):
-        """
-        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
-
-        Args:
-            begin_index (`int`):
-                The begin index for the scheduler.
-        """
-        self._begin_index = begin_index
 
     def step(
         self,

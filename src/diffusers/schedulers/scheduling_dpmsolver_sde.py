@@ -227,17 +227,6 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         else:
             self._step_index = self._begin_index
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
-    def set_begin_index(self, begin_index: int = 0):
-        """
-        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
-
-        Args:
-            begin_index (`int`):
-                The begin index for the scheduler.
-        """
-        self._begin_index = begin_index
-
     @property
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
@@ -263,6 +252,17 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
     @begin_index.setter
     def begin_index(self, index):
         self._begin_index = index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def scale_model_input(
         self,
