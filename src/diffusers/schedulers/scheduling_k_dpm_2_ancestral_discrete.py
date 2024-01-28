@@ -140,26 +140,8 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         #  set all values
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
-
-    # Copied from diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler.index_for_timestep
-    def index_for_timestep(self, timestep, schedule_timesteps=None):
-        if schedule_timesteps is None:
-            schedule_timesteps = self.timesteps
-
-        indices = (schedule_timesteps == timestep).nonzero()
-
-        # The sigma index that is taken for the **very** first `step`
-        # is always the second index (or the last index if there is only 1)
-        # This way we can ensure we don't accidentally skip a sigma in
-        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        if len(self._index_counter) == 0:
-            pos = 1 if len(indices) > 1 else 0
-        else:
-            timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
-            pos = self._index_counter[timestep_int]
-
-        return indices[pos].item()
 
     @property
     def init_noise_sigma(self):
@@ -175,6 +157,17 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         The index counter for current timestep. It will increae 1 after each scheduler step.
         """
         return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    @begin_index.setter
+    def begin_index(self, index):
+        self._begin_index = index
 
     def scale_model_input(
         self,
@@ -300,6 +293,7 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._index_counter = defaultdict(int)
 
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
@@ -382,6 +376,17 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = step_index
         else:
             self._step_index = self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def step(
         self,
@@ -504,7 +509,11 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        # self.begin_index is None when scheduler is used for training
+        if self.begin_index is None:
+            step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        else:
+            step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

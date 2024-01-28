@@ -98,6 +98,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         self.custom_timesteps = False
         self.is_scale_input_called = False
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     def index_for_timestep(self, timestep, schedule_timesteps=None):
@@ -231,6 +232,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             self.timesteps = torch.from_numpy(timesteps).to(device=device)
 
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Modified _convert_to_karras implementation that takes in ramp as argument
@@ -306,6 +308,17 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = step_index
         else:
             self._step_index = self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def step(
         self,
@@ -421,7 +434,11 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        # self.begin_index is None when scheduler is used for training
+        if self.begin_index is None:
+            step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        else:
+            step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

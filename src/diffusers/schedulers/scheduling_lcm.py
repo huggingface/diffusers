@@ -250,6 +250,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self.custom_timesteps = False
 
         self._step_index = None
+        self._begin_index = None
 
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
@@ -278,9 +279,31 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         else:
             self._step_index = self._begin_index
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
+
     @property
     def step_index(self):
         return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    @begin_index.setter
+    def begin_index(self, index):
+        self._begin_index = index
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
@@ -471,6 +494,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.long)
 
         self._step_index = None
+        self._begin_index = None
 
     def get_scalings_for_boundary_condition_discrete(self, timestep):
         self.sigma_data = 0.5  # Default: 0.5

@@ -212,6 +212,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         self.lower_order_nums = 0
         self.last_sample = None
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
@@ -220,6 +221,17 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         The index counter for current timestep. It will increae 1 after each scheduler step.
         """
         return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    @begin_index.setter
+    def begin_index(self, index):
+        self._begin_index = index
 
     def set_timesteps(self, num_inference_steps: int = None, device: Union[str, torch.device] = None):
         """
@@ -283,6 +295,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
@@ -951,6 +964,17 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
             self._step_index = step_index
         else:
             self._step_index = self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def step(
         self,
