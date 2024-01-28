@@ -760,7 +760,8 @@ class StableDiffusionControlNetImg2ImgPipeline(
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-        self.scheduler.set_begin_index(t_start * self.scheduler.order)
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 
