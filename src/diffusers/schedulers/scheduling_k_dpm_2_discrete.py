@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from collections import defaultdict
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -284,10 +283,6 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.sample = None
 
-        # for exp beta schedules, such as the one for `pipeline_shap_e.py`
-        # we need an index counter
-        self._index_counter = defaultdict(int)
-
         self._step_index = None
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
@@ -296,30 +291,24 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
     def state_in_first_order(self):
         return self.sample is None
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
-        """
-        Initialize the step_index counter for the scheduler.
-        """
-
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
 
             index_candidates = (self.timesteps == timestep).nonzero()
 
-            if len(index_candidates) == 0:
-                step_index = len(self.timesteps) - 1
             # The sigma index that is taken for the **very** first `step`
             # is always the second index (or the last index if there is only 1)
             # This way we can ensure we don't accidentally skip a sigma in
             # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-            elif len(index_candidates) > 1:
-                step_index = index_candidates[1].item()
+            if len(index_candidates) > 1:
+                step_index = index_candidates[1]
             else:
-                step_index = index_candidates[0].item()
+                step_index = index_candidates[0]
 
-            self._step_index = step_index
+            self._step_index = step_index.item()
         else:
             self._step_index = self._begin_index
 
