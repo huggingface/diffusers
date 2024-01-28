@@ -1070,11 +1070,11 @@ class AttnDownBlock2D(nn.Module):
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs, **kwargs):
+                    def custom_forward(*inputs):
                         if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict, **kwargs)
+                            return module(*inputs, return_dict=return_dict)
                         else:
-                            return module(*inputs, **kwargs)
+                            return module(*inputs)
 
                     return custom_forward
 
@@ -1084,7 +1084,7 @@ class AttnDownBlock2D(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    scale=lora_scale,
+                    lora_scale,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(hidden_states, **cross_attention_kwargs)
@@ -2302,11 +2302,11 @@ class AttnUpBlock2D(nn.Module):
             if self.training and self.gradient_checkpointing:
 
                 def create_custom_forward(module, return_dict=None):
-                    def custom_forward(*inputs, **kwargs):
+                    def custom_forward(*inputs):
                         if return_dict is not None:
-                            return module(*inputs, return_dict=return_dict, **kwargs)
+                            return module(*inputs, return_dict=return_dict)
                         else:
-                            return module(*inputs, **kwargs)
+                            return module(*inputs)
 
                     return custom_forward
 
@@ -2315,7 +2315,7 @@ class AttnUpBlock2D(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    scale=scale,
+                    scale,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(hidden_states, **cross_attention_kwargs)
