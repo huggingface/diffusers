@@ -500,7 +500,14 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         # self.begin_index is None when scheduler is used for training
         if self.begin_index is None:
-            step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+            step_indices = []
+            for timestep in timesteps:
+                index_candidates = (schedule_timesteps == timestep).nonzero()
+                if len(index_candidates) > 1:
+                    step_index = index_candidates[1].item()
+                else:
+                    step_index = index_candidates[0].item()
+                step_indices.append(step_index)
         else:
             step_indices = [self.begin_index] * timesteps.shape[0]
 
