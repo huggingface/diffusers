@@ -1084,7 +1084,6 @@ class AttnDownBlock2D(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    lora_scale,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(hidden_states, **cross_attention_kwargs)
@@ -2315,7 +2314,6 @@ class AttnUpBlock2D(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    scale,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(hidden_states, **cross_attention_kwargs)
