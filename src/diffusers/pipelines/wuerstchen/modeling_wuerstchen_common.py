@@ -32,7 +32,7 @@ class WuerstchenLayerNorm(nn.LayerNorm):
 
 
 class TimestepBlock(nn.Module):
-    def __init__(self, c, c_timestep, conds=["sca"]):
+    def __init__(self, c, c_timestep, conds=[]):
         super().__init__()
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
         self.mapper = linear_cls(c_timestep, c * 2)

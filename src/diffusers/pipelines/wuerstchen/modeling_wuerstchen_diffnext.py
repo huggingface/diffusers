@@ -93,7 +93,7 @@ class WuerstchenDiffNeXt(ModelMixin, ConfigMixin):
             elif block_type == "A":
                 return AttnBlock(c_hidden, c_cond, nhead, self_attn=True, dropout=dropout)
             elif block_type == "T":
-                return TimestepBlock(c_hidden, c_r, conds=[])
+                return TimestepBlock(c_hidden, c_r)
             else:
                 raise ValueError(f"Block type {block_type} not supported")
 
