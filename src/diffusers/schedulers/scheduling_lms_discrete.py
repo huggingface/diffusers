@@ -308,20 +308,27 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         self.derivatives = []
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
+        
+        indices = (schedule_timesteps == timestep).nonzero()
+
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        pos = 1 if len(indices) > 1 else 0
+
+        return indices[pos].item()
+
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
-
-            index_candidates = (self.timesteps == timestep).nonzero()
-
-            # The sigma index that is taken for the **very** first `step`
-            # is always the second index (or the last index if there is only 1)
-            # This way we can ensure we don't accidentally skip a sigma in
-            # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-            if len(index_candidates) > 1:
-                step_index = index_candidates[1]
+                step_index = index_for_timestep(timestep)
             else:
                 step_index = index_candidates[0]
 
@@ -461,16 +468,9 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        # self.begin_index is None when scheduler is used for training
+        # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
         if self.begin_index is None:
-            step_indices = []
-            for timestep in timesteps:
-                index_candidates = (schedule_timesteps == timestep).nonzero()
-                if len(index_candidates) > 1:
-                    step_index = index_candidates[1].item()
-                else:
-                    step_index = index_candidates[0].item()
-                step_indices.append(step_index)
+            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
         else:
             step_indices = [self.begin_index] * timesteps.shape[0]
 
