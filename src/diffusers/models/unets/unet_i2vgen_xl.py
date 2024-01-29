@@ -250,21 +250,21 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         )
 
         # image embedding
-        self.local_image_concat = nn.Sequential(
+        self.image_latents_proj_in = nn.Sequential(
             nn.Conv2d(4, in_channels * 4, 3, padding=1),
             nn.SiLU(),
             nn.Conv2d(in_channels * 4, in_channels * 4, 3, stride=1, padding=1),
             nn.SiLU(),
             nn.Conv2d(in_channels * 4, in_channels, 3, stride=1, padding=1),
         )
-        self.local_temporal_encoder = I2VGenXLTransformerTemporalEncoder(
+        self.image_latents_temporal_encoder = I2VGenXLTransformerTemporalEncoder(
             dim=in_channels,
             num_attention_heads=2,
             ff_inner_dim=in_channels * 4,
             attention_head_dim=in_channels,
             activation_fn="gelu",
         )
-        self.local_image_embedding = nn.Sequential(
+        self.image_latents_context_embedding = nn.Sequential(
             nn.Conv2d(4, in_channels * 8, 3, padding=1),
             nn.SiLU(),
             nn.AdaptiveAvgPool2d((32, 32)),
@@ -719,7 +719,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context_embeddings = torch.cat([context_embeddings, encoder_hidden_states], dim=1)
 
         image_latents_context_embeddings = _collapse_frames_into_batch(image_latents[:, :, :1, :])
-        image_latents_context_embeddings = self.local_image_embedding(image_latents_context_embeddings)
+        image_latents_context_embeddings = self.image_latents_context_embedding(image_latents_context_embeddings)
 
         _batch_size, _channels, _height, _width = image_latents_context_embeddings.shape
         image_latents_context_embeddings = image_latents_context_embeddings.permute(0, 2, 3, 1).reshape(
@@ -733,14 +733,14 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context_embeddings = context_embeddings.repeat_interleave(repeats=num_frames, dim=0)
 
         image_latents = _collapse_frames_into_batch(image_latents)
-        image_latents = self.local_image_concat(image_latents)
+        image_latents = self.image_latents_proj_in(image_latents)
         image_latents = (
             image_latents[None, :]
             .reshape(batch_size, num_frames, channels, height, width)
             .permute(0, 3, 4, 1, 2)
             .reshape(batch_size * height * width, num_frames, channels)
         )
-        image_latents = self.local_temporal_encoder(image_latents)
+        image_latents = self.image_latents_temporal_encoder(image_latents)
         image_latents = image_latents.reshape(batch_size, height, width, num_frames, channels).permute(0, 4, 3, 1, 2)
 
         # 4. pre-process
@@ -812,6 +812,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     upsample_size=upsample_size,
                     num_frames=num_frames,
                 )
+
         # 8. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)

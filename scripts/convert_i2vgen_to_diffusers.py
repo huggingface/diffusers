@@ -179,40 +179,43 @@ def convert_ldm_unet_checkpoint(checkpoint, config, path=None, extract_ema=False
     ]
     for k in unet_state_dict:
         if any(substring in k for substring in additional_embedding_substrings):
-            new_checkpoint[k] = unet_state_dict[k]
+            diffusers_key = k.replace("local_image_concat", "image_latents_proj_in").replace(
+                "local_image_embedding", "image_latents_context_embedding"
+            )
+            new_checkpoint[diffusers_key] = unet_state_dict[k]
 
     # temporal encoder.
-    new_checkpoint["local_temporal_encoder.norm1.weight"] = unet_state_dict[
+    new_checkpoint["image_latents_temporal_encoder.norm1.weight"] = unet_state_dict[
         "local_temporal_encoder.layers.0.0.norm.weight"
     ]
-    new_checkpoint["local_temporal_encoder.norm1.bias"] = unet_state_dict[
+    new_checkpoint["image_latents_temporal_encoder.norm1.bias"] = unet_state_dict[
         "local_temporal_encoder.layers.0.0.norm.bias"
     ]
 
     # attention
     qkv = unet_state_dict["local_temporal_encoder.layers.0.0.fn.to_qkv.weight"]
     q, k, v = torch.chunk(qkv, 3, dim=0)
-    new_checkpoint["local_temporal_encoder.attn1.to_q.weight"] = q
-    new_checkpoint["local_temporal_encoder.attn1.to_k.weight"] = k
-    new_checkpoint["local_temporal_encoder.attn1.to_v.weight"] = v
-    new_checkpoint["local_temporal_encoder.attn1.to_out.0.weight"] = unet_state_dict[
+    new_checkpoint["image_latents_temporal_encoder.attn1.to_q.weight"] = q
+    new_checkpoint["image_latents_temporal_encoder.attn1.to_k.weight"] = k
+    new_checkpoint["image_latents_temporal_encoder.attn1.to_v.weight"] = v
+    new_checkpoint["image_latents_temporal_encoder.attn1.to_out.0.weight"] = unet_state_dict[
         "local_temporal_encoder.layers.0.0.fn.to_out.0.weight"
     ]
-    new_checkpoint["local_temporal_encoder.attn1.to_out.0.bias"] = unet_state_dict[
+    new_checkpoint["image_latents_temporal_encoder.attn1.to_out.0.bias"] = unet_state_dict[
         "local_temporal_encoder.layers.0.0.fn.to_out.0.bias"
     ]
 
     # feedforward
-    new_checkpoint["local_temporal_encoder.ff.net.0.proj.weight"] = unet_state_dict[
+    new_checkpoint["image_latents_temporal_encoder.ff.net.0.proj.weight"] = unet_state_dict[
         "local_temporal_encoder.layers.0.1.net.0.0.weight"
     ]
-    new_checkpoint["local_temporal_encoder.ff.net.0.proj.bias"] = unet_state_dict[
+    new_checkpoint["image_latents_temporal_encoder.ff.net.0.proj.bias"] = unet_state_dict[
         "local_temporal_encoder.layers.0.1.net.0.0.bias"
     ]
-    new_checkpoint["local_temporal_encoder.ff.net.2.weight"] = unet_state_dict[
+    new_checkpoint["image_latents_temporal_encoder.ff.net.2.weight"] = unet_state_dict[
         "local_temporal_encoder.layers.0.1.net.2.weight"
     ]
-    new_checkpoint["local_temporal_encoder.ff.net.2.bias"] = unet_state_dict[
+    new_checkpoint["image_latents_temporal_encoder.ff.net.2.bias"] = unet_state_dict[
         "local_temporal_encoder.layers.0.1.net.2.bias"
     ]
 
@@ -483,7 +486,15 @@ if __name__ == "__main__":
 
     # scheduler
     # https://github.com/ali-vilab/i2vgen-xl/blob/main/configs/i2vgen_xl_train.yaml
-    scheduler = DDIMScheduler(beta_schedule="squaredcos_cap_v2")
+    scheduler = DDIMScheduler(
+        beta_schedule="squaredcos_cap_v2",
+        rescale_betas_zero_snr=True,
+        set_alpha_to_one=True,
+        clip_sample=False,
+        steps_offset=1,
+        timestep_spacing="leading",
+        prediction_type="v_prediction",
+    )
 
     # final
     pipeline = I2VGenXLPipeline(

@@ -45,7 +45,24 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-
+        >>> from diffusers import I2VGenXLPipeline
+        >>> pipeline = I2VGenXLPipeline.from_pretrained("repo_id", torch_dtype=torch.float16)
+        >>> pipeline.enable_model_cpu_offload()
+        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?raw=true"
+        >>> image = load_image(image_url).convert("RGB")
+        >>> prompt = "Papers were floating in the air on a table in the library"
+        >>> prompt = "Papers were floating in the air on a table in the library"
+        >>> negative_prompt = "Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms"
+        >>> generator = torch.manual_seed(8888)
+        >>> frames = pipeline(
+        ...     prompt=prompt,
+        ...     image=image,
+        ...     num_inference_steps=50,
+        ...     negative_prompt=negative_prompt,
+        ...     guidance_scale=9.0,
+        ...     clip_skip=1,
+        ...     generator=generator).frames[0]
+        >>> video_path = export_to_gif(frames, 'i2v.gif')
         ```
 """
 
@@ -336,11 +353,26 @@ class I2VGenXLPipeline(DiffusionPipeline):
             else:
                 attention_mask = None
 
-            negative_prompt_embeds = self.text_encoder(
-                uncond_input.input_ids.to(device),
-                attention_mask=attention_mask,
-            )
-            negative_prompt_embeds = negative_prompt_embeds[0]
+            # Apply clip_skip to negative prompt embeds
+            if clip_skip is None:
+                negative_prompt_embeds = self.text_encoder(
+                    uncond_input.input_ids.to(device),
+                    attention_mask=attention_mask,
+                )
+                negative_prompt_embeds = negative_prompt_embeds[0]
+            else:
+                negative_prompt_embeds = self.text_encoder(
+                    uncond_input.input_ids.to(device), attention_mask=attention_mask, output_hidden_states=True
+                )
+                # Access the `hidden_states` first, that contains a tuple of
+                # all the hidden states from the encoder layers. Then index into
+                # the tuple to access the hidden states from the desired layer.
+                negative_prompt_embeds = negative_prompt_embeds[-1][-(clip_skip + 1)]
+                # We also need to apply the final LayerNorm here to not mess with the
+                # representations. The `last_hidden_states` that we typically use for
+                # obtaining the final prompt representations passes through the LayerNorm
+                # layer.
+                negative_prompt_embeds = self.text_encoder.text_model.final_layer_norm(negative_prompt_embeds)
 
         if self.do_classifier_free_guidance:
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
@@ -598,13 +630,12 @@ class I2VGenXLPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        clip_skip: Optional[int] = None,
+        clip_skip: Optional[int] = 1,  # I2VGen uses the second to last layer of CLIP for text/image embedding
     ):
         r"""
         The call function to the pipeline for generation.
 
         Args:
-
 
         Examples:
 
@@ -752,8 +783,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
 
 # The following utilities are taken from https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
-
-
 def _resize_bilinear(image, resolution):
     if isinstance(image, list):
         image = [u.resize(resolution, PIL.Image.BILINEAR) for u in image]
