@@ -62,7 +62,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.24.0.dev0")
+check_min_version("0.26.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -753,7 +753,7 @@ def main(args):
                     num_new_images = args.num_class_images - cur_class_images
                     logger.info(f"Number of class images to sample: {num_new_images}.")
 
-                    sample_dataset = PromptDataset(args.class_prompt, num_new_images)
+                    sample_dataset = PromptDataset(concept["class_prompt"], num_new_images)
                     sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
 
                     sample_dataloader = accelerator.prepare(sample_dataloader)

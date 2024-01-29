@@ -11,21 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import os
 from collections import defaultdict
 from contextlib import nullcontext
+from functools import partial
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
 import torch
 import torch.nn.functional as F
+from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from ..models.embeddings import ImageProjection
+from ..models.embeddings import ImageProjection, IPAdapterFullImageProjection, IPAdapterPlusImageProjection
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
-    DIFFUSERS_CACHE,
-    HF_HUB_OFFLINE,
     USE_PEFT_BACKEND,
     _get_model_file,
     delete_adapter_layers,
@@ -62,6 +64,7 @@ class UNet2DConditionLoadersMixin:
     text_encoder_name = TEXT_ENCODER_NAME
     unet_name = UNET_NAME
 
+    @validate_hf_hub_args
     def load_attn_procs(self, pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]], **kwargs):
         r"""
         Load pretrained attention processor layers into [`UNet2DConditionModel`]. Attention processor layers have to be
@@ -95,7 +98,7 @@ class UNet2DConditionLoadersMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
@@ -130,12 +133,12 @@ class UNet2DConditionLoadersMixin:
         from ..models.attention_processor import CustomDiffusionAttnProcessor
         from ..models.lora import LoRACompatibleConv, LoRACompatibleLinear, LoRAConv2dLayer, LoRALinearLayer
 
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
         weight_name = kwargs.pop("weight_name", None)
@@ -184,7 +187,7 @@ class UNet2DConditionLoadersMixin:
                         resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
+                        token=token,
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
@@ -204,7 +207,7 @@ class UNet2DConditionLoadersMixin:
                     resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,
@@ -501,25 +504,47 @@ class UNet2DConditionLoadersMixin:
                 weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME if is_custom_diffusion else LORA_WEIGHT_NAME
 
         # Save the model
-        save_function(state_dict, os.path.join(save_directory, weight_name))
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
+        save_path = Path(save_directory, weight_name).as_posix()
+        save_function(state_dict, save_path)
+        logger.info(f"Model weights saved in {save_path}")
 
-    def fuse_lora(self, lora_scale=1.0, safe_fusing=False):
+    def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
         self.lora_scale = lora_scale
         self._safe_fusing = safe_fusing
-        self.apply(self._fuse_lora_apply)
+        self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
 
-    def _fuse_lora_apply(self, module):
+    def _fuse_lora_apply(self, module, adapter_names=None):
         if not USE_PEFT_BACKEND:
             if hasattr(module, "_fuse_lora"):
                 module._fuse_lora(self.lora_scale, self._safe_fusing)
+
+            if adapter_names is not None:
+                raise ValueError(
+                    "The `adapter_names` argument is not supported in your environment. Please switch"
+                    " to PEFT backend to use this argument by installing latest PEFT and transformers."
+                    " `pip install -U peft transformers`"
+                )
         else:
             from peft.tuners.tuners_utils import BaseTunerLayer
+
+            merge_kwargs = {"safe_merge": self._safe_fusing}
 
             if isinstance(module, BaseTunerLayer):
                 if self.lora_scale != 1.0:
                     module.scale_layer(self.lora_scale)
-                module.merge(safe_merge=self._safe_fusing)
+
+                # For BC with prevous PEFT versions, we need to check the signature
+                # of the `merge` method to see if it supports the `adapter_names` argument.
+                supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+                if "adapter_names" in supported_merge_kwargs:
+                    merge_kwargs["adapter_names"] = adapter_names
+                elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                    raise ValueError(
+                        "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
+                        " to the latest version of PEFT. `pip install -U peft`"
+                    )
+
+                module.merge(**merge_kwargs)
 
     def unfuse_lora(self):
         self.apply(self._unfuse_lora_apply)
@@ -664,6 +689,80 @@ class UNet2DConditionLoadersMixin:
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
 
+    def _convert_ip_adapter_image_proj_to_diffusers(self, state_dict):
+        updated_state_dict = {}
+        image_projection = None
+
+        if "proj.weight" in state_dict:
+            # IP-Adapter
+            num_image_text_embeds = 4
+            clip_embeddings_dim = state_dict["proj.weight"].shape[-1]
+            cross_attention_dim = state_dict["proj.weight"].shape[0] // 4
+
+            image_projection = ImageProjection(
+                cross_attention_dim=cross_attention_dim,
+                image_embed_dim=clip_embeddings_dim,
+                num_image_text_embeds=num_image_text_embeds,
+            )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("proj", "image_embeds")
+                updated_state_dict[diffusers_name] = value
+
+        elif "proj.3.weight" in state_dict:
+            # IP-Adapter Full
+            clip_embeddings_dim = state_dict["proj.0.weight"].shape[0]
+            cross_attention_dim = state_dict["proj.3.weight"].shape[0]
+
+            image_projection = IPAdapterFullImageProjection(
+                cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+            )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("proj.0", "ff.net.0.proj")
+                diffusers_name = diffusers_name.replace("proj.2", "ff.net.2")
+                diffusers_name = diffusers_name.replace("proj.3", "norm")
+                updated_state_dict[diffusers_name] = value
+
+        else:
+            # IP-Adapter Plus
+            num_image_text_embeds = state_dict["latents"].shape[1]
+            embed_dims = state_dict["proj_in.weight"].shape[1]
+            output_dims = state_dict["proj_out.weight"].shape[0]
+            hidden_dims = state_dict["latents"].shape[2]
+            heads = state_dict["layers.0.0.to_q.weight"].shape[0] // 64
+
+            image_projection = IPAdapterPlusImageProjection(
+                embed_dims=embed_dims,
+                output_dims=output_dims,
+                hidden_dims=hidden_dims,
+                heads=heads,
+                num_queries=num_image_text_embeds,
+            )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("0.to", "2.to")
+                diffusers_name = diffusers_name.replace("1.0.weight", "3.0.weight")
+                diffusers_name = diffusers_name.replace("1.0.bias", "3.0.bias")
+                diffusers_name = diffusers_name.replace("1.1.weight", "3.1.net.0.proj.weight")
+                diffusers_name = diffusers_name.replace("1.3.weight", "3.1.net.2.weight")
+
+                if "norm1" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm1", "0")] = value
+                elif "norm2" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm2", "1")] = value
+                elif "to_kv" in diffusers_name:
+                    v_chunk = value.chunk(2, dim=0)
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_k")] = v_chunk[0]
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_v")] = v_chunk[1]
+                elif "to_out" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("to_out", "to_out.0")] = value
+                else:
+                    updated_state_dict[diffusers_name] = value
+
+        image_projection.load_state_dict(updated_state_dict)
+        return image_projection
+
     def _load_ip_adapter_weights(self, state_dict):
         from ..models.attention_processor import (
             AttnProcessor,
@@ -671,6 +770,20 @@ class UNet2DConditionLoadersMixin:
             IPAdapterAttnProcessor,
             IPAdapterAttnProcessor2_0,
         )
+
+        if "proj.weight" in state_dict["image_proj"]:
+            # IP-Adapter
+            num_image_text_embeds = 4
+        elif "proj.3.weight" in state_dict["image_proj"]:
+            # IP-Adapter Full Face
+            num_image_text_embeds = 257  # 256 CLIP tokens + 1 CLS token
+        else:
+            # IP-Adapter Plus
+            num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
+
+        # Set encoder_hid_proj after loading ip_adapter weights,
+        # because `IPAdapterPlusImageProjection` also has `attn_processors`.
+        self.encoder_hid_proj = None
 
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
@@ -695,7 +808,10 @@ class UNet2DConditionLoadersMixin:
                     IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
                 )
                 attn_procs[name] = attn_processor_class(
-                    hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
+                    hidden_size=hidden_size,
+                    cross_attention_dim=cross_attention_dim,
+                    scale=1.0,
+                    num_tokens=num_image_text_embeds,
                 ).to(dtype=self.dtype, device=self.device)
 
                 value_dict = {}
@@ -707,29 +823,8 @@ class UNet2DConditionLoadersMixin:
 
         self.set_attn_processor(attn_procs)
 
-        # create image projection layers.
-        clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
-        cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
-
-        image_projection = ImageProjection(
-            cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim, num_image_text_embeds=4
-        )
-        image_projection.to(dtype=self.dtype, device=self.device)
-
-        # load image projection layer weights
-        image_proj_state_dict = {}
-        image_proj_state_dict.update(
-            {
-                "image_embeds.weight": state_dict["image_proj"]["proj.weight"],
-                "image_embeds.bias": state_dict["image_proj"]["proj.bias"],
-                "norm.weight": state_dict["image_proj"]["norm.weight"],
-                "norm.bias": state_dict["image_proj"]["norm.bias"],
-            }
-        )
-
-        image_projection.load_state_dict(image_proj_state_dict)
+        # convert IP-Adapter Image Projection layers to diffusers
+        image_projection = self._convert_ip_adapter_image_proj_to_diffusers(state_dict["image_proj"])
 
         self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
         self.config.encoder_hid_dim_type = "ip_image_proj"
-
-    delete_adapter_layers

@@ -11,15 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
+from pathlib import Path
 from typing import Dict, Union
 
 import torch
+from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
 from ..utils import (
-    DIFFUSERS_CACHE,
-    HF_HUB_OFFLINE,
     _get_model_file,
     is_transformers_available,
     logging,
@@ -43,6 +42,7 @@ logger = logging.get_logger(__name__)
 class IPAdapterMixin:
     """Mixin for handling IP Adapters."""
 
+    @validate_hf_hub_args
     def load_ip_adapter(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -77,7 +77,7 @@ class IPAdapterMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -88,12 +88,12 @@ class IPAdapterMixin:
         """
 
         # Load the main state dict first.
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
 
         user_agent = {
@@ -110,7 +110,7 @@ class IPAdapterMixin:
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 subfolder=subfolder,
                 user_agent=user_agent,
@@ -132,26 +132,59 @@ class IPAdapterMixin:
         if keys != ["image_proj", "ip_adapter"]:
             raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
 
-        # load CLIP image encoer here if it has not been registered to the pipeline yet
+        # load CLIP image encoder here if it has not been registered to the pipeline yet
         if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
             if not isinstance(pretrained_model_name_or_path_or_dict, dict):
                 logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
                 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
                     pretrained_model_name_or_path_or_dict,
-                    subfolder=os.path.join(subfolder, "image_encoder"),
+                    subfolder=Path(subfolder, "image_encoder").as_posix(),
                 ).to(self.device, dtype=self.dtype)
                 self.image_encoder = image_encoder
+                self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
             else:
                 raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
 
         # create feature extractor if it has not been registered to the pipeline yet
         if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
             self.feature_extractor = CLIPImageProcessor()
+            self.register_to_config(feature_extractor=["transformers", "CLIPImageProcessor"])
 
         # load ip-adapter into unet
-        self.unet._load_ip_adapter_weights(state_dict)
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        unet._load_ip_adapter_weights(state_dict)
 
     def set_ip_adapter_scale(self, scale):
-        for attn_processor in self.unet.attn_processors.values():
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        for attn_processor in unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = scale
+
+    def unload_ip_adapter(self):
+        """
+        Unloads the IP Adapter weights
+
+        Examples:
+
+        ```python
+        >>> # Assuming `pipeline` is already loaded with the IP Adapter weights.
+        >>> pipeline.unload_ip_adapter()
+        >>> ...
+        ```
+        """
+        # remove CLIP image encoder
+        if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is not None:
+            self.image_encoder = None
+            self.register_to_config(image_encoder=[None, None])
+
+        # remove feature extractor
+        if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
+            self.feature_extractor = None
+            self.register_to_config(feature_extractor=[None, None])
+
+        # remove hidden encoder
+        self.unet.encoder_hid_proj = None
+        self.config.encoder_hid_dim_type = None
+
+        # restore original Unet attention processors layers
+        self.unet.set_default_attn_processor()

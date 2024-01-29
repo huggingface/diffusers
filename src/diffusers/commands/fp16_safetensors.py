@@ -19,6 +19,7 @@ Usage example:
 
 import glob
 import json
+import warnings
 from argparse import ArgumentParser, Namespace
 from importlib import import_module
 
@@ -32,12 +33,12 @@ from . import BaseDiffusersCLICommand
 
 
 def conversion_command_factory(args: Namespace):
-    return FP16SafetensorsCommand(
-        args.ckpt_id,
-        args.fp16,
-        args.use_safetensors,
-        args.use_auth_token,
-    )
+    if args.use_auth_token:
+        warnings.warn(
+            "The `--use_auth_token` flag is deprecated and will be removed in a future version. Authentication is now"
+            " handled automatically if user is logged in."
+        )
+    return FP16SafetensorsCommand(args.ckpt_id, args.fp16, args.use_safetensors)
 
 
 class FP16SafetensorsCommand(BaseDiffusersCLICommand):
@@ -62,7 +63,7 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
         )
         conversion_parser.set_defaults(func=conversion_command_factory)
 
-    def __init__(self, ckpt_id: str, fp16: bool, use_safetensors: bool, use_auth_token: bool):
+    def __init__(self, ckpt_id: str, fp16: bool, use_safetensors: bool):
         self.logger = logging.get_logger("diffusers-cli/fp16_safetensors")
         self.ckpt_id = ckpt_id
         self.local_ckpt_dir = f"/tmp/{ckpt_id}"
@@ -75,8 +76,6 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
                 "When `use_safetensors` and `fp16` both are False, then this command is of no use."
             )
 
-        self.use_auth_token = use_auth_token
-
     def run(self):
         if version.parse(huggingface_hub.__version__) < version.parse("0.9.0"):
             raise ImportError(
@@ -87,7 +86,7 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
             from huggingface_hub import create_commit
             from huggingface_hub._commit_api import CommitOperationAdd
 
-        model_index = hf_hub_download(repo_id=self.ckpt_id, filename="model_index.json", token=self.use_auth_token)
+        model_index = hf_hub_download(repo_id=self.ckpt_id, filename="model_index.json")
         with open(model_index, "r") as f:
             pipeline_class_name = json.load(f)["_class_name"]
         pipeline_class = getattr(import_module("diffusers"), pipeline_class_name)
@@ -96,7 +95,7 @@ class FP16SafetensorsCommand(BaseDiffusersCLICommand):
         # Load the appropriate pipeline. We could have use `DiffusionPipeline`
         # here, but just to avoid any rough edge cases.
         pipeline = pipeline_class.from_pretrained(
-            self.ckpt_id, torch_dtype=torch.float16 if self.fp16 else torch.float32, use_auth_token=self.use_auth_token
+            self.ckpt_id, torch_dtype=torch.float16 if self.fp16 else torch.float32
         )
         pipeline.save_pretrained(
             self.local_ckpt_dir,

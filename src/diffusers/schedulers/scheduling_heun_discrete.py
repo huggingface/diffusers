@@ -148,6 +148,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.use_karras_sigmas = use_karras_sigmas
 
         self._step_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
@@ -269,6 +270,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.dt = None
 
         self._step_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
         # (YiYi Notes: keep this for now since we are keeping add_noise function which use index_for_timestep)
         # for exp beta schedules, such as the one for `pipeline_shap_e.py`

@@ -198,6 +198,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         self.noise_sampler = None
         self.noise_sampler_seed = noise_sampler_seed
         self._step_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler.index_for_timestep
     def index_for_timestep(self, timestep, schedule_timesteps=None):
@@ -347,6 +348,7 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         self.mid_point_sigma = None
 
         self._step_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
         self.noise_sampler = None
 
         # for exp beta schedules, such as the one for `pipeline_shap_e.py`

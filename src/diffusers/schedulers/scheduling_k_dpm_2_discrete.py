@@ -140,6 +140,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
 
         self._step_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler.index_for_timestep
     def index_for_timestep(self, timestep, schedule_timesteps=None):
@@ -284,6 +285,7 @@ class KDPM2DiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._index_counter = defaultdict(int)
 
         self._step_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def state_in_first_order(self):

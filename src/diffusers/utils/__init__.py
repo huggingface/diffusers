@@ -21,7 +21,6 @@ from .. import __version__
 from .constants import (
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
-    DIFFUSERS_CACHE,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
     FLAX_WEIGHTS_NAME,
     HF_MODULES_CACHE,
@@ -29,6 +28,7 @@ from .constants import (
     MIN_PEFT_VERSION,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
+    SAFETENSORS_FILE_EXTENSION,
     SAFETENSORS_WEIGHTS_NAME,
     USE_PEFT_BACKEND,
     WEIGHTS_NAME,
@@ -38,7 +38,6 @@ from .doc_utils import replace_example_docstring
 from .dynamic_modules_utils import get_class_from_dynamic_module
 from .export_utils import export_to_gif, export_to_obj, export_to_ply, export_to_video
 from .hub_utils import (
-    HF_HUB_OFFLINE,
     PushToHubMixin,
     _add_variant,
     _get_model_file,
@@ -68,7 +67,6 @@ from .import_utils import (
     is_k_diffusion_version,
     is_librosa_available,
     is_note_seq_available,
-    is_omegaconf_available,
     is_onnx_available,
     is_peft_available,
     is_scipy_available,
@@ -100,7 +98,9 @@ from .peft_utils import (
 )
 from .pil_utils import PIL_INTERPOLATION, make_image_grid, numpy_to_pil, pt_to_pil
 from .state_dict_utils import (
+    convert_all_state_dict_to_peft,
     convert_state_dict_to_diffusers,
+    convert_state_dict_to_kohya,
     convert_state_dict_to_peft,
     convert_unet_state_dict_to_peft,
 )
