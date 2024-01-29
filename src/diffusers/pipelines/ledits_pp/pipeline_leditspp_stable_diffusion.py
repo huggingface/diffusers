@@ -199,15 +199,20 @@ class CrossAttnProcessor:
         self,
         attn: Attention,
         hidden_states,
-        encoder_hidden_states=None,
+        encoder_hidden_states,
         attention_mask=None,
         temb=None,
     ):
-        assert not attn.residual_connection
-        assert attn.spatial_norm is None
-        assert attn.group_norm is None
-        assert hidden_states.ndim != 4
-        assert encoder_hidden_states is not None  # is cross
+        if attn.residual_connection:
+            raise ValueError("`attn` should not have residual connections!")
+        if attn.spatial_norm is not None:
+            raise ValueError("`attn.spatial_norm` should be None!")
+        if attn.group_norm is not None:
+            raise ValueError("`attn.group_norm` should be None!")
+        if hidden_states.ndim == 4:
+            raise ValueError("`hidden_states.ndim should be different than 4!")
+        if attn.encoder_hidden_states is None:
+            raise ValueError("`encoder_hidden_states cannot be `None`")
 
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
@@ -1092,7 +1097,11 @@ class LEditsPPPipelineStableDiffusion(
                             attn_map = out[:, :, :, 1 : 1 + num_edit_tokens[c]]  # 0 -> startoftext
 
                             # average over all tokens
-                            assert attn_map.shape[3] == num_edit_tokens[c]
+                            if attn_map.shape[3] != num_edit_tokens[c]:
+                                raise ValueError(
+                                    f"Incorrect shape of attention_map. Expected size {num_edit_tokens[c]}, but found {attn_map.shape[3]}!"
+                                )
+
                             attn_map = torch.sum(attn_map, dim=3)
 
                             # gaussian_smoothing
@@ -1314,7 +1323,6 @@ class LEditsPPPipelineStableDiffusion(
         self.unet.set_attn_processor(AttnProcessor())
 
         self.eta = 1.0
-        assert self.eta > 0
 
         self.scheduler.config.timestep_spacing = "leading"
         self.scheduler.set_timesteps(int(num_inversion_steps * (1 + skip)))

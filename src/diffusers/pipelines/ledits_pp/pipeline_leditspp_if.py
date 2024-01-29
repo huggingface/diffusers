@@ -337,60 +337,6 @@ def load_images(
     image = image.to(device=device, dtype=dtype)
     return image, resized_imgs
 
-    def pre_process(im, sizes, left=0, right=0, top=0, bottom=0):
-        if isinstance(im, str):
-            image = np.array(Image.open(im).convert("RGB"))[:, :, :3]
-        elif isinstance(im, Image.Image):
-            image = np.array((im).convert("RGB"))[:, :, :3]
-        else:
-            image = im
-        org_size = image.shape
-
-        h, w, c = image.shape
-        left = min(left, w - 1)
-        right = min(right, w - left - 1)
-        top = min(top, h - left - 1)
-        bottom = min(bottom, h - top - 1)
-        image = image[top : h - bottom, left : w - right]
-
-        ar = max(*image.shape[:2]) / min(*image.shape[:2])
-        if ar > 1.25:
-            h_max = image.shape[0] > image.shape[1]
-            if h_max:
-                resized = Image.fromarray(image).resize((sizes[0], sizes[1]))
-            else:
-                resized = Image.fromarray(image).resize((sizes[1], sizes[0]))
-        else:
-            resized = Image.fromarray(image).resize((sizes[0], sizes[0]))
-        image = np.array(resized)
-        if image.shape != org_size:
-            print(
-                f"Input image has been resized to {image.shape[1]}x{image.shape[0]}px (from {org_size[1]}x{org_size[0]}px)"
-            )
-        image = torch.from_numpy(image).float().permute(2, 0, 1)
-        return image, resized
-
-    tmps = []
-    resized_imgs = []
-    if isinstance(images, list):
-        for item in images:
-            prep, resized = pre_process(item, sizes, left, right, top, bottom)
-            if len(tmps) > 0 and prep.shape != tmps[0].shape:
-                raise ValueError(
-                    f"Mixed image resolution not supported in batch processing. Target resolution set to {tmps[0].shape[2]}x{tmps[0].shape[1]}px,"
-                    f"but found image with resolution {prep.shape[2]}x{prep.shape[1]}px"
-                )
-            tmps.append(prep)
-            resized_imgs.append(resized)
-    else:
-        prep, resized = pre_process(images, sizes, left, right, top, bottom)
-        tmps.append(prep)
-        resized_imgs.append(resized)
-    image = torch.stack(tmps) / 127.5 - 1
-
-    image = image.to(device=device, dtype=dtype)
-    return image, resized_imgs
-
 
 class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
     """
@@ -1146,7 +1092,10 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
                             attn_map = out[:, :, :, : num_edit_tokens[c]]  # there is no startoftext
 
                             # average over all tokens
-                            assert attn_map.shape[3] == num_edit_tokens[c]
+                            if attn_map.shape[3] != num_edit_tokens[c]:
+                                raise ValueError(
+                                    f"Incorrect shape of attention_map. Expected size {num_edit_tokens[c]}, but found {attn_map.shape[3]}!"
+                                )
                             attn_map = torch.sum(attn_map, dim=3)
 
                             # gaussian_smoothing
@@ -1374,7 +1323,6 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
         self.unet.set_attn_processor(AttnAddedKVProcessor())
 
         self.eta = 1.0
-        assert self.eta > 0
 
         self.scheduler.config.timestep_spacing = "leading"
         self.scheduler.set_timesteps(int(num_inversion_steps * (1 + skip)))
