@@ -36,16 +36,19 @@ from diffusers import (
     LMSDiscreteScheduler,
     UniPCMultistepScheduler,
     VQDiffusionScheduler,
-    logging,
 )
 from diffusers.configuration_utils import ConfigMixin, register_to_config
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
+from diffusers.utils import logging
 from diffusers.utils.testing_utils import CaptureLogger, torch_device
 
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 torch.backends.cuda.matmul.allow_tf32 = False
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 class SchedulerObject(SchedulerMixin, ConfigMixin):
@@ -256,13 +259,28 @@ class SchedulerCommonTest(unittest.TestCase):
     @property
     def default_timestep(self):
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.get("num_inference_steps", None)
 
-        scheduler_config = self.get_scheduler_config()
-        scheduler = self.scheduler_classes[0](**scheduler_config)
+        if num_inference_steps is not None:
+            try:
+                scheduler_config = self.get_scheduler_config()
+                scheduler = self.scheduler_classes[0](**scheduler_config)
 
-        scheduler.set_timesteps(num_inference_steps)
-        timestep = scheduler.timesteps[0]
+                scheduler.set_timesteps(num_inference_steps)
+                timestep = scheduler.timesteps[0]
+            except NotImplementedError:
+                logger.warn(
+                    f"The scheduler {self.__class__.__name__} does not implement a `get_scheduler_config` method."
+                    f" `default_timestep` will be set to the default value of 1."
+                )
+                timestep = 1
+        else:
+            logger.warn(
+                f"The scheduler {self.__class__.__name__} does not supply a `num_inference_steps` value in"
+                f" `forward_default_kwargs`. `default_timestep` will be set to the default value of 1."
+            )
+            timestep = 1
+
         return timestep
 
     # NOTE: currently taking the convention that default_timestep > default_timestep_2 (alternatively,
@@ -270,17 +288,36 @@ class SchedulerCommonTest(unittest.TestCase):
     @property
     def default_timestep_2(self):
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.get("num_inference_steps", None)
 
-        scheduler_config = self.get_scheduler_config()
-        scheduler = self.scheduler_classes[0](**scheduler_config)
+        if num_inference_steps is not None:
+            try:
+                scheduler_config = self.get_scheduler_config()
+                scheduler = self.scheduler_classes[0](**scheduler_config)
 
-        scheduler.set_timesteps(num_inference_steps)
-        if len(scheduler.timesteps) < 2:
-            raise ValueError(
-                "At most one timestep found in default timestep schedule, cannot find a second distinct timestep."
+                scheduler.set_timesteps(num_inference_steps)
+                if len(scheduler.timesteps) >= 2:
+                    timestep_2 = scheduler.timesteps[1]
+                else:
+                    logger.warn(
+                        f"Using num_inference_steps from the scheduler testing class's default config leads to a timestep"
+                        f" scheduler of length {len(scheduler.timesteps)} < 2. The default `default_timestep_2` value of 0"
+                        f" will be used."
+                    )
+                    timestep_2 = 0
+            except NotImplementedError:
+                logger.warn(
+                    f"The scheduler {self.__class__.__name__} does not implement a `get_scheduler_config` method."
+                    f" `default_timestep_2` will be set to the default value of 0."
+                )
+                timestep_2 = 0
+        else:
+            logger.warn(
+                f"The scheduler {self.__class__.__name__} does not supply a `num_inference_steps` value in"
+                f" `forward_default_kwargs`. `default_timestep_2` will be set to the default value of 0."
             )
-        timestep_2 = scheduler.timesteps[1]
+            timestep_2 = 0
+
         return timestep_2
 
     @property
@@ -597,6 +634,7 @@ class SchedulerCommonTest(unittest.TestCase):
         num_inference_steps = kwargs.pop("num_inference_steps", 50)
 
         timestep = self.default_timestep
+        print(f"Default timestep: {timestep}")
         if len(self.scheduler_classes) > 0 and self.scheduler_classes[0] == IPNDMScheduler:
             timestep = 1
 
@@ -624,6 +662,8 @@ class SchedulerCommonTest(unittest.TestCase):
                 scheduler.set_timesteps(num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
+            
+            print(f"Timestep scheduler: {scheduler.timesteps}")
 
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
