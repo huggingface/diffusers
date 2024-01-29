@@ -494,22 +494,22 @@ class TextualInversionLoaderMixin:
         if tokens:
             if isinstance(tokens, str):
                 tokens = [tokens]
-            for token_id, added_token in tokenizer.added_tokens_decoder.items():
+            for added_token_id, added_token in tokenizer.added_tokens_decoder.items():
                 if not added_token.special:
                     if added_token.content in tokens:
-                        token_ids.append(token_id)
+                        token_ids.append(added_token_id)
                 else:
                     last_special_token_id = token_id
             if len(token_ids) == 0:
                 raise ValueError("No tokens to remove found")
         else:
             tokens = []
-            for token_id, added_token in tokenizer.added_tokens_decoder.items():
+            for added_token_id, added_token in tokenizer.added_tokens_decoder.items():
                 if not added_token.special:
-                    token_ids.append(token_id)
+                    token_ids.append(added_token_id)
                     tokens.append(added_token.content)
                 else:
-                    last_special_token_id = token_id
+                    last_special_token_id = added_token_id
 
         # Delete from tokenizer
         for token_id, token_to_remove in zip(token_ids, tokens):
