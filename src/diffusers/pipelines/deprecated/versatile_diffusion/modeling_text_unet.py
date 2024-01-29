@@ -2043,7 +2043,6 @@ class CrossAttnUpBlockFlat(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    lora_scale,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(
