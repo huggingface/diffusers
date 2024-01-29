@@ -140,7 +140,7 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         #  set all values
         self.set_timesteps(num_train_timesteps, None, num_train_timesteps)
         self._step_index = None
-        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_heun_discrete.HeunDiscreteScheduler.index_for_timestep
     def index_for_timestep(self, timestep, schedule_timesteps=None):
@@ -277,7 +277,11 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.sigmas_up = torch.cat([sigmas_up[:1], sigmas_up[1:].repeat_interleave(2), sigmas_up[-1:]])
         self.sigmas_down = torch.cat([sigmas_down[:1], sigmas_down[1:].repeat_interleave(2), sigmas_down[-1:]])
 
-        timesteps = torch.from_numpy(timesteps).to(device)
+        if str(device).startswith("mps"):
+            timesteps = torch.from_numpy(timesteps).to(device, dtype=torch.float32)
+        else:
+            timesteps = torch.from_numpy(timesteps).to(device)
+
         sigmas_interpol = sigmas_interpol.cpu()
         log_sigmas = self.log_sigmas.cpu()
         timesteps_interpol = np.array(
@@ -296,7 +300,7 @@ class KDPM2AncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self._index_counter = defaultdict(int)
 
         self._step_index = None
-        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):

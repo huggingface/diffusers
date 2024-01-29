@@ -32,7 +32,6 @@ if is_torch_available():
     _import_structure["autoencoders.autoencoder_tiny"] = ["AutoencoderTiny"]
     _import_structure["autoencoders.consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["controlnet"] = ["ControlNetModel"]
-    _import_structure["controlnetxs"] = ["ControlNetXSModel"]
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
@@ -40,19 +39,19 @@ if is_torch_available():
     _import_structure["t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformer_2d"] = ["Transformer2DModel"]
     _import_structure["transformer_temporal"] = ["TransformerTemporalModel"]
-    _import_structure["unet_1d"] = ["UNet1DModel"]
-    _import_structure["unet_2d"] = ["UNet2DModel"]
-    _import_structure["unet_2d_condition"] = ["UNet2DConditionModel"]
-    _import_structure["unet_3d_condition"] = ["UNet3DConditionModel"]
-    _import_structure["unet_kandinsky3"] = ["Kandinsky3UNet"]
-    _import_structure["unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
-    _import_structure["unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
-    _import_structure["uvit_2d"] = ["UVit2DModel"]
+    _import_structure["unets.unet_1d"] = ["UNet1DModel"]
+    _import_structure["unets.unet_2d"] = ["UNet2DModel"]
+    _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
+    _import_structure["unets.unet_3d_condition"] = ["UNet3DConditionModel"]
+    _import_structure["unets.unet_kandinsky3"] = ["Kandinsky3UNet"]
+    _import_structure["unets.unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
+    _import_structure["unets.unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
+    _import_structure["unets.uvit_2d"] = ["UVit2DModel"]
     _import_structure["vq_model"] = ["VQModel"]
 
 if is_flax_available():
     _import_structure["controlnet_flax"] = ["FlaxControlNetModel"]
-    _import_structure["unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
+    _import_structure["unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
     _import_structure["vae_flax"] = ["FlaxAutoencoderKL"]
 
 
@@ -67,7 +66,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
         )
         from .controlnet import ControlNetModel
-        from .controlnetxs import ControlNetXSModel
         from .dual_transformer_2d import DualTransformer2DModel
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
@@ -75,19 +73,22 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .t5_film_transformer import T5FilmDecoder
         from .transformer_2d import Transformer2DModel
         from .transformer_temporal import TransformerTemporalModel
-        from .unet_1d import UNet1DModel
-        from .unet_2d import UNet2DModel
-        from .unet_2d_condition import UNet2DConditionModel
-        from .unet_3d_condition import UNet3DConditionModel
-        from .unet_kandinsky3 import Kandinsky3UNet
-        from .unet_motion_model import MotionAdapter, UNetMotionModel
-        from .unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel
-        from .uvit_2d import UVit2DModel
+        from .unets import (
+            Kandinsky3UNet,
+            MotionAdapter,
+            UNet1DModel,
+            UNet2DConditionModel,
+            UNet2DModel,
+            UNet3DConditionModel,
+            UNetMotionModel,
+            UNetSpatioTemporalConditionModel,
+            UVit2DModel,
+        )
         from .vq_model import VQModel
 
     if is_flax_available():
         from .controlnet_flax import FlaxControlNetModel
-        from .unet_2d_condition_flax import FlaxUNet2DConditionModel
+        from .unets import FlaxUNet2DConditionModel
         from .vae_flax import FlaxAutoencoderKL
 
 else:

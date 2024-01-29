@@ -59,7 +59,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.25.0.dev0")
+check_min_version("0.26.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -907,10 +907,12 @@ def main():
 
             if args.snr_gamma is not None:
                 snr = jnp.array(compute_snr(timesteps))
-                if noise_scheduler.config.prediction_type == "v_prediction":
-                    # Velocity objective requires that we add one to SNR values before we divide by them.
-                    snr = snr + 1
-                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
+                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma)
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    snr_loss_weights = snr_loss_weights / snr
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    snr_loss_weights = snr_loss_weights / (snr + 1)
+
                 loss = loss * snr_loss_weights
 
             loss = loss.mean()

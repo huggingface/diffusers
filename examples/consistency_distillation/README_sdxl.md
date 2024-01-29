@@ -96,7 +96,7 @@ accelerate launch train_lcm_distill_lora_sdxl_wds.py \
     --mixed_precision=fp16 \
     --resolution=1024 \
     --lora_rank=64 \
-    --learning_rate=1e-6 --loss_type="huber" --use_fix_crop_and_size --adam_weight_decay=0.0 \
+    --learning_rate=1e-4 --loss_type="huber" --use_fix_crop_and_size --adam_weight_decay=0.0 \
     --max_train_steps=1000 \
     --max_train_samples=4000000 \
     --dataloader_num_workers=8 \
@@ -112,3 +112,37 @@ accelerate launch train_lcm_distill_lora_sdxl_wds.py \
     --seed=453645634 \
     --push_to_hub \
 ```
+
+We provide another version for LCM LoRA SDXL that follows best practices of `peft` and leverages the `datasets` library for quick experimentation. The script doesn't load two UNets unlike `train_lcm_distill_lora_sdxl_wds.py` which reduces the memory requirements quite a bit. 
+
+Below is an example training command that trains an LCM LoRA on the [Pokemons dataset](https://huggingface.co/datasets/lambdalabs/pokemon-blip-captions):
+
+```bash
+export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
+export DATASET_NAME="lambdalabs/pokemon-blip-captions"
+export VAE_PATH="madebyollin/sdxl-vae-fp16-fix"
+
+accelerate launch train_lcm_distill_lora_sdxl.py \
+  --pretrained_teacher_model=${MODEL_NAME}  \
+  --pretrained_vae_model_name_or_path=${VAE_PATH} \
+  --output_dir="pokemons-lora-lcm-sdxl" \
+  --mixed_precision="fp16" \
+  --dataset_name=$DATASET_NAME \
+  --resolution=1024 \
+  --train_batch_size=24 \
+  --gradient_accumulation_steps=1 \
+  --gradient_checkpointing \
+  --use_8bit_adam \
+  --lora_rank=64 \
+  --learning_rate=1e-4 \
+  --report_to="wandb" \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=3000 \
+  --checkpointing_steps=500 \
+  --validation_steps=50 \
+  --seed="0" \
+  --report_to="wandb" \
+  --push_to_hub
+```
+
