@@ -2107,7 +2107,7 @@ class IPAdapterAttnProcessor(nn.Module):
         self.cross_attention_dim = cross_attention_dim
 
         if not isinstance(num_tokens, (tuple, list)):
-            raise ValueError("`num_tokens` should be a list of integers.")
+            num_tokens = [num_tokens]
         self.num_tokens = num_tokens
 
         if not isinstance(scale, list):
@@ -2133,8 +2133,19 @@ class IPAdapterAttnProcessor(nn.Module):
         scale=1.0,
     ):
         residual = hidden_states
-
-        encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+        if isinstance(encoder_hidden_states, tuple):
+            encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+        else:
+            deprecation_message = (
+                "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
+                " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+            )
+            deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+            end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
+            encoder_hidden_states, ip_hidden_states = (
+                encoder_hidden_states[:, :end_pos, :],
+                [encoder_hidden_states[:, end_pos:, :]],
+            )
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2227,7 +2238,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         self.cross_attention_dim = cross_attention_dim
 
         if not isinstance(num_tokens, (tuple, list)):
-            raise ValueError("`num_tokens` should be a list of integers.")
+            num_tokens = [num_tokens]
         self.num_tokens = num_tokens
 
         if not isinstance(scale, list):
@@ -2253,8 +2264,19 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         scale=1.0,
     ):
         residual = hidden_states
-
-        encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+        if isinstance(encoder_hidden_states, tuple):
+            encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+        else:
+            deprecation_message = (
+                "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
+                " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+            )
+            deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+            end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
+            encoder_hidden_states, ip_hidden_states = (
+                encoder_hidden_states[:, :end_pos, :],
+                [encoder_hidden_states[:, end_pos:, :]],
+            )
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
