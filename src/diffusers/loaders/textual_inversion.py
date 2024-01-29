@@ -499,7 +499,7 @@ class TextualInversionLoaderMixin:
                     if added_token.content in tokens:
                         token_ids.append(added_token_id)
                 else:
-                    last_special_token_id = token_id
+                    last_special_token_id = added_token_id
             if len(token_ids) == 0:
                 raise ValueError("No tokens to remove found")
         else:
@@ -516,7 +516,7 @@ class TextualInversionLoaderMixin:
             del tokenizer._added_tokens_decoder[token_id]
             del tokenizer._added_tokens_encoder[token_to_remove]
 
-        # Fix token ids in tokenizer
+        # Make all token ids sequential in tokenizer
         key_id = 1
         for token_id in tokenizer.added_tokens_decoder:
             if token_id > last_special_token_id and token_id > last_special_token_id + key_id:
