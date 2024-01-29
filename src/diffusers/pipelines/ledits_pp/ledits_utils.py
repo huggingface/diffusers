@@ -67,7 +67,7 @@ def load_images(
     return image, resized_imgs
 
 
-class AttentionStore:
+class LeditsAttentionStore:
     @staticmethod
     def get_empty_store():
         return {"down_cross": [], "mid_cross": [], "up_cross": [], "down_self": [], "mid_self": [], "up_self": []}
@@ -152,7 +152,7 @@ class AttentionStore:
 
 
 # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionAttendAndExcitePipeline.GaussianSmoothing
-class GaussianSmoothing:
+class LeditsGaussianSmoothing:
     def __init__(self, device):
         kernel_size = [3, 3]
         sigma = [0.5, 0.5]

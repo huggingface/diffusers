@@ -6,6 +6,7 @@ from itertools import repeat
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 from transformers import CLIPImageProcessor, T5EncoderModel, T5Tokenizer
 
 from ...image_processor import PipelineImageInput
@@ -25,7 +26,7 @@ from ...utils.torch_utils import randn_tensor
 from ..deepfloyd_if.safety_checker import IFSafetyChecker
 from ..deepfloyd_if.watermark import IFWatermarker
 from ..pipeline_utils import DiffusionPipeline
-from .ledits_utils import AttentionStore, F, GaussianSmoothing, load_images
+from .ledits_utils import LeditsAttentionStore, LeditsGaussianSmoothing, load_images
 from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
 
 
@@ -742,7 +743,7 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
             use_cross_attn_mask = True
 
         if use_cross_attn_mask:
-            self.smoothing = GaussianSmoothing(device)
+            self.smoothing = LeditsGaussianSmoothing(device)
 
         if user_mask is not None:
             user_mask = user_mask.to(self.device)
@@ -786,7 +787,7 @@ class LEditsPPPipelineIF(DiffusionPipeline, LoraLoaderMixin):
         timesteps = self.scheduler.inversion_steps
         t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
 
-        self.attention_store = AttentionStore(
+        self.attention_store = LeditsAttentionStore(
             average=store_averaged_over_steps,
             batch_size=self.batch_size,
             max_size=(intermediate_images.shape[-2] / 4.0) * (intermediate_images.shape[-1] / 4.0),
@@ -1292,7 +1293,7 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
     if variance > 0.0:
         noise = (prev_latents - mu_xt) / (variance ** (0.5) * eta)
     else:
-        noise = torch.Tensor([0.0]).to(latents.device)
+        noise = torch.tensor([0.0]).to(latents.device)
 
     return noise, mu_xt + (eta * variance**0.5) * noise
 
@@ -1318,7 +1319,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         if sigma > 0.0:
             noise = (prev_latents - mu_xt) / sigma
         else:
-            noise = torch.Tensor([0.0]).to(sample.device)
+            noise = torch.tensor([0.0]).to(sample.device)
 
         prev_sample = mu_xt + sigma * noise
         return noise, prev_sample
@@ -1354,7 +1355,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         if sigma > 0.0:
             noise = (prev_latents - mu_xt) / sigma
         else:
-            noise = torch.Tensor([0.0]).to(sample.device)
+            noise = torch.tensor([0.0]).to(sample.device)
 
         prev_sample = mu_xt + sigma * noise
 

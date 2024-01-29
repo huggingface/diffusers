@@ -3,6 +3,7 @@ from itertools import repeat
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
+import torch.nn.functional as F
 from packaging import version
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
@@ -24,7 +25,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .ledits_utils import AttentionStore, F, GaussianSmoothing, load_images
+from .ledits_utils import LeditsAttentionStore, LeditsGaussianSmoothing, load_images
 from .pipeline_output import LEditsPPDiffusionPipelineOutput, LEditsPPInversionPipelineOutput
 
 
@@ -128,6 +129,7 @@ class CrossAttnProcessor:
         return hidden_states
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     """
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
@@ -333,20 +335,13 @@ class LEditsPPPipelineStableDiffusion(
         return extra_step_kwargs
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
-    # TODO
     def check_inputs(
         self,
-        callback_steps,
         negative_prompt=None,
         editing_prompt_embeddings=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -731,32 +726,15 @@ class LEditsPPPipelineStableDiffusion(
             use_cross_attn_mask = True
 
         if use_cross_attn_mask:
-            self.smoothing = GaussianSmoothing(self.device)
+            self.smoothing = LeditsGaussianSmoothing(self.device)
 
         if user_mask is not None:
             user_mask = user_mask.to(self.device)
 
         org_prompt = ""
 
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
-            callback_steps,
             negative_prompt,
             editing_prompt_embeds,
             negative_prompt_embeds,
@@ -814,7 +792,7 @@ class LEditsPPPipelineStableDiffusion(
         t_to_idx = {int(v): k for k, v in enumerate(timesteps[-zs.shape[0] :])}
 
         if use_cross_attn_mask:
-            self.attention_store = AttentionStore(
+            self.attention_store = LeditsAttentionStore(
                 average=store_averaged_over_steps,
                 batch_size=batch_size,
                 max_size=(latents.shape[-2] / 4.0) * (latents.shape[-1] / 4.0),
@@ -1083,9 +1061,6 @@ class LEditsPPPipelineStableDiffusion(
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         # 8. Post-processing
         if not output_type == "latent":
@@ -1117,7 +1092,7 @@ class LEditsPPPipelineStableDiffusion(
         self,
         image: PipelineImageInput,
         source_prompt: str = "",
-        source_guidance_scale=3.5,
+        source_guidance_scale: float = 3.5,
         num_inversion_steps: int = 30,
         skip: float = 0.15,
         generator: Optional[torch.Generator] = None,
@@ -1284,7 +1259,7 @@ def compute_noise_ddim(scheduler, prev_latents, latents, timestep, noise_pred, e
     if variance > 0.0:
         noise = (prev_latents - mu_xt) / (variance ** (0.5) * eta)
     else:
-        noise = torch.Tensor([0.0]).to(latents.device)
+        noise = torch.tensor([0.0]).to(latents.device)
 
     return noise, mu_xt + (eta * variance**0.5) * noise
 
@@ -1309,7 +1284,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         if sigma > 0.0:
             noise = (prev_latents - mu_xt) / sigma
         else:
-            noise = torch.Tensor([0.0]).to(sample.device)
+            noise = torch.tensor([0.0]).to(sample.device)
 
         prev_sample = mu_xt + sigma * noise
         return noise, prev_sample
@@ -1345,7 +1320,7 @@ def compute_noise_sde_dpm_pp_2nd(scheduler, prev_latents, latents, timestep, noi
         if sigma > 0.0:
             noise = (prev_latents - mu_xt) / sigma
         else:
-            noise = torch.Tensor([0.0]).to(sample.device)
+            noise = torch.tensor([0.0]).to(sample.device)
 
         prev_sample = mu_xt + sigma * noise
 
