@@ -11,6 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+#
+# Based on [In-Context Learning Unlocked for Diffusion Models](https://arxiv.org/abs/2305.01115)
+# Authors: Zhendong Wang, Yifan Jiang, Yadong Lu, Yelong Shen, Pengcheng He, Weizhu Chen, Zhangyang Wang, Mingyuan Zhou 
+# Project Page: https://zhendong-wang.github.io/prompt-diffusion.github.io/
+# Code: https://github.com/Zhendong-Wang/Prompt-Diffusion
+#
+# Adapted to Diffusers by [iczaw](https://github.com/iczaw).
 
 
 import inspect
@@ -51,31 +58,33 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionControlNetPipeline, ControlNetModel, UniPCMultistepScheduler
+        >>> from diffusers import PromptDiffusionControlNetModel
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> import torch
 
-        >>> import cv2
+        >>> from diffusers.pipelines.pipeline_utils import DiffusionPipeline
         >>> from PIL import Image
+        >>> import PIL.ImageOps
 
         >>> # download an image
-        >>> image = load_image(
-        ...     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
-        ... )
-        >>> image = np.array(image)
+        >>> image_a = PIL.ImageOps.invert(load_image(
+        ...     "https://github.com/Zhendong-Wang/Prompt-Diffusion/blob/main/images_to_try/house_line.png?raw=true"
+        ... ))
 
-        >>> # get canny image
-        >>> image = cv2.Canny(image, 100, 200)
-        >>> image = image[:, :, None]
-        >>> image = np.concatenate([image, image, image], axis=2)
-        >>> canny_image = Image.fromarray(image)
+        >>> # download an image
+        >>> image_b = PIL.ImageOps.invert(load_image(
+        ...     "https://github.com/Zhendong-Wang/Prompt-Diffusion/blob/main/images_to_try/house.png?raw=true"
+        ... ))
 
-        >>> # load control net and stable diffusion v1-5
-        >>> controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionControlNetPipeline.from_pretrained(
-        ...     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
-        ... )
+        >>> # download an image
+        >>> query = PIL.ImageOps.invert(load_image(
+        ...     "https://github.com/Zhendong-Wang/Prompt-Diffusion/blob/main/images_to_try/new_01.png?raw=true"
+        ... ))
+
+        >>> # load prompt diffusion control net and prompt diffusion
+        >>> controlnet = PromptDiffusionControlNetModel.from_pretrained("path-to-converted-promptdiffusion-controlnet", torch_dtype=torch.float16)
+        >>> pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, variant="fp16", custom_pipeline="pipeline_prompt_diffusion")
 
         >>> # speed up diffusion process with faster scheduler and memory optimization
         >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
@@ -87,7 +96,7 @@ EXAMPLE_DOC_STRING = """
         >>> # generate image
         >>> generator = torch.manual_seed(0)
         >>> image = pipe(
-        ...     "futuristic-looking woman", num_inference_steps=20, generator=generator, image=canny_image
+        ...     "a tortoise", num_inference_steps=20, generator=generator, image_pair=[image_a,image_b], image=query
         ... ).images[0]
         ```
 """
@@ -141,6 +150,8 @@ class PromptDiffusionPipeline(
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
+
+    This pipeline also adds experimental support for [Prompt Diffusion](https://arxiv.org/abs/2305.01115).
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
@@ -655,7 +666,10 @@ class PromptDiffusionPipeline(
                 ):
                     self.check_image(image, prompt, prompt_embeds)
         else:
-            raise ValueError("`image_pair` Two shalt be the number thou shalt count, and the number of the counting shalt be two.")
+            raise ValueError(
+                f"You have passed a list of images of length {len(image_pair)}."
+                f"Make sure the list size equals to two."
+            )
 
         # Check `controlnet_conditioning_scale`
         if (
@@ -710,6 +724,7 @@ class PromptDiffusionPipeline(
             if end > 1.0:
                 raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
         image_is_pil = isinstance(image, PIL.Image.Image)
         image_is_tensor = isinstance(image, torch.Tensor)
@@ -747,6 +762,7 @@ class PromptDiffusionPipeline(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
+    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_image(
         self,
         image,
@@ -922,7 +938,7 @@ class PromptDiffusionPipeline(
                 `init`, images must be passed as a list such that each element of the list can be correctly batched for
                 input to a single ControlNet.
             image_pair `List[PIL.Image.Image]`:
-                a pair of vision task examples
+                a pair of task-specific example images
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
