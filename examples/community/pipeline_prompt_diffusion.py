@@ -59,6 +59,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> # !pip install opencv-python transformers accelerate
         >>> from diffusers import PromptDiffusionControlNetModel
+        >>> from diffusers import UniPCMultistepScheduler
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> import torch
@@ -84,7 +85,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # load prompt diffusion control net and prompt diffusion
         >>> controlnet = PromptDiffusionControlNetModel.from_pretrained("path-to-converted-promptdiffusion-controlnet", torch_dtype=torch.float16)
-        >>> pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, variant="fp16", custom_pipeline="pipeline_prompt_diffusion")
+        >>> pipe = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16, variant="fp16", controlnet=controlnet,custom_pipeline="pipeline_prompt_diffusion")
 
         >>> # speed up diffusion process with faster scheduler and memory optimization
         >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
