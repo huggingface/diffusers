@@ -1612,8 +1612,6 @@ def main(args):
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
 
-    # Handle instance prompt.
-    instance_time_ids = compute_time_ids()
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
@@ -1625,7 +1623,6 @@ def main(args):
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
-        class_time_ids = compute_time_ids()
         if freeze_text_encoder:
             class_prompt_hidden_states, class_pooled_prompt_embeds = compute_text_embeddings(
                 args.class_prompt, text_encoders, tokenizers
@@ -1640,9 +1637,6 @@ def main(args):
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
-    add_time_ids = instance_time_ids
-    if args.with_prior_preservation:
-        add_time_ids = torch.cat([add_time_ids, class_time_ids], dim=0)
 
     # if --train_text_encoder_ti we need add_special_tokens to be True fo textual inversion
     add_special_tokens = True if args.train_text_encoder_ti else False
