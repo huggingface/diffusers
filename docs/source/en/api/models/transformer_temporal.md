@@ -16,8 +16,8 @@ A Transformer model for video-like data.
 
 ## TransformerTemporalModel
 
-[[autodoc]] models.transformer_temporal.TransformerTemporalModel
+[[autodoc]] models.transformer.transformer_temporal.TransformerTemporalModel
 
 ## TransformerTemporalModelOutput
 
-[[autodoc]] models.transformer_temporal.TransformerTemporalModelOutput
+[[autodoc]] models.transformers.transformer_temporal.TransformerTemporalModelOutput
