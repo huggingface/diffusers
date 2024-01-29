@@ -1612,7 +1612,6 @@ def main(args):
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
 
-
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
