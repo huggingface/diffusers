@@ -429,6 +429,12 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+    parser.add_argument(
+        "--tracker_name",
+        type=str,
+        default="diffusion-dpo-lora-sdxl",
+        help=("The name of the tracker to report results to."),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -734,6 +740,10 @@ def main(args):
             # Resize.
             combined_im = train_resize(combined_im)
 
+            # Flipping.
+            if not args.no_hflip and random.random() < 0.5:
+                combined_im = train_flip(combined_im)
+
             # Cropping.
             if not args.random_crop:
                 y1 = max(0, int(round((combined_im.shape[1] - args.resolution) / 2.0)))
@@ -742,11 +752,6 @@ def main(args):
             else:
                 y1, x1, h, w = train_crop.get_params(combined_im, (args.resolution, args.resolution))
                 combined_im = crop(combined_im, y1, x1, h, w)
-
-            # Flipping.
-            if random.random() < 0.5:
-                x1 = combined_im.shape[2] - x1
-                combined_im = train_flip(combined_im)
 
             crop_top_left = (y1, x1)
             crop_top_lefts.append(crop_top_left)
@@ -821,7 +826,7 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("diffusion-dpo-lora-sdxl", config=vars(args))
+        accelerator.init_trackers(args.tracker_name, config=vars(args))
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps

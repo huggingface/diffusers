@@ -228,6 +228,8 @@
       title: UNet3DConditionModel
     - local: api/models/unet-motion
       title: UNetMotionModel
+    - local: api/models/uvit2d
+      title: UViT2DModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
@@ -333,6 +335,8 @@
         title: Latent upscaler
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-resolution
+      - local: api/pipelines/stable_diffusion/k_diffusion
+        title: K-Diffusion
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
       - local: api/pipelines/stable_diffusion/adapter

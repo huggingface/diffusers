@@ -51,7 +51,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
-from diffusers.training_utils import resolve_interpolation_mode
+from diffusers.training_utils import cast_training_params, resolve_interpolation_mode
 from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -860,10 +860,8 @@ def main(args):
 
     # Make sure the trainable params are in float32.
     if args.mixed_precision == "fp16":
-        for param in unet.parameters():
-            # only upcast trainable parameters (LoRA) into fp32
-            if param.requires_grad:
-                param.data = param.to(torch.float32)
+        # only upcast trainable parameters (LoRA) into fp32
+        cast_training_params(unet, dtype=torch.float32)
 
     # Also move the alpha and sigma noise schedules to accelerator.device.
     alpha_schedule = alpha_schedule.to(accelerator.device)
