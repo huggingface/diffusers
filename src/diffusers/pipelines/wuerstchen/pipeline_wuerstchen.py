@@ -423,9 +423,9 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             latents = self.vqgan.config.scale_factor * latents
             images = self.vqgan.decode(latents).sample.clamp(0, 1)
             if output_type == "np":
-                images = images.permute(0, 2, 3, 1).cpu().numpy()
+                images = images.permute(0, 2, 3, 1).float().cpu().numpy()
             elif output_type == "pil":
-                images = images.permute(0, 2, 3, 1).cpu().numpy()
+                images = images.permute(0, 2, 3, 1).float().cpu().numpy()
                 images = self.numpy_to_pil(images)
         else:
             images = latents
