@@ -1232,7 +1232,6 @@ class CrossAttnDownBlock2D(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    lora_scale,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(
@@ -2479,7 +2478,6 @@ class CrossAttnUpBlock2D(nn.Module):
                     create_custom_forward(resnet),
                     hidden_states,
                     temb,
-                    lora_scale,
                     **ckpt_kwargs,
                 )
                 hidden_states = attn(
