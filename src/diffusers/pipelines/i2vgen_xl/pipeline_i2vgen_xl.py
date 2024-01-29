@@ -21,7 +21,7 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from ...image_processor import VaeImageProcessor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from ...models import AutoencoderKL
 from ...models.lora import adjust_lora_scale_text_encoder
@@ -612,7 +612,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
-        image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor] = None,
+        image: PipelineImageInput = None,
         height: Optional[int] = 704,
         width: Optional[int] = 1280,
         target_fps: Optional[int] = 16,

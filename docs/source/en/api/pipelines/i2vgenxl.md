@@ -22,25 +22,36 @@ Video synthesis has recently made remarkable strides benefiting from the rapid d
 ```python
 import torch
 from diffusers import I2VGenXLPipeline
-from diffusers.utils import export_to_gif, load_image
+from diffusers.utils import load_image, export_to_gif
 
-repo_id = "i2vgen-xl-diffusers"
-pipeline = I2VGenXLPipeline.from_pretrained(repo_id, torch_dtype=torch.float16).to("cuda")
+repo_id = "diffusers/i2vgen-xl"
+pipeline = I2VGenXLPipeline.from_pretrained(repo_id, torch_dtype=torch.float16)
 pipeline.enable_model_cpu_offload()
 
-image_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0001.jpg"
+image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?raw=true"
 image = load_image(image_url).convert("RGB")
-prompt = "A green frog floats on the surface of the water on green lotus leaves, with several pink lotus flowers, in a Chinese painting style."
+prompt = "Papers were floating in the air on a table in the library"
 negative_prompt = "Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms"
-generator = torch.manual_seed(8888)
 
+generator = torch.manual_seed(8888)
 frames = pipeline(
     prompt=prompt,
     image=image,
-    num_inference_steps=1,
     negative_prompt=negative_prompt,
-    generator=generator,
-    decode_chunk_size=1
-).frames
-export_to_gif(frames[0], "i2v.gif")
+    generator=generator).frames[0]
+video_path = export_to_gif(frames, 'i2v.gif')
 ```
+
+Here is a sample output:
+
+<table>
+    <tr>
+        <td><center>
+        masterpiece, bestquality, sunset.
+        <br>
+        <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/i2vgen-xl-example.gif"
+            alt="library"
+            style="width: 300px;" />
+        </center></td>
+    </tr>
+</table>
