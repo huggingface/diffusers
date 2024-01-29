@@ -949,6 +949,26 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         x_t = x_t.to(x.dtype)
         return x_t
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
+
+        index_candidates = (schedule_timesteps == timestep).nonzero()
+
+        if len(index_candidates) == 0:
+            step_index = len(self.timesteps) - 1
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        elif len(index_candidates) > 1:
+            step_index = index_candidates[1].item()
+        else:
+            step_index = index_candidates[0].item()
+
+        return step_index
+
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
         """
@@ -958,21 +978,7 @@ class SASolverScheduler(SchedulerMixin, ConfigMixin):
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
-
-            index_candidates = (self.timesteps == timestep).nonzero()
-
-            if len(index_candidates) == 0:
-                step_index = len(self.timesteps) - 1
-            # The sigma index that is taken for the **very** first `step`
-            # is always the second index (or the last index if there is only 1)
-            # This way we can ensure we don't accidentally skip a sigma in
-            # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-            elif len(index_candidates) > 1:
-                step_index = index_candidates[1].item()
-            else:
-                step_index = index_candidates[0].item()
-
-            self._step_index = step_index
+            self._step_index = self.index_for_timestep(timestep)
         else:
             self._step_index = self._begin_index
 

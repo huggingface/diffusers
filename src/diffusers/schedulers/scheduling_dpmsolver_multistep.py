@@ -815,6 +815,25 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             )
         return x_t
 
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
+
+        index_candidates = (schedule_timesteps == timestep).nonzero()
+
+        if len(index_candidates) == 0:
+            step_index = len(self.timesteps) - 1
+        # The sigma index that is taken for the **very** first `step`
+        # is always the second index (or the last index if there is only 1)
+        # This way we can ensure we don't accidentally skip a sigma in
+        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
+        elif len(index_candidates) > 1:
+            step_index = index_candidates[1].item()
+        else:
+            step_index = index_candidates[0].item()
+
+        return step_index
+
     def _init_step_index(self, timestep):
         """
         Initialize the step_index counter for the scheduler.
@@ -823,21 +842,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
-
-            index_candidates = (self.timesteps == timestep).nonzero()
-
-            if len(index_candidates) == 0:
-                step_index = len(self.timesteps) - 1
-            # The sigma index that is taken for the **very** first `step`
-            # is always the second index (or the last index if there is only 1)
-            # This way we can ensure we don't accidentally skip a sigma in
-            # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-            elif len(index_candidates) > 1:
-                step_index = index_candidates[1].item()
-            else:
-                step_index = index_candidates[0].item()
-
-            self._step_index = step_index
+            self._step_index = self.index_for_timestep(timestep)
         else:
             self._step_index = self._begin_index
 
@@ -952,16 +957,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # begin_index is None when the scheduler is used for training
         if self.begin_index is None:
-            step_indices = []
-            for timestep in timesteps:
-                index_candidates = (schedule_timesteps == timestep).nonzero()
-                if len(index_candidates) == 0:
-                    step_index = len(schedule_timesteps) - 1
-                elif len(index_candidates) > 1:
-                    step_index = index_candidates[1].item()
-                else:
-                    step_index = index_candidates[0].item()
-                step_indices.append(step_index)
+            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
         else:
             step_indices = [self.begin_index] * timesteps.shape[0]
 
