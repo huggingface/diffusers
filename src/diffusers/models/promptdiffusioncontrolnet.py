@@ -41,10 +41,9 @@ from .controlnet import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-# Copied from diffusers.models.controlnet.controlnetmodel
 class PromptDiffusionControlNetModel(ControlNetModel):
     """
-    A ControlNet model.
+    A PromptDiffusionControlNet model.
 
     Args:
         in_channels (`int`, defaults to 4):
@@ -195,7 +194,6 @@ class PromptDiffusionControlNetModel(ControlNetModel):
         )
 
 
-    # Copied from diffusers.models.controlnet.controlnetmodel.forward
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -213,7 +211,7 @@ class PromptDiffusionControlNetModel(ControlNetModel):
         return_dict: bool = True,
     ) -> Union[ControlNetOutput, Tuple[Tuple[torch.FloatTensor, ...], torch.FloatTensor]]:
         """
-        The [`ControlNetModel`] forward method.
+        The [`~PromptDiffusionControlNetModel`] forward method.
 
         Args:
             sample (`torch.FloatTensor`):
@@ -223,6 +221,8 @@ class PromptDiffusionControlNetModel(ControlNetModel):
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.
             controlnet_cond (`torch.FloatTensor`):
+                The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
+            controlnet_query_cond (`torch.FloatTensor`):
                 The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.
