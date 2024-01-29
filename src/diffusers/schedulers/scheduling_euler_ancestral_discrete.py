@@ -330,7 +330,7 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
-        
+
         indices = (schedule_timesteps == timestep).nonzero()
 
         # The sigma index that is taken for the **very** first `step`
@@ -340,17 +340,13 @@ class EulerAncestralDiscreteScheduler(SchedulerMixin, ConfigMixin):
         pos = 1 if len(indices) > 1 else 0
 
         return indices[pos].item()
-    
+
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
                 timestep = timestep.to(self.timesteps.device)
-                step_index = index_for_timestep(timestep)
-            else:
-                step_index = index_candidates[0]
-
-            self._step_index = step_index.item()
+            self._step_index = self.index_for_timestep(timestep)
         else:
             self._step_index = self._begin_index
 
