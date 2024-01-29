@@ -240,7 +240,6 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         images,
         negative_prompt,
         num_inference_steps,
-        do_classifier_free_guidance,
         prompt_embeds=None,
         prompt_embeds_pooled=None,
         negative_prompt_embeds=None,
@@ -464,7 +463,6 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             images,
             negative_prompt,
             num_inference_steps,
-            self.do_classifier_free_guidance,
             prompt_embeds=prompt_embeds,
             prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -499,8 +497,12 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 num_images_per_prompt=num_images_per_prompt,
             )
         else:
-            image_embeds_pooled = torch.zeros(batch_size * num_images_per_prompt, 1, 768, device=device, dtype=dtype)
-            uncond_image_embeds_pooled = torch.zeros(batch_size * num_images_per_prompt, 1, 768, device=device, dtype=dtype)
+            image_embeds_pooled = torch.zeros(
+                batch_size * num_images_per_prompt, 1, self.prior.config.c_clip_img, device=device, dtype=dtype
+            )
+            uncond_image_embeds_pooled = torch.zeros(
+                batch_size * num_images_per_prompt, 1, self.prior.config.c_clip_img, device=device, dtype=dtype
+            )
         image_embeds = torch.cat([image_embeds_pooled, uncond_image_embeds_pooled], dim=0)
 
         # For classifier free guidance, we need to do two forward passes.
@@ -518,8 +520,12 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         # 3. Determine latent shape of image embeddings
         latent_height = ceil(height / self.config.resolution_multiple)
         latent_width = ceil(width / self.config.resolution_multiple)
-        num_channels = self.prior.config.c_in
-        effnet_features_shape = (num_images_per_prompt * batch_size, num_channels, latent_height, latent_width)
+        effnet_features_shape = (
+            num_images_per_prompt * batch_size,
+            self.prior.config.c_in,
+            latent_height,
+            latent_width,
+        )
 
         # 4. Prepare and set timesteps
         if timesteps is not None:
@@ -537,7 +543,6 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
-
             # 7. Denoise image embeddings
             predicted_image_embedding = self.prior(
                 torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,

@@ -407,9 +407,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
 
                 latents = callback_outputs.pop("latents", latents)
                 image_embeddings = callback_outputs.pop("image_embeddings", image_embeddings)
-                text_encoder_hidden_states = callback_outputs.pop(
-                    "text_encoder_hidden_states", prompt_embeds_pooled
-                )
+                prompt_embeds_pooled = callback_outputs.pop("text_encoder_hidden_states", prompt_embeds_pooled)
 
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)
