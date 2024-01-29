@@ -17,7 +17,7 @@ from collections import defaultdict
 from contextlib import nullcontext
 from functools import partial
 from typing import Callable, Dict, List, Optional, Union
-import Path
+from pathlib import Path
 
 import safetensors
 import torch
