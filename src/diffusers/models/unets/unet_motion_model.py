@@ -29,7 +29,7 @@ from ..attention_processor import (
 )
 from ..embeddings import TimestepEmbedding, Timesteps
 from ..modeling_utils import ModelMixin
-from ..transformer_temporal import TransformerTemporalModel
+from ..transformers.transformer_temporal import TransformerTemporalModel
 from .unet_2d_blocks import UNetMidBlock2DCrossAttn
 from .unet_2d_condition import UNet2DConditionModel
 from .unet_3d_blocks import (

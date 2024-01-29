@@ -6,7 +6,7 @@ import torch
 from accelerate import load_checkpoint_and_dispatch
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.prior_transformer import PriorTransformer
+from diffusers.models.transformers.prior_transformer import PriorTransformer
 from diffusers.models.vq_model import VQModel
 
 

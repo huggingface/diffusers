@@ -38,4 +38,4 @@ It is assumed one of the input classes is the masked latent pixel. The predicted
 
 ## Transformer2DModelOutput
 
-[[autodoc]] models.transformer_2d.Transformer2DModelOutput
+[[autodoc]] models.transformers.transformer_2d.Transformer2DModelOutput

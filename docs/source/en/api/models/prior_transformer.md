@@ -24,4 +24,4 @@ The abstract from the paper is:
 
 ## PriorTransformerOutput
 
-[[autodoc]] models.prior_transformer.PriorTransformerOutput
+[[autodoc]] models.transformers.prior_transformer.PriorTransformerOutput

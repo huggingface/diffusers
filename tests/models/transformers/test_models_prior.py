@@ -30,7 +30,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from .test_modeling_common import ModelTesterMixin
+from ..test_modeling_common import ModelTesterMixin
 
 
 enable_full_determinism()

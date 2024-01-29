@@ -4,7 +4,7 @@ import tempfile
 import torch
 from accelerate import load_checkpoint_and_dispatch
 
-from diffusers.models.prior_transformer import PriorTransformer
+from diffusers.models.transformers.prior_transformer import PriorTransformer
 from diffusers.pipelines.shap_e import ShapERenderer
 
 
