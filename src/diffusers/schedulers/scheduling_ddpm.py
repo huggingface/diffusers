@@ -503,7 +503,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement 
+        # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
         # for the subsequent add_noise calls
         self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device)
         alphas_cumprod = self.alphas_cumprod.to(dtype=original_samples.dtype)
@@ -526,7 +526,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
-        alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
+        self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
+        alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)
         timesteps = timesteps.to(sample.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
