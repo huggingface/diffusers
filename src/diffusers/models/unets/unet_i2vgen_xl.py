@@ -140,12 +140,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
             The tuple of output channels for each block.
         layers_per_block (`int`, *optional*, defaults to 2): The number of layers per block.
-        downsample_padding (`int`, *optional*, defaults to 1): The padding to use for the downsampling convolution.
-        mid_block_scale_factor (`float`, *optional*, defaults to 1.0): The scale factor to use for the mid block.
-        act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
-        norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
         attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         num_attention_heads (`int`, *optional*): The number of attention heads.
@@ -173,11 +169,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         ),
         block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
-        downsample_padding: int = 1,
-        mid_block_scale_factor: float = 1,
-        act_fn: str = "silu",
         norm_num_groups: Optional[int] = 32,
-        norm_eps: float = 1e-5,
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
@@ -260,11 +252,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.time_proj = Timesteps(block_out_channels[0], True, 0)
         timestep_input_dim = block_out_channels[0]
 
-        self.time_embedding = TimestepEmbedding(
-            timestep_input_dim,
-            time_embed_dim,
-            act_fn=act_fn,
-        )
+        self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn="silu")
         self.context_embedding = nn.Sequential(
             nn.Linear(cross_attention_dim, time_embed_dim),
             nn.SiLU(),
@@ -295,12 +283,12 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 out_channels=output_channel,
                 temb_channels=time_embed_dim,
                 add_downsample=not is_final_block,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
+                resnet_eps=1e-05,
+                resnet_act_fn="silu",
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 num_attention_heads=num_attention_heads[i],
-                downsample_padding=downsample_padding,
+                downsample_padding=1,
                 dual_cross_attention=False,
             )
             self.down_blocks.append(down_block)
@@ -309,9 +297,9 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.mid_block = UNetMidBlock3DCrossAttn(
             in_channels=block_out_channels[-1],
             temb_channels=time_embed_dim,
-            resnet_eps=norm_eps,
-            resnet_act_fn=act_fn,
-            output_scale_factor=mid_block_scale_factor,
+            resnet_eps=1e-05,
+            resnet_act_fn="silu",
+            output_scale_factor=1,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads[-1],
             resnet_groups=norm_num_groups,
@@ -348,8 +336,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 prev_output_channel=prev_output_channel,
                 temb_channels=time_embed_dim,
                 add_upsample=add_upsample,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
+                resnet_eps=1e-05,
+                resnet_act_fn="silu",
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
                 num_attention_heads=reversed_num_attention_heads[i],
@@ -362,7 +350,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # out
         if norm_num_groups is not None:
             self.conv_norm_out = nn.GroupNorm(
-                num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=norm_eps
+                num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-05
             )
             self.conv_act = get_activation("silu")
         else:
