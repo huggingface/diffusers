@@ -143,7 +143,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
-        attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         num_attention_heads (`int`, *optional*): The number of attention heads.
     """
 
@@ -171,25 +170,11 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         layers_per_block: int = 2,
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: int = 1024,
-        attention_head_dim: Union[int, Tuple[int]] = 64,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
+        num_attention_heads: Optional[Union[int, Tuple[int]]] = 64,
     ):
         super().__init__()
 
         self.sample_size = sample_size
-
-        if num_attention_heads is not None:
-            raise NotImplementedError(
-                "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
-            )
-
-        # If `num_attention_heads` is not defined (which is the case for most models)
-        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
-        # The reason for this behavior is to correct for incorrectly named variables that were introduced
-        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
-        # which is why we correct for the naming here.
-        num_attention_heads = num_attention_heads or attention_head_dim
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -217,7 +202,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         self.transformer_in = TransformerTemporalModel(
             num_attention_heads=8,
-            attention_head_dim=attention_head_dim,
+            attention_head_dim=num_attention_heads,
             in_channels=block_out_channels[0],
             num_layers=1,
             norm_num_groups=norm_num_groups,
