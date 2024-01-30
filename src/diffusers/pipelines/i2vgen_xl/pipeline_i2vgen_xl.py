@@ -834,7 +834,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
 def _resize_bilinear(image, resolution):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
     if isinstance(image, torch.Tensor):
-        image = image.numpy()
+        image = (image.numpy() * 255.).clip(0, 255).astype("unint8")
         if image.ndim == 4:
             image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
         else:
@@ -850,7 +850,7 @@ def _resize_bilinear(image, resolution):
 def _center_crop_wide(image, resolution):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
     if isinstance(image, torch.Tensor):
-        image = image.numpy()
+        image = (image.numpy() * 255.).clip(0, 255).astype("unint8")
         if image.ndim == 4:
             image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
         else:
