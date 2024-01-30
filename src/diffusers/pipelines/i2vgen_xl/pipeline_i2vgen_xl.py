@@ -392,13 +392,15 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         return prompt_embeds, negative_prompt_embeds
 
-    def _encode_image(self, image, width, device, num_videos_per_prompt, force_feature_extractor_resize):
+    def _encode_image(self, image, width, device, num_videos_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
             # https://github.com/ali-vilab/i2vgen-xl/blob/2539c9262ff8a2a22fa9daecbfd13f0a2dbc32d0/tools/inferences/inference_i2vgen_entrance.py#L114
             image = _center_crop_wide(image, (width, width))
-            image = _resize_bilinear(image, (224, 224))
+            image = _resize_bilinear(
+                image, (self.feature_extractor.crop_size["width"], self.feature_extractor.crop_size["height"])
+            )
             image = self.image_processor.pil_to_numpy(image)
             image = self.image_processor.numpy_to_pt(image)
 
@@ -407,7 +409,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
                 images=image,
                 do_normalize=True,
                 do_center_crop=False,
-                do_resize=True if force_feature_extractor_resize else False,
+                do_resize=False,
                 do_rescale=False,
                 return_tensors="pt",
             ).pixel_values
@@ -624,7 +626,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        force_feature_extractor_resize: Optional[bool] = False,
         clip_skip: Optional[int] = 1,
     ):
         r"""
@@ -682,8 +683,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            force_feature_extractor_resize (`bool`, *optional*):
-                If set to True, additional resizing is done in the feature extractor. Only helpful for tests.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
@@ -738,9 +737,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         # 3.2 Encode image prompt
         # 3.2.1 Image encodings.
-        image_embeddings = self._encode_image(
-            image, width, device, num_videos_per_prompt, force_feature_extractor_resize=force_feature_extractor_resize
-        )
+        image_embeddings = self._encode_image(image, width, device, num_videos_per_prompt)
 
         # 3.2.2 Image latents.
         resized_image = _center_crop_wide(image, (width, height))
