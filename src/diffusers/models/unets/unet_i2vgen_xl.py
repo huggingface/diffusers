@@ -652,7 +652,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 a `tuple` is returned where the first element is the sample tensor.
         """
         batch_size, channels, num_frames, height, width = sample.shape
-        print(f"timestep: {timestep.shape} fps: {fps.shape}")
 
         # By default samples have to be AT least a multiple of the overall upsampling factor.
         # The overall upsampling factor is equal to 2 ** (# num of upsampling layears).
@@ -695,7 +694,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         fps_emb = self.fps_embedding(self.time_proj(fps).to(dtype=self.dtype))
 
         # 3. time + FPS embeddings.
-        print(f"t_emb: {t_emb.shape} fps_emb: {fps_emb.shape}")
         emb = t_emb + fps_emb
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
 
