@@ -257,7 +257,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             nn.AdaptiveAvgPool2d((32, 32)),
             nn.Conv2d(in_channels * 8, in_channels * 16, 3, stride=2, padding=1),
             nn.SiLU(),
-            nn.Conv2d(in_channels * 16, 1024, 3, stride=2, padding=1),
+            nn.Conv2d(in_channels * 16, cross_attention_dim, 3, stride=2, padding=1),
         )
 
         # other embeddings -- time, context, fps, etc.
