@@ -506,22 +506,11 @@ import torch
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 from diffusers.utils import load_image
 
-noise_scheduler = DDIMScheduler(
-    num_train_timesteps=1000,
-    beta_start=0.00085,
-    beta_end=0.012,
-    beta_schedule="scaled_linear",
-    clip_sample=False,
-    set_alpha_to_one=False,
-    steps_offset=1
-)
-
 pipeline = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
-    scheduler=noise_scheduler,
 ).to("cuda")
-
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
 
 pipeline.set_ip_adapter_scale(0.7)
@@ -559,16 +548,6 @@ from diffusers import AutoPipelineForText2Image, DDIMScheduler
 from transformers import CLIPVisionModelWithProjection
 from diffusers.utils import load_image
 
-noise_scheduler = DDIMScheduler(
-    num_train_timesteps=1000,
-    beta_start=0.00085,
-    beta_end=0.012,
-    beta_schedule="scaled_linear",
-    clip_sample=False,
-    set_alpha_to_one=False,
-    steps_offset=1
-)
-
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "h94/IP-Adapter", 
     subfolder="models/image_encoder",
@@ -578,10 +557,9 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
     torch_dtype=torch.float16,
-    scheduler=noise_scheduler,
     image_encoder=image_encoder,
 )
-
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter(
   "h94/IP-Adapter", 
   subfolder="sdxl_models", 
