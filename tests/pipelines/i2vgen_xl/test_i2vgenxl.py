@@ -39,11 +39,11 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
+    print_tensor_test,
     require_torch_gpu,
     skip_mps,
     slow,
     torch_device,
-    print_tensor_test
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -230,7 +230,7 @@ class I2VGenXLPipelineSlowTests(unittest.TestCase):
 
     def test_i2vgen_xl(self):
         # TODO: to change the path.
-        pipe = I2VGenXLPipeline.from_pretrained("diffusers/i2vgen-xl", torch_dtype=torch.float16)
+        pipe = I2VGenXLPipeline.from_pretrained("diffusers/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
         pipe = pipe.to(torch_device)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)

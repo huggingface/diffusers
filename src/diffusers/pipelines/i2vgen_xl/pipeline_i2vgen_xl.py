@@ -47,7 +47,8 @@ EXAMPLE_DOC_STRING = """
         >>> import torch
         >>> from diffusers import I2VGenXLPipeline
 
-        >>> pipeline = I2VGenXLPipeline.from_pretrained("repo_id", torch_dtype=torch.float16)
+        >>> # TODO: change the repo id
+        >>> pipeline = I2VGenXLPipeline.from_pretrained("diffusers/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
         >>> pipeline.enable_model_cpu_offload()
 
         >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?raw=true"
