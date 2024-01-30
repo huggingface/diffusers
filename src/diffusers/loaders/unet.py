@@ -16,6 +16,7 @@ import os
 from collections import defaultdict
 from contextlib import nullcontext
 from functools import partial
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
@@ -508,8 +509,9 @@ class UNet2DConditionLoadersMixin:
                 weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME if is_custom_diffusion else LORA_WEIGHT_NAME
 
         # Save the model
-        save_function(state_dict, os.path.join(save_directory, weight_name))
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
+        save_path = Path(save_directory, weight_name).as_posix()
+        save_function(state_dict, save_path)
+        logger.info(f"Model weights saved in {save_path}")
 
     def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
         self.lora_scale = lora_scale
