@@ -112,7 +112,7 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         torch.manual_seed(0)
         vision_encoder_config = CLIPVisionConfig(
             hidden_size=4,
-            projection_dim=32,
+            projection_dim=4,
             num_hidden_layers=2,
             num_attention_heads=2,
             image_size=32,
