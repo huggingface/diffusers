@@ -2127,25 +2127,28 @@ class IPAdapterAttnProcessor(nn.Module):
         self,
         attn,
         hidden_states,
-        encoder_hidden_states,
+        encoder_hidden_states=None,
         attention_mask=None,
         temb=None,
         scale=1.0,
     ):
         residual = hidden_states
-        if isinstance(encoder_hidden_states, tuple):
-            encoder_hidden_states, ip_hidden_states = encoder_hidden_states
-        else:
-            deprecation_message = (
-                "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
-                " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
-            )
-            deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
-            end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
-            encoder_hidden_states, ip_hidden_states = (
-                encoder_hidden_states[:, :end_pos, :],
-                [encoder_hidden_states[:, end_pos:, :]],
-            )
+
+        # separate ip_hidden_states from encoder_hidden_states
+        if encoder_hidden_states is not None:
+            if isinstance(encoder_hidden_states, tuple):
+                encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+            else:
+                deprecation_message = (
+                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                )
+                deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+                end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
+                encoder_hidden_states, ip_hidden_states = (
+                    encoder_hidden_states[:, :end_pos, :],
+                    [encoder_hidden_states[:, end_pos:, :]],
+                )
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2156,8 +2159,9 @@ class IPAdapterAttnProcessor(nn.Module):
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        batch_size, sequence_length, _ = encoder_hidden_states.shape
-
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
         attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
 
         if attn.group_norm is not None:
@@ -2165,7 +2169,9 @@ class IPAdapterAttnProcessor(nn.Module):
 
         query = attn.to_q(hidden_states)
 
-        if attn.norm_cross:
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
         key = attn.to_k(encoder_hidden_states)
@@ -2258,25 +2264,28 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         self,
         attn,
         hidden_states,
-        encoder_hidden_states,
+        encoder_hidden_states=None,
         attention_mask=None,
         temb=None,
         scale=1.0,
     ):
         residual = hidden_states
-        if isinstance(encoder_hidden_states, tuple):
-            encoder_hidden_states, ip_hidden_states = encoder_hidden_states
-        else:
-            deprecation_message = (
-                "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
-                " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
-            )
-            deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
-            end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
-            encoder_hidden_states, ip_hidden_states = (
-                encoder_hidden_states[:, :end_pos, :],
-                [encoder_hidden_states[:, end_pos:, :]],
-            )
+
+        # separate ip_hidden_states from encoder_hidden_states
+        if encoder_hidden_states is not None:
+            if isinstance(encoder_hidden_states, tuple):
+                encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+            else:
+                deprecation_message = (
+                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                )
+                deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+                end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
+                encoder_hidden_states, ip_hidden_states = (
+                    encoder_hidden_states[:, :end_pos, :],
+                    [encoder_hidden_states[:, end_pos:, :]],
+                )
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2287,7 +2296,9 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
 
-        batch_size, sequence_length, _ = encoder_hidden_states.shape
+        batch_size, sequence_length, _ = (
+            hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
+        )
 
         if attention_mask is not None:
             attention_mask = attn.prepare_attention_mask(attention_mask, sequence_length, batch_size)
@@ -2300,10 +2311,10 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
         query = attn.to_q(hidden_states)
 
-        if attn.norm_cross:
+        if encoder_hidden_states is None:
+            encoder_hidden_states = hidden_states
+        elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-
-        # split hidden states
 
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
