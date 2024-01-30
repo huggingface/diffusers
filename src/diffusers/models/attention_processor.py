@@ -2094,9 +2094,9 @@ class IPAdapterAttnProcessor(nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (List[`int`], defaults to [4]):
+        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float`, defaults to [1.0]):
+        scale (`float` or List[`float`], defaults to 1.0):
             the weight scale of image prompt.
     """
 
@@ -2226,9 +2226,9 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, defaults to 4):
+        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float`, defaults to 1.0):
+        scale (`float` or `List[float]`, defaults to 1.0):
             the weight scale of image prompt.
     """
 
