@@ -18,7 +18,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig, CLIPVisionModelWithProjection
+from transformers import CLIPImageProcessor, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig, CLIPVisionModelWithProjection
 
 from diffusers import (
     AutoencoderKL,
@@ -110,6 +110,7 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             patch_size=1,
         )
         image_encoder = CLIPVisionModelWithProjection(vision_encoder_config)
+        feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         components = {
             "unet": unet,
