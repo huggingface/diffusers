@@ -68,7 +68,6 @@ class WuerstchenV3DiffNeXt(WuerstchenV3Unet):
         )
 
     def forward(self, x, r, effnet, clip_text_pooled, pixels=None, **kwargs):
-        dtype = effnet.dtype
         if pixels is None:
             pixels = x.new_zeros(x.size(0), 3, 8, 8)
 
@@ -77,17 +76,16 @@ class WuerstchenV3DiffNeXt(WuerstchenV3Unet):
         for c in self.t_conds:
             t_cond = kwargs.get(c, torch.ones_like(r))
             r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
-        clip = self.gen_c_embeddings(clip_text_pooled)
+        clip = self.gen_c_embeddings(clip_txt_pooled=clip_text_pooled)
 
         # Model Blocks
         x = self.embedding(x)
         x = x + self.effnet_mapper(
-            # nn.functional.interpolate(effnet.float(), size=x.shape[-2:], mode="bilinear", align_corners=True).to(dtype)
             nn.functional.interpolate(effnet, size=x.shape[-2:], mode="bilinear", align_corners=True)
         )
         x = x + nn.functional.interpolate(
-            self.pixels_mapper(pixels).float(), size=x.shape[-2:], mode="bilinear", align_corners=True
-        ).to(dtype)
+            self.pixels_mapper(pixels), size=x.shape[-2:], mode="bilinear", align_corners=True
+        )
         level_outputs = self._down_encode(x, r_embed, clip)
         x = self._up_decode(level_outputs, r_embed, clip)
         return self.clf(x)

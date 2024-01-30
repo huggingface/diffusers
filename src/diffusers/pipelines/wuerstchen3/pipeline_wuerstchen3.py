@@ -380,7 +380,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
             )
             # 7. Denoise latents
             predicted_latents = self.decoder(
-                torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
+                x=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
                 effnet=image_embeddings,
                 clip_text_pooled=prompt_embeds_pooled,

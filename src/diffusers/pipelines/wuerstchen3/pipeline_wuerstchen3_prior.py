@@ -545,7 +545,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             ratio = t.expand(latents.size(0)).to(dtype)
             # 7. Denoise image embeddings
             predicted_image_embedding = self.prior(
-                torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
+                x=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
                 clip_text=text_encoder_hidden_states,
                 clip_text_pooled=text_encoder_pooled,

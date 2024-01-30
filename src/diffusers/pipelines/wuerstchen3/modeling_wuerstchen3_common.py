@@ -287,13 +287,13 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
             x = upscaler(x)
         return x
 
-    def forward(self, x, r, clip_text_pooled, clip_text, clip_img, **kwargs):
+    def forward(self, x, r, clip_text, clip_text_pooled, clip_img, **kwargs):
         # Process the conditioning embeddings
         r_embed = self.gen_r_embedding(r)
         for c in self.t_conds:
             t_cond = kwargs.get(c, torch.zeros_like(r))
             r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
-        clip = self.gen_c_embeddings(clip_text_pooled, clip_text, clip_img)
+        clip = self.gen_c_embeddings(clip_text_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
 
         # Model Blocks
         x = self.embedding(x)
