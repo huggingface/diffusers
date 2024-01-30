@@ -125,7 +125,10 @@ def export_to_video(
     if output_video_path is None:
         output_video_path = tempfile.NamedTemporaryFile(suffix=".mp4").name
 
-    if isinstance(video_frames[0], PIL.Image.Image):
+    if isinstance(video_frames[0], np.ndarray):
+        video_frames = [(frame * 255).astype(np.uint8) for frame in video_frames]
+
+    elif isinstance(video_frames[0], PIL.Image.Image):
         video_frames = [np.array(frame) for frame in video_frames]
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
