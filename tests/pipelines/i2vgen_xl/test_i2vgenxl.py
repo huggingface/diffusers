@@ -47,16 +47,7 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     params = frozenset(["prompt", "negative_prompt", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "generator"])
     # No `output_type`.
-    required_optional_params = frozenset(
-        [
-            "num_inference_steps",
-            "generator",
-            "latents",
-            "return_dict",
-            "callback",
-            "callback_steps",
-        ]
-    )
+    required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
 
     def get_dummy_components(self):
         scheduler = DDIMScheduler(
@@ -80,7 +71,7 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             attention_head_dim=4,
             norm_num_groups=2,
         )
-        
+
         torch.manual_seed(0)
         vae = AutoencoderKL(
             block_out_channels=(8,),
