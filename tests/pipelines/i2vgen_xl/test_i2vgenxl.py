@@ -194,14 +194,9 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     # # (todo): sayakpaul
     # @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
-    # def test_inference_batch_consistent(self):
+    # def test_inference_batch_single_identical(self):
     #     pass
 
-    # (todo): sayakpaul
-    @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
-    def test_inference_batch_single_identical(self):
-        pass
-
-    @unittest.skip(reason="`num_images_per_prompt` argument is not supported for this pipeline.")
-    def test_num_images_per_prompt(self):
+    @unittest.skip(reason="`num_videos_per_prompt` argument is not supported for this pipeline.")
+    def test_num_videos_per_prompt(self):
         pass
