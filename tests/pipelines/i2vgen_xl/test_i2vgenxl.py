@@ -191,10 +191,10 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_xformers_attention_forwardGenerator_pass(self):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False, expected_max_diff=1e-2)
 
-    # (todo): sayakpaul
-    @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
-    def test_inference_batch_consistent(self):
-        pass
+    # # (todo): sayakpaul
+    # @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
+    # def test_inference_batch_consistent(self):
+    #     pass
 
     # (todo): sayakpaul
     @unittest.skip(reason="Batching needs to be properly figured out first for this pipeline.")
