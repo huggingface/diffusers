@@ -16,11 +16,13 @@
 import gc
 import traceback
 import unittest
+import tempfile
 
 import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
+import diffusers
 from diffusers import (
     AutoencoderKL,
     ControlNetXSAddon,
@@ -30,6 +32,7 @@ from diffusers import (
     StableDiffusionControlNetXSPipeline,
     UNet2DConditionModel,
 )
+from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -54,6 +57,7 @@ from ..test_pipelines_common import (
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
+    to_np
 )
 
 
@@ -238,13 +242,99 @@ class ControlNetXSPipelineFastTests(
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_save_load_local(self):
-        # Todo Umer: test saving controlnet addon, but not the entire pipe
-        pass
+    def test_save_load_local(self, expected_max_difference=5e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
 
-    def test_save_load_optional_components(self):
-        # Todo Umer: comment why not needed (b/c save_pretrained isn't meant to be used)
-        pass
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output = pipe(**inputs)[0]
+
+        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
+        logger.setLevel(diffusers.logging.INFO)
+
+        with tempfile.TemporaryDirectory() as tmpdir_components:
+            with tempfile.TemporaryDirectory() as tmpdir_addon:
+                pipe.save_pretrained(
+                    base_path=tmpdir_components,
+                    addon_path=tmpdir_addon,
+                    base_kwargs=dict(safe_serialization=False),
+                    addon_kwargs=dict(safe_serialization=False),
+                )
+
+                pipe_loaded = self.pipeline_class.from_pretrained(
+                    base_path=tmpdir_components,
+                    addon_path=tmpdir_addon
+                )
+
+                for component in pipe_loaded.components.values():
+                    if hasattr(component, "set_default_attn_processor"):
+                        component.set_default_attn_processor()
+
+                pipe_loaded.to(torch_device)
+                pipe_loaded.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, expected_max_difference)
+
+    def test_save_load_optional_components(self, expected_max_difference=1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        # set all optional components to None
+        for optional_component in pipe._optional_components:
+            setattr(pipe, optional_component, None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        output = pipe(**inputs)[0]
+
+        with tempfile.TemporaryDirectory() as tmpdir_components:
+            with tempfile.TemporaryDirectory() as tmpdir_addon:
+
+                pipe.save_pretrained(
+                    base_path=tmpdir_components,
+                    addon_path=tmpdir_addon,
+                    base_kwargs=dict(safe_serialization=False),
+                    addon_kwargs=dict(safe_serialization=False),
+                )
+
+                pipe_loaded = self.pipeline_class.from_pretrained(
+                    base_path=tmpdir_components,
+                    addon_path=tmpdir_addon
+                )
+
+                for component in pipe_loaded.components.values():
+                    if hasattr(component, "set_default_attn_processor"):
+                        component.set_default_attn_processor()
+                pipe_loaded.to(torch_device)
+                pipe_loaded.set_progress_bar_config(disable=None)
+
+        for optional_component in pipe._optional_components:
+            self.assertTrue(
+                getattr(pipe_loaded, optional_component) is None,
+                f"`{optional_component}` did not stay set to None after loading.",
+            )
+
+        inputs = self.get_dummy_inputs(generator_device)
+        output_loaded = pipe_loaded(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
+        self.assertLess(max_diff, expected_max_difference)
+
 
 @slow
 @require_torch_gpu
@@ -256,7 +346,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
 
     def test_canny(self):
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            components_path="stabilityai/stable-diffusion-2-1",
+            base_path="stabilityai/stable-diffusion-2-1",
             addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-canny",
         )
         pipe.enable_model_cpu_offload()
@@ -275,12 +365,12 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         assert image.shape == (768, 512, 3)
         
         original_image = image[-3:, -3:, -1].flatten()
-        expected_image = np.array([0.1274, 0.1401, 0.147, 0.1185, 0.1555, 0.1492, 0.1565, 0.1474, 0.1701])
+        expected_image = np.array([0.1462, 0.1518, 0.1583, 0.1332, 0.1655, 0.1629, 0.1646, 0.1595, 0.1762])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     def test_depth(self):
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            components_path="stabilityai/stable-diffusion-2-1",
+            base_path="stabilityai/stable-diffusion-2-1",
             addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-depth",
         )
         pipe.enable_model_cpu_offload()
@@ -299,7 +389,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         assert image.shape == (512, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        expected_image = np.array([0.1098, 0.1025, 0.1211, 0.1129, 0.1165, 0.1262, 0.1185, 0.1261, 0.1703])
+        expected_image = np.array([0.1504, 0.1448, 0.1742, 0.155 , 0.1553, 0.1833, 0.1694, 0.1833, 0.2354])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     @require_python39_or_higher

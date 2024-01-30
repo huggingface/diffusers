@@ -40,7 +40,7 @@ from ...models.attention_processor import (
 )
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import USE_PEFT_BACKEND, logging, replace_example_docstring, scale_lora_layers, unscale_lora_layers
+from ...utils import USE_PEFT_BACKEND, deprecate, logging, replace_example_docstring, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_xl import StableDiffusionXLPipeline
@@ -149,6 +149,8 @@ class StableDiffusionXLControlNetXSPipeline(
         "feature_extractor",
         "image_encoder",
     ]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
+
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -200,11 +202,12 @@ class StableDiffusionXLControlNetXSPipeline(
 
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
 
-    def from_pretrained(components_path, addon_path, components_kwargs={}, addon_kwargs={}):
+    @classmethod
+    def from_pretrained(cls, base_path, addon_path, base_kwargs={}, addon_kwargs={}):
         """
             todo: docstring
         """
-        components = StableDiffusionXLPipeline.from_pretrained(components_path, **components_kwargs).components
+        components = StableDiffusionXLPipeline.from_pretrained(base_path, **base_kwargs).components
         controlnet_addon = ControlNetXSAddon.from_pretrained(addon_path, **addon_kwargs)
 
         # todo: what if StableDiffusionXLPipeline has more params than StableDiffusionControlNetXSPipeline
@@ -216,9 +219,15 @@ class StableDiffusionXLControlNetXSPipeline(
         controlnet = ControlNetXSModel(unet, controlnet_addon)
         return StableDiffusionXLControlNetXSPipeline(controlnet=controlnet, **components)
 
-    def save_pretrained(*args, **kwargs):
-        raise RuntimeError("Can't save a `StableDiffusionControlNetXSPipeline`. Save the `controlnet_addon` and all other components separately.")
+    def save_pretrained(self, base_path, addon_path, base_kwargs={}, addon_kwargs={}):
+        """todo docs"""
+        components = {k:v for k,v in self.components.items() if k!="controlnet"}
+        components["unet"] = self.components["controlnet"].base_model
 
+        controlnet_addon = self.components["controlnet"].ctrl_model 
+
+        StableDiffusionXLPipeline(**components).save_pretrained(base_path, **base_kwargs)
+        controlnet_addon.save_pretrained(addon_path, **addon_kwargs)
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -546,13 +555,19 @@ class StableDiffusionXLControlNetXSPipeline(
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
+        callback_on_step_end_tensor_inputs=None,
     ):
-        if (callback_steps is None) or (
-            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
-        ):
+        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
+            )
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -760,7 +775,6 @@ class StableDiffusionXLControlNetXSPipeline(
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
     def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
         r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
 
@@ -789,6 +803,31 @@ class StableDiffusionXLControlNetXSPipeline(
         # todo: check if works
         self.controlnet.disable_freeu()
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.guidance_scale
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.clip_skip
+    @property
+    def clip_skip(self):
+        return self._clip_skip
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.do_classifier_free_guidance
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1 and self.unet.config.time_cond_proj_dim is None
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.cross_attention_kwargs
+    @property
+    def cross_attention_kwargs(self):
+        return self._cross_attention_kwargs
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.num_timesteps
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -812,8 +851,6 @@ class StableDiffusionXLControlNetXSPipeline(
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
-        callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 1.0,
         control_guidance_start: float = 0.0,
@@ -825,6 +862,9 @@ class StableDiffusionXLControlNetXSPipeline(
         negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
         negative_target_size: Optional[Tuple[int, int]] = None,
         clip_skip: Optional[int] = None,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -949,6 +989,23 @@ class StableDiffusionXLControlNetXSPipeline(
                 If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableDiffusionXLPipelineOutput`] is
                 returned, otherwise a `tuple` is returned containing the output images.
         """
+
+        callback = kwargs.pop("callback", None)
+        callback_steps = kwargs.pop("callback_steps", None)
+
+        if callback is not None:
+            deprecate(
+                "callback",
+                "1.0.0",
+                "Passing `callback` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
+            )
+        if callback_steps is not None:
+            deprecate(
+                "callback_steps",
+                "1.0.0",
+                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
+            )
+
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
         # 1. Check inputs. Raise error if not correct
@@ -966,7 +1023,13 @@ class StableDiffusionXLControlNetXSPipeline(
             controlnet_conditioning_scale,
             control_guidance_start,
             control_guidance_end,
+            callback_on_step_end_tensor_inputs,
         )
+
+        self._guidance_scale = guidance_scale
+        self._clip_skip = clip_skip
+        self._cross_attention_kwargs = cross_attention_kwargs
+        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1086,6 +1149,7 @@ class StableDiffusionXLControlNetXSPipeline(
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+        self._num_timesteps = len(timesteps)
         is_controlnet_compiled = is_compiled_module(self.controlnet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1123,6 +1187,16 @@ class StableDiffusionXLControlNetXSPipeline(
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+
+                if callback_on_step_end is not None:
+                    callback_kwargs = {}
+                    for k in callback_on_step_end_tensor_inputs:
+                        callback_kwargs[k] = locals()[k]
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                    latents = callback_outputs.pop("latents", latents)
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

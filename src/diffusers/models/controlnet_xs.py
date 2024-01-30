@@ -289,11 +289,12 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
 
-        # todo: attention_head_dim can be int, not list(int)
         if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
             raise ValueError(
                 f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
             )
+        elif isinstance(attention_head_dim, int):
+            attention_head_dim = [attention_head_dim] * len(down_block_types)
 
         # input
         self.conv_in = nn.Conv2d(4, block_out_channels[0], kernel_size=3, padding=1)
