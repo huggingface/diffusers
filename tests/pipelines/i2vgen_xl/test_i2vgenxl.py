@@ -18,7 +18,14 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPImageProcessor, CLIPTextConfig, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -119,7 +126,7 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "text_encoder": text_encoder,
             "image_encoder": image_encoder,
             "tokenizer": tokenizer,
-            "feature_extractor": None,
+            "feature_extractor": feature_extractor,
         }
         return components
 
