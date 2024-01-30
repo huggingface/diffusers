@@ -369,7 +369,7 @@ class SchedulerCommonTest(unittest.TestCase):
     def check_over_configs(self, time_step=0, **config):
         kwargs = dict(self.forward_default_kwargs)
 
-        num_inference_steps = kwargs.pop("num_inference_steps", self.default_num_inference_steps)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
         time_step = time_step if time_step is not None else self.default_timestep
 
         for scheduler_class in self.scheduler_classes:
