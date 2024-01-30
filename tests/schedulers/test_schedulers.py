@@ -257,27 +257,24 @@ class SchedulerCommonTest(unittest.TestCase):
     forward_default_kwargs = ()
 
     @property
+    def default_num_inference_steps(self):
+        return 50
+
+    @property
     def default_timestep(self):
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.get("num_inference_steps", None)
+        num_inference_steps = kwargs.get("num_inference_steps", self.default_num_inference_steps)
 
-        if num_inference_steps is not None:
-            try:
-                scheduler_config = self.get_scheduler_config()
-                scheduler = self.scheduler_classes[0](**scheduler_config)
+        try:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = self.scheduler_classes[0](**scheduler_config)
 
-                scheduler.set_timesteps(num_inference_steps)
-                timestep = scheduler.timesteps[0]
-            except NotImplementedError:
-                logger.warn(
-                    f"The scheduler {self.__class__.__name__} does not implement a `get_scheduler_config` method."
-                    f" `default_timestep` will be set to the default value of 1."
-                )
-                timestep = 1
-        else:
-            logger.warn(
-                f"The scheduler {self.__class__.__name__} does not supply a `num_inference_steps` value in"
-                f" `forward_default_kwargs`. `default_timestep` will be set to the default value of 1."
+            scheduler.set_timesteps(num_inference_steps)
+            timestep = scheduler.timesteps[0]
+        except NotImplementedError:
+            logger.warning(
+                f"The scheduler {self.__class__.__name__} does not implement a `get_scheduler_config` method."
+                f" `default_timestep` will be set to the default value of 1."
             )
             timestep = 1
 
@@ -288,41 +285,30 @@ class SchedulerCommonTest(unittest.TestCase):
     @property
     def default_timestep_2(self):
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.get("num_inference_steps", None)
+        num_inference_steps = kwargs.get("num_inference_steps", self.default_num_inference_steps)
 
-        if num_inference_steps is not None:
-            try:
-                scheduler_config = self.get_scheduler_config()
-                scheduler = self.scheduler_classes[0](**scheduler_config)
+        try:
+            scheduler_config = self.get_scheduler_config()
+            scheduler = self.scheduler_classes[0](**scheduler_config)
 
-                scheduler.set_timesteps(num_inference_steps)
-                if len(scheduler.timesteps) >= 2:
-                    timestep_2 = scheduler.timesteps[1]
-                else:
-                    logger.warn(
-                        f"Using num_inference_steps from the scheduler testing class's default config leads to a timestep"
-                        f" scheduler of length {len(scheduler.timesteps)} < 2. The default `default_timestep_2` value of 0"
-                        f" will be used."
-                    )
-                    timestep_2 = 0
-            except NotImplementedError:
-                logger.warn(
-                    f"The scheduler {self.__class__.__name__} does not implement a `get_scheduler_config` method."
-                    f" `default_timestep_2` will be set to the default value of 0."
+            scheduler.set_timesteps(num_inference_steps)
+            if len(scheduler.timesteps) >= 2:
+                timestep_2 = scheduler.timesteps[1]
+            else:
+                logger.warning(
+                    f"Using num_inference_steps from the scheduler testing class's default config leads to a timestep"
+                    f" scheduler of length {len(scheduler.timesteps)} < 2. The default `default_timestep_2` value of 0"
+                    f" will be used."
                 )
                 timestep_2 = 0
-        else:
-            logger.warn(
-                f"The scheduler {self.__class__.__name__} does not supply a `num_inference_steps` value in"
-                f" `forward_default_kwargs`. `default_timestep_2` will be set to the default value of 0."
+        except NotImplementedError:
+            logger.warning(
+                f"The scheduler {self.__class__.__name__} does not implement a `get_scheduler_config` method."
+                f" `default_timestep_2` will be set to the default value of 0."
             )
             timestep_2 = 0
 
         return timestep_2
-
-    @property
-    def default_num_inference_steps(self):
-        return 100
 
     @property
     def dummy_sample(self):
@@ -383,7 +369,7 @@ class SchedulerCommonTest(unittest.TestCase):
     def check_over_configs(self, time_step=0, **config):
         kwargs = dict(self.forward_default_kwargs)
 
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.pop("num_inference_steps", self.default_num_inference_steps)
         time_step = time_step if time_step is not None else self.default_timestep
 
         for scheduler_class in self.scheduler_classes:
@@ -442,7 +428,7 @@ class SchedulerCommonTest(unittest.TestCase):
         kwargs = dict(self.forward_default_kwargs)
         kwargs.update(forward_kwargs)
 
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.pop("num_inference_steps", self.default_num_inference_steps)
         time_step = time_step if time_step is not None else self.default_timestep
 
         for scheduler_class in self.scheduler_classes:
@@ -484,7 +470,7 @@ class SchedulerCommonTest(unittest.TestCase):
     def test_from_save_pretrained(self):
         kwargs = dict(self.forward_default_kwargs)
 
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.pop("num_inference_steps", self.default_num_inference_steps)
 
         for scheduler_class in self.scheduler_classes:
             timestep = self.default_timestep_2
@@ -570,7 +556,7 @@ class SchedulerCommonTest(unittest.TestCase):
     def test_step_shape(self):
         kwargs = dict(self.forward_default_kwargs)
 
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
+        num_inference_steps = kwargs.pop("num_inference_steps", self.default_num_inference_steps)
 
         timestep_0 = self.default_timestep
         timestep_1 = self.default_timestep_2
@@ -631,10 +617,9 @@ class SchedulerCommonTest(unittest.TestCase):
                 )
 
         kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", 50)
+        num_inference_steps = kwargs.pop("num_inference_steps", self.default_num_inference_steps)
 
         timestep = self.default_timestep
-        print(f"Default timestep: {timestep}")
         if len(self.scheduler_classes) > 0 and self.scheduler_classes[0] == IPNDMScheduler:
             timestep = 1
 
@@ -662,8 +647,6 @@ class SchedulerCommonTest(unittest.TestCase):
                 scheduler.set_timesteps(num_inference_steps)
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
-            
-            print(f"Timestep scheduler: {scheduler.timesteps}")
 
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
