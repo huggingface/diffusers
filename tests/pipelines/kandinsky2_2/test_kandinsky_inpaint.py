@@ -31,12 +31,12 @@ from diffusers import (
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    is_flaky,
     load_image,
     load_numpy,
     require_torch_gpu,
     slow,
     torch_device,
-    is_flaky
 )
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
