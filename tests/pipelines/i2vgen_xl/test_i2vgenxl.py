@@ -174,6 +174,12 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_save_load_local(self):
         super().test_save_load_local(expected_max_difference=0.006)
 
+    def test_dict_tuple_outputs_equivalent(self):
+        super().test_dict_tuple_outputs_equivalent(expected_max_difference=0.008)
+
+    def test_save_load_optional_components(self):
+        super().test_save_load_optional_components(expected_max_difference=0.004)
+
     @unittest.skip("Deprecated functionality")
     def test_attention_slicing_forward_pass(self):
         pass
@@ -198,6 +204,3 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     @unittest.skip(reason="`num_images_per_prompt` argument is not supported for this pipeline.")
     def test_num_images_per_prompt(self):
         pass
-
-    def test_progress_bar(self):
-        return super().test_progress_bar()
