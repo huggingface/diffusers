@@ -195,7 +195,6 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def test_inference_batch_single_identical(self):
         super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=0.008)
 
-    
     def test_num_videos_per_prompt(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
