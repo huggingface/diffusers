@@ -851,13 +851,14 @@ def _resize_bilinear(image, resolution):
 def _center_crop_wide(image, resolution):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
     if isinstance(image, torch.Tensor):
+        print(image.shape)
         image = image.permute(0, 2, 3, 1) if image.ndim == 4 else image.permute(2, 3, 1)
         image = (image.numpy() * 255.0).clip(0, 255).astype("uint8")
         if image.ndim == 4:
             image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
         else:
             image = PIL.Image.fromarray(image).convert("RGB")
-
+    print(len(image), image[0].size)
     if isinstance(image, list):
         scale = min(image[0].size[0] / resolution[0], image[0].size[1] / resolution[1])
         image = [u.resize((round(u.width // scale), round(u.height // scale)), resample=PIL.Image.BOX) for u in image]
