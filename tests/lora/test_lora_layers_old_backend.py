@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import gc
 import os
 import random
 import tempfile
@@ -151,9 +152,7 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
 
     unet_lora_sd = unet_lora_state_dict(unet)
     # Unload LoRA.
-    for module in unet.modules():
-        if hasattr(module, "set_lora_layer"):
-            module.set_lora_layer(None)
+    unet.unload_lora()
 
     return unet_lora_parameters, unet_lora_sd
 
@@ -230,9 +229,7 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
     unet_lora_sd = unet_lora_state_dict(unet)
 
     # Unload LoRA.
-    for module in unet.modules():
-        if hasattr(module, "set_lora_layer"):
-            module.set_lora_layer(None)
+    unet.unload_lora()
 
     return unet_lora_sd
 
@@ -1496,7 +1493,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_lora_processors(self):
+    def test_lora_at_different_scales(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -1513,9 +1510,6 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         # make sure we can set a list of attention processors
         model.load_attn_procs(lora_params)
         model.to(torch_device)
-
-        # test that attn processors can be set to itself
-        model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
@@ -1548,9 +1542,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
         # Unload LoRA.
-        for module in model.modules():
-            if hasattr(module, "set_lora_layer"):
-                module.set_lora_layer(None)
+        model.unload_lora()
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
@@ -1595,7 +1587,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
 
 
 @deprecate_after_peft_backend
-class UNet3DConditionModelTests(unittest.TestCase):
+class UNet3DConditionLoRAModelTests(unittest.TestCase):
     model_class = UNet3DConditionModel
     main_input_name = "sample"
 
@@ -1638,7 +1630,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_lora_processors(self):
+    def test_lora_at_different_scales(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["attention_head_dim"] = 8
@@ -1654,9 +1646,6 @@ class UNet3DConditionModelTests(unittest.TestCase):
         # make sure we can set a list of attention processors
         model.load_attn_procs(unet_lora_params)
         model.to(torch_device)
-
-        # test that attn processors can be set to itself
-        model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
@@ -1674,6 +1663,11 @@ class UNet3DConditionModelTests(unittest.TestCase):
 @deprecate_after_peft_backend
 @require_torch_gpu
 class LoraIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_dreambooth_old_format(self):
         generator = torch.Generator("cpu").manual_seed(0)
 

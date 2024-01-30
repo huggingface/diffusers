@@ -79,7 +79,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.25.0.dev0")
+check_min_version("0.26.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -341,7 +341,7 @@ def parse_args():
         help=(
             "Whether to use mixed precision. Choose"
             "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
-            "and an Nvidia Ampere GPU."
+            "and Nvidia Ampere GPU or Intel Gen 4 Xeon (and later) ."
         ),
     )
     parser.add_argument(

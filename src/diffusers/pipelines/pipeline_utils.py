@@ -60,6 +60,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
+from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -351,7 +352,7 @@ def get_class_obj_and_candidates(
 
 def _get_pipeline_class(
     class_obj,
-    config,
+    config=None,
     load_connected_pipeline=False,
     custom_pipeline=None,
     repo_id=None,
@@ -389,7 +390,12 @@ def _get_pipeline_class(
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    class_name = config["_class_name"]
+    class_name = class_name or config["_class_name"]
+    if not class_name:
+        raise ValueError(
+            "The class name could not be found in the configuration file. Please make sure to pass the correct `class_name`."
+        )
+
     class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
     pipeline_cls = getattr(diffusers_module, class_name)
@@ -530,6 +536,36 @@ def load_sub_model(
     return loaded_sub_model
 
 
+def _fetch_class_library_tuple(module):
+    # import it here to avoid circular import
+    diffusers_module = importlib.import_module(__name__.split(".")[0])
+    pipelines = getattr(diffusers_module, "pipelines")
+
+    # register the config from the original module, not the dynamo compiled one
+    not_compiled_module = _unwrap_model(module)
+    library = not_compiled_module.__module__.split(".")[0]
+
+    # check if the module is a pipeline module
+    module_path_items = not_compiled_module.__module__.split(".")
+    pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
+
+    path = not_compiled_module.__module__.split(".")
+    is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
+
+    # if library is not in LOADABLE_CLASSES, then it is a custom module.
+    # Or if it's a pipeline module, then the module is inside the pipeline
+    # folder so we set the library to module name.
+    if is_pipeline_module:
+        library = pipeline_dir
+    elif library not in LOADABLE_CLASSES:
+        library = not_compiled_module.__module__
+
+    # retrieve class_name
+    class_name = not_compiled_module.__class__.__name__
+
+    return (library, class_name)
+
+
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     r"""
     Base class for all pipelines.
@@ -556,38 +592,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     _is_onnx = False
 
     def register_modules(self, **kwargs):
-        # import it here to avoid circular import
-        diffusers_module = importlib.import_module(__name__.split(".")[0])
-        pipelines = getattr(diffusers_module, "pipelines")
-
         for name, module in kwargs.items():
             # retrieve library
             if module is None or isinstance(module, (tuple, list)) and module[0] is None:
                 register_dict = {name: (None, None)}
             else:
-                # register the config from the original module, not the dynamo compiled one
-                not_compiled_module = _unwrap_model(module)
-
-                library = not_compiled_module.__module__.split(".")[0]
-
-                # check if the module is a pipeline module
-                module_path_items = not_compiled_module.__module__.split(".")
-                pipeline_dir = module_path_items[-2] if len(module_path_items) > 2 else None
-
-                path = not_compiled_module.__module__.split(".")
-                is_pipeline_module = pipeline_dir in path and hasattr(pipelines, pipeline_dir)
-
-                # if library is not in LOADABLE_CLASSES, then it is a custom module.
-                # Or if it's a pipeline module, then the module is inside the pipeline
-                # folder so we set the library to module name.
-                if is_pipeline_module:
-                    library = pipeline_dir
-                elif library not in LOADABLE_CLASSES:
-                    library = not_compiled_module.__module__
-
-                # retrieve class_name
-                class_name = not_compiled_module.__class__.__name__
-
+                library, class_name = _fetch_class_library_tuple(module)
                 register_dict = {name: (library, class_name)}
 
             # save model index config
@@ -601,7 +611,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # We need to overwrite the config if name exists in config
             if isinstance(getattr(self.config, name), (tuple, list)):
                 if value is not None and self.config[name][0] is not None:
-                    class_library_tuple = (value.__module__.split(".")[0], value.__class__.__name__)
+                    class_library_tuple = _fetch_class_library_tuple(value)
                 else:
                     class_library_tuple = (None, None)
 
@@ -716,6 +726,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self.save_config(save_directory)
 
         if push_to_hub:
+            # Create a new empty model card and eventually tag it
+            model_card = load_or_create_model_card(repo_id, token=token, is_pipeline=True)
+            model_card = populate_model_card(model_card)
+            model_card.save(os.path.join(save_directory, "README.md"))
+
             self._upload_folder(
                 save_directory,
                 repo_id,
