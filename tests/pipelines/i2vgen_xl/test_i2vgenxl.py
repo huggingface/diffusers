@@ -150,7 +150,6 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "num_frames": 4,
             "width": 32,
             "height": 32,
-            "force_feature_extractor_resize": True,
         }
         return inputs
 
