@@ -690,7 +690,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         fps = _to_tensor(fps, sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
-        fps = fps.expand(fps.shape[0])
+        fps = fps.expand(sample.shape[0])
         fps_emb = self.fps_embedding(self.time_proj(fps).to(dtype=self.dtype))
 
         # 3. time + FPS embeddings.
