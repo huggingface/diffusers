@@ -56,6 +56,7 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     required_optional_params = frozenset(["num_inference_steps", "generator", "latents", "return_dict"])
 
     def get_dummy_components(self):
+        torch.manual_seed(0)
         scheduler = DDIMScheduler(
             beta_start=0.00085,
             beta_end=0.012,
@@ -117,6 +118,8 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             patch_size=1,
         )
         image_encoder = CLIPVisionModelWithProjection(vision_encoder_config)
+
+        torch.manual_seed(0)
         feature_extractor = CLIPImageProcessor(crop_size=32, size=32)
 
         components = {
