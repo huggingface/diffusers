@@ -46,23 +46,26 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import I2VGenXLPipeline
+
         >>> pipeline = I2VGenXLPipeline.from_pretrained("repo_id", torch_dtype=torch.float16)
         >>> pipeline.enable_model_cpu_offload()
-        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?raw=true"
+
+        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png"
         >>> image = load_image(image_url).convert("RGB")
-        >>> prompt = "Papers were floating in the air on a table in the library"
+
         >>> prompt = "Papers were floating in the air on a table in the library"
         >>> negative_prompt = "Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms"
         >>> generator = torch.manual_seed(8888)
+
         >>> frames = pipeline(
         ...     prompt=prompt,
         ...     image=image,
         ...     num_inference_steps=50,
         ...     negative_prompt=negative_prompt,
         ...     guidance_scale=9.0,
-        ...     clip_skip=1,
-        ...     generator=generator).frames[0]
-        >>> video_path = export_to_gif(frames, 'i2v.gif')
+        ...     generator=generator
+        ... ).frames[0]
+        >>> video_path = export_to_gif(frames, "i2v.gif")
         ```
 """
 
@@ -439,18 +442,9 @@ class I2VGenXLPipeline(DiffusionPipeline):
         else:
             image = self.vae.decode(latents).sample
 
-        video = (
-            image[None, :]
-            .reshape(
-                (
-                    batch_size,
-                    num_frames,
-                    -1,
-                )
-                + image.shape[2:]
-            )
-            .permute(0, 2, 1, 3, 4)
-        )
+        decode_shape = (batch_size, num_frames, -1) + image.shape[2:]
+        video = image[None, :].reshape(decode_shape).permute(0, 2, 1, 3, 4)
+
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         video = video.float()
         return video
@@ -630,18 +624,18 @@ class I2VGenXLPipeline(DiffusionPipeline):
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        clip_skip: Optional[int] = 1,  # I2VGen uses the second to last layer of CLIP for text/image embedding
+        clip_skip: Optional[int] = 1,
     ):
         r"""
-        The call function to the pipeline for generation.
+        The call function to the pipeline for image-to-video generation with [`I2VGenXLPipeline`].
 
         Args:
 
         Examples:
 
         Returns:
-            [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] is
+            [`pipelines.i2vgen_xl.pipeline_i2vgen_xl.I2VGenXLPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`pipelines.i2vgen_xl.pipeline_i2vgen_xl.I2VGenXLPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet

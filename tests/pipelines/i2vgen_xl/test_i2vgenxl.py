@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import random
 import unittest
 
-import random
 import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig, CLIPVisionModelWithProjection
@@ -28,18 +28,13 @@ from diffusers import (
 from diffusers.models.unets import I2VGenXLUNet
 from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import (
-    print_tensor_test,
     enable_full_determinism,
-    load_numpy,
-    numpy_cosine_similarity_distance,
-    require_torch_gpu,
+    floats_tensor,
+    print_tensor_test,
     skip_mps,
-    slow,
     torch_device,
-    floats_tensor
 )
 
-from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin
 
 
@@ -49,21 +44,8 @@ enable_full_determinism()
 @skip_mps
 class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = I2VGenXLPipeline
-    params = frozenset(
-        [
-            "prompt",
-            "negative_prompt",
-            "image"
-        ]
-    )
-    batch_params = frozenset(
-        [
-            "prompt",
-            "negative_prompt",
-            "image",
-            "generator"
-        ]
-    )
+    params = frozenset(["prompt", "negative_prompt", "image"])
+    batch_params = frozenset(["prompt", "negative_prompt", "image", "generator"])
     # No `output_type`.
     required_optional_params = frozenset(
         [
@@ -163,7 +145,7 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "output_type": "pt",
             "num_frames": 4,
             "width": 32,
-            "height": 32
+            "height": 32,
         }
         return inputs
 
@@ -213,5 +195,3 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
     def test_progress_bar(self):
         return super().test_progress_bar()
-
-

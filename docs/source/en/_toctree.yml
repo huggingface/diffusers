@@ -282,6 +282,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/i2vgenxl
+      title: I2VGen-XL
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
@@ -292,8 +294,6 @@
       title: Kandinsky 3
     - local: api/pipelines/latent_consistency_models
       title: Latent Consistency Models
-    - local: api/pipelines/i2vgenxl
-      title: I2VGen-XL
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
     - local: api/pipelines/panorama
