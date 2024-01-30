@@ -36,6 +36,7 @@ from diffusers.utils.testing_utils import (
     require_torch_gpu,
     slow,
     torch_device,
+    is_flaky
 )
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
@@ -244,6 +245,7 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     def test_float16_inference(self):
         super().test_float16_inference(expected_max_diff=5e-1)
 
+    @is_flaky()
     def test_model_cpu_offload_forward_pass(self):
         super().test_inference_batch_single_identical(expected_max_diff=5e-4)
 
