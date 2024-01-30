@@ -22,8 +22,8 @@ import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ImageProjection, ControlNetXSAddon, ControlNetXSModel
+from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, ControlNetXSAddon, ControlNetXSModel, ImageProjection
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -66,12 +66,11 @@ EXAMPLE_DOC_STRING = """
 
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5
-        >>> controlnet = ControlNetXSModel.from_pretrained(
-        ...     "UmerHA/ConrolNetXS-SD2.1-canny", torch_dtype=torch.float16
-        ... )
+
         >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-2-1", controlnet=controlnet, torch_dtype=torch.float16
-        ... )
+        >>>     base_path="stabilityai/stable-diffusion-2-1", base_kwargs=dict(torch_dtype=torch.float16),
+        >>>     addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-canny", addon_kwargs=dict(torch_dtype=torch.float16),
+        >>> )
         >>> pipe.enable_model_cpu_offload()
 
         >>> # get canny image
@@ -89,10 +88,9 @@ EXAMPLE_DOC_STRING = """
 
 
 class StableDiffusionControlNetXSPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
 ):
     r"""
-    # todo
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet-XS guidance.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
@@ -100,6 +98,9 @@ class StableDiffusionControlNetXSPipeline(
 
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
+        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
         - [`loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
 
     Args:
@@ -109,10 +110,8 @@ class StableDiffusionControlNetXSPipeline(
             Frozen text-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         tokenizer ([`~transformers.CLIPTokenizer`]):
             A `CLIPTokenizer` to tokenize text.
-        unet ([`UNet2DConditionModel`]):
-            A `UNet2DConditionModel` to denoise the encoded image latents.
-        controlnet_addon ([`ControlNetXSAddon`]):
-            Provides additional conditioning to the `unet` during the denoising process.
+        controlnet ([`ControlNetXSModel`]):
+            A model containing a base UNet and a control addon.
         scheduler ([`SchedulerMixin`]):
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
@@ -189,26 +188,50 @@ class StableDiffusionControlNetXSPipeline(
     @classmethod
     def from_pretrained(cls, base_path, addon_path, base_kwargs={}, addon_kwargs={}):
         """
-            todo: docstring
+        Instantiates pipeline from a `StableDiffusionPipeline` and a `ControlNetXSAddon`.
+
+        Arguments:
+            base_path (`str` or `os.PathLike`):
+                Directory to load underlying `StableDiffusionPipeline` from.
+            addon_path (`str` or `os.PathLike`):
+                Directory to load underlying `ControlNetXSAddon` model from.
+            base_kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~StableDiffusionPipeline.from_pretrained`] method.
+            addon_kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~ControlNetXSAddon.from_pretrained`] method.
         """
+
         components = StableDiffusionPipeline.from_pretrained(base_path, **base_kwargs).components
         controlnet_addon = ControlNetXSAddon.from_pretrained(addon_path, **addon_kwargs)
 
-        # todo: what if StableDiffusionPipeline has more params than StableDiffusionControlNetXSPipeline
-        # eg if some features are not implemented in cnxs yet?
-
         unet = components["unet"]
-        components = {k:v for k,v in components.items() if k != "unet"}
+        components = {k: v for k, v in components.items() if k != "unet"}
 
         controlnet = ControlNetXSModel(unet, controlnet_addon)
         return StableDiffusionControlNetXSPipeline(controlnet=controlnet, **components)
 
     def save_pretrained(self, base_path, addon_path, base_kwargs={}, addon_kwargs={}):
-        """todo docs"""
-        components = {k:v for k,v in self.components.items() if k!="controlnet"}
+        """
+
+        Separately save the underlying `StableDiffusionPipeline` and the `ControlNetXSAddon` so the pipeline is easily reloaded using the
+        [`~StableDiffusionControlNetXSPipeline.from_pretrained`] class method.
+
+        Arguments:
+            base_path (`str` or `os.PathLike`):
+                Directory to save underlying `StableDiffusionPipeline` to. Will be created if it doesn't exist.
+            addon_path (`str` or `os.PathLike`):
+                Directory to save underlying `ControlNetXSAddon` model to. Will be created if it doesn't exist.
+            base_kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~StableDiffusionPipeline.save_pretrained`] method.
+            addon_kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~ControlNetXSAddon.save_pretrained`] method.
+
+        """
+
+        components = {k: v for k, v in self.components.items() if k != "controlnet"}
         components["unet"] = self.components["controlnet"].base_model
 
-        controlnet_addon = self.components["controlnet"].ctrl_model 
+        controlnet_addon = self.components["controlnet"].ctrl_addon
 
         StableDiffusionPipeline(**components).save_pretrained(base_path, **base_kwargs)
         controlnet_addon.save_pretrained(addon_path, **addon_kwargs)
@@ -825,17 +848,13 @@ class StableDiffusionControlNetXSPipeline(
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+            ip_adapter_image (`PipelineImageInput`, *optional*):
+                Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
-            callback (`Callable`, *optional*):
-                A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function is called. If not specified, the callback is called at
-                every step.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -850,7 +869,15 @@ class StableDiffusionControlNetXSPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
-
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeine class.
         Examples:
 
         Returns:
@@ -927,7 +954,7 @@ class StableDiffusionControlNetXSPipeline(
             lora_scale=text_encoder_lora_scale,
             clip_skip=clip_skip,
         )
-        
+
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes

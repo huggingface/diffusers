@@ -21,7 +21,7 @@ import torch
 import torch.nn.functional as F
 from transformers import (
     CLIPImageProcessor,
-    CLIPTextModel, 
+    CLIPTextModel,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
     CLIPVisionModelWithProjection,
@@ -31,7 +31,7 @@ from diffusers.utils.import_utils import is_invisible_watermark_available
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetXSAddon, ControlNetXSModel, UNet2DConditionModel
+from ...models import AutoencoderKL, ControlNetXSAddon, ControlNetXSModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
@@ -40,7 +40,14 @@ from ...models.attention_processor import (
 )
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
-from ...utils import USE_PEFT_BACKEND, deprecate, logging, replace_example_docstring, scale_lora_layers, unscale_lora_layers
+from ...utils import (
+    USE_PEFT_BACKEND,
+    deprecate,
+    logging,
+    replace_example_docstring,
+    scale_lora_layers,
+    unscale_lora_layers,
+)
 from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..stable_diffusion_xl import StableDiffusionXLPipeline
@@ -76,11 +83,12 @@ EXAMPLE_DOC_STRING = """
 
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
-        >>> controlnet = ControlNetXSModel.from_pretrained("UmerHA/ConrolNetXS-SDXL-canny", torch_dtype=torch.float16)
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
-        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, vae=vae, torch_dtype=torch.float16
-        ... )
+        >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
+        >>>     base_path="stabilityai/stable-diffusion-xl-base-1.0", base_kwargs=dict(vae=vae, torch_dtype=torch.float16),
+        >>>     addon_path="UmerHA/Testing-ConrolNetXS-SDXL-canny", addon_kwargs=dict(torch_dtype=torch.float16),
+        >>> )
+
         >>> pipe.enable_model_cpu_offload()
 
         >>> # get canny image
@@ -187,7 +195,7 @@ class StableDiffusionXLControlNetXSPipeline(
             scheduler=scheduler,
             feature_extractor=feature_extractor,
             image_encoder=image_encoder,
-        )       
+        )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
         self.control_image_processor = VaeImageProcessor(
@@ -205,26 +213,50 @@ class StableDiffusionXLControlNetXSPipeline(
     @classmethod
     def from_pretrained(cls, base_path, addon_path, base_kwargs={}, addon_kwargs={}):
         """
-            todo: docstring
+        Instantiates pipeline from a `StableDiffusionXLPipeline` and a `ControlNetXSAddon`.
+
+        Arguments:
+            base_path (`str` or `os.PathLike`):
+                Directory to load underlying `StableDiffusionXLPipeline` from.
+            addon_path (`str` or `os.PathLike`):
+                Directory to load underlying `ControlNetXSAddon` model from.
+            base_kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~StableDiffusionXLPipeline.from_pretrained`] method.
+            addon_kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~ControlNetXSAddon.from_pretrained`] method.
         """
+
         components = StableDiffusionXLPipeline.from_pretrained(base_path, **base_kwargs).components
         controlnet_addon = ControlNetXSAddon.from_pretrained(addon_path, **addon_kwargs)
 
-        # todo: what if StableDiffusionXLPipeline has more params than StableDiffusionControlNetXSPipeline
-        # eg if some features are not implemented in cnxs yet?
-
         unet = components["unet"]
-        components = {k:v for k,v in components.items() if k != "unet"}
+        components = {k: v for k, v in components.items() if k != "unet"}
 
         controlnet = ControlNetXSModel(unet, controlnet_addon)
         return StableDiffusionXLControlNetXSPipeline(controlnet=controlnet, **components)
 
     def save_pretrained(self, base_path, addon_path, base_kwargs={}, addon_kwargs={}):
-        """todo docs"""
-        components = {k:v for k,v in self.components.items() if k!="controlnet"}
+        """
+
+        Separately save the underlying `StableDiffusionXLPipeline` and the `ControlNetXSAddon` so the pipeline is easily reloaded using the
+        [`~StableDiffusionControlNetXSPipeline.from_pretrained`] class method.
+
+        Arguments:
+            base_path (`str` or `os.PathLike`):
+                Directory to save underlying `StableDiffusionXLPipeline` to. Will be created if it doesn't exist.
+            addon_path (`str` or `os.PathLike`):
+                Directory to save underlying `ControlNetXSAddon` model to. Will be created if it doesn't exist.
+            base_kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~StableDiffusionXLPipeline.save_pretrained`] method.
+            addon_kwargs (`Dict[str, Any]`, *optional*):
+                Additional keyword arguments passed along to the [`~ControlNetXSAddon.save_pretrained`] method.
+
+        """
+
+        components = {k: v for k, v in self.components.items() if k != "controlnet"}
         components["unet"] = self.components["controlnet"].base_model
 
-        controlnet_addon = self.components["controlnet"].ctrl_model 
+        controlnet_addon = self.components["controlnet"].ctrl_addon
 
         StableDiffusionXLPipeline(**components).save_pretrained(base_path, **base_kwargs)
         controlnet_addon.save_pretrained(addon_path, **addon_kwargs)
@@ -262,7 +294,6 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         self.vae.disable_tiling()
 
-    # todo: check if copy
     def encode_prompt(
         self,
         prompt: str,
@@ -321,6 +352,8 @@ class StableDiffusionXLControlNetXSPipeline(
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
         """
+        # Note: this is almost an exact copy of `StableDiffusionXLPipeline.encode_prompt` except that `sefl.controlnet` is used instead of `self.unet`
+
         device = device or self._execution_device
 
         # set lora scale so that monkey patched LoRA
@@ -933,12 +966,6 @@ class StableDiffusionXLControlNetXSPipeline(
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
-            callback (`Callable`, *optional*):
-                A function that calls every `callback_steps` steps during inference. The function is called with the
-                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
-            callback_steps (`int`, *optional*, defaults to 1):
-                The frequency at which the `callback` function is called. If not specified, the callback is called at
-                every step.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -981,6 +1008,15 @@ class StableDiffusionXLControlNetXSPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeine class.
 
         Examples:
 

@@ -14,9 +14,9 @@
 # limitations under the License.
 
 import gc
+import tempfile
 import traceback
 import unittest
-import tempfile
 
 import numpy as np
 import torch
@@ -57,7 +57,7 @@ from ..test_pipelines_common import (
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
-    to_np
+    to_np,
 )
 
 
@@ -140,7 +140,7 @@ class ControlNetXSPipelineFastTests(
             learn_time_embedding=True,
             conditioning_embedding_out_channels=(16, 32),
         )
-        controlnet = ControlNetXSModel(base_model=unet, ctrl_model=controlnet_addon)
+        controlnet = ControlNetXSModel(base_model=unet, ctrl_addon=controlnet_addon)
         torch.manual_seed(0)
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -263,14 +263,11 @@ class ControlNetXSPipelineFastTests(
                 pipe.save_pretrained(
                     base_path=tmpdir_components,
                     addon_path=tmpdir_addon,
-                    base_kwargs=dict(safe_serialization=False),
-                    addon_kwargs=dict(safe_serialization=False),
+                    base_kwargs={"safe_serialization": False},
+                    addon_kwargs={"safe_serialization": False},
                 )
 
-                pipe_loaded = self.pipeline_class.from_pretrained(
-                    base_path=tmpdir_components,
-                    addon_path=tmpdir_addon
-                )
+                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, addon_path=tmpdir_addon)
 
                 for component in pipe_loaded.components.values():
                     if hasattr(component, "set_default_attn_processor"):
@@ -304,18 +301,14 @@ class ControlNetXSPipelineFastTests(
 
         with tempfile.TemporaryDirectory() as tmpdir_components:
             with tempfile.TemporaryDirectory() as tmpdir_addon:
-
                 pipe.save_pretrained(
                     base_path=tmpdir_components,
                     addon_path=tmpdir_addon,
-                    base_kwargs=dict(safe_serialization=False),
-                    addon_kwargs=dict(safe_serialization=False),
+                    base_kwargs={"safe_serialization": False},
+                    addon_kwargs={"safe_serialization": False},
                 )
 
-                pipe_loaded = self.pipeline_class.from_pretrained(
-                    base_path=tmpdir_components,
-                    addon_path=tmpdir_addon
-                )
+                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, addon_path=tmpdir_addon)
 
                 for component in pipe_loaded.components.values():
                     if hasattr(component, "set_default_attn_processor"):
@@ -363,7 +356,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         image = output.images[0]
 
         assert image.shape == (768, 512, 3)
-        
+
         original_image = image[-3:, -3:, -1].flatten()
         expected_image = np.array([0.1462, 0.1518, 0.1583, 0.1332, 0.1655, 0.1629, 0.1646, 0.1595, 0.1762])
         assert np.allclose(original_image, expected_image, atol=1e-04)
@@ -389,7 +382,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         assert image.shape == (512, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        expected_image = np.array([0.1504, 0.1448, 0.1742, 0.155 , 0.1553, 0.1833, 0.1694, 0.1833, 0.2354])
+        expected_image = np.array([0.1504, 0.1448, 0.1742, 0.155, 0.1553, 0.1833, 0.1694, 0.1833, 0.2354])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     @require_python39_or_higher

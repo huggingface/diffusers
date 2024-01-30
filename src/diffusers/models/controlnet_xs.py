@@ -89,6 +89,8 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
     This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
     methods implemented for all models (such as downloading or saving).
 
+    Like `ControlNetXSModel`, `ControlNetXSAddon` is compatible with StableDiffusion and StableDiffusion-XL.
+    It's default parameters are compatible with StableDiffusion.
 
     Parameters:
         conditioning_channels (`int`, defaults to 3):
@@ -96,17 +98,18 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         conditioning_channel_order (`str`, defaults to `"rgb"`):
             The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
         conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
-            The tuple of output channel for each block in the `controlnet_cond_embedding` layer.
+            The tuple of output channels for each block in the `controlnet_cond_embedding` layer.
         time_embedding_input_dim (`int`, defaults to 320):
             Dimension of input into time embedding. Needs to be same as in the base model.
         time_embedding_dim (`int`, defaults to 1280):
             Dimension of output from time embedding. Needs to be same as in the base model.
-        learn_time_embedding (`bool`, defaults to `False`): todo
-            Whether the time embedding should be learned or fixed.
-        channels_base (`Dict[str, List[Tuple[int]]]`): todo
-            Base channel configurations for the model's layers.
+        learn_time_embedding (`bool`, defaults to `False`):
+            Whether a time embedding should be learned. If yes, `ControlNetXSModel` will combine the time embeddings of the base model and the addon.
+            If no, `ControlNetXSModel` will use the base model's time embedding.
+        channels_base (`Dict[str, List[Tuple[int]]]`, defaults to `ControlNetXSAddon.gather_base_subblock_sizes((320,640,1280,1280))`):
+            Channels of each subblock of the base model. Use `ControlNetXSAddon.gather_base_subblock_sizes` to obtain them.
         attention_head_dim (`list[int]`, defaults to `[4]`):
-             The dimension of the attention heads.
+            The dimension of the attention heads.
         block_out_channels (`list[int]`, defaults to `[4, 8, 16, 16]`):
             The tuple of output channels for each block.
         cross_attention_dim (`int`, defaults to 1024):
@@ -119,9 +122,9 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
         upcast_attention (`bool`, defaults to `True`):
-            todo
-        norm_num_groups (`int`, defaults to 32):
-            If `None`, normalization and activation layers is skipped in post-processing. # todo: is actually max_norm_num_groups
+            Whether the attention computation should always be upcasted.
+        max_norm_num_groups (`int`, defaults to 32):
+            Maximum number of groups in group normal. The actual number will the the largest divisor of the respective channels, that is <= max_norm_num_groups.
     """
 
     @staticmethod
@@ -187,21 +190,21 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
     ):
         r"""
-        Instantiate a [`ControlNetXSAddon`] from [`UNet2DConditionModel`].
+        Instantiate a [`ControlNetXSAddon`] from a [`UNet2DConditionModel`].
 
         Parameters:
             base_model (`UNet2DConditionModel`):
-                The UNet model we want to control. The dimensions of the ControlNetXSModel will be adapted to it.
+                The UNet model we want to control. The dimensions of the ControlNetXSAddon will be adapted to it.
             size_ratio (float, *optional*, defaults to `None`):
-                When given, block_out_channels is set to a relative fraction of the base model's block_out_channels.
+                When given, block_out_channels is set to a fraction of the base model's block_out_channels.
                 Either this or `block_out_channels` must be given.
-            block_out_channels (`Tuple[int]`, *optional*, defaults to `None`):
+            block_out_channels (`List[int]`, *optional*, defaults to `None`):
                 Down blocks output channels in control model. Either this or `size_ratio` must be given.
-            num_attention_heads (`Union[int, Tuple[int]]`, *optional*, defaults to `None`):
+            num_attention_heads (`List[int]`, *optional*, defaults to `None`):
                 The dimension of the attention heads. The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
             learn_time_embedding (`bool`, defaults to `False`):
                 Whether the `ControlNetXSAddon` should learn a time embedding.
-            conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
+            conditioning_embedding_out_channels (`Tuple[int]`, defaults to `(16, 32, 96, 256)`):
                 The tuple of output channel for each block in the `controlnet_cond_embedding` layer.
         """
 
@@ -220,7 +223,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             # The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
             num_attention_heads = base_model.config.attention_head_dim
 
-        norm_num_groups = math.gcd(*block_out_channels)
+        max_norm_num_groups = base_model.config.norm_num_groups
 
         time_embedding_input_dim = base_model.time_embedding.linear_1.in_features
         time_embedding_dim = base_model.time_embedding.linear_1.out_features
@@ -235,7 +238,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             sample_size=base_model.config.sample_size,
             transformer_layers_per_block=base_model.config.transformer_layers_per_block,
             upcast_attention=base_model.config.upcast_attention,
-            norm_num_groups=norm_num_groups,
+            max_norm_num_groups=max_norm_num_groups,
             conditioning_embedding_out_channels=conditioning_embedding_out_channels,
             time_embedding_input_dim=time_embedding_input_dim,
             time_embedding_dim=time_embedding_dim,
@@ -250,19 +253,20 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         time_embedding_input_dim: Optional[int] = 320,
         time_embedding_dim: Optional[int] = 1280,
         learn_time_embedding: bool = False,
-        channels_base: Dict[str, List[Tuple[int]]] = {
-            "down - out": [320, 320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280, 1280],
-            "mid - out": 1280,
-            "up - in": [1280, 1280, 1280, 1280, 1280, 1280, 1280, 640, 640, 640, 320, 320],
-        },
+        channels_base: Dict[str, List[Tuple[int]]] = gather_base_subblock_sizes((320, 640, 1280, 1280)),
         attention_head_dim: Union[int, Tuple[int]] = 4,
-        block_out_channels : Tuple[int] = (4, 8, 16, 16),
-        cross_attention_dim: int =1024,
-        down_block_types: Tuple[str]=("CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"),
-        sample_size: Optional[int]=96, # todo understand
+        block_out_channels: Tuple[int] = (4, 8, 16, 16),
+        cross_attention_dim: int = 1024,
+        down_block_types: Tuple[str] = (
+            "CrossAttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "DownBlock2D",
+        ),
+        sample_size: Optional[int] = 96,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         upcast_attention: bool = True,
-        norm_num_groups: int = 32, # todo: rename max_norm_num_groups?
+        max_norm_num_groups: int = 32,
     ):
         super().__init__()
 
@@ -337,7 +341,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                     num_attention_heads=num_attention_heads[i],
                     cross_attention_dim=cross_attention_dim,
                     upcast_attention=upcast_attention,
-                    norm_num_groups=norm_num_groups,
+                    max_norm_num_groups=max_norm_num_groups,
                 )
             )
             subblock_counter += 1
@@ -351,7 +355,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                     num_attention_heads=num_attention_heads[i],
                     cross_attention_dim=cross_attention_dim,
                     upcast_attention=upcast_attention,
-                    norm_num_groups=norm_num_groups,
+                    max_norm_num_groups=max_norm_num_groups,
                 )
             )
             subblock_counter += 1
@@ -376,14 +380,13 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             resnet_eps=1e-05,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads[-1],
-            resnet_groups=find_largest_factor(mid_in_channels, norm_num_groups),
-            resnet_groups_out=find_largest_factor(mid_out_channels, norm_num_groups),
+            resnet_groups=find_largest_factor(mid_in_channels, max_norm_num_groups),
+            resnet_groups_out=find_largest_factor(mid_out_channels, max_norm_num_groups),
             use_linear_projection=True,
             upcast_attention=upcast_attention,
         )
 
         # 3 - Gather Channel Sizes
-        conditioning_embedding_out_channels
         channels_ctrl = {
             "down - out": [self.conv_in.out_channels] + [s.out_channels for s in self.down_subblocks],
             "mid - out": self.down_subblocks[-1].out_channels,
@@ -397,14 +400,11 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         self.up_zero_convs_c2b = nn.ModuleList([])
 
         # 4.1 - Connections from base encoder to ctrl encoder
-        # todo - better comment
-        # Information is passed from base to ctrl _before_ each subblock. We therefore use the 'in' channels.
-        # As the information is concatted in ctrl, we don't need to change channel sizes. So channels in = channels out.
-        for c in channels_base["down - out"]:  # change down - in to down - out
+        # As the information is concatted to ctrl, the channels sizes don't change.
+        for c in channels_base["down - out"]:
             self.down_zero_convs_b2c.append(self._make_zero_conv(c, c))
 
         # 4.2 - Connections from ctrl encoder to base encoder
-        # Information is passed from ctrl to  base _after_ each subblock. We therefore use the 'out' channels.
         # As the information is added to base, the out-channels need to match base.
         for ch_base, ch_ctrl in zip(channels_base["down - out"], channels_ctrl["down - out"]):
             self.down_zero_convs_c2b.append(self._make_zero_conv(ch_ctrl, ch_base))
@@ -440,39 +440,29 @@ class ControlNetXSModel(nn.Module):
     This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
     methods implemented for all models (such as downloading or saving).
 
-    Most of parameters for this model are passed into the [`UNet2DConditionModel`] it creates. Check the documentation
-    of [`UNet2DConditionModel`] for them.
+    `ControlNetXSModel` is compatible with StableDiffusion and StableDiffusion-XL.
+    It's default parameters are compatible with StableDiffusion.
 
     Parameters:
-        conditioning_channels (`int`, defaults to 3):
-            Number of channels of conditioning input (e.g. an image)
-        controlnet_conditioning_channel_order (`str`, defaults to `"rgb"`):
-            The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
-        conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
-            The tuple of output channel for each block in the `controlnet_cond_embedding` layer.
-        time_embedding_input_dim (`int`, defaults to 320):
-            Dimension of input into time embedding. Needs to be same as in the base model.
-        time_embedding_dim (`int`, defaults to 1280):
-            Dimension of output from time embedding. Needs to be same as in the base model.
-        learn_embedding (`bool`, defaults to `False`):
-            Whether to use time embedding of the control model. If yes, the time embedding is a linear interpolation of
-            the time embeddings of the control and base model with interpolation parameter `time_embedding_mix**3`.
+        base_model (`UNet2DConditionModel`):
+            The base UNet to control.
+        ctrl_addon (`ControlNetXSAddon`):
+            The control addon.
         time_embedding_mix (`float`, defaults to 1.0):
-            Linear interpolation parameter used if `learn_embedding` is `True`. A value of 1.0 means only the
-            control model's time embedding will be used. A value of 0.0 means only the base model's time embedding will be used.
-        channels_base (`Dict[str, List[Tuple[int]]]`):
-            Channel sizes of each subblock of base model. Use `gather_subblock_sizes` on your base model to compute it.
+            If 0, then only the base model's time embedding is be used.
+            If 1, then only the control model's time embedding is be used.
+            Otherwise, both are combined.
     """
 
     @classmethod
-    def init_original(cls, base_model: UNet2DConditionModel, is_sdxl=True):
+    def init_original(cls, base_model: UNet2DConditionModel, is_sdxl=False):
         """
-        Create a ControlNetXS model with the same parameters as in the original paper (https://github.com/vislearn/ControlNet-XS).
+        Create a `ControlNetXSModel` model with the same parameters as in the original paper (https://github.com/vislearn/ControlNet-XS).
 
         Parameters:
             base_model (`UNet2DConditionModel`):
                 Base UNet model. Needs to be either StableDiffusion or StableDiffusion-XL.
-            is_sdxl (`bool`, defaults to `True`):
+            is_sdxl (`bool`, defaults to `False`):
                 Whether passed `base_model` is a StableDiffusion-XL model.
         """
 
@@ -480,7 +470,7 @@ class ControlNetXSModel(nn.Module):
             """
             Currently, diffusers can only set the dimension of attention heads (see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why).
             The original ControlNet-XS model, however, define the number of attention heads.
-            That's why compute the dimensions needed to get the correct number of attention heads.
+            That's why we compute the dimensions needed to get the correct number of attention heads.
             """
             block_out_channels = [int(size_ratio * c) for c in base_model.config.block_out_channels]
             dim_attn_heads = [math.ceil(c / num_attn_heads) for c in block_out_channels]
@@ -503,17 +493,24 @@ class ControlNetXSModel(nn.Module):
                 num_attention_heads=get_dim_attn_heads(base_model, 0.0125, 8),
             )
 
-        return cls(base_model=base_model, ctrl_model=controlnet_addon, time_embedding_mix=time_embedding_mix)
+        return cls(base_model=base_model, ctrl_addon=controlnet_addon, time_embedding_mix=time_embedding_mix)
 
     def __init__(
         self,
         base_model: UNet2DConditionModel,
-        ctrl_model: ControlNetXSAddon,
+        ctrl_addon: ControlNetXSAddon,
         time_embedding_mix: float = 1.0,
     ):
         super().__init__()
 
-        self.ctrl_model = ctrl_model
+        if time_embedding_mix < 0 or time_embedding_mix > 1:
+            raise ValueError("`time_embedding_mix` needs to be between 0 and 1.")
+        if time_embedding_mix < 1 and not ctrl_addon.config.learn_time_embedding:
+            raise ValueError(
+                "To use `time_embedding_mix` < 1, initialize `ctrl_addon` with `learn_time_embedding = True`"
+            )
+
+        self.ctrl_addon = ctrl_addon
         self.base_model = base_model
         self.time_embedding_mix = time_embedding_mix
 
@@ -571,7 +568,7 @@ class ControlNetXSModel(nn.Module):
 
     @torch.no_grad()
     def _check_if_vae_compatible(self, vae: AutoencoderKL):
-        condition_downscale_factor = 2 ** (len(self.ctrl_model.config.conditioning_embedding_out_channels) - 1)
+        condition_downscale_factor = 2 ** (len(self.ctrl_addon.config.conditioning_embedding_out_channels) - 1)
         vae_downscale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
         compatible = condition_downscale_factor == vae_downscale_factor
         return compatible, condition_downscale_factor, vae_downscale_factor
@@ -592,11 +589,9 @@ class ControlNetXSModel(nn.Module):
         do_control: bool = True,
     ) -> Union[ControlNetXSOutput, Tuple]:
         """
-        The [`ControlNetModel`] forward method.
+        The [`ControlNetXSModel`] forward method.
 
         Args:
-            base_model (`UNet2DConditionModel`):
-                The base unet model we want to control.
             sample (`torch.FloatTensor`):
                 The noisy input tensor.
             timestep (`Union[torch.Tensor, float, int]`):
@@ -617,12 +612,14 @@ class ControlNetXSModel(nn.Module):
                 An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
                 is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
                 negative values to the attention scores corresponding to "discard" tokens.
-            added_cond_kwargs (`dict`):
-                Additional conditions for the Stable Diffusion XL UNet.
             cross_attention_kwargs (`dict[str]`, *optional*, defaults to `None`):
                 A kwargs dictionary that if specified is passed along to the `AttnProcessor`.
+            added_cond_kwargs (`dict`):
+                Additional conditions for the Stable Diffusion XL UNet.
             return_dict (`bool`, defaults to `True`):
                 Whether or not to return a [`~models.controlnet.ControlNetOutput`] instead of a plain tuple.
+            do_control (`bool`, defaults to `True`):
+                If `False`, the input is run only through the base model.
 
         Returns:
             [`~models.controlnetxs.ControlNetXSOutput`] **or** `tuple`:
@@ -640,11 +637,11 @@ class ControlNetXSModel(nn.Module):
                 attention_mask=attention_mask,
                 cross_attention_kwargs=cross_attention_kwargs,
                 added_cond_kwargs=added_cond_kwargs,
-                return_dict=return_dict
+                return_dict=return_dict,
             )
 
         # check channel order
-        if self.ctrl_model.config.conditioning_channel_order == "bgr":
+        if self.ctrl_addon.config.conditioning_channel_order == "bgr":
             controlnet_cond = torch.flip(controlnet_cond, dims=[1])
 
         # prepare attention_mask
@@ -676,8 +673,8 @@ class ControlNetXSModel(nn.Module):
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=sample.dtype)
 
-        if self.ctrl_model.config.learn_time_embedding:
-            ctrl_temb = self.ctrl_model.time_embedding(t_emb, timestep_cond)
+        if self.ctrl_addon.config.learn_time_embedding:
+            ctrl_temb = self.ctrl_addon.time_embedding(t_emb, timestep_cond)
             base_temb = self.base_model.time_embedding(t_emb, timestep_cond)
             interpolation_param = self.time_embedding_mix**0.3
 
@@ -728,7 +725,7 @@ class ControlNetXSModel(nn.Module):
         cemb = encoder_hidden_states
 
         # Preparation
-        guided_hint = self.ctrl_model.controlnet_cond_embedding(controlnet_cond)
+        guided_hint = self.ctrl_addon.controlnet_cond_embedding(controlnet_cond)
 
         h_ctrl = h_base = sample
         hs_base, hs_ctrl = [], []
@@ -736,21 +733,21 @@ class ControlNetXSModel(nn.Module):
         # Cross Control
         # Let's first define variables to shorten notation
         base_down_subblocks = self.base_down_subblocks
-        ctrl_down_subblocks = self.ctrl_model.down_subblocks
+        ctrl_down_subblocks = self.ctrl_addon.down_subblocks
 
-        down_zero_convs_b2c = self.ctrl_model.down_zero_convs_b2c
-        down_zero_convs_c2b = self.ctrl_model.down_zero_convs_c2b
-        mid_zero_convs_c2b = self.ctrl_model.mid_zero_convs_c2b
-        up_zero_convs_c2b = self.ctrl_model.up_zero_convs_c2b
+        down_zero_convs_b2c = self.ctrl_addon.down_zero_convs_b2c
+        down_zero_convs_c2b = self.ctrl_addon.down_zero_convs_c2b
+        mid_zero_convs_c2b = self.ctrl_addon.mid_zero_convs_c2b
+        up_zero_convs_c2b = self.ctrl_addon.up_zero_convs_c2b
 
         # 1 - conv in & down
-        # The base -> ctrl connections are "delayed" by 1 subblock, because we want to "wait" to ensure the new information from the last  ctrl -> base connection is also considered
+        # The base -> ctrl connections are "delayed" by 1 subblock, because we want to "wait" to ensure the new information from the last ctrl -> base connection is also considered.
         # Therefore, the connections iterate over:
         #       ctrl -> base:   conv_in | subblock 1  |  ...  | subblock n
         #       base -> ctrl:           | subblock 1  |  ...  | subblock n | mid block
 
         h_base = self.base_model.conv_in(h_base)
-        h_ctrl = self.ctrl_model.conv_in(h_ctrl)
+        h_ctrl = self.ctrl_addon.conv_in(h_ctrl)
         if guided_hint is not None:
             h_ctrl += guided_hint
         h_base = h_base + down_zero_convs_c2b[0](h_ctrl) * conditioning_scale  # add ctrl -> base
@@ -779,8 +776,12 @@ class ControlNetXSModel(nn.Module):
         h_ctrl = torch.cat([h_ctrl, down_zero_convs_b2c[-1](h_base)], dim=1)  # concat base -> ctrl
 
         # 2 - mid
-        h_base = self.base_model.mid_block(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # apply base subblock
-        h_ctrl = self.ctrl_model.mid_block(h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)  # apply ctrl subblock
+        h_base = self.base_model.mid_block(
+            h_base, temb, cemb, attention_mask, cross_attention_kwargs
+        )  # apply base subblock
+        h_ctrl = self.ctrl_addon.mid_block(
+            h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs
+        )  # apply ctrl subblock
         h_base = h_base + mid_zero_convs_c2b(h_ctrl) * conditioning_scale  # add ctrl -> base
 
         # 3 - up
@@ -825,7 +826,7 @@ class CrossAttnSubBlock2D(nn.Module):
         in_channels: Optional[int] = None,
         out_channels: Optional[int] = None,
         temb_channels: Optional[int] = None,
-        norm_num_groups: Optional[int] = 32,
+        max_norm_num_groups: Optional[int] = 32,
         has_crossattn=False,
         transformer_layers_per_block: Optional[Union[int, Tuple[int]]] = 1,
         num_attention_heads: Optional[int] = 1,
@@ -846,8 +847,8 @@ class CrossAttnSubBlock2D(nn.Module):
             in_channels=in_channels,
             out_channels=out_channels,
             temb_channels=temb_channels,
-            groups=find_largest_factor(in_channels, max_factor=norm_num_groups),
-            groups_out=find_largest_factor(out_channels, max_factor=norm_num_groups),
+            groups=find_largest_factor(in_channels, max_factor=max_norm_num_groups),
+            groups_out=find_largest_factor(out_channels, max_factor=max_norm_num_groups),
             eps=1e-5,
         )
 
@@ -860,7 +861,7 @@ class CrossAttnSubBlock2D(nn.Module):
                 cross_attention_dim=cross_attention_dim,
                 use_linear_projection=True,
                 upcast_attention=upcast_attention,
-                norm_num_groups=find_largest_factor(out_channels, max_factor=norm_num_groups),
+                norm_num_groups=find_largest_factor(out_channels, max_factor=max_norm_num_groups),
             )
         else:
             self.attention = None

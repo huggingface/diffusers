@@ -14,8 +14,8 @@
 # limitations under the License.
 
 import gc
-import unittest
 import tempfile
+import unittest
 
 import numpy as np
 import torch
@@ -46,7 +46,7 @@ from ..test_pipelines_common import (
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     SDXLOptionalComponentsTesterMixin,
-    to_np
+    to_np,
 )
 
 
@@ -94,7 +94,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
             learn_time_embedding=True,
             conditioning_embedding_out_channels=(16, 32),
         )
-        controlnet = ControlNetXSModel(base_model=unet, ctrl_model=controlnet_addon)
+        controlnet = ControlNetXSModel(base_model=unet, ctrl_addon=controlnet_addon)
         torch.manual_seed(0)
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
@@ -186,10 +186,6 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
     # copied from test_controlnet_sdxl.py
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
-
-    # copied from test_controlnet_sdxl.py
-    def test_save_load_optional_components(self):
-        self._test_save_load_optional_components()
 
     # copied from test_controlnet_sdxl.py
     @require_torch_gpu
@@ -336,14 +332,11 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
                 pipe.save_pretrained(
                     base_path=tmpdir_components,
                     addon_path=tmpdir_addon,
-                    base_kwargs=dict(safe_serialization=False),
-                    addon_kwargs=dict(safe_serialization=False),
+                    base_kwargs={"safe_serialization": False},
+                    addon_kwargs={"safe_serialization": False},
                 )
 
-                pipe_loaded = self.pipeline_class.from_pretrained(
-                    base_path=tmpdir_components,
-                    addon_path=tmpdir_addon
-                )
+                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, addon_path=tmpdir_addon)
 
                 for component in pipe_loaded.components.values():
                     if hasattr(component, "set_default_attn_processor"):
@@ -398,18 +391,14 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
         with tempfile.TemporaryDirectory() as tmpdir_components:
             with tempfile.TemporaryDirectory() as tmpdir_addon:
-
                 pipe.save_pretrained(
                     base_path=tmpdir_components,
                     addon_path=tmpdir_addon,
-                    base_kwargs=dict(safe_serialization=False),
-                    addon_kwargs=dict(safe_serialization=False),
+                    base_kwargs={"safe_serialization": False},
+                    addon_kwargs={"safe_serialization": False},
                 )
 
-                pipe_loaded = self.pipeline_class.from_pretrained(
-                    base_path=tmpdir_components,
-                    addon_path=tmpdir_addon
-                )
+                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, addon_path=tmpdir_addon)
 
                 for component in pipe_loaded.components.values():
                     if hasattr(component, "set_default_attn_processor"):
@@ -437,6 +426,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
         self.assertLess(max_diff, expected_max_difference)
 
+
 @slow
 @require_torch_gpu
 class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
@@ -447,8 +437,7 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
 
     def test_canny(self):
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
-            base_path="stabilityai/stable-diffusion-xl-base-1.0",
-            addon_path="UmerHA/Testing-ConrolNetXS-SDXL-canny"
+            base_path="stabilityai/stable-diffusion-xl-base-1.0", addon_path="UmerHA/Testing-ConrolNetXS-SDXL-canny"
         )
         pipe.enable_sequential_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -469,8 +458,7 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
 
     def test_depth(self):
         pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
-            base_path="stabilityai/stable-diffusion-xl-base-1.0",
-            addon_path="UmerHA/Testing-ConrolNetXS-SDXL-depth"
+            base_path="stabilityai/stable-diffusion-xl-base-1.0", addon_path="UmerHA/Testing-ConrolNetXS-SDXL-depth"
         )
         pipe.enable_sequential_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -486,5 +474,5 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         assert images[0].shape == (512, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.4082, 0.3879, 0.2781, 0.2655, 0.327 , 0.372 , 0.3762, 0.3444, 0.3122])
+        expected_image = np.array([0.4082, 0.3879, 0.2781, 0.2655, 0.327, 0.372, 0.3762, 0.3444, 0.3122])
         assert np.allclose(original_image, expected_image, atol=1e-04)

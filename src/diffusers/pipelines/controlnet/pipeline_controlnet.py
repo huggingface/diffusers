@@ -1171,7 +1171,7 @@ class StableDiffusionControlNetPipeline(
         is_controlnet_compiled = is_compiled_module(self.controlnet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):                
+            for i, t in enumerate(timesteps):
                 # Relevant thread:
                 # https://dev-discuss.pytorch.org/t/cudagraphs-in-pytorch-2-0/1428
                 if (is_unet_compiled and is_controlnet_compiled) and is_torch_higher_equal_2_1:
@@ -1198,7 +1198,10 @@ class StableDiffusionControlNetPipeline(
                         controlnet_cond_scale = controlnet_cond_scale[0]
                     cond_scale = controlnet_cond_scale * controlnet_keep[i]
 
-                print(f'Denoising step {i} > Right before controlnet application : Device type of controlnet >> ',self.controlnet.device.type)
+                print(
+                    f"Denoising step {i} > Right before controlnet application : Device type of controlnet >> ",
+                    self.controlnet.device.type,
+                )
                 down_block_res_samples, mid_block_res_sample = self.controlnet(
                     control_model_input,
                     t,
@@ -1208,7 +1211,10 @@ class StableDiffusionControlNetPipeline(
                     guess_mode=guess_mode,
                     return_dict=False,
                 )
-                print(f'Denoising step {i} > Right after controlnet application : Device type of controlnet >> ',self.controlnet.device.type)
+                print(
+                    f"Denoising step {i} > Right after controlnet application : Device type of controlnet >> ",
+                    self.controlnet.device.type,
+                )
 
                 if guess_mode and self.do_classifier_free_guidance:
                     # Infered ControlNet only for the conditional batch.
@@ -1242,7 +1248,7 @@ class StableDiffusionControlNetPipeline(
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
-                    print('btw, calling callback_on_step_end')
+                    print("btw, calling callback_on_step_end")
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
@@ -1253,7 +1259,7 @@ class StableDiffusionControlNetPipeline(
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        print('btw, calling callback')
+                        print("btw, calling callback")
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
