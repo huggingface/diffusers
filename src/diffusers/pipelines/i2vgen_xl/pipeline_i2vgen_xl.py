@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipeline = I2VGenXLPipeline.from_pretrained("repo_id", torch_dtype=torch.float16)
         >>> pipeline.enable_model_cpu_offload()
 
-        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?download=true"
+        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?raw=true"
         >>> image = load_image(image_url).convert("RGB")
 
         >>> prompt = "Papers were floating in the air on a table in the library"
