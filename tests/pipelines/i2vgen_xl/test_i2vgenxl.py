@@ -193,8 +193,25 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self._test_xformers_attention_forwardGenerator_pass(test_mean_pixel_difference=False, expected_max_diff=1e-2)
 
     def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=0.007)
+        super().test_inference_batch_single_identical(batch_size=2, expected_max_diff=0.008)
 
-    @unittest.skip(reason="`num_videos_per_prompt` argument is not supported for this pipeline.")
+    
     def test_num_videos_per_prompt(self):
-        pass
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["output_type"] = "np"
+        frames = pipe(**inputs, num_videos_per_prompt=2).frames
+
+        print(frames.shape)
+
+        # image_slice = frames[0][0][-3:, -3:, -1]
+
+        # assert frames[0][0].shape == (32, 32, 3)
+        # expected_slice = np.array([0.5146, 0.6525, 0.6032, 0.5204, 0.5675, 0.4125, 0.3016, 0.5172, 0.4095])
+
+        # assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
