@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import random
 import unittest
 
@@ -33,12 +34,16 @@ from diffusers import (
     I2VGenXLPipeline,
 )
 from diffusers.models.unets import I2VGenXLUNet
-from diffusers.utils import is_xformers_available
+from diffusers.utils import is_xformers_available, load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
     skip_mps,
+    slow,
     torch_device,
+    print_tensor_test
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -48,7 +53,7 @@ enable_full_determinism()
 
 
 @skip_mps
-class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class I2VGenXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     pipeline_class = I2VGenXLPipeline
     params = frozenset(["prompt", "negative_prompt", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "generator"])
@@ -212,3 +217,43 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         expected_slice = np.array([0.5146, 0.6525, 0.6032, 0.5204, 0.5675, 0.4125, 0.3016, 0.5172, 0.4095])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+
+@slow
+@require_torch_gpu
+class I2VGenXLPipelineSlowTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_i2vgen_xl(self):
+        # TODO: to change the path.
+        pipe = I2VGenXLPipeline.from_pretrained("diffusers/i2vgen-xl", torch_dtype=torch.float16)
+        pipe = pipe.to(torch_device)
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
+        )
+
+        generator = torch.Generator("cpu").manual_seed(0)
+        num_frames = 3
+
+        output = pipe(
+            image=image,
+            prompt="my cat",
+            num_frames=num_frames,
+            generator=generator,
+            num_inference_steps=3,
+            output_type="np",
+        )
+
+        image = output.frames[0]
+        assert image.shape == (num_frames, 704, 1280, 3)
+
+        image_slice = image[0, -3:, -3:, -1]
+        print_tensor_test(image_slice)
+        expected_slice = np.array([0.8592, 0.8645, 0.8499, 0.8722, 0.8769, 0.8421, 0.8557, 0.8528, 0.8285])
+        assert numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice.flatten()) < 1e-3
