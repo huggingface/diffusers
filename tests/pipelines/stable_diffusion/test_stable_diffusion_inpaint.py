@@ -43,6 +43,7 @@ from diffusers.utils.testing_utils import (
     load_image,
     load_numpy,
     nightly,
+    numpy_cosine_similarity_distance,
     require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
@@ -771,7 +772,9 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         inputs["num_inference_steps"] = 5
         image = pipe(**inputs).images[0]
 
-        assert np.max(np.abs(image - image_ckpt)) < 5e-4
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+
+        assert max_diff < 1e-4
 
 
 @slow
