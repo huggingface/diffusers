@@ -413,7 +413,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
             ).pixel_values
 
         image = image.to(device=device, dtype=dtype)
-        print("image: {image.shape}")
+        print(f"image: {image.shape}")
         image_embeddings = self.image_encoder(image).image_embeds
         image_embeddings = image_embeddings.unsqueeze(1)
 
