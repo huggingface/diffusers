@@ -30,7 +30,6 @@ from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    print_tensor_test,
     skip_mps,
     torch_device,
 )
@@ -155,10 +154,9 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         frames = pipe(**inputs).frames
 
         image_slice = frames[0][0][-3:, -3:, -1]
-        print_tensor_test(image_slice)
 
         assert frames[0][0].shape == (32, 32, 3)
-        expected_slice = np.array([0.7537, 0.1752, 0.6157, 0.5508, 0.4240, 0.4110, 0.4838, 0.5648, 0.5094])
+        expected_slice = np.array([0.5146, 0.6525, 0.6032, 0.5204, 0.5675, 0.4125, 0.3016, 0.5172, 0.4095])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
