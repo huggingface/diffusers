@@ -160,9 +160,9 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    @unittest.skipIf(torch_device != "cuda", reason="Feature isn't heavily used. Test in CUDA environment only.")
+    @unittest.skip("Deprecated functionality")
     def test_attention_slicing_forward_pass(self):
-        self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False, expected_max_diff=3e-3)
+        pass
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
