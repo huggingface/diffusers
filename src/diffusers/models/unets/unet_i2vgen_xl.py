@@ -548,6 +548,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 The noisy input tensor with the following shape `(batch, num_frames, channel, height, width`.
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             fps (`torch.Tensor`): Frames per second for the video being generated. Used as a "micro-condition".
+            image_latents (`torch.FloatTensor`): Image encodings from the VAE.
+            image_embeddings (`torch.FloatTensor`): Projection embeddings of the conditioning image computed with a vision encoder.
             encoder_hidden_states (`torch.FloatTensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
             cross_attention_kwargs (`dict`, *optional*):
