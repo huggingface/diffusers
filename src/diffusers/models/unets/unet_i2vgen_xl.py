@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -21,7 +20,7 @@ import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
-from ...utils import BaseOutput, deprecate, logging
+from ...utils import deprecate, logging
 from ..activations import get_activation
 from ..attention import Attention, FeedForward
 from ..attention_processor import (
@@ -43,6 +42,7 @@ from .unet_3d_blocks import (
     get_down_block,
     get_up_block,
 )
+from .unet_3d_condition import UNet3DConditionOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -125,23 +125,10 @@ class I2VGenXLTransformerTemporalEncoder(nn.Module):
         return hidden_states
 
 
-@dataclass
-class I2VGenXLOutput(BaseOutput):
-    """
-    The output of [`UNet3DConditionModel`].
-
-    Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_frames, num_channels, height, width)`):
-            The hidden states output conditioned on `encoder_hidden_states` input. Output of last layer of model.
-    """
-
-    sample: torch.FloatTensor
-
-
 class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
-    A conditional 3D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
-    shaped output.
+    I2VGenXL UNet. It is a conditional 3D UNet model that takes a noisy sample, conditional state, and a timestep
+    and returns a sample-shaped output.
 
     This model inherits from [`ModelMixin`]. Check the superclass documentation for it's generic methods implemented
     for all models (such as downloading or saving).
@@ -636,7 +623,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         attention_mask: Optional[torch.Tensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
-    ) -> Union[I2VGenXLOutput, Tuple[torch.FloatTensor]]:
+    ) -> Union[UNet3DConditionOutput, Tuple[torch.FloatTensor]]:
         r"""
         The [`I2VGenXLUNet`] forward method.
 
@@ -644,10 +631,9 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             sample (`torch.FloatTensor`):
                 The noisy input tensor with the following shape `(batch, num_frames, channel, height, width`.
             timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
+            fps (`torch.Tensor`): Frames per second for the video being generated. Used as a "micro-condition".
             encoder_hidden_states (`torch.FloatTensor`):
                 The encoder hidden states with shape `(batch, sequence_length, feature_dim)`.
-            class_labels (`torch.Tensor`, *optional*, defaults to `None`):
-                Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
             attention_mask (`torch.Tensor`, *optional*, defaults to `None`):
                 An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
                 is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
@@ -657,14 +643,12 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_3d_condition.I2VGenXLOutput`] instead of a plain
+                Whether or not to return a [`~models.unet_3d_condition.UNet3DConditionOutput`] instead of a plain
                 tuple.
-            cross_attention_kwargs (`dict`, *optional*):
-                A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
 
         Returns:
-            [`~models.unet_3d_condition.I2VGenXLOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_3d_condition.I2VGenXLOutput`] is returned, otherwise
+            [`~models.unet_3d_condition.UNet3DConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unet_3d_condition.UNet3DConditionOutput`] is returned, otherwise
                 a `tuple` is returned where the first element is the sample tensor.
         """
         batch_size, channels, num_frames, height, width = sample.shape
@@ -824,4 +808,4 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not return_dict:
             return (sample,)
 
-        return I2VGenXLOutput(sample=sample)
+        return UNet3DConditionOutput(sample=sample)
