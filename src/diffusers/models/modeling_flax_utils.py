@@ -16,6 +16,7 @@
 import os
 from pickle import UnpicklingError
 from typing import Any, Dict, Union
+from pathlib import Path
 
 import jax
 import jax.numpy as jnp
@@ -331,20 +332,20 @@ class FlaxModelMixin(PushToHubMixin):
         pretrained_path_with_subfolder = (
             pretrained_model_name_or_path
             if subfolder is None
-            else os.path.join(pretrained_model_name_or_path, subfolder)
+            else Path(pretrained_model_name_or_path, subfolder).as_posix()
         )
         if os.path.isdir(pretrained_path_with_subfolder):
             if from_pt:
-                if not os.path.isfile(os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)):
+                if not os.path.isfile(Path(pretrained_path_with_subfolder, WEIGHTS_NAME).as_posix()):
                     raise EnvironmentError(
                         f"Error no file named {WEIGHTS_NAME} found in directory {pretrained_path_with_subfolder} "
                     )
-                model_file = os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)
-            elif os.path.isfile(os.path.join(pretrained_path_with_subfolder, FLAX_WEIGHTS_NAME)):
+                model_file = Path(pretrained_path_with_subfolder, WEIGHTS_NAME).as_posix()
+            elif os.path.isfile(Path(pretrained_path_with_subfolder, FLAX_WEIGHTS_NAME).as_posix()):
                 # Load from a Flax checkpoint
-                model_file = os.path.join(pretrained_path_with_subfolder, FLAX_WEIGHTS_NAME)
+                model_file = Path(pretrained_path_with_subfolder, FLAX_WEIGHTS_NAME).as_posix()
             # Check if pytorch weights exist instead
-            elif os.path.isfile(os.path.join(pretrained_path_with_subfolder, WEIGHTS_NAME)):
+            elif os.path.isfile(Path(pretrained_path_with_subfolder, WEIGHTS_NAME).as_posix()):
                 raise EnvironmentError(
                     f"{WEIGHTS_NAME} file found in directory {pretrained_path_with_subfolder}. Please load the model"
                     " using `from_pt=True`."
@@ -549,7 +550,7 @@ class FlaxModelMixin(PushToHubMixin):
             model_to_save.save_config(save_directory)
 
         # save model
-        output_model_file = os.path.join(save_directory, FLAX_WEIGHTS_NAME)
+        output_model_file = Path(save_directory, FLAX_WEIGHTS_NAME).as_posix()
         with open(output_model_file, "wb") as f:
             model_bytes = to_bytes(params)
             f.write(model_bytes)
