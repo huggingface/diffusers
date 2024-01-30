@@ -50,7 +50,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipeline = I2VGenXLPipeline.from_pretrained("repo_id", torch_dtype=torch.float16)
         >>> pipeline.enable_model_cpu_offload()
 
-        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png"
+        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?download=true"
         >>> image = load_image(image_url).convert("RGB")
 
         >>> prompt = "Papers were floating in the air on a table in the library"
@@ -835,7 +835,7 @@ def _resize_bilinear(image, resolution):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
     if isinstance(image, torch.Tensor):
         image = image.permute(0, 2, 3, 1) if image.ndim == 4 else image.permute(2, 3, 1)
-        image = (image.numpy() * 255.).clip(0, 255).astype("uint8")
+        image = (image.numpy() * 255.0).clip(0, 255).astype("uint8")
         if image.ndim == 4:
             image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
         else:
@@ -852,7 +852,7 @@ def _center_crop_wide(image, resolution):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
     if isinstance(image, torch.Tensor):
         image = image.permute(0, 2, 3, 1) if image.ndim == 4 else image.permute(2, 3, 1)
-        image = (image.numpy() * 255.).clip(0, 255).astype("uint8")
+        image = (image.numpy() * 255.0).clip(0, 255).astype("uint8")
         if image.ndim == 4:
             image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
         else:
