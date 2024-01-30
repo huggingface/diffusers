@@ -693,10 +693,15 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         fps = fps.expand(fps.shape[0])
         fps_emb = self.fps_embedding(self.time_proj(fps).to(dtype=self.dtype))
 
+        # 3. time + FPS embeddings.
         emb = t_emb + fps_emb
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
 
-        # 3.2 context embeddings.
+        # 4. context embeddings.
+        # The context embeddings consist of both text embeddings from the input prompt
+        # AND the image embeddings from the input image. For images, both VAE encodings
+        # and the CLIP image embeddings are incorporated.
+        # So the final `context_embeddings` becomes the query for cross-attention.
         context_embeddings = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
         context_embeddings = torch.cat([context_embeddings, encoder_hidden_states], dim=1)
 
@@ -707,11 +712,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         image_latents_context_embeddings = image_latents_context_embeddings.permute(0, 2, 3, 1).reshape(
             _batch_size, _height * _width, _channels
         )
-        print(
-            f"context_embeddings: {context_embeddings.shape} image_latents_context_embeddings: {image_latents_context_embeddings.shape}"
-        )
         context_embeddings = torch.cat([context_embeddings, image_latents_context_embeddings], dim=1)
-
+        print(f"image_embeddings: {image_embeddings.shape}, self.context_embedding: {self.context_embedding.weight.data.shape}")
         image_embeddings = self.context_embedding(image_embeddings)
         image_embeddings = image_embeddings.view(-1, self.config.in_channels, self.config.cross_attention_dim)
         context_embeddings = torch.cat([context_embeddings, image_embeddings], dim=1)
@@ -728,7 +730,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         image_latents = self.image_latents_temporal_encoder(image_latents)
         image_latents = image_latents.reshape(batch_size, height, width, num_frames, channels).permute(0, 4, 3, 1, 2)
 
-        # 4. pre-process
+        # 5. pre-process
         sample = torch.cat([sample, image_latents], dim=1)
         sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
         sample = self.conv_in(sample)
@@ -739,7 +741,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             return_dict=False,
         )[0]
 
-        # 5. down
+        # 6. down
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
@@ -756,7 +758,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
             down_block_res_samples += res_samples
 
-        # 6. mid
+        # 7. mid
         if self.mid_block is not None:
             sample = self.mid_block(
                 sample,
@@ -766,7 +768,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 num_frames=num_frames,
                 cross_attention_kwargs=cross_attention_kwargs,
             )
-        # 7. up
+        # 8. up
         for i, upsample_block in enumerate(self.up_blocks):
             is_final_block = i == len(self.up_blocks) - 1
 
@@ -798,7 +800,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     num_frames=num_frames,
                 )
 
-        # 8. post-process
+        # 9. post-process
         if self.conv_norm_out:
             sample = self.conv_norm_out(sample)
             sample = self.conv_act(sample)
