@@ -707,6 +707,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         image_latents_context_embeddings = image_latents_context_embeddings.permute(0, 2, 3, 1).reshape(
             _batch_size, _height * _width, _channels
         )
+        print(f"context_embeddings: {context_embeddings.shape} image_latents_context_embeddings: {image_latents_context_embeddings.shape}")
         context_embeddings = torch.cat([context_embeddings, image_latents_context_embeddings], dim=1)
 
         image_embeddings = self.context_embedding(image_embeddings)
