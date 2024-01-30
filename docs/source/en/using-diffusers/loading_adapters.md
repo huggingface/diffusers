@@ -314,24 +314,25 @@ image
 
 IP-Adapter works with most of our pipelines, including Stable Diffusion, Stable Diffusion XL (SDXL), ControlNet, T2I-Adapter, AnimateDiff.  And you can use any custom models finetuned from the same base models. It also works with LCM-Lora out of box.
 
-
-<Tip>
-
 You can find official IP-Adapter checkpoints in [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter).
 
 IP-Adapter was contributed by [okotaku](https://github.com/okotaku).
 
-</Tip>
-
-Let's first create a Stable Diffusion Pipeline.
+Let's first create a Stable Diffusion Pipeline. IP-Adapter relies on an image encoder to generate the image features, if your IP-Adapter weights folder contains a "image_encoder" subfolder, the image encoder will be automatically loaded and registered to the pipeline. Otherwise you can so load a [`CLIPVisionModelWithProjection`](https://huggingface.co/docs/transformers/main/en/model_doc/clip#transformers.CLIPVisionModelWithProjection) model and  pass it to a Stable Diffusion pipeline when you create it.
 
 ```py
 from diffusers import AutoPipelineForText2Image
 import torch
-from diffusers.utils import load_image
+from transformers import CLIPVisionModelWithProjection
 
-
-pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16,
+).to("cuda")
+pipeline = AutoPipelineForText2Image.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float16
+).to("cuda")
 ```
 
 Now load the [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter) weights with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method. 
@@ -340,27 +341,11 @@ Now load the [h94/IP-Adapter](https://huggingface.co/h94/IP-Adapter) weights wit
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 ```
 
-<Tip>
-IP-Adapter relies on an image encoder to generate the image features, if your IP-Adapter weights folder contains a "image_encoder" subfolder, the image encoder will be automatically loaded and registered to the pipeline. Otherwise you can so load a [`~transformers.CLIPVisionModelWithProjection`] model and  pass it to a Stable Diffusion pipeline when you create it.
-
-```py
-from diffusers import AutoPipelineForText2Image
-from transformers import CLIPVisionModelWithProjection
-import torch
-
-image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-    "h94/IP-Adapter", 
-    subfolder="models/image_encoder",
-    torch_dtype=torch.float16,
-).to("cuda")
-
-pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float16).to("cuda")
-```
-</Tip>
-
 IP-Adapter allows you to use both image and text to condition the image generation process. For example, let's use the bear image from the [Textual Inversion](#textual-inversion) section as the image prompt (`ip_adapter_image`) along with a text prompt to add "sunglasses". 😎
 
 ```py
+from diffusers.utils import load_image
+
 pipeline.set_ip_adapter_scale(0.6)
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_neg_embed.png")
 generator = torch.Generator(device="cpu").manual_seed(33)
@@ -391,10 +376,18 @@ IP-Adapter also works great with Image-to-Image and Inpainting pipelines. See be
 
 ```py
 from diffusers import AutoPipelineForImage2Image
+from transformers import CLIPVisionModelWithProjection
 import torch
 from diffusers.utils import load_image
 
-pipeline = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16).to("cuda")
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16,
+).to("cuda")
+pipeline = AutoPipelineForImage2Image.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float16, 
+).to("cuda")
 
 image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/vermeer.jpg")
 ip_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/river.png")
@@ -403,7 +396,7 @@ pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-a
 generator = torch.Generator(device="cpu").manual_seed(33)
 images = pipeline(
     prompt='best quality, high quality', 
-    image = image,
+    image=image,
     ip_adapter_image=ip_image,
     num_inference_steps=50,
     generator=generator,
@@ -419,8 +412,17 @@ images[0]
 from diffusers import AutoPipelineForInpaint
 import torch
 from diffusers.utils import load_image
+from transformers import CLIPVisionModelWithProjection
 
-pipeline = AutoPipelineForInpaint.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float).to("cuda")
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16,
+).to("cuda")
+
+pipeline = AutoPipelineForInpaint.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float
+).to("cuda")
 
 image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/inpaint_image.png")
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/mask.png")
@@ -451,12 +453,19 @@ images[0]
 IP-Adapters can also be used with [SDXL](../api/pipelines/stable_diffusion/stable_diffusion_xl.md)
 
 ```python
+from transformers import CLIPVisionModelWithProjection
 from diffusers import AutoPipelineForText2Image
 from diffusers.utils import load_image
 import torch
 
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16,
+).to("cuda")
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",
+    image_encoder=image_encoder,
     torch_dtype=torch.float16
 ).to("cuda")
 
@@ -486,11 +495,9 @@ image.save("sdxl_t2i.png")
   </div>
 </div>
 
-You can use the IP-Adapter face model to apply specific faces to your images.  It is an effective way to maintain consistent characters in your image generations.
-Weights are loaded with the same method used for the other IP-Adapters.  
+You can use the IP-Adapter face model to apply specific faces to your images.  It is an effective way to maintain consistent characters in your image generations. Weights are loaded with the same method used for the other IP-Adapters.  
 
 ```python
-# Load ip-adapter-full-face_sd15.bin
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
 ```
 
@@ -505,6 +512,7 @@ It is recommended to use `DDIMScheduler` and `EulerDiscreteScheduler` for face m
 import torch
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 from diffusers.utils import load_image
+from transformers import CLIPVisionModelWithProjection
 
 noise_scheduler = DDIMScheduler(
     num_train_timesteps=1000,
@@ -515,11 +523,16 @@ noise_scheduler = DDIMScheduler(
     set_alpha_to_one=False,
     steps_offset=1
 )
-
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16,
+).to("cuda")
 pipeline = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
     scheduler=noise_scheduler,
+    image_encoder=image_encoder,
 ).to("cuda")
 
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
