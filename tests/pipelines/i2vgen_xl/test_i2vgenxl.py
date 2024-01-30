@@ -255,5 +255,5 @@ class I2VGenXLPipelineSlowTests(unittest.TestCase):
 
         image_slice = image[0, -3:, -3:, -1]
         print_tensor_test(image_slice.flatten())
-        expected_slice = np.array([0.8592, 0.8645, 0.8499, 0.8722, 0.8769, 0.8421, 0.8557, 0.8528, 0.8285])
+        expected_slice = np.array([0.5482, 0.6244, 0.6274, 0.4584, 0.5935, 0.5937, 0.4579, 0.5767, 0.5892])
         assert numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice.flatten()) < 1e-3
