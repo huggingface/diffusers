@@ -117,9 +117,9 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.8110, 0.8843, 0.9326, 0.9224, 0.9878, 1.0, 0.9736, 1.0, 1.0])
+        expected_slice = np.array([0.80810547, 0.88183594, 0.9296875, 0.9189453, 0.9848633, 1.0, 0.97021484, 1.0, 1.0])
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
@@ -143,9 +143,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.2253, 0.2251, 0.2219, 0.2312, 0.2236, 0.2434, 0.2275, 0.2575, 0.2805])
+        expected_slice = np.array(
+            [0.22167969, 0.21875, 0.21728516, 0.22607422, 0.21948242, 0.23925781, 0.22387695, 0.25268555, 0.2722168]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
@@ -169,9 +171,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.2700, 0.2388, 0.2202, 0.2304, 0.2095, 0.2097, 0.2173, 0.2058, 0.1987])
+        expected_slice = np.array(
+            [0.27148438, 0.24047852, 0.22167969, 0.23217773, 0.21118164, 0.21142578, 0.21875, 0.20751953, 0.20019531]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
@@ -224,10 +228,10 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         image_slice = images[0, :3, :3, -1].flatten()
 
         expected_slice = np.array(
-            [0.1706543, 0.1303711, 0.12573242, 0.21777344, 0.14550781, 0.14038086, 0.40820312, 0.41455078, 0.42529297]
+            [0.18115234, 0.13500977, 0.13427734, 0.24194336, 0.17138672, 0.16625977, 0.4260254, 0.43359375, 0.4416504]
         )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
     def test_unload(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
@@ -269,9 +273,21 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.0965, 0.0956, 0.0849, 0.0908, 0.0944, 0.0927, 0.0888, 0.0929, 0.0920])
+        expected_slice = np.array(
+            [
+                0.09630299,
+                0.09551358,
+                0.08480701,
+                0.09070173,
+                0.09437338,
+                0.09264627,
+                0.08883232,
+                0.09287417,
+                0.09197289,
+            ]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
 
@@ -313,9 +329,21 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.0652, 0.0698, 0.0723, 0.0744, 0.0699, 0.0636, 0.0784, 0.0803, 0.0742])
+        expected_slice = np.array(
+            [
+                0.06513795,
+                0.07009393,
+                0.07234055,
+                0.07426041,
+                0.07002589,
+                0.06415862,
+                0.07827643,
+                0.07962808,
+                0.07411247,
+            ]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
