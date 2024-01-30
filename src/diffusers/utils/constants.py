@@ -13,6 +13,7 @@
 # limitations under the License.
 import importlib
 import os
+from pathlib import Path
 
 from huggingface_hub.constants import HF_HOME
 from packaging import version
@@ -35,7 +36,7 @@ SAFETENSORS_FILE_EXTENSION = "safetensors"
 ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://huggingface.co")
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"
-HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", os.path.join(HF_HOME, "modules"))
+HF_MODULES_CACHE = os.getenv("HF_MODULES_CACHE", Path(HF_HOME, "modules").as_posix())
 DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
 
 # Below should be `True` if the current version of `peft` and `transformers` are compatible with
