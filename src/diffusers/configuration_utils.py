@@ -22,7 +22,7 @@ import json
 import os
 import re
 from collections import OrderedDict
-from pathlib import PosixPath
+from pathlib import PosixPath, Path
 from typing import Any, Dict, Tuple, Union
 
 import numpy as np
@@ -162,7 +162,7 @@ class ConfigMixin:
         os.makedirs(save_directory, exist_ok=True)
 
         # If we save using the predefined names, we can load using `from_config`
-        output_config_file = os.path.join(save_directory, self.config_name)
+        output_config_file = Path(save_directory, self.config_name).as_posix()
 
         self.to_json_file(output_config_file)
         logger.info(f"Configuration saved in {output_config_file}")
@@ -359,13 +359,13 @@ class ConfigMixin:
         if os.path.isfile(pretrained_model_name_or_path):
             config_file = pretrained_model_name_or_path
         elif os.path.isdir(pretrained_model_name_or_path):
-            if os.path.isfile(os.path.join(pretrained_model_name_or_path, cls.config_name)):
+            if os.path.isfile(Path(pretrained_model_name_or_path, cls.config_name).as_posix()):
                 # Load from a PyTorch checkpoint
-                config_file = os.path.join(pretrained_model_name_or_path, cls.config_name)
+                config_file = Path(pretrained_model_name_or_path, cls.config_name).as_posix()
             elif subfolder is not None and os.path.isfile(
-                os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
+                Path(pretrained_model_name_or_path, subfolder, cls.config_name).as_posix()
             ):
-                config_file = os.path.join(pretrained_model_name_or_path, subfolder, cls.config_name)
+                config_file = Path(pretrained_model_name_or_path, subfolder, cls.config_name).as_posix()
             else:
                 raise EnvironmentError(
                     f"Error no file named {cls.config_name} found in directory {pretrained_model_name_or_path}."
