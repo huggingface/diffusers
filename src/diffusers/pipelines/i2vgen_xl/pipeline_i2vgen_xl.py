@@ -683,7 +683,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             force_feature_extractor_resize (`bool`, *optional*):
-                If set to True, additional resizing is done in the feature extractor.
+                If set to True, additional resizing is done in the feature extractor. Only helpful for tests.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
