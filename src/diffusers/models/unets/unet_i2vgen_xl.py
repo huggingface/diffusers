@@ -713,9 +713,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             _batch_size, _height * _width, _channels
         )
         context_embeddings = torch.cat([context_embeddings, image_latents_context_embeddings], dim=1)
-        print(f"image_embeddings: {image_embeddings.shape}")
-        print(f"self.context_embedding 0: {self.context_embedding[0].weight.data.shape}")
-        print(f"self.context_embedding 2: {self.context_embedding[2].weight.data.shape}")
         image_embeddings = self.context_embedding(image_embeddings)
         image_embeddings = image_embeddings.view(-1, self.config.in_channels, self.config.cross_attention_dim)
         context_embeddings = torch.cat([context_embeddings, image_embeddings], dim=1)
