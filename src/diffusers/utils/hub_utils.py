@@ -153,9 +153,9 @@ def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str]
 # - Diffusers doesn't use custom environment variables to specify the cache path.
 # - There is no need to migrate the cache format, just move the files to the new location.
 hf_cache_home = os.path.expanduser(
-    os.getenv("HF_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface"))
+    os.getenv("HF_HOME", Path(os.getenv("XDG_CACHE_HOME", "~/.cache"), "huggingface").as_posix())
 )
-old_diffusers_cache = os.path.join(hf_cache_home, "diffusers")
+old_diffusers_cache = Path(hf_cache_home, "diffusers").as_posix()
 
 
 def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str] = None) -> None:
@@ -180,7 +180,7 @@ def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str]
     # At this point, old_cache_dir contains symlinks to the new cache (it can still be used).
 
 
-cache_version_file = os.path.join(HF_HUB_CACHE, "version_diffusers_cache.txt")
+cache_version_file = Path(HF_HUB_CACHE, "version_diffusers_cache.txt").as_posix()
 if not os.path.isfile(cache_version_file):
     cache_version = 0
 else:
@@ -249,14 +249,14 @@ def _get_model_file(
     if os.path.isfile(pretrained_model_name_or_path):
         return pretrained_model_name_or_path
     elif os.path.isdir(pretrained_model_name_or_path):
-        if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
+        if os.path.isfile(Path(pretrained_model_name_or_path, weights_name).as_posix()):
             # Load from a PyTorch checkpoint
-            model_file = os.path.join(pretrained_model_name_or_path, weights_name)
+            model_file = Path(pretrained_model_name_or_path, weights_name).as_posix()
             return model_file
         elif subfolder is not None and os.path.isfile(
-            os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
+            Path(pretrained_model_name_or_path, subfolder, weights_name).as_posix()
         ):
-            model_file = os.path.join(pretrained_model_name_or_path, subfolder, weights_name)
+            model_file = Path(pretrained_model_name_or_path, subfolder, weights_name).as_posix()
             return model_file
         else:
             raise EnvironmentError(
@@ -438,7 +438,7 @@ class PushToHubMixin:
             self.save_pretrained(tmpdir, **save_kwargs)
 
             # Update model card if needed:
-            model_card.save(os.path.join(tmpdir, "README.md"))
+            model_card.save(Path(tmpdir, "README.md").as_posix())
 
             return self._upload_folder(
                 tmpdir,
