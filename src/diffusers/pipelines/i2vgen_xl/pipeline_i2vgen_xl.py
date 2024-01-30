@@ -14,7 +14,7 @@
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL
@@ -830,9 +830,14 @@ class I2VGenXLPipeline(DiffusionPipeline):
         return I2VGenXLPipelineOutput(frames=video)
 
 
-# The following utilities are taken from https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
-def _resize_bilinear(image, resolution):
-    # First convert the images to PIL in case they are float tensors (only relevant for tests now).
+# The following utilities are taken and adapted from
+# https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
+
+
+def _convert_pt_to_pil(image: Union[torch.Tensor, List[torch.Tensor]]):
+    if isinstance(image, list) and isinstance(image[0], torch.Tensor):
+        image = torch.cat(image, 0)
+
     if isinstance(image, torch.Tensor):
         image = image.permute(0, 2, 3, 1) if image.ndim == 4 else image.permute(2, 3, 1)
         image = (image.numpy() * 255.0).clip(0, 255).astype("uint8")
@@ -840,6 +845,15 @@ def _resize_bilinear(image, resolution):
             image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
         else:
             image = PIL.Image.fromarray(image).convert("RGB")
+
+    return image
+
+
+def _resize_bilinear(
+    image: Union[torch.Tensor, List[torch.Tensor], PIL.Image.Image, List[PIL.Image.Image]], resolution: Tuple[int, int]
+):
+    # First convert the images to PIL in case they are float tensors (only relevant for tests now).
+    image = _convert_pt_to_pil(image)
 
     if isinstance(image, list):
         image = [u.resize(resolution, PIL.Image.BILINEAR) for u in image]
@@ -848,17 +862,12 @@ def _resize_bilinear(image, resolution):
     return image
 
 
-def _center_crop_wide(image, resolution):
+def _center_crop_wide(
+    image: Union[torch.Tensor, List[torch.Tensor], PIL.Image.Image, List[PIL.Image.Image]], resolution: Tuple[int, int]
+):
     # First convert the images to PIL in case they are float tensors (only relevant for tests now).
-    if isinstance(image, torch.Tensor):
-        print(image.shape)
-        image = image.permute(0, 2, 3, 1) if image.ndim == 4 else image.permute(2, 3, 1)
-        image = (image.numpy() * 255.0).clip(0, 255).astype("uint8")
-        if image.ndim == 4:
-            image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
-        else:
-            image = PIL.Image.fromarray(image).convert("RGB")
-    print(len(image), image[0].size(), type(image[0]))
+    image = _convert_pt_to_pil(image)
+
     if isinstance(image, list):
         scale = min(image[0].size[0] / resolution[0], image[0].size[1] / resolution[1])
         image = [u.resize((round(u.width // scale), round(u.height // scale)), resample=PIL.Image.BOX) for u in image]
