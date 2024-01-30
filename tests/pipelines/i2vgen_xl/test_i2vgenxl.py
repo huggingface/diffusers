@@ -168,6 +168,9 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    def test_save_load_local(self):
+        super().test_save_load_local(expected_max_difference=0.001)
+
     @unittest.skip("Deprecated functionality")
     def test_attention_slicing_forward_pass(self):
         pass
