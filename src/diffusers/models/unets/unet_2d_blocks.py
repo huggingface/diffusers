@@ -671,6 +671,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self,
         in_channels: int,
         temb_channels: int,
+        out_channels: Optional[int] = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
@@ -678,6 +679,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
+        resnet_groups_out: Optional[int] = None,
         resnet_pre_norm: bool = True,
         num_attention_heads: int = 1,
         output_scale_factor: float = 1.0,
@@ -689,6 +691,10 @@ class UNetMidBlock2DCrossAttn(nn.Module):
     ):
         super().__init__()
 
+        out_channels = out_channels or in_channels
+        self.in_channels = in_channels
+        self.out_channels = out_channels
+
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
@@ -697,14 +703,17 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
+        resnet_groups_out = resnet_groups_out or resnet_groups
+
         # there is always at least one resnet
         resnets = [
             ResnetBlock2D(
                 in_channels=in_channels,
-                out_channels=in_channels,
+                out_channels=out_channels,
                 temb_channels=temb_channels,
                 eps=resnet_eps,
                 groups=resnet_groups,
+                groups_out=resnet_groups_out,
                 dropout=dropout,
                 time_embedding_norm=resnet_time_scale_shift,
                 non_linearity=resnet_act_fn,
@@ -719,11 +728,11 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 attentions.append(
                     Transformer2DModel(
                         num_attention_heads,
-                        in_channels // num_attention_heads,
-                        in_channels=in_channels,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
                         num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
-                        norm_num_groups=resnet_groups,
+                        norm_num_groups=resnet_groups_out,
                         use_linear_projection=use_linear_projection,
                         upcast_attention=upcast_attention,
                         attention_type=attention_type,
@@ -733,8 +742,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 attentions.append(
                     DualTransformer2DModel(
                         num_attention_heads,
-                        in_channels // num_attention_heads,
-                        in_channels=in_channels,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
@@ -742,11 +751,11 @@ class UNetMidBlock2DCrossAttn(nn.Module):
                 )
             resnets.append(
                 ResnetBlock2D(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
+                    in_channels=out_channels,
+                    out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
-                    groups=resnet_groups,
+                    groups=resnet_groups_out,
                     dropout=dropout,
                     time_embedding_norm=resnet_time_scale_shift,
                     non_linearity=resnet_act_fn,
