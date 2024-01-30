@@ -46,7 +46,7 @@ Sample output with I2VGenXL:
 * It can generate videos of quality that is often on par with [Stable Video Diffusion](../../using-diffusers/svd) (SVD). 
 * Unlike SVD, it additionally accepts text prompts as inputs. 
 * It can generate higher resolution videos. 
-* When using the [`DDIMScheduler`] (which is default for this pipeline), less than 50 steps for inference lead to weird results.
+* When using the [`DDIMScheduler`] (which is default for this pipeline), less than 50 steps for inference leads to bad results.
 
 ## I2VGenXLPipeline
 [[autodoc]] I2VGenXLPipeline
