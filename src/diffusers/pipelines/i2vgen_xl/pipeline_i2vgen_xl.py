@@ -832,6 +832,14 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
 # The following utilities are taken from https://github.com/ali-vilab/i2vgen-xl/blob/main/utils/transforms.py.
 def _resize_bilinear(image, resolution):
+    # First convert the images to PIL in case they are float tensors (only relevant for tests now).
+    if isinstance(image, torch.Tensor):
+        image = image.numpy()
+        if image.ndim == 4:
+            image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
+        else:
+            image = PIL.Image.fromarray(image).convert("RGB")
+
     if isinstance(image, list):
         image = [u.resize(resolution, PIL.Image.BILINEAR) for u in image]
     else:
@@ -840,6 +848,14 @@ def _resize_bilinear(image, resolution):
 
 
 def _center_crop_wide(image, resolution):
+    # First convert the images to PIL in case they are float tensors (only relevant for tests now).
+    if isinstance(image, torch.Tensor):
+        image = image.numpy()
+        if image.ndim == 4:
+            image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
+        else:
+            image = PIL.Image.fromarray(image).convert("RGB")
+
     if isinstance(image, list):
         scale = min(image[0].size[0] / resolution[0], image[0].size[1] / resolution[1])
         image = [u.resize((round(u.width // scale), round(u.height // scale)), resample=PIL.Image.BOX) for u in image]
