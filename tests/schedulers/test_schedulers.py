@@ -428,7 +428,7 @@ class SchedulerCommonTest(unittest.TestCase):
         kwargs = dict(self.forward_default_kwargs)
         kwargs.update(forward_kwargs)
 
-        num_inference_steps = kwargs.pop("num_inference_steps", self.default_num_inference_steps)
+        num_inference_steps = kwargs.pop("num_inference_steps", None)
         time_step = time_step if time_step is not None else self.default_timestep
 
         for scheduler_class in self.scheduler_classes:
