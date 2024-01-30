@@ -842,6 +842,7 @@ def _convert_pt_to_pil(image: Union[torch.Tensor, List[torch.Tensor]]):
 
     if isinstance(image, torch.Tensor):
         image = image.permute(0, 2, 3, 1) if image.ndim == 4 else image.permute(2, 3, 1)
+        image = image.cpu()
         image = (image.numpy() * 255.0).clip(0, 255).astype("uint8")
         if image.ndim == 4:
             image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
