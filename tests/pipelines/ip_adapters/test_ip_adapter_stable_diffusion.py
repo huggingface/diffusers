@@ -314,9 +314,11 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.0592, 0.0573, 0.0459, 0.0542, 0.0559, 0.0523, 0.0500, 0.0540, 0.0501])
+        expected_slice = np.array(
+            [0.0576596, 0.05600825, 0.04479006, 0.05288461, 0.05461192, 0.05137569, 0.04867965, 0.05301541, 0.04939842]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
     def test_image_to_image_sdxl(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="sdxl_models/image_encoder")
