@@ -257,7 +257,7 @@ def get_cached_module_file(
     # Download and cache module_file from the repo `pretrained_model_name_or_path` of grab it if it's a local file.
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
 
-    module_file_or_url = os.path.join(pretrained_model_name_or_path, module_file)
+    module_file_or_url = Path(pretrained_model_name_or_path, module_file).as_posix()
 
     if os.path.isfile(module_file_or_url):
         resolved_module_file = module_file_or_url
@@ -311,7 +311,7 @@ def get_cached_module_file(
                 local_files_only=local_files_only,
                 token=token,
             )
-            submodule = os.path.join("local", "--".join(pretrained_model_name_or_path.split("/")))
+            submodule = Path("local", "--".join(pretrained_model_name_or_path.split("/"))).as_posix()
         except EnvironmentError:
             logger.error(f"Could not locate the {module_file} inside {pretrained_model_name_or_path}.")
             raise
@@ -330,7 +330,7 @@ def get_cached_module_file(
         shutil.copy(resolved_module_file, submodule_path / module_file)
         for module_needed in modules_needed:
             module_needed = f"{module_needed}.py"
-            shutil.copy(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
+            shutil.copy(Path(pretrained_model_name_or_path, module_needed).as_posix(), submodule_path / module_needed)
     else:
         # Get the commit hash
         # TODO: we will get this info in the etag soon, so retrieve it from there and not here.
@@ -358,7 +358,7 @@ def get_cached_module_file(
                     revision=revision,
                     local_files_only=local_files_only,
                 )
-    return os.path.join(full_submodule, module_file)
+    return Path(full_submodule, module_file).as_posix()
 
 
 @validate_hf_hub_args
