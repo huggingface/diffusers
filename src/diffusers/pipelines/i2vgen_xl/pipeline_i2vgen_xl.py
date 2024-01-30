@@ -757,7 +757,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
             fps_tensor = torch.tensor([target_fps, target_fps]).to(device)
         else:
             fps_tensor = torch.tensor([target_fps]).to(device)
-        fps_tensor = fps_tensor.repeat(batch_size, 1).ravel()
+        fps_tensor = fps_tensor.repeat(batch_size * num_videos_per_prompt, 1).ravel()
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
