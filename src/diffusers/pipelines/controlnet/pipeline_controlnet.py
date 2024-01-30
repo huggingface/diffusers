@@ -1214,10 +1214,6 @@ class StableDiffusionControlNetPipeline(
                     guess_mode=guess_mode,
                     return_dict=False,
                 )
-                print(
-                    f"Denoising step {i} > Right after controlnet application : Device type of controlnet >> ",
-                    self.controlnet.device.type,
-                )
 
                 if guess_mode and self.do_classifier_free_guidance:
                     # Infered ControlNet only for the conditional batch.
@@ -1251,7 +1247,6 @@ class StableDiffusionControlNetPipeline(
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
-                    print("btw, calling callback_on_step_end")
                     callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
 
                     latents = callback_outputs.pop("latents", latents)
@@ -1262,7 +1257,6 @@ class StableDiffusionControlNetPipeline(
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
                     if callback is not None and i % callback_steps == 0:
-                        print("btw, calling callback")
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
