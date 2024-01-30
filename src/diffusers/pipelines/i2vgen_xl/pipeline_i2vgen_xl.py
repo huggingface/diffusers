@@ -22,7 +22,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import LoraLoaderMixin, TextualInversionLoaderMixin
+from ...loaders import LoraLoaderMixin
 from ...models import AutoencoderKL
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_i2vgen_xl import I2VGenXLUNet
@@ -257,10 +257,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
-
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -338,10 +334,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
-
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(
