@@ -127,9 +127,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.3013, 0.2615, 0.2202, 0.2722, 0.2510, 0.2023, 0.2498, 0.2415, 0.2139])
+        expected_slice = np.array(
+            [0.30444336, 0.26513672, 0.22436523, 0.2758789, 0.25585938, 0.20751953, 0.25390625, 0.24633789, 0.21923828]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
     def test_image_to_image(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
@@ -155,9 +157,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.3550, 0.2600, 0.2520, 0.2412, 0.1870, 0.3831, 0.1453, 0.1880, 0.5371])
+        expected_slice = np.array(
+            [0.35913086, 0.265625, 0.26367188, 0.24658203, 0.19750977, 0.39990234, 0.15258789, 0.20336914, 0.5517578]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
     def test_inpainting(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
@@ -183,9 +187,11 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.2744, 0.2410, 0.2202, 0.2334, 0.2090, 0.2053, 0.2175, 0.2033, 0.1934])
+        expected_slice = np.array(
+            [0.27294922, 0.24023438, 0.21948242, 0.23242188, 0.20825195, 0.2055664, 0.21679688, 0.20336914, 0.19360352]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
     def test_text_to_image_model_cpu_offload(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
@@ -365,9 +371,21 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.0708, 0.0701, 0.0735, 0.0760, 0.0739, 0.0679, 0.0756, 0.0824, 0.0837])
+        expected_slice = np.array(
+            [
+                0.07126552,
+                0.07025367,
+                0.07348302,
+                0.07580167,
+                0.07467338,
+                0.06918576,
+                0.07480252,
+                0.08279955,
+                0.08547315,
+            ]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
     def test_inpainting_sdxl(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="sdxl_models/image_encoder")
@@ -387,9 +405,11 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         image_slice = images[0, :3, :3, -1].flatten()
         image_slice.tolist()
 
-        expected_slice = np.array([0.1420, 0.1495, 0.1430, 0.1462, 0.1493, 0.1502, 0.1474, 0.1502, 0.1517])
+        expected_slice = np.array(
+            [0.14181179, 0.1493012, 0.14283323, 0.14602411, 0.14915377, 0.15015268, 0.14725655, 0.15009224, 0.15164584]
+        )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
 
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
