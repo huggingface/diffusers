@@ -550,6 +550,7 @@ image = pipeline(
   </div>
 </div>
 
+
 You can load multiple IP-Adapter models and use multiple reference images at the same time. In this example we use IP-Adapter-Plus face model to create a consistent character and also use IP-Adapter-Plus model along with 10 images to create a coherent style in the image we generate.
 
 ```python
