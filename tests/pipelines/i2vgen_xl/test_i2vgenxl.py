@@ -37,7 +37,6 @@ from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
-    print_tensor_test,
     skip_mps,
     torch_device,
 )
