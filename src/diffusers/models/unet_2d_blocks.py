@@ -298,6 +298,7 @@ class ResnetDownsampleBlock2D(ResnetDownsampleBlock2D):
     deprecation_message = "Importing `ResnetDownsampleBlock2D` from `diffusers.models.unet_2d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_2d_blocks import ResnetDownsampleBlock2D`, instead."
     deprecate("ResnetDownsampleBlock2D", "0.29", deprecation_message)
 
+
 class SimpleCrossAttnDownBlock2D(SimpleCrossAttnDownBlock2D):
     deprecation_message = "Importing `SimpleCrossAttnDownBlock2D` from `diffusers.models.unet_2d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_2d_blocks import SimpleCrossAttnDownBlock2D`, instead."
     deprecate("SimpleCrossAttnDownBlock2D", "0.29", deprecation_message)
@@ -306,6 +307,7 @@ class SimpleCrossAttnDownBlock2D(SimpleCrossAttnDownBlock2D):
 class KDownBlock2D(KDownBlock2D):
     deprecation_message = "Importing `KDownBlock2D` from `diffusers.models.unet_2d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_2d_blocks import KDownBlock2D`, instead."
     deprecate("KDownBlock2D", "0.29", deprecation_message)
+
 
 class KCrossAttnDownBlock2D(KCrossAttnDownBlock2D):
     deprecation_message = "Importing `KCrossAttnDownBlock2D` from `diffusers.models.unet_2d_blocks` is deprecated and this will be removed in a future version. Please use `from diffusers.models.unets.unet_2d_blocks import KCrossAttnDownBlock2D`, instead."
