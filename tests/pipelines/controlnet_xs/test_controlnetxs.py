@@ -70,10 +70,10 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     try:
         _ = in_queue.get(timeout=timeout)
 
-        controlnet_addon = ControlNetXSAddon.from_pretrained("todo umer")
-
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-2-1", safety_checker=None, controlnet_addon=controlnet_addon
+            base_path="stabilityai/stable-diffusion-2-1-base",
+            base_kwargs={"safety_checker": None},
+            addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-canny",
         )
         pipe.to("cuda")
         pipe.set_progress_bar_config(disable=None)
@@ -339,7 +339,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
 
     def test_canny(self):
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            base_path="stabilityai/stable-diffusion-2-1",
+            base_path="stabilityai/stable-diffusion-2-1-base",
             addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-canny",
         )
         pipe.enable_model_cpu_offload()
@@ -358,12 +358,12 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         assert image.shape == (768, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        expected_image = np.array([0.1462, 0.1518, 0.1583, 0.1332, 0.1655, 0.1629, 0.1646, 0.1595, 0.1762])
+        expected_image = np.array([0.1276, 0.1405, 0.1474, 0.1188, 0.1559, 0.1496, 0.1569, 0.1478, 0.1706])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     def test_depth(self):
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            base_path="stabilityai/stable-diffusion-2-1",
+            base_path="stabilityai/stable-diffusion-2-1-base",
             addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-depth",
         )
         pipe.enable_model_cpu_offload()
@@ -382,7 +382,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         assert image.shape == (512, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        expected_image = np.array([0.1504, 0.1448, 0.1742, 0.155, 0.1553, 0.1833, 0.1694, 0.1833, 0.2354])
+        expected_image = np.array([0.1101, 0.1026, 0.1212, 0.114, 0.1169, 0.1266, 0.1191, 0.1266, 0.1712])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     @require_python39_or_higher

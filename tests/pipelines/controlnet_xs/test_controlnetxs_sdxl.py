@@ -474,5 +474,5 @@ class StableDiffusionXLControlNetXSPipelineSlowTests(unittest.TestCase):
         assert images[0].shape == (512, 512, 3)
 
         original_image = images[0, -3:, -3:, -1].flatten()
-        expected_image = np.array([0.4082, 0.3879, 0.2781, 0.2655, 0.327, 0.372, 0.3762, 0.3444, 0.3122])
+        expected_image = np.array([0.4082, 0.3880, 0.2779, 0.2654, 0.327, 0.372, 0.3761, 0.3442, 0.3122])
         assert np.allclose(original_image, expected_image, atol=1e-04)

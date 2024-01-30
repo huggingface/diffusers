@@ -68,7 +68,7 @@ EXAMPLE_DOC_STRING = """
         >>> controlnet_conditioning_scale = 0.5
 
         >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-        >>>     base_path="stabilityai/stable-diffusion-2-1", base_kwargs=dict(torch_dtype=torch.float16),
+        >>>     base_path="stabilityai/stable-diffusion-2-1-base", base_kwargs=dict(torch_dtype=torch.float16),
         >>>     addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-canny", addon_kwargs=dict(torch_dtype=torch.float16),
         >>> )
         >>> pipe.enable_model_cpu_offload()

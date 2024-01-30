@@ -776,7 +776,7 @@ class StableDiffusionXLControlNetXSPipeline(
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         passed_add_embed_dim = (
-            self.controlnet.base_model.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
+            self.controlnet.base_model.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
         )
         expected_add_embed_dim = self.controlnet.base_model.add_embedding.linear_1.in_features
 
