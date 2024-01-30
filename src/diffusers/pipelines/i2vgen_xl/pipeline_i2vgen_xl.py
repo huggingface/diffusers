@@ -858,7 +858,7 @@ def _center_crop_wide(image, resolution):
             image = [PIL.Image.fromarray(img).convert("RGB") for img in image]
         else:
             image = PIL.Image.fromarray(image).convert("RGB")
-    print(len(image), image[0].size(), image.dtype, type(image))
+    print(len(image), image[0].size(), type(image[0]))
     if isinstance(image, list):
         scale = min(image[0].size[0] / resolution[0], image[0].size[1] / resolution[1])
         image = [u.resize((round(u.width // scale), round(u.height // scale)), resample=PIL.Image.BOX) for u in image]
