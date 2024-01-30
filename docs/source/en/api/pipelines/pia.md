@@ -24,7 +24,7 @@ Recent advancements in personalized text-to-image (T2I) models have revolutioniz
 
 ## Available checkpoints
 
-Motion Adapter checkpoints for PIA can be found under [](). These checkpoints are meant to work with any model based on Stable Diffusion 1.5
+Motion Adapter checkpoints for PIA can be found under the [OpenMMLab org](https://huggingface.co/openmmlab/PIA-condition-adapter). These checkpoints are meant to work with any model based on Stable Diffusion 1.5
 
 ## Usage example
 
@@ -41,8 +41,8 @@ from diffusers import (
 )
 from diffusers.utils import export_to_gif, load_image
 
-adapter = MotionAdapter.from_pretrained("diffusers/PIA-motion-adapter")
-pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter)
+adapter = MotionAdapter.from_pretrained("openmmlab/PIA-condition-adapter")
+pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter, torch_dtype=torch.float16)
 pipe.scheduler = DDIMScheduler(
     clip_sample=False,
     steps_offset=1,
@@ -62,15 +62,7 @@ prompt = "cat in a field"
 negative_prompt = "wrong white balance, dark, sketches,worst quality,low quality"
 
 generator = torch.Generator("cpu").manual_seed(0)
-output = pipe(
-    image=image,
-    prompt=prompt,
-    strength=0.75,
-    guidance_scale=7.5,
-    num_inference_steps=25,
-    motion_scale=2,
-    generator=generator,
-)
+output = pipe(image=image, prompt=prompt, generator=generator)
 frames = output.frames[0]
 export_to_gif(frames, "pia-animation.gif")
 ```
@@ -113,7 +105,7 @@ from diffusers import (
 )
 from diffusers.utils import export_to_gif, load_image
 
-adapter = MotionAdapter.from_pretrained("../checkpoints/pia-diffusers")
+adapter = MotionAdapter.from_pretrained("openmmlab/PIA-condition-adapter")
 pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter)
 
 # enable FreeInit
@@ -141,14 +133,7 @@ negative_prompt = "wrong white balance, dark, sketches,worst quality,low quality
 
 generator = torch.Generator("cpu").manual_seed(0)
 
-output = pipe(
-    image=image,
-    prompt=prompt,
-    guidance_scale=7.5,
-    num_inference_steps=25,
-    motion_scale=0,
-    generator=generator,
-)
+output = pipe(image=image, prompt=prompt, generator=generator)
 frames = output.frames[0]
 export_to_gif(frames, "pia-freeinit-animation.gif")
 ```
