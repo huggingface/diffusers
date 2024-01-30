@@ -580,7 +580,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             forward_upsample_size = True
 
         # 1. time
-        timesteps = timestep
         timesteps = _to_tensor(timestep, sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
