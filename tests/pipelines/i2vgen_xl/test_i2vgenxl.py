@@ -59,6 +59,14 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     )
 
     def get_dummy_components(self):
+        scheduler = DDIMScheduler(
+            beta_start=0.00085,
+            beta_end=0.012,
+            beta_schedule="scaled_linear",
+            clip_sample=False,
+            set_alpha_to_one=False,
+        )
+
         torch.manual_seed(0)
         unet = I2VGenXLUNet(
             block_out_channels=(4, 8),
@@ -72,13 +80,7 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             attention_head_dim=4,
             norm_num_groups=2,
         )
-        scheduler = DDIMScheduler(
-            beta_start=0.00085,
-            beta_end=0.012,
-            beta_schedule="scaled_linear",
-            clip_sample=False,
-            set_alpha_to_one=False,
-        )
+        
         torch.manual_seed(0)
         vae = AutoencoderKL(
             block_out_channels=(8,),
@@ -107,17 +109,18 @@ class I2VGenPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
-        image_encoder = CLIPVisionModelWithProjection(
-            CLIPVisionConfig(
-                hidden_size=32,
-                projection_dim=32,
-                num_hidden_layers=2,
-                num_attention_heads=2,
-                image_size=32,
-                intermediate_size=16,
-                patch_size=1,
-            )
+        torch.manual_seed(0)
+        vision_encoder_config = CLIPVisionConfig(
+            hidden_size=4,
+            projection_dim=32,
+            num_hidden_layers=2,
+            num_attention_heads=2,
+            image_size=32,
+            intermediate_size=16,
+            patch_size=1,
         )
+        image_encoder = CLIPVisionModelWithProjection(vision_encoder_config)
+
         components = {
             "unet": unet,
             "scheduler": scheduler,
