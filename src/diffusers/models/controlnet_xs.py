@@ -15,8 +15,8 @@ from .embeddings import (
     Timesteps,
 )
 from .modeling_utils import ModelMixin
-from .unet_2d_blocks import Downsample2D, ResnetBlock2D, Transformer2DModel, UNetMidBlock2DCrossAttn, Upsample2D
-from .unet_2d_condition import UNet2DConditionModel
+from .unets.unet_2d_blocks import Downsample2D, ResnetBlock2D, Transformer2DModel, UNetMidBlock2DCrossAttn, Upsample2D
+from .unets.unet_2d_condition import UNet2DConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name

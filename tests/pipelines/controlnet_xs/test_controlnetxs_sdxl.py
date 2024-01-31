@@ -142,7 +142,6 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
             "feature_extractor": None,
-            "image_encoder": None,
         }
         return components
 

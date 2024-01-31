@@ -2260,11 +2260,12 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
-        resnet_groups_out = resnet_groups_out or resnet_groups
 
         # support for variable transformer layers per block
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * num_layers
+
+        resnet_groups_out = resnet_groups_out or resnet_groups
 
         # there is always at least one resnet
         resnets = [

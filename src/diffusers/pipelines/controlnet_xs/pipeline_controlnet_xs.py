@@ -19,11 +19,11 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetXSAddon, ControlNetXSModel, ImageProjection
+from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, ControlNetXSAddon, ControlNetXSModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -88,7 +88,7 @@ EXAMPLE_DOC_STRING = """
 
 
 class StableDiffusionControlNetXSPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet-XS guidance.
@@ -100,7 +100,6 @@ class StableDiffusionControlNetXSPipeline(
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
         - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
         - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
-        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
         - [`loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
 
     Args:
@@ -123,8 +122,8 @@ class StableDiffusionControlNetXSPipeline(
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
-    model_cpu_offload_seq = "text_encoder->image_encoder->controlnet->vae"
-    _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
+    model_cpu_offload_seq = "text_encoder->controlnet->vae"
+    _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
@@ -137,7 +136,6 @@ class StableDiffusionControlNetXSPipeline(
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
-        image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -176,7 +174,6 @@ class StableDiffusionControlNetXSPipeline(
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
-            image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
@@ -205,7 +202,15 @@ class StableDiffusionControlNetXSPipeline(
         controlnet_addon = ControlNetXSAddon.from_pretrained(addon_path, **addon_kwargs)
 
         unet = components["unet"]
-        components = {k: v for k, v in components.items() if k != "unet"}
+
+        to_ignore = ["image_encoder"]
+        for item in to_ignore:
+            if item in components:
+                print(
+                    f"Loaded base pipeline has component `{item}` which StableDiffusionControlNetXSPipeline can't use. It will be ignored."
+                )
+
+        components = {k: v for k, v in components.items() if k not in ["unet"] + to_ignore}
 
         controlnet = ControlNetXSModel(unet, controlnet_addon)
         return StableDiffusionControlNetXSPipeline(controlnet=controlnet, **components)
@@ -484,31 +489,6 @@ class StableDiffusionControlNetXSPipeline(
 
         return prompt_embeds, negative_prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(image, return_tensors="pt").pixel_values
-
-        image = image.to(device=device, dtype=dtype)
-        if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_enc_hidden_states = self.image_encoder(
-                torch.zeros_like(image), output_hidden_states=True
-            ).hidden_states[-2]
-            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
-            return image_enc_hidden_states, uncond_image_enc_hidden_states
-        else:
-            image_embeds = self.image_encoder(image).image_embeds
-            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_embeds = torch.zeros_like(image_embeds)
-
-            return image_embeds, uncond_image_embeds
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -723,32 +703,6 @@ class StableDiffusionControlNetXSPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
-
-        The suffixes after the scaling factors represent the stages where they are being applied.
-
-        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
-        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
-
-        Args:
-            s1 (`float`):
-                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            s2 (`float`):
-                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
-            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
-        """
-        if not hasattr(self, "unet"):
-            raise ValueError("The pipeline must have `unet` for using FreeU.")
-        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
-
-    def disable_freeu(self):
-        """Disables the FreeU mechanism if enabled."""
-        self.unet.disable_freeu()
-
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.guidance_scale
     def guidance_scale(self):
@@ -791,7 +745,6 @@ class StableDiffusionControlNetXSPipeline(
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -848,8 +801,6 @@ class StableDiffusionControlNetXSPipeline(
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
-            ip_adapter_image (`PipelineImageInput`, *optional*):
-                Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -961,14 +912,6 @@ class StableDiffusionControlNetXSPipeline(
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
-            )
-            if self.do_classifier_free_guidance:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
-
         # 4. Prepare image
         if isinstance(controlnet, ControlNetXSModel):
             image = self.prepare_image(
@@ -1005,9 +948,6 @@ class StableDiffusionControlNetXSPipeline(
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7.1 Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
-
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
@@ -1034,7 +974,6 @@ class StableDiffusionControlNetXSPipeline(
                     controlnet_cond=image,
                     conditioning_scale=controlnet_conditioning_scale,
                     cross_attention_kwargs=cross_attention_kwargs,
-                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=True,
                     do_control=do_control,
                 ).sample

@@ -24,7 +24,6 @@ from transformers import (
     CLIPTextModel,
     CLIPTextModelWithProjection,
     CLIPTokenizer,
-    CLIPVisionModelWithProjection,
 )
 
 from diffusers.utils.import_utils import is_invisible_watermark_available
@@ -148,14 +147,13 @@ class StableDiffusionXLControlNetXSPipeline(
             watermarker is used.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->controlnet->vae"
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->controlnet->vae"
     _optional_components = [
         "tokenizer",
         "tokenizer_2",
         "text_encoder",
         "text_encoder_2",
         "feature_extractor",
-        "image_encoder",
     ]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
@@ -171,7 +169,6 @@ class StableDiffusionXLControlNetXSPipeline(
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
         feature_extractor: CLIPImageProcessor = None,
-        image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
 
@@ -194,7 +191,6 @@ class StableDiffusionXLControlNetXSPipeline(
             controlnet=controlnet,
             scheduler=scheduler,
             feature_extractor=feature_extractor,
-            image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
@@ -230,7 +226,15 @@ class StableDiffusionXLControlNetXSPipeline(
         controlnet_addon = ControlNetXSAddon.from_pretrained(addon_path, **addon_kwargs)
 
         unet = components["unet"]
-        components = {k: v for k, v in components.items() if k != "unet"}
+
+        to_ignore = ["image_encoder"]
+        for item in to_ignore:
+            if item in components:
+                print(
+                    f"Loaded base pipeline has component `{item}` which StableDiffusionControlNetXSPipeline can't use. It will be ignored."
+                )
+
+        components = {k: v for k, v in components.items() if k not in ["unet"] + to_ignore}
 
         controlnet = ControlNetXSModel(unet, controlnet_addon)
         return StableDiffusionXLControlNetXSPipeline(controlnet=controlnet, **components)
@@ -530,31 +534,6 @@ class StableDiffusionXLControlNetXSPipeline(
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
-    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
-        dtype = next(self.image_encoder.parameters()).dtype
-
-        if not isinstance(image, torch.Tensor):
-            image = self.feature_extractor(image, return_tensors="pt").pixel_values
-
-        image = image.to(device=device, dtype=dtype)
-        if output_hidden_states:
-            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
-            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_enc_hidden_states = self.image_encoder(
-                torch.zeros_like(image), output_hidden_states=True
-            ).hidden_states[-2]
-            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
-                num_images_per_prompt, dim=0
-            )
-            return image_enc_hidden_states, uncond_image_enc_hidden_states
-        else:
-            image_embeds = self.image_encoder(image).image_embeds
-            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-            uncond_image_embeds = torch.zeros_like(image_embeds)
-
-            return image_embeds, uncond_image_embeds
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -807,34 +786,6 @@ class StableDiffusionXLControlNetXSPipeline(
             self.vae.post_quant_conv.to(dtype)
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
-
-    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
-
-        The suffixes after the scaling factors represent the stages where they are being applied.
-
-        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
-        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
-
-        Args:
-            s1 (`float`):
-                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            s2 (`float`):
-                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
-            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
-        """
-        if not hasattr(self, "unet"):
-            raise ValueError("The pipeline must have `unet` for using FreeU.")
-        # todo: check if works
-        self.controlnet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
-
-    def disable_freeu(self):
-        """Disables the FreeU mechanism if enabled."""
-        # todo: check if works
-        self.controlnet.disable_freeu()
 
     @property
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.guidance_scale
