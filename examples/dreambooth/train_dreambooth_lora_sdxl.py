@@ -1315,9 +1315,6 @@ def main(args):
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
-    add_time_ids = instance_time_ids
-    if args.with_prior_preservation:
-        add_time_ids = torch.cat([add_time_ids, class_time_ids], dim=0)
 
     if not train_dataset.custom_instance_prompts:
         if not args.train_text_encoder:
