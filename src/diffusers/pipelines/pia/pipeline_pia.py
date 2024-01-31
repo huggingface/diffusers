@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+import PIL
 import torch
 import torch.fft as fft
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
@@ -55,18 +56,15 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import (
-        ...     DDIMScheduler,
+        ...     EulerDiscreteScheduler,
         ...     MotionAdapter,
         ...     PIAPipeline,
         ... )
         >>> from diffusers.utils import export_to_gif, load_image
         >>> adapter = MotionAdapter.from_pretrained("../checkpoints/pia-diffusers")
         >>> pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter)
-        >>> pipe.scheduler = DDIMScheduler(
-        ...     clip_sample=False,
+        >>> pipe.scheduler = EulerDiscreteScheduler(
         ...     steps_offset=1,
-        ...     timestep_spacing="leading",
-        ...     beta_schedule="linear",
         ...     beta_start=0.00085,
         ...     beta_end=0.012,
         ... )
@@ -210,7 +208,16 @@ def _freq_mix_3d(x: torch.Tensor, noise: torch.Tensor, LPF: torch.Tensor) -> tor
 
 @dataclass
 class PIAPipelineOutput(BaseOutput):
-    frames: Union[torch.Tensor, np.ndarray]
+    r"""
+    Output class for PIAPipeline.
+
+    Args:
+        frames (`torch.Tensor`, `np.ndarray`, or List[PIL.Image.Image]):
+        Nested list of length `batch_size` with denoised PIL image sequences of length `num_frames`,
+        NumPy array of shape `(batch_size, num_frames, channels, height, width,
+        Torch tensor of shape `(batch_size, num_frames, channels, height, width)`.
+    """
+    frames: Union[torch.Tensor, np.ndarray, PIL.Image.Image]
 
 
 class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):
@@ -585,7 +592,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         order: int = 4,
         spatial_stop_frequency: float = 0.25,
         temporal_stop_frequency: float = 0.25,
-        generator: torch.Generator = None,
+        generator: Optional[torch.Generator] = None,
     ):
         """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
 
@@ -1110,6 +1117,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+        print(batch_size)
 
         device = self._execution_device
 
