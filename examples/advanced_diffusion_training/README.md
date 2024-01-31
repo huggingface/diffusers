@@ -16,6 +16,9 @@ The `train_dreambooth_lora_sdxl_advanced.py` script shows how to implement dream
 advanced features and techniques, inspired and built upon contributions by [Nataniel Ruiz](https://twitter.com/natanielruizg): [Dreambooth](https://dreambooth.github.io), [Rinon Gal](https://twitter.com/RinonGal): [Textual Inversion](https://textual-inversion.github.io), [Ron Mokady](https://twitter.com/MokadyRon): [Pivotal Tuning](https://arxiv.org/abs/2106.05744), [Simo Ryu](https://twitter.com/cloneofsimo): [cog-sdxl](https://github.com/replicate/cog-sdxl), 
 [Kohya](https://twitter.com/kohya_tech/): [sd-scripts](https://github.com/kohya-ss/sd-scripts), [The Last Ben](https://twitter.com/__TheBen): [fast-stable-diffusion](https://github.com/TheLastBen/fast-stable-diffusion) ❤️
 
+> 💡 **Note**: If this is your first time training a Dreambooth LoRA, congrats!🥳 
+> You might want to familiarize yourself more with the techniques: [Dreambooth blog](https://huggingface.co/blog/dreambooth), [Using LoRA for Efficient Stable Diffusion Fine-Tuning blog](https://huggingface.co/blog/lora) 
+
 📚 Read more about the advanced features and best practices in this community derived blog post: [LoRA training scripts of the world, unite!](https://huggingface.co/blog/sdxl_lora_advanced_script)
 
 
@@ -78,23 +81,29 @@ snapshot_download(
 )
 ```
 
-This will also allow us to push the trained LoRA parameters to the Hugging Face Hub platform. 
+Let's review some of the advanced features we're going to be using for this example:
+- custom captions:
+To use custom captioning, first ensure that you have the datasets library installed, otherwise you can install it by 
+> `!pip install datasets`
+- optimizer:
+- snr gamma:
+- pivotal tuning: 
 
 Now, we can launch training using:
 
 ```bash
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
-export INSTANCE_DIR="dog"
+export DATASET_NAME="./3d_icon"
 export OUTPUT_DIR="3d-icon-SDXL-LoRA"
 export VAE_PATH="madebyollin/sdxl-vae-fp16-fix"
 
 accelerate launch train_dreambooth_lora_sdxl_advanced.py \
-  --pretrained_model_name_or_path="stabilityai/stable-diffusion-xl-base-1.0" \
-  --pretrained_vae_model_name_or_path="madebyollin/sdxl-vae-fp16-fix" \
-  --dataset_name="./3d_icon" \
+  --pretrained_model_name_or_path=$MODEL_NAME \
+  --pretrained_vae_model_name_or_path=$VAE_PATH \
+  --dataset_name=$DATASET_NAME \
   --instance_prompt="3d icon in the style of TOK" \
   --validation_prompt="a TOK icon of an astronaut riding a horse, in the style of TOK" \
-  --output_dir="$output_dir" \
+  --output_dir=$OUTPUT_DIR \
   --caption_column="prompt" \
   --mixed_precision="bf16" \
   --resolution=1024 \
@@ -197,5 +206,9 @@ SDXL's VAE is known to suffer from numerical instability issues. This is why we 
 
 
 ### Tips and Tricks
+Check out [these recommended practices](https://huggingface.co/blog/sdxl_lora_advanced_script#additional-good-practices)
 
+## Running on Colab Notebook
+Check out [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_DreamBooth_LoRA_advanced_example.ipynb). 
+to train using the advanced features (including pivotal tuning), and [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_DreamBooth_LoRA_.ipynb) to train on a free colab, using some of the advanced features (excluding pivotal tuning)
 
