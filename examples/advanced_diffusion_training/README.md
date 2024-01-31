@@ -64,6 +64,22 @@ write_basic_config()
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
 Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
+### Pivotal Tuning
+**Training with text encoder(s)**
+
+Alongside the UNet, LoRA fine-tuning of the text encoders is also supported. In addition to the text encoder optimization 
+available with `train_dreambooth_lora_sdxl_advanced.py`, in the advanced script **pivotal tuning** is also supported.
+[pivotal tuning](https://huggingface.co/blog/sdxl_lora_advanced_script#pivotal-tuning) is a method in which
+we insert new tokens into the text encoders of the model, instead of reusing existing ones. 
+We then optimize the newly-inserted token embeddings to represent the new concept. 
+
+To do so, just specify `--train_text_encoder_ti` while launching training (for regular text encoder optimizations, use `--train_text_encoder`). 
+Please keep the following points in mind:
+
+* SDXL has two text encoders. So, we fine-tune both using LoRA.
+* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
+
+
 ### 3D icon example
 
 Now let's get our dataset. For this example we will use some cool images of 3d rendered icons: https://huggingface.co/datasets/linoyts/3d_icon.
@@ -84,7 +100,7 @@ snapshot_download(
 Let's review some of the advanced features we're going to be using for this example:
 - **custom captions**:
 To use custom captioning, first ensure that you have the datasets library installed, otherwise you can install it by 
-```
+```bash
 !pip install datasets
 ```
 
@@ -99,8 +115,8 @@ You can also load a dataset straight from by specifying it's name in `dataset_na
 Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loadin your own caption dataset.
 
 - **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer
-- **pivotal tuning**: for this example, we'll be performing [pivotal tuning](https://huggingface.co/blog/sdxl_lora_advanced_script#pivotal-tuning),
-which can be done using the `--train_text_encoder_ti` flag.  
+- **pivotal tuning** 
+- **min SNR gamma**
 
 **Now, we can launch training:**
 
@@ -151,38 +167,56 @@ Our experiments were conducted on a single 40GB A100 GPU.
 ### Inference
 
 Once training is done, we can perform inference like so:
+1. starting with loading the unet lora weights
+```python
+import torch
+from huggingface_hub import hf_hub_download, upload_file
+from diffusers import DiffusionPipeline
+from diffusers.models import AutoencoderKL
+from safetensors.torch import load_file
+
+username = "linoyts"
+repo_id = f"{username}/3d-icon-SDXL-LoRA"
+
+pipe = DiffusionPipeline.from_pretrained(
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        torch_dtype=torch.float16,
+        variant="fp16",
+).to("cuda")
+
+
+pipe.load_lora_weights(repo_id, weight_name="pytorch_lora_weights.safetensors")
+```
+2. now we load the pivotal tuning embeddings
 
 ```python
-from huggingface_hub.repocard import RepoCard
-from diffusers import DiffusionPipeline
-import torch
+text_encoders = [pipe.text_encoder, pipe.text_encoder_2]
+tokenizers = [pipe.tokenizer, pipe.tokenizer_2]
 
-lora_model_id = <"lora-sdxl-dreambooth-id">
-card = RepoCard.load(lora_model_id)
-base_model_id = card.data.to_dict()["base_model"]
+embedding_path = hf_hub_download(repo_id=repo_id, filename="3d-icon-SDXL-LoRA_emb.safetensors", repo_type="model")
 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
-pipe = pipe.to("cuda")
-pipe.load_lora_weights(lora_model_id)
-image = pipe("A picture of a sks dog in a bucket", num_inference_steps=25).images[0]
-image.save("sks_dog.png")
+state_dict = load_file(embedding_path)
+# load embeddings of text_encoder 1 (CLIP ViT-L/14)
+pipe.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
+# load embeddings of text_encoder 2 (CLIP ViT-G/14)
+pipe.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
+```
+
+3. let's generate images 
+
+```python
+instance_token = "<s0><s1>"
+prompt = f"a {instance_token} icon of an orange llama eating ramen, in the style of {instance_token}" 
+
+image = pipe(prompt=prompt, num_inference_steps=25, cross_attention_kwargs={"scale": 1.0}).images[0]
+image.save("llama.png")
 ```
 
 We can further refine the outputs with the [Refiner](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0):
 
 ```python
 from huggingface_hub.repocard import RepoCard
-from diffusers import DiffusionPipeline, StableDiffusionXLImg2ImgPipeline
-import torch
-
-lora_model_id = <"lora-sdxl-dreambooth-id">
-card = RepoCard.load(lora_model_id)
-base_model_id = card.data.to_dict()["base_model"]
-
-# Load the base pipeline and load the LoRA parameters into it. 
-pipe = DiffusionPipeline.from_pretrained(base_model_id, torch_dtype=torch.float16)
-pipe = pipe.to("cuda")
-pipe.load_lora_weights(lora_model_id)
+from diffusers import StableDiffusionXLImg2ImgPipeline
 
 # Load the refiner.
 refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
@@ -190,27 +224,21 @@ refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
 )
 refiner.to("cuda")
 
-prompt = "A picture of a sks dog in a bucket"
 generator = torch.Generator("cuda").manual_seed(0)
 
 # Run inference.
 image = pipe(prompt=prompt, output_type="latent", generator=generator).images[0]
 image = refiner(prompt=prompt, image=image[None, :], generator=generator).images[0]
-image.save("refined_sks_dog.png")
+image.save("refined_llama.png")
 ```
 
 Here's a side-by-side comparison of the with and without Refiner pipeline outputs:
 
 | Without Refiner | With Refiner |
 |---|---|
-| ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/sks_dog.png) | ![](https://huggingface.co/datasets/diffusers/docs-images/resolve/main/sd_xl/refined_sks_dog.png) |
+| ![]() | ![]() |
 
-### Training with text encoder(s)
 
-Alongside the UNet, LoRA fine-tuning of the text encoders is also supported. To do so, just specify `--train_text_encoder` while launching training. Please keep the following points in mind:
-
-* SDXL has two text encoders. So, we fine-tune both using LoRA.
-* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
 
 ### Specifying a better VAE
 
