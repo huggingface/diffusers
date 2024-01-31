@@ -217,6 +217,7 @@ class PIAPipelineOutput(BaseOutput):
         NumPy array of shape `(batch_size, num_frames, channels, height, width,
         Torch tensor of shape `(batch_size, num_frames, channels, height, width)`.
     """
+
     frames: Union[torch.Tensor, np.ndarray, PIL.Image.Image]
 
 
