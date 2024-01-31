@@ -35,7 +35,7 @@ The following example demonstrates how to use PIA to generate a video from a sin
 ```python
 import torch
 from diffusers import (
-    DDIMScheduler,
+    EulerDiscreteScheduler,
     MotionAdapter,
     PIAPipeline,
 )
@@ -43,11 +43,9 @@ from diffusers.utils import export_to_gif, load_image
 
 adapter = MotionAdapter.from_pretrained("openmmlab/PIA-condition-adapter")
 pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter, torch_dtype=torch.float16)
-pipe.scheduler = DDIMScheduler(
-    clip_sample=False,
+
+pipe.scheduler = EulerDiscreteScheduler(
     steps_offset=1,
-    timestep_spacing="leading",
-    beta_schedule="linear",
     beta_start=0.00085,
     beta_end=0.012,
 )
@@ -99,7 +97,7 @@ The following example demonstrates the usage of FreeInit.
 ```python
 import torch
 from diffusers import (
-    DDIMScheduler,
+    EulerDiscreteScheduler,
     MotionAdapter,
     PIAPipeline,
 )
@@ -116,11 +114,8 @@ pipe.enable_free_init(method="butterworth", use_fast_sampling=True)
 pipe.enable_model_cpu_offload()
 pipe.enable_vae_slicing()
 
-pipe.scheduler = DDIMScheduler(
-    clip_sample=False,
+pipe.scheduler = EulerDiscreteScheduler(
     steps_offset=1,
-    timestep_spacing="leading",
-    beta_schedule="linear",
     beta_start=0.00085,
     beta_end=0.012,
 )
