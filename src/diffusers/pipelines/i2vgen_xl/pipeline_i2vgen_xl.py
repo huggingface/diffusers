@@ -543,6 +543,7 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         return image_latents
 
+    # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
     def prepare_latents(
         self, batch_size, num_channels_latents, num_frames, height, width, dtype, device, generator, latents=None
     ):

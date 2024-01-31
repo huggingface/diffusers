@@ -400,6 +400,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.enable_forward_chunking
     def enable_forward_chunking(self, chunk_size: Optional[int] = None, dim: int = 0) -> None:
         """
         Sets the attention processor to use [feed forward
@@ -429,6 +430,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         for module in self.children():
             fn_recursive_feed_forward(module, chunk_size, dim)
 
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel.disable_forward_chunking
     def disable_forward_chunking(self):
         def fn_recursive_feed_forward(module: torch.nn.Module, chunk_size: int, dim: int):
             if hasattr(module, "set_chunk_feed_forward"):
@@ -456,6 +458,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         self.set_attn_processor(processor)
 
+    # Copied from diffusers.models.unets.unet_3d_condition.UNet3DConditionModel._set_gradient_checkpointing
     def _set_gradient_checkpointing(self, module, value: bool = False) -> None:
         if isinstance(module, (CrossAttnDownBlock3D, DownBlock3D, CrossAttnUpBlock3D, UpBlock3D)):
             module.gradient_checkpointing = value
