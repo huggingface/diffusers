@@ -146,7 +146,7 @@ def _get_freeinit_freq_filter(
 ) -> torch.Tensor:
     r"""Returns the FreeInit filter based on filter type and other input conditions."""
 
-    T, H, W = shape[-3], shape[-2], shape[-1]
+    time, height, width = shape[-3], shape[-2], shape[-1]
     mask = torch.zeros(shape)
 
     if spatial_stop_frequency == 0 or temporal_stop_frequency == 0:
@@ -167,13 +167,13 @@ def _get_freeinit_freq_filter(
     else:
         raise NotImplementedError("`filter_type` must be one of gaussian, butterworth or ideal")
 
-    for t in range(T):
-        for h in range(H):
-            for w in range(W):
+    for t in range(time):
+        for h in range(height):
+            for w in range(width):
                 d_square = (
-                    ((spatial_stop_frequency / temporal_stop_frequency) * (2 * t / T - 1)) ** 2
-                    + (2 * h / H - 1) ** 2
-                    + (2 * w / W - 1) ** 2
+                    ((spatial_stop_frequency / temporal_stop_frequency) * (2 * t / time - 1)) ** 2
+                    + (2 * h / height - 1) ** 2
+                    + (2 * w / width - 1) ** 2
                 )
                 mask[..., t, h, w] = retrieve_mask(d_square)
 
@@ -646,7 +646,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
