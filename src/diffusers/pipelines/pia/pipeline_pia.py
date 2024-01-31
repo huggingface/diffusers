@@ -39,7 +39,6 @@ from ...schedulers import (
 from ...utils import (
     USE_PEFT_BACKEND,
     BaseOutput,
-    deprecate,
     logging,
     replace_example_docstring,
     scale_lora_layers,
@@ -63,11 +62,7 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import export_to_gif, load_image
         >>> adapter = MotionAdapter.from_pretrained("../checkpoints/pia-diffusers")
         >>> pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter)
-        >>> pipe.scheduler = EulerDiscreteScheduler(
-        ...     steps_offset=1,
-        ...     beta_start=0.00085,
-        ...     beta_end=0.012,
-        ... )
+        >>> pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
         >>> image = load_image(
         ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
         ... )
@@ -657,7 +652,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         prompt,
         height,
         width,
-        callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -666,11 +660,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -991,7 +980,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -1072,23 +1060,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
                 If `return_dict` is `True`, [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
-
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
         width = width or self.unet.config.sample_size * self.vae_scale_factor
@@ -1100,7 +1071,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             prompt,
             height,
             width,
-            callback_steps,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
@@ -1118,7 +1088,6 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
-        print(batch_size)
 
         device = self._execution_device
 
@@ -1182,7 +1151,7 @@ class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin
             motion_scale=motion_scale,
         )
         if strength < 1.0:
-            noise = torch.randn_like(latents)
+            noise = randn_tensor(latents.shape, generator=generator, device=device, dtype=latents.dtype)
             latents = self.scheduler.add_noise(masked_image[0], noise, latent_timestep)
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline

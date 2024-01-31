@@ -48,11 +48,7 @@ from diffusers.utils import export_to_gif, load_image
 adapter = MotionAdapter.from_pretrained("openmmlab/PIA-condition-adapter")
 pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter, torch_dtype=torch.float16)
 
-pipe.scheduler = EulerDiscreteScheduler(
-    steps_offset=1,
-    beta_start=0.00085,
-    beta_end=0.012,
-)
+pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
 pipe.enable_vae_slicing()
 
