@@ -244,10 +244,6 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         return self._begin_index
 
-    @begin_index.setter
-    def begin_index(self, index):
-        self._begin_index = index
-
     def set_begin_index(self, begin_index: int = 0):
         """
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.

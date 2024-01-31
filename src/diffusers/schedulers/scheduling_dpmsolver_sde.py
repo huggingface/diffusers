@@ -246,10 +246,6 @@ class DPMSolverSDEScheduler(SchedulerMixin, ConfigMixin):
         """
         return self._begin_index
 
-    @begin_index.setter
-    def begin_index(self, index):
-        self._begin_index = index
-
     # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
     def set_begin_index(self, begin_index: int = 0):
         """
