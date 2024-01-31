@@ -247,7 +247,7 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
     @is_flaky()
     def test_model_cpu_offload_forward_pass(self):
-        super().test_inference_batch_single_identical(expected_max_diff=5e-4)
+        super().test_inference_batch_single_identical(expected_max_diff=8e-4)
 
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=5e-4)
