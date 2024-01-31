@@ -157,14 +157,15 @@ class BasicTransformerBlock(nn.Module):
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
-        self.norm_type = norm_type
-        self.num_embeds_ada_norm = num_embeds_ada_norm
 
         if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
             raise ValueError(
                 f"`norm_type` is set to {norm_type}, but `num_embeds_ada_norm` is not defined. Please make sure to"
                 f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
             )
+
+        self.norm_type = norm_type
+        self.num_embeds_ada_norm = num_embeds_ada_norm
 
         if positional_embeddings and (num_positional_embeddings is None):
             raise ValueError(
@@ -251,7 +252,7 @@ class BasicTransformerBlock(nn.Module):
 
         elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm", "ada_norm_continuous"]:
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
-     elif norm_type == "layer_norm_i2vgen":
+        elif norm_type == "layer_norm_i2vgen":
             self.norm3 = None
 
         self.ff = FeedForward(
@@ -297,7 +298,7 @@ class BasicTransformerBlock(nn.Module):
 
         if self.norm_type == "ada_norm":
             norm_hidden_states = self.norm1(hidden_states, timestep)
-        elif self.num_embeds_ada_norm is not None and self.norm_type == "ada_norm_zero":
+        elif self.norm_type == "ada_norm_zero":
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
                 hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
             )
@@ -348,9 +349,7 @@ class BasicTransformerBlock(nn.Module):
         if self.attn2 is not None:
             if self.norm_type == "ada_norm":
                 norm_hidden_states = self.norm2(hidden_states, timestep)
-            elif ((self.num_embeds_ada_norm is not None) and self.norm_type == "ada_norm_zero") or (
-                self.norm_type in ["layer_norm", "layer_norm_i2vgen"]
-            ):
+            elif self.norm_type in ["ada_norm_zero", "layer_norm", "layer_norm_i2vgen"]:
                 norm_hidden_states = self.norm2(hidden_states)
             elif self.norm_type == "ada_norm_single":
                 # For PixArt norm2 isn't applied here:
@@ -380,7 +379,7 @@ class BasicTransformerBlock(nn.Module):
             elif not self.norm_type == "ada_norm_single":
                 norm_hidden_states = self.norm3(hidden_states)
 
-        if self.num_embeds_ada_norm is not None and self.norm_type == "ada_norm_zero":
+        if self.norm_type == "ada_norm_zero":
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
         if self.norm_type == "ada_norm_single":
@@ -395,7 +394,7 @@ class BasicTransformerBlock(nn.Module):
         else:
             ff_output = self.ff(norm_hidden_states, scale=lora_scale)
 
-        if self.num_embeds_ada_norm is not None and self.norm_type == "ada_norm_zero":
+        if self.norm_type == "ada_norm_zero":
             ff_output = gate_mlp.unsqueeze(1) * ff_output
         elif self.norm_type == "ada_norm_single":
             ff_output = gate_mlp * ff_output
