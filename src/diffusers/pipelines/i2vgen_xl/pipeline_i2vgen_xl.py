@@ -385,19 +385,14 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         return prompt_embeds, negative_prompt_embeds
 
-    def _encode_image(self, image, width, device, num_videos_per_prompt):
+    def _encode_image(self, image, device, num_videos_per_prompt):
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
-            # https://github.com/ali-vilab/i2vgen-xl/blob/2539c9262ff8a2a22fa9daecbfd13f0a2dbc32d0/tools/inferences/inference_i2vgen_entrance.py#L114
-            image = _center_crop_wide(image, (width, width))
-            image = _resize_bilinear(
-                image, (self.feature_extractor.crop_size["width"], self.feature_extractor.crop_size["height"])
-            )
             image = self.image_processor.pil_to_numpy(image)
             image = self.image_processor.numpy_to_pt(image)
 
-            # Normalize and resize the image with for CLIP input
+            # Normalize the image with CLIP training stats.
             image = self.feature_extractor(
                 images=image,
                 do_normalize=True,
@@ -731,7 +726,12 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
         # 3.2 Encode image prompt
         # 3.2.1 Image encodings.
-        image_embeddings = self._encode_image(image, width, device, num_videos_per_prompt)
+        # https://github.com/ali-vilab/i2vgen-xl/blob/2539c9262ff8a2a22fa9daecbfd13f0a2dbc32d0/tools/inferences/inference_i2vgen_entrance.py#L114
+        cropped_image = _center_crop_wide(image, (width, width))
+        cropped_image = _resize_bilinear(
+            cropped_image, (self.feature_extractor.crop_size["width"], self.feature_extractor.crop_size["height"])
+        )
+        image_embeddings = self._encode_image(cropped_image, device, num_videos_per_prompt)
 
         # 3.2.2 Image latents.
         resized_image = _center_crop_wide(image, (width, height))
