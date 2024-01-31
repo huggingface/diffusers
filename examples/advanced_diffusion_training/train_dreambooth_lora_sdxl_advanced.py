@@ -1822,7 +1822,10 @@ def main(args):
 
                 # time ids
                 add_time_ids = torch.cat(
-                    [compute_time_ids(original_size=s, crops_coords_top_left=c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
+                    [
+                        compute_time_ids(original_size=s, crops_coords_top_left=c)
+                        for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])
+                    ]
                 )
 
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
