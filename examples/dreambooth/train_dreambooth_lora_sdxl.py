@@ -20,7 +20,6 @@ import logging
 import math
 import os
 import random
-import re
 import shutil
 import warnings
 from pathlib import Path
@@ -1289,7 +1288,6 @@ def main(args):
                 prompt_embeds = prompt_embeds.to(accelerator.device)
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
-
 
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
