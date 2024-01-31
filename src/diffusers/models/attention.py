@@ -373,11 +373,10 @@ class BasicTransformerBlock(nn.Module):
 
         # 4. Feed-forward
         # i2vgen doesn't have this norm 🤷‍♂️
-        if self.norm3 is not None:
-            if self.norm_type == "ada_norm_continuous":
-                norm_hidden_states = self.norm3(hidden_states, added_cond_kwargs["pooled_text_emb"])
-            elif not self.norm_type == "ada_norm_single":
-                norm_hidden_states = self.norm3(hidden_states)
+        if self.norm_type == "ada_norm_continuous":
+            norm_hidden_states = self.norm3(hidden_states, added_cond_kwargs["pooled_text_emb"])
+        elif not self.norm_type == "ada_norm_single":
+            norm_hidden_states = self.norm3(hidden_states)
 
         if self.norm_type == "ada_norm_zero":
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
