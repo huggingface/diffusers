@@ -82,14 +82,27 @@ snapshot_download(
 ```
 
 Let's review some of the advanced features we're going to be using for this example:
-- custom captions:
+- **custom captions**:
 To use custom captioning, first ensure that you have the datasets library installed, otherwise you can install it by 
-> `!pip install datasets`
-- optimizer:
-- snr gamma:
-- pivotal tuning: 
+```
+!pip install datasets
+```
 
-Now, we can launch training using:
+Now we'll simply specify the name of the dataset and caption column (in this case it's "prompt")
+
+```
+--dataset_name=./3d_icon
+--caption_column=prompt
+```
+
+You can also load a dataset straight from by specifying it's name in `dataset_name`. 
+Look [here](https://huggingface.co/blog/sdxl_lora_advanced_script#custom-captioning) for more info on creating/loadin your own caption dataset.
+
+- **optimizer**: for this example, we'll use [prodigy](https://huggingface.co/blog/sdxl_lora_advanced_script#adaptive-optimizers) - an adaptive optimizer
+- **pivotal tuning**: for this example, we'll be performing [pivotal tuning](https://huggingface.co/blog/sdxl_lora_advanced_script#pivotal-tuning),
+which can be done using the `--train_text_encoder_ti` flag.  
+
+**Now, we can launch training:**
 
 ```bash
 export MODEL_NAME="stabilityai/stable-diffusion-xl-base-1.0"
@@ -114,14 +127,13 @@ accelerate launch train_dreambooth_lora_sdxl_advanced.py \
   --gradient_checkpointing \
   --learning_rate=1.0 \
   --text_encoder_lr=1.0 \
-  --adam_beta2=0.99 \
   --optimizer="prodigy"\
   --train_text_encoder_ti\
   --train_text_encoder_ti_frac=0.5\
   --snr_gamma=5.0 \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \
-  --rank="$rank" \
+  --rank=8 \
   --max_train_steps=1000 \
   --checkpointing_steps=2000 \
   --seed="0" \
