@@ -220,6 +220,7 @@ else:
         "TextToVideoZeroSDXLPipeline",
         "VideoToVideoSDPipeline",
     ]
+    _import_structure["i2vgen_xl"] = ["I2VGenXLPipeline"]
     _import_structure["unclip"] = ["UnCLIPImageVariationPipeline", "UnCLIPPipeline"]
     _import_structure["unidiffuser"] = [
         "ImageTextPipelineOutput",
@@ -384,6 +385,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
