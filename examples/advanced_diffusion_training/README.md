@@ -69,7 +69,7 @@ Note also that we use PEFT library as backend for LoRA training, make sure to ha
 
 Alongside the UNet, LoRA fine-tuning of the text encoders is also supported. In addition to the text encoder optimization 
 available with `train_dreambooth_lora_sdxl_advanced.py`, in the advanced script **pivotal tuning** is also supported.
-[pivotal tuning](https://huggingface.co/blog/sdxl_lora_advanced_script#pivotal-tuning) is a method in which
+[pivotal tuning](https://huggingface.co/blog/sdxl_lora_advanced_script#pivotal-tuning) combines Textual Inversion with regular diffusion fine-tuning - 
 we insert new tokens into the text encoders of the model, instead of reusing existing ones. 
 We then optimize the newly-inserted token embeddings to represent the new concept. 
 
@@ -77,7 +77,7 @@ To do so, just specify `--train_text_encoder_ti` while launching training (for r
 Please keep the following points in mind:
 
 * SDXL has two text encoders. So, we fine-tune both using LoRA.
-* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
+* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memoםהקרry.
 
 
 ### 3D icon example
@@ -215,7 +215,6 @@ image.save("llama.png")
 We can further refine the outputs with the [Refiner](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0):
 
 ```python
-from huggingface_hub.repocard import RepoCard
 from diffusers import StableDiffusionXLImg2ImgPipeline
 
 # Load the refiner.
@@ -238,8 +237,21 @@ Here's a side-by-side comparison of the with and without Refiner pipeline output
 |---|---|
 | ![]() | ![]() |
 
+### Comfy UI / AUTOMATIC1111 Inference
+The new script fully supports textual inversion loading with Comfy UI and AUTOMATIC1111 formats!
 
+**AUTOMATIC1111 / SD.Next** \
+In AUTOMATIC1111/SD.Next we will load a LoRA and a textual embedding at the same time. 
+- *LoRA*: Besides the diffusers format, the script will also train a WebUI compatible LoRA. It is generated as `{your_lora_name}.safetensors`. You can then include it in your `models/Lora` directory. 
+- *Embedding*: the embedding is the same for diffusers and WebUI. You can download your `{lora_name}_emb.safetensors` file from a trained model, and include it in your `embeddings` directory. 
 
+You can then run inference by prompting `a y2k_emb webpage about the movie Mean Girls <lora:y2k:0.9>`. You can use the `y2k_emb` token normally, including increasing its weight by doing `(y2k_emb:1.2)`. 
+
+**ComfyUI** \
+In ComfyUI we will load a LoRA and a textual embedding at the same time. 
+- *LoRA*: Besides the diffusers format, the script will also train a ComfyUI compatible LoRA. It is generated as `{your_lora_name}.safetensors`. You can then include it in your `models/Lora` directory. Then you will load the LoRALoader node and hook that up with your model and CLIP. [Official guide for loading LoRAs](https://comfyanonymous.github.io/ComfyUI_examples/lora/)
+- *Embedding*: the embedding is the same for diffusers and WebUI. You can download your `{lora_name}_emb.safetensors` file from a trained model, and include it in your `models/embeddings` directory and use it in your prompts like `embedding:y2k_emb`. [Official guide for loading embeddings](https://comfyanonymous.github.io/ComfyUI_examples/textual_inversion_embeddings/). 
+- 
 ### Specifying a better VAE
 
 SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
