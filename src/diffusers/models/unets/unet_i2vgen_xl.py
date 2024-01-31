@@ -193,9 +193,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             )
 
         # input
-        self.conv_in = nn.Conv2d(
-            in_channels + in_channels, block_out_channels[0], kernel_size=3, padding=1
-        )
+        self.conv_in = nn.Conv2d(in_channels + in_channels, block_out_channels[0], kernel_size=3, padding=1)
 
         self.transformer_in = TransformerTemporalModel(
             num_attention_heads=8,
@@ -332,9 +330,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # out
         self.conv_norm_out = nn.GroupNorm(num_channels=block_out_channels[0], num_groups=norm_num_groups, eps=1e-05)
         self.conv_act = get_activation("silu")
-        self.conv_out = nn.Conv2d(
-            block_out_channels[0], out_channels, kernel_size=3, padding=1
-        )
+        self.conv_out = nn.Conv2d(block_out_channels[0], out_channels, kernel_size=3, padding=1)
 
     @property
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
