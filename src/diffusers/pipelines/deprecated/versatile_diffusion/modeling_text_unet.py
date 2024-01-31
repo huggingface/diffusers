@@ -19,7 +19,6 @@ from ....models.attention_processor import (
     AttnAddedKVProcessor2_0,
     AttnProcessor,
 )
-from ....models.dual_transformer_2d import DualTransformer2DModel
 from ....models.embeddings import (
     GaussianFourierProjection,
     ImageHintTimeEmbedding,
@@ -31,8 +30,10 @@ from ....models.embeddings import (
     TimestepEmbedding,
     Timesteps,
 )
-from ....models.transformer_2d import Transformer2DModel
-from ....models.unet_2d_condition import UNet2DConditionOutput
+from ....models.resnet import ResnetBlockCondNorm2D
+from ....models.transformers.dual_transformer_2d import DualTransformer2DModel
+from ....models.transformers.transformer_2d import Transformer2DModel
+from ....models.unets.unet_2d_condition import UNet2DConditionOutput
 from ....utils import USE_PEFT_BACKEND, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from ....utils.torch_utils import apply_freeu
 
@@ -187,7 +188,7 @@ class FourierEmbedder(nn.Module):
         return torch.stack((x.sin(), x.cos()), dim=-1).permute(0, 1, 3, 4, 2).reshape(*x.shape[:2], -1)
 
 
-class PositionNet(nn.Module):
+class GLIGENTextBoundingboxProjection(nn.Module):
     def __init__(self, positive_len, out_dim, feature_type, fourier_freqs=8):
         super().__init__()
         self.positive_len = positive_len
@@ -267,7 +268,7 @@ class PositionNet(nn.Module):
         return objs
 
 
-# Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel with UNet2DConditionModel->UNetFlatConditionModel, nn.Conv2d->LinearMultiDim, Block2D->BlockFlat
+# Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel with UNet2DConditionModel->UNetFlatConditionModel, nn.Conv2d->LinearMultiDim, Block2D->BlockFlat
 class UNetFlatConditionModel(ModelMixin, ConfigMixin):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
@@ -820,7 +821,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 positive_len = cross_attention_dim[0]
 
             feature_type = "text-only" if attention_type == "gated" else "text-image"
-            self.position_net = PositionNet(
+            self.position_net = GLIGENTextBoundingboxProjection(
                 positive_len=positive_len, out_dim=cross_attention_dim, feature_type=feature_type
             )
 
@@ -848,9 +849,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         return processors
 
-    def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
-    ):
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -874,9 +873,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
-                    module.set_processor(processor, _remove_lora=_remove_lora)
+                    module.set_processor(processor)
                 else:
-                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
+                    module.set_processor(processor.pop(f"{name}.processor"))
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -897,7 +896,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
             )
 
-        self.set_attn_processor(processor, _remove_lora=True)
+        self.set_attn_processor(processor)
 
     def set_attention_slice(self, slice_size):
         r"""
@@ -1036,6 +1035,17 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         if self.original_attn_processors is not None:
             self.set_attn_processor(self.original_attn_processors)
 
+    def unload_lora(self):
+        """Unloads LoRA weights."""
+        deprecate(
+            "unload_lora",
+            "0.28.0",
+            "Calling `unload_lora()` is deprecated and will be removed in a future version. Please install `peft` and then call `disable_adapters().",
+        )
+        for module in self.modules():
+            if hasattr(module, "set_lora_layer"):
+                module.set_lora_layer(None)
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -1086,7 +1096,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
                 which adds large negative values to the attention scores corresponding to "discard" tokens.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
                 tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
@@ -1102,8 +1112,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 additional residuals to be added within UNet down blocks, for example from T2I-Adapter side model(s)
 
         Returns:
-            [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_2d_condition.UNet2DConditionOutput`] is returned, otherwise
+            [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] is returned, otherwise
                 a `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.
@@ -1776,7 +1786,7 @@ class CrossAttnDownBlockFlat(nn.Module):
         return hidden_states, output_states
 
 
-# Copied from diffusers.models.unet_2d_blocks.UpBlock2D with UpBlock2D->UpBlockFlat, ResnetBlock2D->ResnetBlockFlat, Upsample2D->LinearMultiDim
+# Copied from diffusers.models.unets.unet_2d_blocks.UpBlock2D with UpBlock2D->UpBlockFlat, ResnetBlock2D->ResnetBlockFlat, Upsample2D->LinearMultiDim
 class UpBlockFlat(nn.Module):
     def __init__(
         self,
@@ -1887,7 +1897,7 @@ class UpBlockFlat(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unet_2d_blocks.CrossAttnUpBlock2D with CrossAttnUpBlock2D->CrossAttnUpBlockFlat, ResnetBlock2D->ResnetBlockFlat, Upsample2D->LinearMultiDim
+# Copied from diffusers.models.unets.unet_2d_blocks.CrossAttnUpBlock2D with CrossAttnUpBlock2D->CrossAttnUpBlockFlat, ResnetBlock2D->ResnetBlockFlat, Upsample2D->LinearMultiDim
 class CrossAttnUpBlockFlat(nn.Module):
     def __init__(
         self,
@@ -2061,7 +2071,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unet_2d_blocks.UNetMidBlock2D with UNetMidBlock2D->UNetMidBlockFlat, ResnetBlock2D->ResnetBlockFlat
+# Copied from diffusers.models.unets.unet_2d_blocks.UNetMidBlock2D with UNetMidBlock2D->UNetMidBlockFlat, ResnetBlock2D->ResnetBlockFlat
 class UNetMidBlockFlat(nn.Module):
     """
     A 2D UNet mid-block [`UNetMidBlockFlat`] with multiple residual blocks and optional attention blocks.
@@ -2117,20 +2127,35 @@ class UNetMidBlockFlat(nn.Module):
             attn_groups = resnet_groups if resnet_time_scale_shift == "default" else None
 
         # there is always at least one resnet
-        resnets = [
-            ResnetBlockFlat(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                temb_channels=temb_channels,
-                eps=resnet_eps,
-                groups=resnet_groups,
-                dropout=dropout,
-                time_embedding_norm=resnet_time_scale_shift,
-                non_linearity=resnet_act_fn,
-                output_scale_factor=output_scale_factor,
-                pre_norm=resnet_pre_norm,
-            )
-        ]
+        if resnet_time_scale_shift == "spatial":
+            resnets = [
+                ResnetBlockCondNorm2D(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm="spatial",
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                )
+            ]
+        else:
+            resnets = [
+                ResnetBlockFlat(
+                    in_channels=in_channels,
+                    out_channels=in_channels,
+                    temb_channels=temb_channels,
+                    eps=resnet_eps,
+                    groups=resnet_groups,
+                    dropout=dropout,
+                    time_embedding_norm=resnet_time_scale_shift,
+                    non_linearity=resnet_act_fn,
+                    output_scale_factor=output_scale_factor,
+                    pre_norm=resnet_pre_norm,
+                )
+            ]
         attentions = []
 
         if attention_head_dim is None:
@@ -2159,20 +2184,35 @@ class UNetMidBlockFlat(nn.Module):
             else:
                 attentions.append(None)
 
-            resnets.append(
-                ResnetBlockFlat(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
+            if resnet_time_scale_shift == "spatial":
+                resnets.append(
+                    ResnetBlockCondNorm2D(
+                        in_channels=in_channels,
+                        out_channels=in_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm="spatial",
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                    )
                 )
-            )
+            else:
+                resnets.append(
+                    ResnetBlockFlat(
+                        in_channels=in_channels,
+                        out_channels=in_channels,
+                        temb_channels=temb_channels,
+                        eps=resnet_eps,
+                        groups=resnet_groups,
+                        dropout=dropout,
+                        time_embedding_norm=resnet_time_scale_shift,
+                        non_linearity=resnet_act_fn,
+                        output_scale_factor=output_scale_factor,
+                        pre_norm=resnet_pre_norm,
+                    )
+                )
 
         self.attentions = nn.ModuleList(attentions)
         self.resnets = nn.ModuleList(resnets)
@@ -2187,7 +2227,7 @@ class UNetMidBlockFlat(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unet_2d_blocks.UNetMidBlock2DCrossAttn with UNetMidBlock2DCrossAttn->UNetMidBlockFlatCrossAttn, ResnetBlock2D->ResnetBlockFlat
+# Copied from diffusers.models.unets.unet_2d_blocks.UNetMidBlock2DCrossAttn with UNetMidBlock2DCrossAttn->UNetMidBlockFlatCrossAttn, ResnetBlock2D->ResnetBlockFlat
 class UNetMidBlockFlatCrossAttn(nn.Module):
     def __init__(
         self,
@@ -2334,7 +2374,7 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unet_2d_blocks.UNetMidBlock2DSimpleCrossAttn with UNetMidBlock2DSimpleCrossAttn->UNetMidBlockFlatSimpleCrossAttn, ResnetBlock2D->ResnetBlockFlat
+# Copied from diffusers.models.unets.unet_2d_blocks.UNetMidBlock2DSimpleCrossAttn with UNetMidBlock2DSimpleCrossAttn->UNetMidBlockFlatSimpleCrossAttn, ResnetBlock2D->ResnetBlockFlat
 class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
     def __init__(
         self,

@@ -30,6 +30,7 @@ except OptionalDependencyNotAvailable:
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_and_k_diffusion_objects))
 else:
     _import_structure["pipeline_stable_diffusion_k_diffusion"] = ["StableDiffusionKDiffusionPipeline"]
+    _import_structure["pipeline_stable_diffusion_xl_k_diffusion"] = ["StableDiffusionXLKDiffusionPipeline"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     try:
@@ -45,6 +46,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from ...utils.dummy_torch_and_transformers_and_k_diffusion_objects import *
     else:
         from .pipeline_stable_diffusion_k_diffusion import StableDiffusionKDiffusionPipeline
+        from .pipeline_stable_diffusion_xl_k_diffusion import StableDiffusionXLKDiffusionPipeline
 
 else:
     import sys

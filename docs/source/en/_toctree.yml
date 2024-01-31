@@ -19,6 +19,8 @@
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
     title: Inference with PEFT
+  - local: tutorials/fast_diffusion
+    title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
   - sections:
@@ -158,6 +160,8 @@
       title: xFormers
     - local: optimization/tome
       title: Token merging
+    - local: optimization/deepcache
+      title: DeepCache
     title: General optimizations
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
@@ -208,6 +212,8 @@
       title: Textual Inversion
     - local: api/loaders/unet
       title: UNet
+    - local: api/loaders/peft
+      title: PEFT
     title: Loaders
   - sections:
     - local: api/models/overview
@@ -222,6 +228,8 @@
       title: UNet3DConditionModel
     - local: api/models/unet-motion
       title: UNetMotionModel
+    - local: api/models/uvit2d
+      title: UViT2DModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
@@ -244,6 +252,8 @@
   - sections:
     - local: api/pipelines/overview
       title: Overview
+    - local: api/pipelines/amused
+      title: aMUSEd
     - local: api/pipelines/animatediff
       title: AnimateDiff
     - local: api/pipelines/attend_and_excite
@@ -262,10 +272,6 @@
       title: ControlNet
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
-    - local: api/pipelines/controlnetxs
-      title: ControlNet-XS
-    - local: api/pipelines/controlnetxs_sdxl
-      title: ControlNet-XS with Stable Diffusion XL
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -329,6 +335,8 @@
         title: Latent upscaler
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-resolution
+      - local: api/pipelines/stable_diffusion/k_diffusion
+        title: K-Diffusion
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
       - local: api/pipelines/stable_diffusion/adapter

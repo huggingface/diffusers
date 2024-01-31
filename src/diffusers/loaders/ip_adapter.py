@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
+from pathlib import Path
 from typing import Dict, Union
 
 import torch
@@ -132,26 +132,59 @@ class IPAdapterMixin:
         if keys != ["image_proj", "ip_adapter"]:
             raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
 
-        # load CLIP image encoer here if it has not been registered to the pipeline yet
+        # load CLIP image encoder here if it has not been registered to the pipeline yet
         if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
             if not isinstance(pretrained_model_name_or_path_or_dict, dict):
                 logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
                 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
                     pretrained_model_name_or_path_or_dict,
-                    subfolder=os.path.join(subfolder, "image_encoder"),
+                    subfolder=Path(subfolder, "image_encoder").as_posix(),
                 ).to(self.device, dtype=self.dtype)
                 self.image_encoder = image_encoder
+                self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
             else:
                 raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
 
         # create feature extractor if it has not been registered to the pipeline yet
         if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
             self.feature_extractor = CLIPImageProcessor()
+            self.register_to_config(feature_extractor=["transformers", "CLIPImageProcessor"])
 
         # load ip-adapter into unet
-        self.unet._load_ip_adapter_weights(state_dict)
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        unet._load_ip_adapter_weights(state_dict)
 
     def set_ip_adapter_scale(self, scale):
-        for attn_processor in self.unet.attn_processors.values():
+        unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
+        for attn_processor in unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
                 attn_processor.scale = scale
+
+    def unload_ip_adapter(self):
+        """
+        Unloads the IP Adapter weights
+
+        Examples:
+
+        ```python
+        >>> # Assuming `pipeline` is already loaded with the IP Adapter weights.
+        >>> pipeline.unload_ip_adapter()
+        >>> ...
+        ```
+        """
+        # remove CLIP image encoder
+        if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is not None:
+            self.image_encoder = None
+            self.register_to_config(image_encoder=[None, None])
+
+        # remove feature extractor
+        if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
+            self.feature_extractor = None
+            self.register_to_config(feature_extractor=[None, None])
+
+        # remove hidden encoder
+        self.unet.encoder_hid_proj = None
+        self.config.encoder_hid_dim_type = None
+
+        # restore original Unet attention processors layers
+        self.unet.set_default_attn_processor()
