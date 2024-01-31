@@ -152,11 +152,11 @@ class IPAdapterMixin:
             else:
                 state_dict = pretrained_model_name_or_path_or_dict
 
-            state_dicts.append(state_dict)
-
             keys = list(state_dict.keys())
             if keys != ["image_proj", "ip_adapter"]:
                 raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
+
+            state_dicts.append(state_dict)
 
             # load CLIP image encoder here if it has not been registered to the pipeline yet
             if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
