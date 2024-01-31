@@ -1276,7 +1276,7 @@ def main(args):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids])
         add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
-        return add_time_id
+        return add_time_ids
 
     if not args.train_text_encoder:
         tokenizers = [tokenizer_one, tokenizer_two]
