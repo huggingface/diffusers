@@ -400,18 +400,6 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--crops_coords_top_left_h",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
-    )
-    parser.add_argument(
-        "--crops_coords_top_left_w",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
-    )
-    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -1589,13 +1577,11 @@ def main(args):
     # pooled text embeddings
     # time ids
 
-    def compute_time_ids(original_size=None, crops_coords_top_left=None):
+    def compute_time_ids(crops_coords_top_left, original_size=None):
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
         if original_size is None:
             original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
-        if crops_coords_top_left is None:
-            crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids])
         add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
@@ -1836,7 +1822,7 @@ def main(args):
 
                 # time ids
                 add_time_ids = torch.cat(
-                    [compute_time_ids(s, c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
+                    [compute_time_ids(original_size=s, crops_coords_top_left=c) for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])]
                 )
 
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
