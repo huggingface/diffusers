@@ -43,6 +43,7 @@ if is_torch_available():
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
     _import_structure["unets.unet_3d_condition"] = ["UNet3DConditionModel"]
+    _import_structure["unets.unet_i2vgen_xl"] = ["I2VGenXLUNet"]
     _import_structure["unets.unet_kandinsky3"] = ["Kandinsky3UNet"]
     _import_structure["unets.unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
     _import_structure["unets.unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
@@ -76,6 +77,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             TransformerTemporalModel,
         )
         from .unets import (
+            I2VGenXLUNet,
             Kandinsky3UNet,
             MotionAdapter,
             UNet1DModel,
