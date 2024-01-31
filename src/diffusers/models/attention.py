@@ -251,6 +251,8 @@ class BasicTransformerBlock(nn.Module):
 
         elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm", "ada_norm_continuous"]:
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+     elif norm_type == "layer_norm_i2vgen":
+            self.norm3 = None
 
         self.ff = FeedForward(
             dim,
@@ -329,7 +331,7 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
-        if self.num_embeds_ada_norm is not None and self.norm_type == "ada_norm_zero":
+        if self.norm_type == "ada_norm_zero":
             attn_output = gate_msa.unsqueeze(1) * attn_output
         elif self.norm_type == "ada_norm_single":
             attn_output = gate_msa * attn_output
@@ -344,7 +346,7 @@ class BasicTransformerBlock(nn.Module):
 
         # 3. Cross-Attention
         if self.attn2 is not None:
-            if (self.num_embeds_ada_norm is not None) and self.norm_type == "ada_norm":
+            if self.norm_type == "ada_norm":
                 norm_hidden_states = self.norm2(hidden_states, timestep)
             elif ((self.num_embeds_ada_norm is not None) and self.norm_type == "ada_norm_zero") or (
                 self.norm_type in ["layer_norm", "layer_norm_i2vgen"]
@@ -372,7 +374,7 @@ class BasicTransformerBlock(nn.Module):
 
         # 4. Feed-forward
         # i2vgen doesn't have this norm 🤷‍♂️
-        if hasattr(self, "norm3") and self.norm3 is not None:
+        if self.norm3 is not None:
             if self.norm_type == "ada_norm_continuous":
                 norm_hidden_states = self.norm3(hidden_states, added_cond_kwargs["pooled_text_emb"])
             elif not self.norm_type == "ada_norm_single":
