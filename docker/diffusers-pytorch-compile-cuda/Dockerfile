@@ -26,9 +26,9 @@ ENV PATH="/opt/venv/bin:$PATH"
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
 RUN python3.9 -m pip install --no-cache-dir --upgrade pip && \
     python3.9 -m pip install --no-cache-dir \
-    torch \
-    torchvision \
-    torchaudio \
+    torch==2.1.2 \
+    torchvision==0.16.2 \
+    torchaudio==2.1.2 \
     invisible_watermark && \
     python3.9 -m pip install --no-cache-dir \
     accelerate \
@@ -40,6 +40,6 @@ RUN python3.9 -m pip install --no-cache-dir --upgrade pip && \
     numpy \
     scipy \
     tensorboard \
-    transformers 
-    
+    transformers
+
 CMD ["/bin/bash"]
