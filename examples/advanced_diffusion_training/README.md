@@ -212,31 +212,6 @@ image = pipe(prompt=prompt, num_inference_steps=25, cross_attention_kwargs={"sca
 image.save("llama.png")
 ```
 
-We can further refine the outputs with the [Refiner](https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0):
-
-```python
-from diffusers import StableDiffusionXLImg2ImgPipeline
-
-# Load the refiner.
-refiner = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-refiner-1.0", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
-)
-refiner.to("cuda")
-
-generator = torch.Generator("cuda").manual_seed(0)
-
-# Run inference.
-image = pipe(prompt=prompt, output_type="latent", generator=generator).images[0]
-image = refiner(prompt=prompt, image=image[None, :], generator=generator).images[0]
-image.save("refined_llama.png")
-```
-
-Here's a side-by-side comparison of the with and without Refiner pipeline outputs:
-
-| Without Refiner | With Refiner |
-|---|---|
-| ![]() | ![]() |
-
 ### Comfy UI / AUTOMATIC1111 Inference
 The new script fully supports textual inversion loading with Comfy UI and AUTOMATIC1111 formats!
 
