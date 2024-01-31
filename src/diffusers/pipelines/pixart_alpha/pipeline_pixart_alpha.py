@@ -133,6 +133,42 @@ ASPECT_RATIO_512_BIN = {
     "4.0": [1024.0, 256.0],
 }
 
+ASPECT_RATIO_256_BIN = {
+    "0.25": [128.0, 512.0],
+    "0.28": [128.0, 464.0],
+    "0.32": [144.0, 448.0],
+    "0.33": [144.0, 432.0],
+    "0.35": [144.0, 416.0],
+    "0.4": [160.0, 400.0],
+    "0.42": [160.0, 384.0],
+    "0.48": [176.0, 368.0],
+    "0.5": [176.0, 352.0],
+    "0.52": [176.0, 336.0],
+    "0.57": [192.0, 336.0],
+    "0.6": [192.0, 320.0],
+    "0.68": [208.0, 304.0],
+    "0.72": [208.0, 288.0],
+    "0.78": [224.0, 288.0],
+    "0.82": [224.0, 272.0],
+    "0.88": [240.0, 272.0],
+    "0.94": [240.0, 256.0],
+    "1.0": [256.0, 256.0],
+    "1.07": [256.0, 240.0],
+    "1.13": [272.0, 240.0],
+    "1.21": [272.0, 224.0],
+    "1.29": [288.0, 224.0],
+    "1.38": [288.0, 208.0],
+    "1.46": [304.0, 208.0],
+    "1.67": [320.0, 192.0],
+    "1.75": [336.0, 192.0],
+    "2.0": [352.0, 176.0],
+    "2.09": [368.0, 176.0],
+    "2.4": [384.0, 160.0],
+    "2.5": [400.0, 160.0],
+    "3.0": [432.0, 144.0],
+    "4.0": [512.0, 128.0]
+}
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -228,6 +264,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         vae: AutoencoderKL,
         transformer: Transformer2DModel,
         scheduler: DPMSolverMultistepScheduler,
+        model_token_max_length: int = 120,
     ):
         super().__init__()
 
@@ -237,6 +274,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+        self.model_token_max_length = model_token_max_length
 
     # Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/utils.py
     def mask_text_embeddings(self, emb, mask):
@@ -260,6 +298,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.FloatTensor] = None,
         negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
+        model_token_max_length: int = 120,
         **kwargs,
     ):
         r"""
@@ -303,7 +342,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         # See Section 3.1. of the paper.
-        max_length = 120
+        max_length = model_token_max_length
 
         if prompt_embeds is None:
             prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
@@ -771,10 +810,16 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
+        model_token_max_length = self.model_token_max_length
         if use_resolution_binning:
-            aspect_ratio_bin = (
-                ASPECT_RATIO_1024_BIN if self.transformer.config.sample_size == 128 else ASPECT_RATIO_512_BIN
-            )
+            if self.transformer.config.sample_size == 128:
+                aspect_ratio_bin = ASPECT_RATIO_1024_BIN
+            elif self.transformer.config.sample_size == 64:
+                aspect_ratio_bin = ASPECT_RATIO_512_BIN
+            elif self.transformer.config.sample_size == 32:
+                aspect_ratio_bin = ASPECT_RATIO_256_BIN
+            else:
+                raise ValueError('Invalid sample size')
             orig_height, orig_width = height, width
             height, width = self.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
 
@@ -822,6 +867,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             clean_caption=clean_caption,
+            model_token_max_length=model_token_max_length,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
