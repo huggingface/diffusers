@@ -101,7 +101,7 @@ Let's review some of the advanced features we're going to be using for this exam
 - **custom captions**:
 To use custom captioning, first ensure that you have the datasets library installed, otherwise you can install it by 
 ```bash
-!pip install datasets
+pip install datasets
 ```
 
 Now we'll simply specify the name of the dataset and caption column (in this case it's "prompt")
