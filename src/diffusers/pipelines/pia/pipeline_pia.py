@@ -70,14 +70,7 @@ EXAMPLE_DOC_STRING = """
         >>> prompt = "cat in a hat"
         >>> negative_prompt = "wrong white balance, dark, sketches,worst quality,low quality, deformed, distorted, disfigured, bad eyes, wrong lips,weird mouth, bad teeth, mutated hands and fingers, bad anatomy,wrong anatomy, amputation, extra limb, missing limb, floating,limbs, disconnected limbs, mutation, ugly, disgusting, bad_pictures, negative_hand-neg"
         >>> generator = torch.Generator("cpu").manual_seed(0)
-        >>> output = pipe(
-        ...     image=image,
-        ...     prompt=prompt,
-        ...     guidance_scale=7.5,
-        ...     num_inference_steps=25,
-        ...     motion_scale=0,
-        ...     generator=generator,
-        ... )
+        >>> output = pipe(image=image, prompt=prompt, negative_prompt=negative_prompt, generator=generator)
         >>> frames = output.frames[0]
         >>> export_to_gif(frames, "pia-animation.gif")
         ```
