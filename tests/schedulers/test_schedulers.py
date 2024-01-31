@@ -473,7 +473,7 @@ class SchedulerCommonTest(unittest.TestCase):
         num_inference_steps = kwargs.pop("num_inference_steps", self.default_num_inference_steps)
 
         for scheduler_class in self.scheduler_classes:
-            timestep = self.default_timestep_2
+            timestep = self.default_timestep
             if scheduler_class in (EulerAncestralDiscreteScheduler, EulerDiscreteScheduler, LMSDiscreteScheduler):
                 timestep = float(timestep)
 
