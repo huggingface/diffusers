@@ -116,11 +116,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
 
         if conv_in_channels:
             # input
-            conv_in_kernel = 3
-            conv_in_padding = (conv_in_kernel - 1) // 2
-            self.conv_in = nn.Conv2d(
-                conv_in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
-            )
+            self.conv_in = nn.Conv2d(conv_in_channels, block_out_channels[0], kernel_size=3, padding=1)
         else:
             self.conv_in = None
 

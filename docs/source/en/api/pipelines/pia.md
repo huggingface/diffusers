@@ -97,7 +97,7 @@ The following example demonstrates the usage of FreeInit.
 ```python
 import torch
 from diffusers import (
-    EulerDiscreteScheduler,
+    DDIMScheduler,
     MotionAdapter,
     PIAPipeline,
 )
@@ -114,11 +114,7 @@ pipe.enable_free_init(method="butterworth", use_fast_sampling=True)
 pipe.enable_model_cpu_offload()
 pipe.enable_vae_slicing()
 
-pipe.scheduler = EulerDiscreteScheduler(
-    steps_offset=1,
-    beta_start=0.00085,
-    beta_end=0.012,
-)
+pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 image = load_image(
     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
 )
