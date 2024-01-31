@@ -860,7 +860,7 @@ def main(args):
                 # Final loss.
                 scale_term = -0.5 * args.beta_dpo
                 inside_term = scale_term * (model_diff - ref_diff)
-                loss = -1 * F.logsigmoid(inside_term.mean())
+                loss = -1 * F.logsigmoid(inside_term).mean()
 
                 implicit_acc = (inside_term > 0).sum().float() / inside_term.size(0)
                 implicit_acc += 0.5 * (inside_term == 0).sum().float() / inside_term.size(0)
