@@ -48,7 +48,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 logger = logging.get_logger(__name__)

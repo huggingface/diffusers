@@ -5,7 +5,6 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 import torch
-from transformers import is_torchvision_available
 
 from .models import UNet2DConditionModel
 from .utils import (
@@ -13,6 +12,7 @@ from .utils import (
     convert_state_dict_to_peft,
     deprecate,
     is_peft_available,
+    is_torchvision_available,
     is_transformers_available,
 )
 
