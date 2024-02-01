@@ -680,6 +680,8 @@ class DreamBoothDataset(Dataset):
         )
         for image in self.instance_images:
             image = exif_transpose(image)
+            if not image.mode == "RGB":
+                image = image.convert("RGB")
             self.original_sizes.append((image.height, image.width))
             image = train_resize(image)
             if args.random_flip and random.random() < 0.5:
