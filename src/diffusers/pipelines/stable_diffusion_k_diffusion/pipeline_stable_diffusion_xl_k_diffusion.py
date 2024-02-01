@@ -235,6 +235,7 @@ class StableDiffusionXLKDiffusionPipeline(
         prompt: str,
         prompt_2: Optional[str] = None,
         device: Optional[torch.device] = None,
+        cfg_end: Optional[float] = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
         negative_prompt: Optional[str] = None,
@@ -289,6 +290,7 @@ class StableDiffusionXLKDiffusionPipeline(
                 the output of the pre-final layer will be used for computing the prompt embeddings.
         """
         device = device or self._execution_device
+        cfg_end = cfg_end
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
@@ -555,7 +557,9 @@ class StableDiffusionXLKDiffusionPipeline(
 
         if expected_add_embed_dim != passed_add_embed_dim:
             raise ValueError(
-                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of {passed_add_embed_dim} was created. The model has an incorrect config. Please check `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
+                f"Model expects an added time embedding vector of length {expected_add_embed_dim}, but a vector of"
+                f" {passed_add_embed_dim} was created. The model has an incorrect config. Please check"
+                " `unet.config.time_embedding_type` and `text_encoder_2.config.projection_dim`."
             )
 
         add_time_ids = torch.tensor([add_time_ids], dtype=dtype)
@@ -888,10 +892,9 @@ class StableDiffusionXLKDiffusionPipeline(
             sigma_min: float = self.k_diffusion_model.sigmas[0].item()
             sigma_max: float = self.k_diffusion_model.sigmas[-1].item()
             sigmas = get_sigmas_karras(n=num_inference_steps, sigma_min=sigma_min, sigma_max=sigma_max)
-            sigmas = sigmas.to(device)
         else:
             sigmas = self.scheduler.sigmas
-        sigmas = sigmas.to(prompt_embeds.dtype)
+        sigmas = sigmas.to(dtype=prompt_embeds.dtype, device=device)
 
         # 6. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
