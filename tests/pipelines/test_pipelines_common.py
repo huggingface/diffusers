@@ -38,7 +38,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..models.test_models_vae import (
+from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
     get_autoencoder_kl_config,
     get_autoencoder_tiny_config,
