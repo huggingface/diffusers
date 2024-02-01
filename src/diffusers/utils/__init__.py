@@ -75,6 +75,7 @@ from .import_utils import (
     is_torch_version,
     is_torch_xla_available,
     is_torchsde_available,
+    is_torchvision_available,
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,
