@@ -5,7 +5,6 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 import torch
-from torchvision import transforms
 
 from .models import UNet2DConditionModel
 from .utils import (
@@ -13,6 +12,7 @@ from .utils import (
     convert_state_dict_to_peft,
     deprecate,
     is_peft_available,
+    is_torchvision_available,
     is_transformers_available,
 )
 
@@ -22,6 +22,9 @@ if is_transformers_available():
 
 if is_peft_available():
     from peft import set_peft_model_state_dict
+
+if is_torchvision_available():
+    from torchvision import transforms
 
 
 def set_seed(seed: int):
@@ -79,6 +82,11 @@ def resolve_interpolation_mode(interpolation_type: str):
         `torchvision.transforms.InterpolationMode`: an `InterpolationMode` enum used by torchvision's `resize`
         transform.
     """
+    if not is_torchvision_available():
+        raise ImportError(
+            "Please make sure to install `torchvision` to be able to use the `resolve_interpolation_mode()` function."
+        )
+
     if interpolation_type == "bilinear":
         interpolation_mode = transforms.InterpolationMode.BILINEAR
     elif interpolation_type == "bicubic":

@@ -46,7 +46,7 @@ from diffusers.utils.testing_utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 enable_full_determinism()
