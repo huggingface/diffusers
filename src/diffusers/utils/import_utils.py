@@ -278,6 +278,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _peft_available = False
 
+_torchvision_available = importlib.util.find_spec("torchvision") is not None
+try:
+    _torchvision_version = importlib_metadata.version("torchvision")
+    logger.debug(f"Successfully imported torchvision version {_torchvision_version}")
+except importlib_metadata.PackageNotFoundError:
+    _torchvision_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -365,6 +372,10 @@ def is_invisible_watermark_available():
 
 def is_peft_available():
     return _peft_available
+
+
+def is_torchvision_available():
+    return _torchvision_available
 
 
 # docstyle-ignore
