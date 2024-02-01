@@ -35,14 +35,15 @@ if is_torch_available():
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["embeddings"] = ["ImageProjection"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
-    _import_structure["prior_transformer"] = ["PriorTransformer"]
-    _import_structure["t5_film_transformer"] = ["T5FilmDecoder"]
-    _import_structure["transformer_2d"] = ["Transformer2DModel"]
-    _import_structure["transformer_temporal"] = ["TransformerTemporalModel"]
+    _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
+    _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
+    _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
+    _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
     _import_structure["unets.unet_2d_condition"] = ["UNet2DConditionModel"]
     _import_structure["unets.unet_3d_condition"] = ["UNet3DConditionModel"]
+    _import_structure["unets.unet_i2vgen_xl"] = ["I2VGenXLUNet"]
     _import_structure["unets.unet_kandinsky3"] = ["Kandinsky3UNet"]
     _import_structure["unets.unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
     _import_structure["unets.unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
@@ -66,14 +67,17 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             ConsistencyDecoderVAE,
         )
         from .controlnet import ControlNetModel
-        from .dual_transformer_2d import DualTransformer2DModel
         from .embeddings import ImageProjection
         from .modeling_utils import ModelMixin
-        from .prior_transformer import PriorTransformer
-        from .t5_film_transformer import T5FilmDecoder
-        from .transformer_2d import Transformer2DModel
-        from .transformer_temporal import TransformerTemporalModel
+        from .transformers import (
+            DualTransformer2DModel,
+            PriorTransformer,
+            T5FilmDecoder,
+            Transformer2DModel,
+            TransformerTemporalModel,
+        )
         from .unets import (
+            I2VGenXLUNet,
             Kandinsky3UNet,
             MotionAdapter,
             UNet1DModel,

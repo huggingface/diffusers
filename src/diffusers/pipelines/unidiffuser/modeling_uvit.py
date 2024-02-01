@@ -10,7 +10,7 @@ from ...models.attention import FeedForward
 from ...models.attention_processor import Attention
 from ...models.embeddings import TimestepEmbedding, Timesteps, get_2d_sincos_pos_embed
 from ...models.normalization import AdaLayerNorm
-from ...models.transformer_2d import Transformer2DModelOutput
+from ...models.transformers.transformer_2d import Transformer2DModelOutput
 from ...utils import logging
 
 
