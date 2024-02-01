@@ -108,6 +108,8 @@ class ControlNetXSAddon(metaclass=DummyObject):
 
 
 class ControlNetXSModel(metaclass=DummyObject):
+    _backends = ["torch"]
+
     def __init__(self, *args, **kwargs):
         requires_backends(self, ["torch"])
 
@@ -118,6 +120,7 @@ class ControlNetXSModel(metaclass=DummyObject):
     @classmethod
     def from_pretrained(cls, *args, **kwargs):
         requires_backends(cls, ["torch"])
+
 
 class I2VGenXLUNet(metaclass=DummyObject):
     _backends = ["torch"]

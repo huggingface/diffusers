@@ -374,6 +374,7 @@ class ControlNetXSPipelineFastTests(
             max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
         )
 
+
 @slow
 @require_torch_gpu
 class ControlNetXSPipelineSlowTests(unittest.TestCase):
