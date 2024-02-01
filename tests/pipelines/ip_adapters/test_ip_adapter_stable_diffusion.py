@@ -258,6 +258,27 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         ]
         assert processors == [True] * len(processors)
 
+    def test_multi(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter(
+            "h94/IP-Adapter", subfolder="models", weight_name=["ip-adapter_sd15.bin", "ip-adapter-plus_sd15.bin"]
+        )
+        pipeline.set_ip_adapter_scale([0.7, 0.3])
+
+        inputs = self.get_dummy_inputs()
+        ip_adapter_image = inputs["ip_adapter_image"]
+        inputs["ip_adapter_image"] = [ip_adapter_image, [ip_adapter_image] * 2]
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+        expected_slice = np.array(
+            [0.5234375, 0.53515625, 0.5629883, 0.57128906, 0.59521484, 0.62109375, 0.57910156, 0.6201172, 0.6508789]
+        )
+        assert np.allclose(image_slice, expected_slice, atol=1e-3)
+
 
 @slow
 @require_torch_gpu
