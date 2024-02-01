@@ -164,6 +164,7 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
             "tokenizer_2": tokenizer_2,
             "requires_aesthetics_score": True,
             "image_encoder": image_encoder,
+            "safety_checker": None,
             "feature_extractor": feature_extractor,
         }
         return components
@@ -577,6 +578,7 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
             "tokenizer_2": tokenizer_2,
             "requires_aesthetics_score": True,
             "image_encoder": None,
+            "safety_checker": None,
             "feature_extractor": None,
         }
         return components

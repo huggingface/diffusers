@@ -310,6 +310,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         prompt: str,
         prompt_2: Optional[str] = None,
         device: Optional[torch.device] = None,
+        cfg_end: Optional[float] = None,
         num_images_per_prompt: int = 1,
         do_classifier_free_guidance: bool = True,
         negative_prompt: Optional[str] = None,
@@ -364,6 +365,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 the output of the pre-final layer will be used for computing the prompt embeddings.
         """
         device = device or self._execution_device
+        cfg_end = cfg_end
 
         # set lora scale so that monkey patched LoRA
         # function of text encoder can correctly access it
