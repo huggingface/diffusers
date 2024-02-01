@@ -46,6 +46,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import I2VGenXLPipeline
+        >>> from diffusers.utils import export_to_gif, load_image
 
         >>> pipeline = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
         >>> pipeline.enable_model_cpu_offload()
@@ -98,12 +99,13 @@ class I2VGenXLPipelineOutput(BaseOutput):
     Output class for image-to-video pipeline.
 
     Args:
-        frames (`List[np.ndarray]` or `torch.FloatTensor`)
-            List of denoised frames (essentially images) as NumPy arrays of shape `(height, width, num_channels)` or as
-            a `torch` tensor. The length of the list denotes the video length (the number of frames).
+        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
+        Nested list of length `batch_size` with denoised PIL image sequences of length `num_frames`,
+        NumPy array of shape `(batch_size, num_frames, channels, height, width,
+        Torch tensor of shape `(batch_size, num_frames, channels, height, width)`.
     """
 
-    frames: Union[List[np.ndarray], torch.FloatTensor]
+    frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]]]
 
 
 class I2VGenXLPipeline(DiffusionPipeline):

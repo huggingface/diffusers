@@ -14,9 +14,10 @@ class AnimateDiffPipelineOutput(BaseOutput):
     Output class for AnimateDiff pipelines.
 
     Args:
-        frames (`List[List[PIL.Image.Image]]` or `torch.Tensor` or `np.ndarray`):
-            List of PIL Images of length `batch_size` or torch.Tensor or np.ndarray of shape
-            `(batch_size, num_frames, height, width, num_channels)`.
+        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
+        Nested list of length `batch_size` with denoised PIL image sequences of length `num_frames`,
+        NumPy array of shape `(batch_size, num_frames, channels, height, width,
+        Torch tensor of shape `(batch_size, num_frames, channels, height, width)`.
     """
 
-    frames: Union[List[List[PIL.Image.Image]], torch.Tensor, np.ndarray]
+    frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]]]

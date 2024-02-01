@@ -119,7 +119,7 @@ image = load_image(
     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
 )
 image = image.resize((512, 512))
-prompt = "cat in a hat"
+prompt = "cat in a field"
 negative_prompt = "wrong white balance, dark, sketches,worst quality,low quality"
 
 generator = torch.Generator("cpu").manual_seed(0)
@@ -132,7 +132,7 @@ export_to_gif(frames, "pia-freeinit-animation.gif")
 <table>
     <tr>
         <td><center>
-        masterpiece, bestquality, sunset.
+        cat in a field.
         <br>
         <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pia-freeinit-output-cat.gif"
             alt="cat in a field"
