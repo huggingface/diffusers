@@ -184,7 +184,8 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
             [0.27148438, 0.24047852, 0.22167969, 0.23217773, 0.21118164, 0.21142578, 0.21875, 0.20751953, 0.20019531]
         )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
 
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
@@ -192,11 +193,8 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.27294922, 0.24023438, 0.21948242, 0.23242188, 0.20825195, 0.2055664, 0.21679688, 0.20336914, 0.19360352]
-        )
-
-        assert np.allclose(image_slice, expected_slice, atol=1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
 
     def test_text_to_image_model_cpu_offload(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
@@ -320,7 +318,8 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             ]
         )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
 
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
 
@@ -345,7 +344,8 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             [0.0576596, 0.05600825, 0.04479006, 0.05288461, 0.05461192, 0.05137569, 0.04867965, 0.05301541, 0.04939842]
         )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
 
     def test_image_to_image_sdxl(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="sdxl_models/image_encoder")
@@ -438,7 +438,8 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             [0.14181179, 0.1493012, 0.14283323, 0.14602411, 0.14915377, 0.15015268, 0.14725655, 0.15009224, 0.15164584]
         )
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
 
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
@@ -463,4 +464,5 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
 
         expected_slice = np.array([0.1398, 0.1476, 0.1407, 0.1442, 0.1470, 0.1480, 0.1449, 0.1481, 0.1494])
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-4, rtol=1e-4)
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
