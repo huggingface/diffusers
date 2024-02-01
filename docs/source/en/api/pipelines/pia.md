@@ -70,7 +70,7 @@ Here are some sample outputs:
 <table>
     <tr>
         <td><center>
-        masterpiece, bestquality, sunset.
+        cat in a field.
         <br>
         <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pia-default-output.gif"
             alt="cat in a field"
