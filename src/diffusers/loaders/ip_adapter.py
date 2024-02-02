@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import inspect
 from pathlib import Path
 from typing import Dict, List, Union
 
@@ -205,8 +206,15 @@ class IPAdapterMixin:
             self.image_encoder = None
             self.register_to_config(image_encoder=[None, None])
 
-        # remove feature extractor
-        if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
+        # remove feature extractor if it is not required by the pipeline
+        required_parameters = set(
+            {k for k, v in inspect.signature(self.__init__).parameters.items() if v.default == inspect._empty}
+        )
+        if (
+            hasattr(self, "feature_extractor")
+            and getattr(self, "feature_extractor", None) is not None
+            and "feature_extractor" not in required_parameters
+        ):
             self.feature_extractor = None
             self.register_to_config(feature_extractor=[None, None])
 
