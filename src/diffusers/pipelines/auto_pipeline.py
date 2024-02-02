@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import inspect
 from collections import OrderedDict
 
 from huggingface_hub.utils import validate_hf_hub_args
@@ -162,14 +161,6 @@ def _get_task_class(mapping, pipeline_class_name, throw_error_if_not_exist: bool
 
     if throw_error_if_not_exist:
         raise ValueError(f"AutoPipeline can't find a pipeline linked to {pipeline_class_name} for {model_name}")
-
-
-def _get_signature_keys(obj):
-    parameters = inspect.signature(obj.__init__).parameters
-    required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
-    optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
-    expected_modules = set(required_parameters.keys()) - {"self"}
-    return expected_modules, optional_parameters
 
 
 class AutoPipelineForText2Image(ConfigMixin):
@@ -391,7 +382,7 @@ class AutoPipelineForText2Image(ConfigMixin):
                 )
 
         # define expected module and optional kwargs given the pipeline signature
-        expected_modules, optional_kwargs = _get_signature_keys(text_2_image_cls)
+        expected_modules, optional_kwargs = text_2_image_cls._get_signature_keys(text_2_image_cls)
 
         pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
 
@@ -668,7 +659,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
                 )
 
         # define expected module and optional kwargs given the pipeline signature
-        expected_modules, optional_kwargs = _get_signature_keys(image_2_image_cls)
+        expected_modules, optional_kwargs = image_2_image_cls._get_signature_keys(image_2_image_cls)
 
         pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
 
@@ -943,7 +934,7 @@ class AutoPipelineForInpainting(ConfigMixin):
                 )
 
         # define expected module and optional kwargs given the pipeline signature
-        expected_modules, optional_kwargs = _get_signature_keys(inpainting_cls)
+        expected_modules, optional_kwargs = inpainting_cls._get_signature_keys(inpainting_cls)
 
         pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
 
