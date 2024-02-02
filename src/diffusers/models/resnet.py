@@ -384,9 +384,9 @@ class ResnetBlock2D(nn.Module):
                 raise ValueError(
                     f" `temb` should not be None when `time_embedding_norm` is {self.time_embedding_norm}"
                 )
-            scale, shift = torch.chunk(temb, 2, dim=1)
+            time_scale, time_shift = torch.chunk(temb, 2, dim=1)
             hidden_states = self.norm2(hidden_states)
-            hidden_states = hidden_states * (1 + scale) + shift
+            hidden_states = hidden_states * (1 + time_scale) + time_shift
         else:
             hidden_states = self.norm2(hidden_states)
 
