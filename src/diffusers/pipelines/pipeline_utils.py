@@ -865,7 +865,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         module_names, _ = self._get_signature_keys(self)
         modules = [getattr(self, n, None) for n in module_names]
-        modules = [m for m in modules if isinstance(m, torch.nn.Module)]
+        modules = [m for m in modules if isinstance(m, (torch.nn.Module, DiffusionPipeline))]
 
         is_offloaded = pipeline_is_offloaded or pipeline_is_sequentially_offloaded
         for module in modules:
