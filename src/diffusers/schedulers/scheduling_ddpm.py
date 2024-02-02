@@ -436,6 +436,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
             predicted_variance = None
 
         # 1. compute alphas, betas
+        print("~", t, prev_t)
         alpha_prod_t = self.alphas_cumprod[t]
         alpha_prod_t_prev = self.alphas_cumprod[prev_t] if prev_t >= 0 else self.one
         beta_prod_t = 1 - alpha_prod_t
@@ -472,6 +473,7 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
 
         # 5. Compute predicted previous sample µ_t
         # See formula (7) from https://arxiv.org/pdf/2006.11239.pdf
+        print("++", t, prev_t, pred_original_sample_coeff, current_sample_coeff)
         pred_prev_sample = pred_original_sample_coeff * pred_original_sample + current_sample_coeff * sample
 
         # 6. Add noise
