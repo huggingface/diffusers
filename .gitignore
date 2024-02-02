@@ -176,3 +176,5 @@ tags
 
 # wandb
 wandb
+
+scripts/test

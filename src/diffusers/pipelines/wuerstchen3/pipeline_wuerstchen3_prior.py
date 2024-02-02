@@ -154,9 +154,10 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
 
             text_encoder_output = self.text_encoder(
-                text_input_ids.to(device), attention_mask=attention_mask.to(device)
+                text_input_ids.to(device), attention_mask=attention_mask.to(device), 
+                output_hidden_states=True
             )
-            prompt_embeds = text_encoder_output.last_hidden_state
+            prompt_embeds = text_encoder_output.hidden_states[-1]
             if prompt_embeds_pooled is None:
                 prompt_embeds_pooled = text_encoder_output.text_embeds.unsqueeze(1)
 
@@ -193,10 +194,11 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 return_tensors="pt",
             )
             negative_prompt_embeds_text_encoder_output = self.text_encoder(
-                uncond_input.input_ids.to(device), attention_mask=uncond_input.attention_mask.to(device)
+                uncond_input.input_ids.to(device), attention_mask=uncond_input.attention_mask.to(device),
+                output_hidden_states=True
             )
 
-            negative_prompt_embeds = negative_prompt_embeds_text_encoder_output.last_hidden_state
+            negative_prompt_embeds = negative_prompt_embeds_text_encoder_output.hidden_states[-1]
             negative_prompt_embeds_pooled = negative_prompt_embeds_text_encoder_output.text_embeds.unsqueeze(1)
 
         if do_classifier_free_guidance:
@@ -539,10 +541,15 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         # 5. Prepare latents
         latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents, self.scheduler)
 
+        if isinstance(self.scheduler, DDPMWuerstchenScheduler):
+            timesteps = timesteps[:-1]
         # 6. Run denoising loop
-        self._num_timesteps = len(timesteps[:-1])
-        for i, t in enumerate(self.progress_bar(timesteps[:-1])):
-            ratio = t.expand(latents.size(0)).to(dtype)
+        self._num_timesteps = len(timesteps)
+        for i, t in enumerate(self.progress_bar(timesteps)):
+            if not isinstance(self.scheduler, DDPMWuerstchenScheduler):
+                ratio = t.expand(latents.size(0)).to(dtype).div(999)
+            else:
+                ratio = t.expand(latents.size(0)).to(dtype)
             # 7. Denoise image embeddings
             predicted_image_embedding = self.prior(
                 x=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
@@ -560,6 +567,9 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 )
 
             # 9. Renoise latents to next timestep
+            if not isinstance(self.scheduler, DDPMWuerstchenScheduler):
+                ratio = ratio[0].add(1/len(timesteps)).clamp(0, 1).mul(999).long().cpu().item()
+            print("~", ratio)
             latents = self.scheduler.step(
                 model_output=predicted_image_embedding,
                 timestep=ratio,
