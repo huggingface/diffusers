@@ -254,6 +254,38 @@ class Timesteps(nn.Module):
         return t_emb
 
 
+def timestep_embedding_adm(timesteps, dim, max_period=10000):
+    """
+    ADM order embedding from https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/nn.py#L103
+    """
+    half = dim // 2
+    freqs = torch.exp(-math.log(max_period) * torch.arange(start=0, end=half, dtype=torch.float32) / half).to(
+        device=timesteps.device
+    )
+    args = timesteps[:, None].float() * freqs[None]
+    embedding = torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
+    if dim % 2:
+        embedding = torch.cat([embedding, torch.zeros_like(embedding[:, :1])], dim=-1)
+    return embedding
+
+
+class TimestepsADM(nn.Module):
+    """
+    ADM order embedding from https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/nn.py#L103
+    """
+
+    def __init__(self, num_channels: int):
+        super().__init__()
+        self.num_channels = num_channels
+
+    def forward(self, timesteps):
+        t_emb = timestep_embedding_adm(
+            timesteps,
+            self.num_channels,
+        )
+        return t_emb
+
+
 class GaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
 

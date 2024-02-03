@@ -19,7 +19,7 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput
-from ..embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps
+from ..embeddings import GaussianFourierProjection, TimestepEmbedding, Timesteps, TimestepsADM
 from ..modeling_utils import ModelMixin
 from .unet_2d_blocks import UNetMidBlock2D, get_down_block, get_up_block
 
@@ -72,6 +72,8 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             The upsample type for upsampling layers. Choose between "conv" and "resnet"
         dropout (`float`, *optional*, defaults to 0.0): The dropout probability to use.
         act_fn (`str`, *optional*, defaults to `"silu"`): The activation function to use.
+        attention_legacy_order (`bool`, *optional*, defaults to `False`):
+            if attention_legacy_order, split heads before split qkv, see https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/unet.py#L328
         attention_head_dim (`int`, *optional*, defaults to `8`): The attention head dimension.
         norm_num_groups (`int`, *optional*, defaults to `32`): The number of groups for normalization.
         attn_norm_num_groups (`int`, *optional*, defaults to `None`):
@@ -109,6 +111,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         upsample_type: str = "conv",
         dropout: float = 0.0,
         act_fn: str = "silu",
+        attention_legacy_order: bool = False,
         attention_head_dim: Optional[int] = 8,
         norm_num_groups: int = 32,
         attn_norm_num_groups: Optional[int] = None,
@@ -148,7 +151,9 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         elif time_embedding_type == "learned":
             self.time_proj = nn.Embedding(num_train_timesteps, block_out_channels[0])
             timestep_input_dim = block_out_channels[0]
-
+        elif time_embedding_type == "adm":
+            self.time_proj = TimestepsADM(block_out_channels[0])
+            timestep_input_dim = block_out_channels[0]
         self.time_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim)
 
         # class embedding
@@ -182,6 +187,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
+                attention_legacy_order=attention_legacy_order,
                 attention_head_dim=attention_head_dim if attention_head_dim is not None else output_channel,
                 downsample_padding=downsample_padding,
                 resnet_time_scale_shift=resnet_time_scale_shift,
@@ -191,6 +197,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             self.down_blocks.append(down_block)
 
         # mid
+        attn_norm_num_groups = norm_num_groups if attention_legacy_order is True else attn_norm_num_groups
         self.mid_block = UNetMidBlock2D(
             in_channels=block_out_channels[-1],
             temb_channels=time_embed_dim,
@@ -203,6 +210,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
             resnet_groups=norm_num_groups,
             attn_groups=attn_norm_num_groups,
             add_attention=add_attention,
+            attention_legacy_order=attention_legacy_order,
         )
 
         # up
@@ -226,6 +234,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
                 resnet_eps=norm_eps,
                 resnet_act_fn=act_fn,
                 resnet_groups=norm_num_groups,
+                attention_legacy_order=attention_legacy_order,
                 attention_head_dim=attention_head_dim if attention_head_dim is not None else output_channel,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 upsample_type=upsample_type,
