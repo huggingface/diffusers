@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import I2VGenXLPipeline
-        >>> from diffusers.utils import load_image
+        >>> from diffusers.utils import load_image, export_to_gif
 
         >>> pipeline = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
         >>> pipeline.enable_model_cpu_offload()
