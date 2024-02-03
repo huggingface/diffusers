@@ -1,8 +1,8 @@
 # Advanced diffusion training examples
 
 ## Train Dreambooth LoRA with Stable Diffusion XL
-> 💡 **This example follows the techniques and recommended practices covered in the blog post: [LoRA training scripts of the world, unite!](https://huggingface.co/blog/sdxl_lora_advanced_script)
-> Make sure to check it out before starting 🤗** 
+> [!TIP]
+> 💡 This example follows the techniques and recommended practices covered in the blog post: [LoRA training scripts of the world, unite!](https://huggingface.co/blog/sdxl_lora_advanced_script). Make sure to check it out before starting 🤗
 
 [DreamBooth](https://arxiv.org/abs/2208.12242) is a method to personalize text2image models like stable diffusion given just a few(3~5) images of a subject.
 
