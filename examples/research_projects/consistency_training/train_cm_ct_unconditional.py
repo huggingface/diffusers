@@ -188,10 +188,10 @@ def get_input_preconditioning(sigmas, sigma_data=0.5, input_precond_type: str = 
         )
 
 
-def scalings_for_boundary_conditions(timestep, sigma_data=0.5, timestep_scaling=1.0):
+def scalings_for_boundary_conditions(timestep, sigma_min, sigma_data=0.5, timestep_scaling=1.0):
     scaled_timestep = timestep_scaling * timestep
-    c_skip = sigma_data**2 / (scaled_timestep**2 + sigma_data**2)
-    c_out = scaled_timestep / (scaled_timestep**2 + sigma_data**2) ** 0.5
+    c_skip = sigma_data**2 / ((scaled_timestep - sigma_min)**2 + sigma_data**2)
+    c_out = (scaled_timestep - sigma_min) * sigma_data / (scaled_timestep**2 + sigma_data**2) ** 0.5
     return c_skip, c_out
 
 
@@ -1255,8 +1255,8 @@ def main(args):
             c_in_teacher = get_input_preconditioning(teacher_timesteps, input_precond_type=args.input_precond_type)
             c_in_student = get_input_preconditioning(student_timesteps, input_precond_type=args.input_precond_type)
 
-            c_skip_teacher, c_out_teacher = scalings_for_boundary_conditions(teacher_timesteps)
-            c_skip_student, c_out_student = scalings_for_boundary_conditions(student_timesteps)
+            c_skip_teacher, c_out_teacher = scalings_for_boundary_conditions(teacher_timesteps, args.sigma_min)
+            c_skip_student, c_out_student = scalings_for_boundary_conditions(student_timesteps, args.sigma_min)
 
             c_skip_teacher, c_out_teacher, c_in_teacher = [
                 append_dims(x, clean_images.ndim) for x in [c_skip_teacher, c_out_teacher, c_in_teacher]
