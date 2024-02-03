@@ -1270,10 +1270,8 @@ def main(args):
     # pooled text embeddings
     # time ids
 
-    def compute_time_ids(crops_coords_top_left, original_size=None):
+    def compute_time_ids(original_size, crops_coords_top_left):
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-        if original_size is None:
-            original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids])
