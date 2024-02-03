@@ -13,7 +13,7 @@ interpolation_scale = {256: 0.5, 512: 1, 1024: 2}
 
 
 def main(args):
-    all_state_dict = torch.load(args.orig_ckpt_path, map_location='cpu')
+    all_state_dict = torch.load(args.orig_ckpt_path, map_location="cpu")
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
 
