@@ -522,7 +522,7 @@ def load_hf_numpy(path) -> np.ndarray:
     base_url = "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main"
 
     if not path.startswith("http://") and not path.startswith("https://"):
-        path = os.path.join(base_url, urllib.parse.quote(path))
+        path = Path(base_url, urllib.parse.quote(path)).as_posix()
 
     return load_numpy(path)
 
@@ -853,6 +853,8 @@ def _is_torch_fp64_available(device):
         return False
 
     import torch
+
+    device = torch.device(device)
 
     try:
         x = torch.zeros((2, 2), dtype=torch.float64).to(device)
