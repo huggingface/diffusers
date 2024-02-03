@@ -25,7 +25,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 class UNet1DModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):

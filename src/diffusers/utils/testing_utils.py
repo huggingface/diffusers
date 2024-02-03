@@ -854,6 +854,8 @@ def _is_torch_fp64_available(device):
 
     import torch
 
+    device = torch.device(device)
+
     try:
         x = torch.zeros((2, 2), dtype=torch.float64).to(device)
         _ = torch.mul(x, x)
