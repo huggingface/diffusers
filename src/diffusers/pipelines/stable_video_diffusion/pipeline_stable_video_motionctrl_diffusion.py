@@ -295,6 +295,28 @@ class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def _to_relative_camera_pose(
+        self, camera_pose: np.ndarray, keyframe_index: int = 0, keyframe_zero: bool = False
+    ) -> np.ndarray:
+        camera_pose = camera_pose.reshape(-1, 3, 4)
+        rotation_dst = camera_pose[:, :, :3]
+        translation_dst = camera_pose[:, :, 3:]
+
+        rotation_src = rotation_dst[keyframe_index : keyframe_index + 1].repeat(camera_pose.shape[0], axis=0)
+        translation_src = translation_dst[keyframe_index : keyframe_index + 1].repeat(camera_pose.shape[0], axis=0)
+
+        rotation_src_inv = rotation_src.transpose(0, 2, 1)
+        rotation_rel = rotation_dst @ rotation_src_inv
+        translation_rel = translation_dst - rotation_rel @ translation_src
+
+        rt_rel = np.concatenate([rotation_rel, translation_rel], axis=-1)
+        rt_rel = rt_rel.reshape(-1, 12)
+
+        if keyframe_zero:
+            rt_rel[keyframe_index] = np.zeros_like(rt_rel[keyframe_index])
+
+        return rt_rel
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -505,6 +527,9 @@ class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
 
         self._guidance_scale = guidance_scale
 
+        camera_pose = np.array(camera_pose)
+        camera_pose = self._to_relative_camera_pose(camera_pose)
+        camera_pose = torch.FloatTensor(camera_pose).to(device=device, dtype=image_embeddings.dtype)
         added_cond_kwargs = {"camera_pose": camera_pose}
 
         # 8. Denoising loop
