@@ -1,3 +1,8 @@
+import yaml
+import argparse
+import torch
+from yaml.loader import FullLoader
+from safetensors.torch import load_file
 from diffusers.utils import is_accelerate_available, logging
 
 
@@ -12,23 +17,23 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     Creates a config for the diffusers based on the config of the LDM model.
     """
     if controlnet:
-        unet_params = original_config.model.params.control_stage_config.params
+        unet_params = original_config['model']['params']['control_stage_config']['params']
     else:
-        if "unet_config" in original_config.model.params and original_config.model.params.unet_config is not None:
-            unet_params = original_config.model.params.unet_config.params
+        if "unet_config" in original_config['model']['params'] and original_config['model']['params']['unet_config'] is not None:
+            unet_params = original_config['model']['params']['unet_config']['params']
         else:
-            unet_params = original_config.model.params.network_config.params
+            unet_params = original_config['model']['params']['network_config']['params']
 
-    vae_params = original_config.model.params.first_stage_config.params.encoder_config.params
+    vae_params = original_config['model']['params']['first_stage_config']['params']['ddconfig']
 
-    block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
+    block_out_channels = [unet_params['model_channels'] * mult for mult in unet_params['channel_mult']]
 
     down_block_types = []
     resolution = 1
     for i in range(len(block_out_channels)):
         block_type = (
             "CrossAttnDownBlockSpatioTemporal"
-            if resolution in unet_params.attention_resolutions
+            if resolution in unet_params['attention_resolutions']
             else "DownBlockSpatioTemporal"
         )
         down_block_types.append(block_type)
@@ -39,32 +44,32 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     for i in range(len(block_out_channels)):
         block_type = (
             "CrossAttnUpBlockSpatioTemporal"
-            if resolution in unet_params.attention_resolutions
+            if resolution in unet_params['attention_resolutions']
             else "UpBlockSpatioTemporal"
         )
         up_block_types.append(block_type)
         resolution //= 2
 
-    if unet_params.transformer_depth is not None:
+    if unet_params['transformer_depth'] is not None:
         transformer_layers_per_block = (
-            unet_params.transformer_depth
-            if isinstance(unet_params.transformer_depth, int)
-            else list(unet_params.transformer_depth)
+            unet_params['transformer_depth']
+            if isinstance(unet_params['transformer_depth'], int)
+            else list(unet_params['transformer_depth'])
         )
     else:
         transformer_layers_per_block = 1
 
-    vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
+    vae_scale_factor = 2 ** (len(vae_params['ch_mult']) - 1)
 
-    head_dim = unet_params.num_heads if "num_heads" in unet_params else None
+    head_dim = unet_params['num_heads'] if "num_heads" in unet_params else None
     use_linear_projection = (
-        unet_params.use_linear_in_transformer if "use_linear_in_transformer" in unet_params else False
+        unet_params['use_linear_in_transformer'] if "use_linear_in_transformer" in unet_params else False
     )
     if use_linear_projection:
         # stable diffusion 2-base-512 and 2-768
         if head_dim is None:
-            head_dim_mult = unet_params.model_channels // unet_params.num_head_channels
-            head_dim = [head_dim_mult * c for c in list(unet_params.channel_mult)]
+            head_dim_mult = unet_params['model_channels'] // unet_params['num_head_channels']
+            head_dim = [head_dim_mult * c for c in list(unet_params['channel_mult'])]
 
     class_embed_type = None
     addition_embed_type = None
@@ -72,23 +77,23 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     projection_class_embeddings_input_dim = None
     context_dim = None
 
-    if unet_params.context_dim is not None:
+    if unet_params['context_dim'] is not None:
         context_dim = (
-            unet_params.context_dim if isinstance(unet_params.context_dim, int) else unet_params.context_dim[0]
+            unet_params['context_dim'] if isinstance(unet_params['context_dim'], int) else unet_params['context_dim'][0]
         )
 
     if "num_classes" in unet_params:
-        if unet_params.num_classes == "sequential":
+        if unet_params['num_classes'] == "sequential":
             addition_time_embed_dim = 256
             assert "adm_in_channels" in unet_params
-            projection_class_embeddings_input_dim = unet_params.adm_in_channels
+            projection_class_embeddings_input_dim = unet_params['adm_in_channels']
 
     config = {
         "sample_size": image_size // vae_scale_factor,
-        "in_channels": unet_params.in_channels,
+        "in_channels": unet_params['in_channels'],
         "down_block_types": tuple(down_block_types),
         "block_out_channels": tuple(block_out_channels),
-        "layers_per_block": unet_params.num_res_blocks,
+        "layers_per_block": unet_params['num_res_blocks'],
         "cross_attention_dim": context_dim,
         "attention_head_dim": head_dim,
         "use_linear_projection": use_linear_projection,
@@ -100,15 +105,15 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     }
 
     if "disable_self_attentions" in unet_params:
-        config["only_cross_attention"] = unet_params.disable_self_attentions
+        config["only_cross_attention"] = unet_params['disable_self_attentions']
 
-    if "num_classes" in unet_params and isinstance(unet_params.num_classes, int):
-        config["num_class_embeds"] = unet_params.num_classes
+    if "num_classes" in unet_params and isinstance(unet_params['num_classes'], int):
+        config["num_class_embeds"] = unet_params['num_classes']
 
     if controlnet:
-        config["conditioning_channels"] = unet_params.hint_channels
+        config["conditioning_channels"] = unet_params['hint_channels']
     else:
-        config["out_channels"] = unet_params.out_channels
+        config["out_channels"] = unet_params['out_channels']
         config["up_block_types"] = tuple(up_block_types)
 
     return config
@@ -289,16 +294,16 @@ def convert_ldm_unet_checkpoint(
     new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
     new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
 
-    if config["class_embed_type"] is None:
-        # No parameters to port
-        ...
-    elif config["class_embed_type"] == "timestep" or config["class_embed_type"] == "projection":
-        new_checkpoint["class_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
-        new_checkpoint["class_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
-        new_checkpoint["class_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
-        new_checkpoint["class_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
-    else:
-        raise NotImplementedError(f"Not implemented `class_embed_type`: {config['class_embed_type']}")
+    # if config["class_embed_type"] is None:
+    #     # No parameters to port
+    #     ...
+    # elif config["class_embed_type"] == "timestep" or config["class_embed_type"] == "projection":
+    #     new_checkpoint["class_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
+    #     new_checkpoint["class_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
+    #     new_checkpoint["class_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
+    #     new_checkpoint["class_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
+    # else:
+    #     raise NotImplementedError(f"Not implemented `class_embed_type`: {config['class_embed_type']}")
 
     # if config["addition_embed_type"] == "text_time":
     new_checkpoint["add_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
@@ -728,3 +733,42 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     assign_to_checkpoint(paths, new_checkpoint, vae_state_dict, additional_replacements=[meta_path], config=config)
     conv_attn_to_linear(new_checkpoint)
     return new_checkpoint
+
+
+def read_config_file(filename):
+    # The yaml file contains annotations that certain values should
+    # loaded as tuples.
+    with open(filename) as f:
+        original_config = yaml.load(f, FullLoader)
+
+    return original_config
+
+
+if __name__ == "__main__":
+    
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        "--checkpoint_path", default="stabilityai/stable-video-diffusion-img2vid-xt-1-1/svd_xt_1_1.safetensors", type=str, help="Path to the checkpoint to convert."
+    )
+    parser.add_argument(
+        "--config_file",
+        default="generative-models/scripts/sampling/configs/svd_xt_image_decoder.yaml",
+        type=str,
+        help="The config json file corresponding to the architecture.",
+    )
+    parser.add_argument("--dump_path", default=None, type=str, help="Path to the output model.")
+    args = parser.parse_args()
+    
+    args.config_file = read_config_file(args.config_file)
+    args.config_file = create_unet_diffusers_config(args.config_file, 768)
+
+    state_dict = load_file(args.checkpoint_path)
+    unet = convert_ldm_unet_checkpoint(state_dict,args.config_file)
+    from diffusers import  UNetSpatioTemporalConditionModel
+    unet_svd = UNetSpatioTemporalConditionModel.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt")
+    diff_0 = set(unet_svd.state_dict().keys()) - set(unet.keys())
+    print(diff_0)
+    unet_svd.load_state_dict(unet)
+    unet_svd.save_pretrained("stabilityai/stable-video-diffusion-img2vid-xt-1-1/svd_xt_1_1")
