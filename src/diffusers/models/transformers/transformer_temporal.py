@@ -222,6 +222,7 @@ class TransformerSpatioTemporalModel(nn.Module):
         out_channels: Optional[int] = None,
         num_layers: int = 1,
         cross_attention_dim: Optional[int] = None,
+        motionctrl_kwargs: Dict[str, Any] = None,
     ):
         super().__init__()
         self.num_attention_heads = num_attention_heads
@@ -257,6 +258,7 @@ class TransformerSpatioTemporalModel(nn.Module):
                     num_attention_heads,
                     attention_head_dim,
                     cross_attention_dim=cross_attention_dim,
+                    motionctrl_kwargs=motionctrl_kwargs,
                 )
                 for _ in range(num_layers)
             ]
@@ -279,6 +281,7 @@ class TransformerSpatioTemporalModel(nn.Module):
         hidden_states: torch.Tensor,
         encoder_hidden_states: Optional[torch.Tensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        added_cond_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ):
         """
@@ -360,6 +363,7 @@ class TransformerSpatioTemporalModel(nn.Module):
                 hidden_states_mix,
                 num_frames=num_frames,
                 encoder_hidden_states=time_context,
+                added_cond_kwargs=added_cond_kwargs,
             )
             hidden_states = self.time_mixer(
                 x_spatial=hidden_states,

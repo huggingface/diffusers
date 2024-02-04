@@ -425,6 +425,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         num_attention_heads: int,
         attention_head_dim: int,
         cross_attention_dim: Optional[int] = None,
+        motionctrl_kwargs: Dict[str, Any] = None,
     ):
         super().__init__()
         self.is_res = dim == time_mix_inner_dim
@@ -468,6 +469,14 @@ class TemporalBasicTransformerBlock(nn.Module):
         self.norm3 = nn.LayerNorm(time_mix_inner_dim)
         self.ff = FeedForward(time_mix_inner_dim, activation_fn="geglu")
 
+        self.use_camera_projection = motionctrl_kwargs is not None
+        if motionctrl_kwargs is not None:
+            camera_pose_embed_dim = motionctrl_kwargs.get("camera_pose_embed_dim")
+            camera_pose_dim = motionctrl_kwargs.get("camera_pose_dim")
+            self.cc_projection = nn.Linear(
+                time_mix_inner_dim + camera_pose_embed_dim * camera_pose_dim, time_mix_inner_dim
+            )
+
         # let chunk size default to None
         self._chunk_size = None
         self._chunk_dim = None
@@ -483,7 +492,13 @@ class TemporalBasicTransformerBlock(nn.Module):
         hidden_states: torch.FloatTensor,
         num_frames: int,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        added_cond_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.FloatTensor:
+        if self.use_camera_projection and (added_cond_kwargs is None or added_cond_kwargs.get("camera_pose") is None):
+            raise ValueError(
+                "When using camera pose projection (for MotionCtrl), `added_cond_kwargs` must contain `camera_pose`"
+            )
+
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         batch_size = hidden_states.shape[0]
@@ -509,6 +524,14 @@ class TemporalBasicTransformerBlock(nn.Module):
         norm_hidden_states = self.norm1(hidden_states)
         attn_output = self.attn1(norm_hidden_states, encoder_hidden_states=None)
         hidden_states = attn_output + hidden_states
+
+        # MotionCtrl specific
+        if self.use_camera_projection:
+            camera_pose: torch.FloatTensor = added_cond_kwargs.get("camera_pose")
+            camera_pose.repeat_interleave(seq_length, dim=0)  # [batch_size * seq_length, num_frames, 12]
+
+            hidden_states = torch.cat([hidden_states, camera_pose], dim=-1)
+            hidden_states = self.cc_projection(hidden_states)
 
         # 3. Cross-Attention
         if self.attn2 is not None:

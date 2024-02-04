@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -92,6 +92,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
         num_attention_heads: Union[int, Tuple[int]] = (5, 10, 10, 20),
         num_frames: int = 25,
+        motionctrl_kwargs: Dict[str, Any] = None,
     ):
         super().__init__()
 
@@ -178,6 +179,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 cross_attention_dim=cross_attention_dim[i],
                 num_attention_heads=num_attention_heads[i],
                 resnet_act_fn="silu",
+                motionctrl_kwargs=motionctrl_kwargs,
             )
             self.down_blocks.append(down_block)
 
@@ -188,6 +190,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             transformer_layers_per_block=transformer_layers_per_block[-1],
             cross_attention_dim=cross_attention_dim[-1],
             num_attention_heads=num_attention_heads[-1],
+            motionctrl_kwargs=motionctrl_kwargs,
         )
 
         # count how many layers upsample the images
@@ -229,6 +232,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
                 resnet_act_fn="silu",
+                motionctrl_kwargs=motionctrl_kwargs,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -359,6 +363,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         added_time_ids: torch.Tensor,
+        added_cond_kwargs: Optional[Dict[str, Any]] = None,
         return_dict: bool = True,
     ) -> Union[UNetSpatioTemporalConditionOutput, Tuple]:
         r"""
@@ -436,6 +441,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    added_cond_kwargs=added_cond_kwargs,
                 )
             else:
                 sample, res_samples = downsample_block(
@@ -452,6 +458,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             temb=emb,
             encoder_hidden_states=encoder_hidden_states,
             image_only_indicator=image_only_indicator,
+            added_cond_kwargs=added_cond_kwargs,
         )
 
         # 5. up
@@ -466,6 +473,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    added_cond_kwargs=added_cond_kwargs,
                 )
             else:
                 sample = upsample_block(

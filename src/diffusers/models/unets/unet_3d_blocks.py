@@ -56,6 +56,7 @@ def get_down_block(
     temporal_num_attention_heads: int = 8,
     temporal_max_seq_length: int = 32,
     transformer_layers_per_block: int = 1,
+    motionctrl_kwargs: Dict[str, Any] = None,
 ) -> Union[
     "DownBlock3D",
     "CrossAttnDownBlock3D",
@@ -158,6 +159,7 @@ def get_down_block(
             add_downsample=add_downsample,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
+            motionctrl_kwargs=motionctrl_kwargs,
         )
 
     raise ValueError(f"{down_block_type} does not exist.")
@@ -187,6 +189,7 @@ def get_up_block(
     temporal_max_seq_length: int = 32,
     transformer_layers_per_block: int = 1,
     dropout: float = 0.0,
+    motionctrl_kwargs: Dict[str, Any] = None,
 ) -> Union[
     "UpBlock3D",
     "CrossAttnUpBlock3D",
@@ -297,6 +300,7 @@ def get_up_block(
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
             resolution_idx=resolution_idx,
+            motionctrl_kwargs=motionctrl_kwargs,
         )
 
     raise ValueError(f"{up_block_type} does not exist.")
@@ -1875,6 +1879,7 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
+        motionctrl_kwargs: Dict[str, Any] = None,
     ):
         super().__init__()
 
@@ -1904,6 +1909,7 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     in_channels=in_channels,
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
+                    motionctrl_kwargs=motionctrl_kwargs,
                 )
             )
 
@@ -1927,6 +1933,7 @@ class UNetMidBlockSpatioTemporal(nn.Module):
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        added_cond_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.FloatTensor:
         hidden_states = self.resnets[0](
             hidden_states,
@@ -1951,6 +1958,7 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
                 hidden_states = torch.utils.checkpoint.checkpoint(
@@ -1965,6 +1973,7 @@ class UNetMidBlockSpatioTemporal(nn.Module):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
                 hidden_states = resnet(
@@ -2077,6 +2086,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
         add_downsample: bool = True,
+        motionctrl_kwargs: Dict[str, Any] = None,
     ):
         super().__init__()
         resnets = []
@@ -2104,6 +2114,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     in_channels=out_channels,
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
+                    motionctrl_kwargs=motionctrl_kwargs,
                 )
             )
 
@@ -2133,6 +2144,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        added_cond_kwargs: Optional[Dict[str, Any]] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         output_states = ()
 
@@ -2162,6 +2174,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
             else:
@@ -2174,6 +2187,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -2291,6 +2305,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         num_attention_heads: int = 1,
         cross_attention_dim: int = 1280,
         add_upsample: bool = True,
+        motionctrl_kwargs: Dict[str, Any] = None,
     ):
         super().__init__()
         resnets = []
@@ -2321,6 +2336,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     in_channels=out_channels,
                     num_layers=transformer_layers_per_block[i],
                     cross_attention_dim=cross_attention_dim,
+                    motionctrl_kwargs=motionctrl_kwargs,
                 )
             )
 
@@ -2342,6 +2358,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        added_cond_kwargs: Optional[Dict[str, Any]] = None,
     ) -> torch.FloatTensor:
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
@@ -2373,6 +2390,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
             else:
@@ -2385,6 +2403,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
 
