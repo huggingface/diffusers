@@ -519,18 +519,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 1. time
         timesteps = timestep
-        if not torch.is_tensor(inputs):
-            # TODO: this requires sync between CPU and GPU. So try to pass `inputs` as tensors if you can
-            # This would be a good case for the `match` statement (Python 3.10+)
-            is_mps = sample.device.type == "mps"
-            if isinstance(inputs, float):
-                dtype = torch.float32 if is_mps else torch.float64
-            else:
-                dtype = torch.int32 if is_mps else torch.int64
-            inputs = torch.tensor([inputs], dtype=dtype, device=sample.device)
-        elif len(inputs.shape) == 0:
-            inputs = inputs[None].to(sample.device)
-            
+        timesteps = timesteps.to(sample.device)
+
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
         t_emb = self.time_proj(timesteps)
@@ -559,7 +549,12 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context_emb = torch.cat([context_emb, encoder_hidden_states], dim=1)
 
         image_latents_for_context_embds = image_latents[:, :, :1, :]
-        image_latents_context_embs = image_latents_for_context_embds.permute(0, 2, 1, 3, 4).reshape(image_latents_for_context_embds.shape[0] * image_latents_for_context_embds.shape[2], image_latents_for_context_embds.shape[1], image_latents_for_context_embds.shape[3], image_latents_for_context_embds.shape[4])
+        image_latents_context_embs = image_latents_for_context_embds.permute(0, 2, 1, 3, 4).reshape(
+            image_latents_for_context_embds.shape[0] * image_latents_for_context_embds.shape[2],
+            image_latents_for_context_embds.shape[1],
+            image_latents_for_context_embds.shape[3],
+            image_latents_for_context_embds.shape[4],
+        )
         image_latents_context_embs = self.image_latents_context_embedding(image_latents_context_embs)
 
         _batch_size, _channels, _height, _width = image_latents_context_embs.shape
@@ -573,7 +568,12 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context_emb = torch.cat([context_emb, image_emb], dim=1)
         context_emb = context_emb.repeat_interleave(repeats=num_frames, dim=0)
 
-        image_latents = image_latents.permute(0, 2, 1, 3, 4).reshape(image_latents.shape[0] * image_latents.shape[2], image_latents.shape[1], image_latents.shape[3], image_latents.shape[4])
+        image_latents = image_latents.permute(0, 2, 1, 3, 4).reshape(
+            image_latents.shape[0] * image_latents.shape[2],
+            image_latents.shape[1],
+            image_latents.shape[3],
+            image_latents.shape[4],
+        )
         image_latents = self.image_latents_proj_in(image_latents)
         image_latents = (
             image_latents[None, :]
