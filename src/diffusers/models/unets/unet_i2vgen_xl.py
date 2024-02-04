@@ -151,8 +151,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     ):
         super().__init__()
 
-        self.sample_size = sample_size
-
         # Check inputs
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
