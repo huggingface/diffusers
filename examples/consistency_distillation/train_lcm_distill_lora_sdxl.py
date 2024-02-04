@@ -36,7 +36,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
-from peft import LoraConfig, set_peft_model_state_dict, get_peft_model_state_dict
+from peft import LoraConfig, get_peft_model_state_dict, set_peft_model_state_dict
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
@@ -894,7 +894,9 @@ def main(args):
             unet_ = accelerator.unwrap_model(unet)
             lora_state_dict, network_alphas = StableDiffusionXLPipeline.lora_state_dict(input_dir)
             StableDiffusionXLPipeline.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
-            unet_state_dict = {f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")}
+            unet_state_dict = {
+                f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")
+            }
             unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
             incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
             if incompatible_keys is not None:
