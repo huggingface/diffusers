@@ -799,13 +799,10 @@ if __name__ == "__main__":
         "--use_legacy_autoencoder",
         action="store_true",
         default=False,
-        help="Whether or not to use the `quant_conv` layers from the original implementation (which is now legacy behaviour)",
+        help="Whether or not to use the `quant_conv` layers from the original implementation (which is now legacy behaviour).",
     )
     parser.add_argument(
-        "--convert_motionctrl",
-        type="store_true",
-        default=False,
-        help="Whether or not converting motionctrl svd checkpoint.",
+        "--push_to_hub", action="store_true", default=False, help="Whether to push to huggingface hub or not."
     )
     args = parser.parse_args()
 
@@ -839,12 +836,10 @@ if __name__ == "__main__":
     logger.info("VAE conversion succeeded")
 
     unet_config = create_unet_diffusers_config(original_config, args.sample_size)
-    # This is temporally added to handle motionctrl
-    if parser.convert_motionctrl:
-        unet_config["motionctrl_kwargs"] = {
-            "camera_pose_embed_dim": 1,
-            "camera_pose_dim": 12,
-        }
+    unet_config["motionctrl_kwargs"] = {
+        "camera_pose_embed_dim": 1,
+        "camera_pose_dim": 12,
+    }
     unet_state_dict = convert_ldm_unet_checkpoint(state_dict, unet_config)
     unet = UNetSpatioTemporalConditionModel.from_config(unet_config)
     missing_keys, unexpected_keys = unet.load_state_dict(unet_state_dict)
@@ -881,3 +876,7 @@ if __name__ == "__main__":
 
     pipe.to(dtype=torch.float16)
     pipe.save_pretrained(args.output_path, variant="fp16")
+
+    if args.push_to_hub:
+        pipe.push_to_hub(args.output_path)
+        pipe.push_to_hub(args.output_path, variant="fp16")
