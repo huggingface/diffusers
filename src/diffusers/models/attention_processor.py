@@ -720,6 +720,7 @@ class AttnProcessor:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
+        masks=None,
     ) -> torch.Tensor:
         residual = hidden_states
 
@@ -1196,6 +1197,7 @@ class AttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
+        masks=None,
     ) -> torch.FloatTensor:
         residual = hidden_states
         if attn.spatial_norm is not None:
@@ -2131,6 +2133,7 @@ class IPAdapterAttnProcessor(nn.Module):
         attention_mask=None,
         temb=None,
         scale=1.0,
+        masks=None,
     ):
         residual = hidden_states
 
@@ -2197,7 +2200,41 @@ class IPAdapterAttnProcessor(nn.Module):
 
             ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
             current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
-            current_ip_hidden_states = attn.batch_to_head_dim(current_ip_hidden_states)
+            current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
+
+            if masks is not None:
+                if not isinstance(masks, list):
+                    masks = [masks]
+                seq_len = current_ip_hidden_states.shape[1]
+                o_h = masks[0].shape[1]
+                o_w = masks[0].shape[2]
+                ratio = o_w / o_h
+                mask_h = int(torch.sqrt(torch.tensor(seq_len / ratio)))
+                mask_h = int(mask_h) + int((seq_len % int(mask_h)) != 0)
+                mask_w = seq_len // mask_h
+                mask_downsample = []
+                for mask in masks:
+                    if len(mask.shape) == 2:
+                        mask = mask.unsqueeze(0)
+                    mask_downsample.append(
+                        F.interpolate(
+                            torch.tensor(mask, dtype=torch.float32).unsqueeze(0), size=(mask_h, mask_w), mode="bicubic"
+                        ).squeeze(0)
+                    )
+                mask_downsample = torch.cat(mask_downsample, dim=0)
+
+                if mask_downsample.shape[0] < batch_size:
+                    mask_downsample = mask_downsample.repeat(batch_size // len(masks), 1, 1)
+                if mask_downsample.shape[0] > batch_size:
+                    mask_downsample = mask_downsample[:batch_size, :, :]
+
+                mask_downsample = mask_downsample.view(mask_downsample.shape[0], -1, 1).repeat(
+                    1, 1, attn.heads * current_ip_hidden_states.shape[-1]
+                )
+
+                mask_downsample = mask_downsample.to(query.dtype).to(current_ip_hidden_states.device)
+
+                current_ip_hidden_states = current_ip_hidden_states * mask_downsample
 
             hidden_states = hidden_states + scale * current_ip_hidden_states
 
@@ -2268,6 +2305,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         attention_mask=None,
         temb=None,
         scale=1.0,
+        masks=None,
     ):
         residual = hidden_states
 
@@ -2356,6 +2394,40 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                 batch_size, -1, attn.heads * head_dim
             )
             current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
+
+            if masks is not None:
+                if not isinstance(masks, list):
+                    masks = [masks]
+                seq_len = current_ip_hidden_states.shape[1]
+                o_h = masks[0].shape[1]
+                o_w = masks[0].shape[2]
+                ratio = o_w / o_h
+                mask_h = int(torch.sqrt(torch.tensor(seq_len / ratio)))
+                mask_h = int(mask_h) + int((seq_len % int(mask_h)) != 0)
+                mask_w = seq_len // mask_h
+                mask_downsample = []
+                for mask in masks:
+                    if len(mask.shape) == 2:
+                        mask = mask.unsqueeze(0)
+                    mask_downsample.append(
+                        F.interpolate(
+                            torch.tensor(mask, dtype=torch.float32).unsqueeze(0), size=(mask_h, mask_w), mode="bicubic"
+                        ).squeeze(0)
+                    )
+                mask_downsample = torch.cat(mask_downsample, dim=0)
+
+                if mask_downsample.shape[0] < batch_size:
+                    mask_downsample = mask_downsample.repeat(batch_size // len(masks), 1, 1)
+                if mask_downsample.shape[0] > batch_size:
+                    mask_downsample = mask_downsample[:batch_size, :, :]
+
+                mask_downsample = mask_downsample.view(mask_downsample.shape[0], -1, 1).repeat(
+                    1, 1, attn.heads * head_dim
+                )
+
+                mask_downsample = mask_downsample.to(query.dtype).to(current_ip_hidden_states.device)
+
+                current_ip_hidden_states = current_ip_hidden_states * mask_downsample
 
             hidden_states = hidden_states + scale * current_ip_hidden_states
 
