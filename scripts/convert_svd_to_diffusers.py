@@ -1,10 +1,10 @@
 import argparse
-import yaml
-from yaml.loader import FullLoader
 
 import torch
+import yaml
 from safetensors.torch import load_file
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
+from yaml.loader import FullLoader
 
 from diffusers import StableVideoDiffusionPipeline
 from diffusers.models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
@@ -801,6 +801,12 @@ if __name__ == "__main__":
         default=False,
         help="Whether or not to use the `quant_conv` layers from the original implementation (which is now legacy behaviour)",
     )
+    parser.add_argument(
+        "--convert_motionctrl",
+        type="store_true",
+        default=False,
+        help="Whether or not converting motionctrl svd checkpoint.",
+    )
     args = parser.parse_args()
 
     original_config = read_config_file(args.config_file)
@@ -833,6 +839,12 @@ if __name__ == "__main__":
     logger.info("VAE conversion succeeded")
 
     unet_config = create_unet_diffusers_config(original_config, args.sample_size)
+    # This is temporally added to handle motionctrl
+    if parser.convert_motionctrl:
+        unet_config["motionctrl_kwargs"] = {
+            "camera_pose_embed_dim": 1,
+            "camera_pose_dim": 12,
+        }
     unet_state_dict = convert_ldm_unet_checkpoint(state_dict, unet_config)
     unet = UNetSpatioTemporalConditionModel.from_config(unet_config)
     missing_keys, unexpected_keys = unet.load_state_dict(unet_state_dict)
