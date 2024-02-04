@@ -873,10 +873,12 @@ if __name__ == "__main__":
     )
 
     pipe.save_pretrained(args.output_path)
+    if args.push_to_hub:
+        logger.info("Pushing float32 version to HF hub")
+        pipe.push_to_hub(args.output_path)
 
     pipe.to(dtype=torch.float16)
     pipe.save_pretrained(args.output_path, variant="fp16")
-
     if args.push_to_hub:
-        pipe.push_to_hub(args.output_path)
+        logger.info("Pushing float16 version to HF hub")
         pipe.push_to_hub(args.output_path, variant="fp16")
