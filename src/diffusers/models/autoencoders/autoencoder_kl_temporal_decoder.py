@@ -205,6 +205,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
         force_upcast: float = True,
+        use_legacy: bool = True,
     ):
         super().__init__()
 
@@ -226,7 +227,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
             layers_per_block=layers_per_block,
         )
 
-        self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1)
+        self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_legacy else None
 
         sample_size = (
             self.config.sample_size[0]
@@ -330,8 +331,11 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
                 [`~models.autoencoder_kl.AutoencoderKLOutput`] is returned, otherwise a plain `tuple` is returned.
         """
         h = self.encoder(x)
-        moments = self.quant_conv(h)
-        posterior = DiagonalGaussianDistribution(moments)
+
+        if self.quant_conv is not None:
+            h = self.quant_conv(h)
+
+        posterior = DiagonalGaussianDistribution(h)
 
         if not return_dict:
             return (posterior,)
