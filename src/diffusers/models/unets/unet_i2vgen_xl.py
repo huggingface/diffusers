@@ -48,13 +48,6 @@ from .unet_3d_condition import UNet3DConditionOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def _collapse_frames_into_batch(sample: torch.Tensor) -> torch.Tensor:
-    batch_size, channels, num_frames, height, width = sample.shape
-    sample = sample.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-
-    return sample
-
-
 class I2VGenXLTransformerTemporalEncoder(nn.Module):
     def __init__(
         self,
@@ -567,7 +560,8 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context_emb = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
         context_emb = torch.cat([context_emb, encoder_hidden_states], dim=1)
 
-        image_latents_context_embs = _collapse_frames_into_batch(image_latents[:, :, :1, :])
+        image_latents_for_context_embds = image_latents[:, :, :1, :]
+        image_latents_context_embs = image_latents_for_context_embds.permute(0, 2, 1, 3, 4).reshape(image_latents_for_context_embds.shape[0] * image_latents_for_context_embds.shape[2], image_latents_for_context_embds.shape[1], image_latents_for_context_embds.shape[3], image_latents_for_context_embds.shape[4])
         image_latents_context_embs = self.image_latents_context_embedding(image_latents_context_embs)
 
         _batch_size, _channels, _height, _width = image_latents_context_embs.shape
@@ -581,7 +575,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context_emb = torch.cat([context_emb, image_emb], dim=1)
         context_emb = context_emb.repeat_interleave(repeats=num_frames, dim=0)
 
-        image_latents = _collapse_frames_into_batch(image_latents)
+        image_latents = image_latents.permute(0, 2, 1, 3, 4).reshape(image_latents.shape[0] * image_latents.shape[2], image_latents.shape[1], image_latents.shape[3], image_latents.shape[4])
         image_latents = self.image_latents_proj_in(image_latents)
         image_latents = (
             image_latents[None, :]
