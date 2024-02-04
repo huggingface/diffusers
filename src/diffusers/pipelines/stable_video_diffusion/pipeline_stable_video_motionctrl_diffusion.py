@@ -530,6 +530,7 @@ class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
         camera_pose = np.array(camera_pose)
         camera_pose = self._to_relative_camera_pose(camera_pose)
         camera_pose = torch.FloatTensor(camera_pose).to(device=device, dtype=image_embeddings.dtype)
+        camera_pose = camera_pose.unsqueeze(0).repeat(2, 1, 1)
         added_cond_kwargs = {"camera_pose": camera_pose}
 
         # 8. Denoising loop
