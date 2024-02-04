@@ -23,7 +23,7 @@ from ...utils import deprecate, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
-from .modeling_wuerstchen3_diffnext import WuerstchenV3DiffNeXt
+from .modeling_wuerstchen3_common import WuerstchenV3Unet
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -83,7 +83,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
     def __init__(
         self,
         # encoder: None,
-        decoder: WuerstchenV3DiffNeXt,
+        decoder: WuerstchenV3Unet,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
         scheduler: DDPMWuerstchenScheduler,
@@ -382,8 +382,8 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
             predicted_latents = self.decoder(
                 x=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
-                effnet=image_embeddings,
                 clip_text_pooled=prompt_embeds_pooled,
+                effnet=image_embeddings,
             )
 
             # 8. Check for classifier free guidance and apply it

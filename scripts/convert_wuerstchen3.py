@@ -1,5 +1,4 @@
-# Run inside root directory of official source code: https://github.com/dome272/wuerstchen/
-import os
+# Run this script to convert the Wuerstchen V3 model weights to a diffusers pipeline.
 
 import torch
 from transformers import (
@@ -17,22 +16,16 @@ from diffusers import (
     WuerstchenV3PriorPipeline,
 )
 from diffusers.pipelines.wuerstchen import PaellaVQModel
-from diffusers.pipelines.wuerstchen3 import WuerstchenV3DiffNeXt, WuerstchenV3Prior
+from diffusers.pipelines.wuerstchen3 import WuerstchenV3Unet
 
 
-model_path = "../Wuerstchen/"
 device = "cpu"
-prior_checkpoint_path = "/fsx/home-warp/models/wurstchen/C_bigmama_v1_merged/v1.pt"
-decoder_checkpoint_path = "/weka/home-warp/models/wurstchen/B_exp3_finetuning_v2/base.pt"
 
-# paella_vqmodel = VQModel()
-# state_dict = torch.load(os.path.join(model_path, "vqgan_f4_v1_500k.pt"), map_location=device)["state_dict"]
-# paella_vqmodel.load_state_dict(state_dict)
+# set paths to model weights
+model_path = "../Wuerstchen"
+prior_checkpoint_path = f"{model_path}/v1.pt"
+decoder_checkpoint_path = f"{model_path}/base_120k.pt"
 
-# state_dict["vquantizer.embedding.weight"] = state_dict["vquantizer.codebook.weight"]
-# state_dict.pop("vquantizer.codebook.weight")
-# vqmodel = PaellaVQModel(num_vq_embeddings=paella_vqmodel.codebook_size, latent_channels=paella_vqmodel.c_latent)
-# vqmodel.load_state_dict(state_dict)
 
 # Clip Text encoder and tokenizer
 config = CLIPConfig.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
@@ -68,11 +61,30 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
-prior_model = WuerstchenV3Prior().to(device)
+prior_model = WuerstchenV3Unet(
+    c_in=16,
+    c_out=16,
+    c_r=64,
+    patch_size=1,
+    c_cond=2048,
+    c_hidden=[2048, 2048],
+    nhead=[32, 32],
+    blocks=[[8, 24], [24, 8]],
+    block_repeat=[[1, 1], [1, 1]],
+    level_config=["CTA", "CTA"],
+    c_clip_text=1280,
+    c_clip_text_pooled=1280,
+    c_clip_img=768,
+    c_clip_seq=4,
+    kernel_size=3,
+    dropout=[0.1, 0.1],
+    self_attn=True,
+    t_conds=["sca", "crp"],
+    switch_level=[False],
+).to(device)
 prior_model.load_state_dict(state_dict)
 
-
-# scheduler
+# scheduler for prior and decoder
 scheduler = DDPMWuerstchenScheduler()
 
 # Prior pipeline
@@ -84,9 +96,9 @@ prior_pipeline = WuerstchenV3PriorPipeline(
     scheduler=scheduler,
     feature_extractor=feature_extractor,
 )
-
 prior_pipeline.save_pretrained("wuerstchenV3-prior")
 
+# Decoder
 orig_state_dict = torch.load(decoder_checkpoint_path, map_location=device)
 state_dict = {}
 for key in orig_state_dict.keys():
@@ -115,16 +127,38 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
-decoder = WuerstchenV3DiffNeXt().to(device)
+decoder = WuerstchenV3Unet(
+    c_in=4,
+    c_out=4,
+    c_r=64,
+    patch_size=2,
+    c_cond=1280,
+    c_hidden=[320, 640, 1280, 1280],
+    nhead=[-1, -1, 20, 20],
+    blocks=[[2, 6, 28, 6], [6, 28, 6, 2]],
+    block_repeat=[[1, 1, 1, 1], [3, 3, 2, 2]],
+    level_config=["CT", "CT", "CTA", "CTA"],
+    c_clip_text_pooled=1280,
+    c_clip_seq=4,
+    c_effnet=16,
+    c_pixels=3,
+    kernel_size=3,
+    dropout=[0, 0, 0.1, 0.1],
+    self_attn=True,
+    t_conds=["sca"],
+).to(device)
 decoder.load_state_dict(state_dict)
 
-
+# VQGAN from V2
 vqmodel = PaellaVQModel.from_pretrained("warp-ai/wuerstchen", subfolder="vqgan")
+
+# Decoder pipeline
 decoder_pipeline = WuerstchenV3DecoderPipeline(
     decoder=decoder, text_encoder=text_encoder, tokenizer=tokenizer, vqgan=vqmodel, scheduler=scheduler
 )
 decoder_pipeline.save_pretrained("wuerstchenV3")
 
+# TODO
 # # Wuerstchen pipeline
 # wuerstchen_pipeline = WuerstchenCombinedPipeline(
 #     # Decoder

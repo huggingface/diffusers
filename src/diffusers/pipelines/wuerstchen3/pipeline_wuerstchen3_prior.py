@@ -26,7 +26,7 @@ from ...utils import deprecate, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..wuerstchen.pipeline_wuerstchen_prior import WuerstchenPriorPipelineOutput
-from .modeling_wuerstchen3_prior import WuerstchenV3Prior
+from .modeling_wuerstchen3_common import WuerstchenV3Unet
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -84,7 +84,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModelWithProjection,
-        prior: WuerstchenV3Prior,
+        prior: WuerstchenV3Unet,
         scheduler: DDPMWuerstchenScheduler,
         resolution_multiple: float = 42.67,
         feature_extractor: Optional[CLIPImageProcessor] = None,
@@ -154,8 +154,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
 
             text_encoder_output = self.text_encoder(
-                text_input_ids.to(device), attention_mask=attention_mask.to(device), 
-                output_hidden_states=True
+                text_input_ids.to(device), attention_mask=attention_mask.to(device), output_hidden_states=True
             )
             prompt_embeds = text_encoder_output.hidden_states[-1]
             if prompt_embeds_pooled is None:
@@ -194,8 +193,9 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 return_tensors="pt",
             )
             negative_prompt_embeds_text_encoder_output = self.text_encoder(
-                uncond_input.input_ids.to(device), attention_mask=uncond_input.attention_mask.to(device),
-                output_hidden_states=True
+                uncond_input.input_ids.to(device),
+                attention_mask=uncond_input.attention_mask.to(device),
+                output_hidden_states=True,
             )
 
             negative_prompt_embeds = negative_prompt_embeds_text_encoder_output.hidden_states[-1]
@@ -554,7 +554,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         if isinstance(self.scheduler, DDPMWuerstchenScheduler):
             timesteps = timesteps[:-1]
         else:
-            self.scheduler.config.clip_sample = False # disample sample clipping
+            self.scheduler.config.clip_sample = False  # disample sample clipping
         # 6. Run denoising loop
         if hasattr(self.scheduler, "betas"):
             alphas = 1.0 - self.scheduler.betas
@@ -576,8 +576,8 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             predicted_image_embedding = self.prior(
                 x=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
-                clip_text=text_encoder_hidden_states,
                 clip_text_pooled=text_encoder_pooled,
+                clip_text=text_encoder_hidden_states,
                 clip_img=image_embeds,
             )
 
@@ -595,7 +595,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 model_output=predicted_image_embedding,
                 timestep=ratio,
                 sample=latents,
-                # generator=generator,
+                generator=generator,
             ).prev_sample
 
             if callback_on_step_end is not None:
@@ -618,7 +618,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.maybe_free_model_hooks()
 
         if output_type == "np":
-            latents = latents.cpu().numpy()
+            latents = latents.cpu().float().numpy()
 
         if not return_dict:
             return (latents,)

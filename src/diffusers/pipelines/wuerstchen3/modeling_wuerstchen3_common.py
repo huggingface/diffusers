@@ -67,7 +67,7 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
         dropout: List[float] = [0.1, 0.1],
         self_attn: bool = True,
         t_conds: List[str] = ["sca", "crp"],
-        switch_level: Optional[List[bool]] = [False],
+        switch_level: Optional[List[bool]] = None,
     ):
         super().__init__()
         self.c_r = c_r
@@ -287,16 +287,27 @@ class WuerstchenV3Unet(ModelMixin, ConfigMixin):
             x = upscaler(x)
         return x
 
-    def forward(self, x, r, clip_text, clip_text_pooled, clip_img, **kwargs):
+    def forward(self, x, r, clip_text_pooled, clip_text=None, clip_img=None, effnet=None, pixels=None, **kwargs):
+        if pixels is None:
+            pixels = x.new_zeros(x.size(0), 3, 8, 8)
+
         # Process the conditioning embeddings
         r_embed = self.gen_r_embedding(r)
         for c in self.t_conds:
             t_cond = kwargs.get(c, torch.zeros_like(r))
             r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
-        clip = self.gen_c_embeddings(clip_text_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
+        clip = self.gen_c_embeddings(clip_txt_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
 
         # Model Blocks
         x = self.embedding(x)
+        if hasattr(self, "effnet_mapper") and effnet is not None:
+            x = x + self.effnet_mapper(
+                nn.functional.interpolate(effnet, size=x.shape[-2:], mode="bilinear", align_corners=True)
+            )
+        if hasattr(self, "pixels_mapper"):
+            x = x + nn.functional.interpolate(
+                self.pixels_mapper(pixels), size=x.shape[-2:], mode="bilinear", align_corners=True
+            )
         level_outputs = self._down_encode(x, r_embed, clip)
         x = self._up_decode(level_outputs, r_embed, clip)
         return self.clf(x)

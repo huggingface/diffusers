@@ -21,8 +21,7 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modeling_wuerstchen3_diffnext"] = ["WuerstchenV3DiffNeXt"]
-    _import_structure["modeling_wuerstchen3_prior"] = ["WuerstchenV3Prior"]
+    _import_structure["modeling_wuerstchen3_common"] = ["WuerstchenV3Unet"]
     _import_structure["pipeline_wuerstchen3"] = ["WuerstchenV3DecoderPipeline"]
     _import_structure["pipeline_wuerstchen3_combined"] = ["WuerstchenV3CombinedPipeline"]
     _import_structure["pipeline_wuerstchen3_prior"] = ["WuerstchenV3PriorPipeline"]
@@ -35,8 +34,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modeling_wuerstchen3_diffnext import WuerstchenV3DiffNeXt
-        from .modeling_wuerstchen3_prior import WuerstchenV3Prior
+        from .modeling_wuerstchen3_common import WuerstchenV3Unet
         from .pipeline_wuerstchen3 import WuerstchenV3DecoderPipeline
         from .pipeline_wuerstchen3_combined import WuerstchenV3CombinedPipeline
         from .pipeline_wuerstchen3_prior import WuerstchenV3PriorPipeline
