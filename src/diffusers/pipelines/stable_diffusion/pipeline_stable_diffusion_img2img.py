@@ -528,6 +528,35 @@ class StableDiffusionImg2ImgPipeline(
 
             return image_embeds, uncond_image_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(self, ip_adapter_image, device, num_images_per_prompt):
+        if not isinstance(ip_adapter_image, list):
+            ip_adapter_image = [ip_adapter_image]
+
+        if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+            raise ValueError(
+                f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+            )
+
+        image_embeds = []
+        for single_ip_adapter_image, image_proj_layer in zip(
+            ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+        ):
+            output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+            single_image_embeds, single_negative_image_embeds = self.encode_image(
+                single_ip_adapter_image, device, 1, output_hidden_state
+            )
+            single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
+            single_negative_image_embeds = torch.stack([single_negative_image_embeds] * num_images_per_prompt, dim=0)
+
+            if self.do_classifier_free_guidance:
+                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                single_image_embeds = single_image_embeds.to(device)
+
+            image_embeds.append(single_image_embeds)
+
+        return image_embeds
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
         if self.safety_checker is None:
@@ -630,6 +659,8 @@ class StableDiffusionImg2ImgPipeline(
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 
@@ -832,6 +863,10 @@ class StableDiffusionImg2ImgPipeline(
     def num_timesteps(self):
         return self._num_timesteps
 
+    @property
+    def interrupt(self):
+        return self._interrupt
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -963,6 +998,7 @@ class StableDiffusionImg2ImgPipeline(
         self._guidance_scale = guidance_scale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
+        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -996,12 +1032,9 @@ class StableDiffusionImg2ImgPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image, device, batch_size * num_images_per_prompt
             )
-            if self.do_classifier_free_guidance:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 4. Preprocess image
         image = self.image_processor.preprocess(image)
@@ -1041,6 +1074,9 @@ class StableDiffusionImg2ImgPipeline(
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
+
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)

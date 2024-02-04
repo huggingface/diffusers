@@ -487,6 +487,35 @@ class StableDiffusionXLInpaintPipeline(
 
             return image_embeds, uncond_image_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(self, ip_adapter_image, device, num_images_per_prompt):
+        if not isinstance(ip_adapter_image, list):
+            ip_adapter_image = [ip_adapter_image]
+
+        if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+            raise ValueError(
+                f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+            )
+
+        image_embeds = []
+        for single_ip_adapter_image, image_proj_layer in zip(
+            ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+        ):
+            output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+            single_image_embeds, single_negative_image_embeds = self.encode_image(
+                single_ip_adapter_image, device, 1, output_hidden_state
+            )
+            single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
+            single_negative_image_embeds = torch.stack([single_negative_image_embeds] * num_images_per_prompt, dim=0)
+
+            if self.do_classifier_free_guidance:
+                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                single_image_embeds = single_image_embeds.to(device)
+
+            image_embeds.append(single_image_embeds)
+
+        return image_embeds
+
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
         self,
@@ -744,15 +773,19 @@ class StableDiffusionXLInpaintPipeline(
         self,
         prompt,
         prompt_2,
+        image,
+        mask_image,
         height,
         width,
         strength,
         callback_steps,
+        output_type,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
         callback_on_step_end_tensor_inputs=None,
+        padding_mask_crop=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -810,6 +843,18 @@ class StableDiffusionXLInpaintPipeline(
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+        if padding_mask_crop is not None:
+            if not isinstance(image, PIL.Image.Image):
+                raise ValueError(
+                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                )
+            if not isinstance(mask_image, PIL.Image.Image):
+                raise ValueError(
+                    f"The mask image should be a PIL image when inpainting mask crop, but is of type"
+                    f" {type(mask_image)}."
+                )
+            if output_type != "pil":
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
 
     def prepare_latents(
         self,
@@ -1210,6 +1255,10 @@ class StableDiffusionXLInpaintPipeline(
     def num_timesteps(self):
         return self._num_timesteps
 
+    @property
+    def interrupt(self):
+        return self._interrupt
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -1221,6 +1270,7 @@ class StableDiffusionXLInpaintPipeline(
         masked_image_latents: torch.FloatTensor = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        padding_mask_crop: Optional[int] = None,
         strength: float = 0.9999,
         num_inference_steps: int = 50,
         timesteps: List[int] = None,
@@ -1283,6 +1333,12 @@ class StableDiffusionXLInpaintPipeline(
                 Anything below 512 pixels won't work well for
                 [stabilityai/stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0)
                 and checkpoints that are not specifically fine-tuned on low resolutions.
+            padding_mask_crop (`int`, *optional*, defaults to `None`):
+                The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to image and mask_image. If
+                `padding_mask_crop` is not `None`, it will first find a rectangular region with the same aspect ration of the image and
+                contains all masked area, and then expand that area based on `padding_mask_crop`. The image and mask_image will then be cropped based on
+                the expanded area before resizing to the original image size for inpainting. This is useful when the masked area is small while the image is large
+                and contain information inreleant for inpainging, such as background.
             strength (`float`, *optional*, defaults to 0.9999):
                 Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
                 between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
@@ -1445,15 +1501,19 @@ class StableDiffusionXLInpaintPipeline(
         self.check_inputs(
             prompt,
             prompt_2,
+            image,
+            mask_image,
             height,
             width,
             strength,
             callback_steps,
+            output_type,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
             negative_prompt_embeds,
             callback_on_step_end_tensor_inputs,
+            padding_mask_crop,
         )
 
         self._guidance_scale = guidance_scale
@@ -1462,6 +1522,7 @@ class StableDiffusionXLInpaintPipeline(
         self._cross_attention_kwargs = cross_attention_kwargs
         self._denoising_end = denoising_end
         self._denoising_start = denoising_start
+        self._interrupt = False
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1522,10 +1583,22 @@ class StableDiffusionXLInpaintPipeline(
         is_strength_max = strength == 1.0
 
         # 5. Preprocess mask and image
-        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        if padding_mask_crop is not None:
+            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
+            resize_mode = "fill"
+        else:
+            crops_coords = None
+            resize_mode = "default"
+
+        original_image = image
+        init_image = self.image_processor.preprocess(
+            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
+        )
         init_image = init_image.to(dtype=torch.float32)
 
-        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+        mask = self.mask_processor.preprocess(
+            mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+        )
 
         if masked_image_latents is not None:
             masked_image = masked_image_latents
@@ -1641,13 +1714,9 @@ class StableDiffusionXLInpaintPipeline(
         add_time_ids = add_time_ids.to(device)
 
         if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image, device, batch_size * num_images_per_prompt
             )
-            if self.do_classifier_free_guidance:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
-                image_embeds = image_embeds.to(device)
 
         # 11. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
@@ -1684,6 +1753,8 @@ class StableDiffusionXLInpaintPipeline(
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
+                if self.interrupt:
+                    continue
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
@@ -1783,6 +1854,9 @@ class StableDiffusionXLInpaintPipeline(
             image = self.watermark.apply_watermark(image)
 
         image = self.image_processor.postprocess(image, output_type=output_type)
+
+        if padding_mask_crop is not None:
+            image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
 
         # Offload all models
         self.maybe_free_model_hooks()

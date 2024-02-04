@@ -10,7 +10,7 @@ from transformers import CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import VQModel
 from diffusers.models.attention_processor import AttnProcessor
-from diffusers.models.uvit_2d import UVit2DModel
+from diffusers.models.unets.uvit_2d import UVit2DModel
 from diffusers.pipelines.amused.pipeline_amused import AmusedPipeline
 from diffusers.schedulers import AmusedScheduler
 

@@ -104,7 +104,7 @@ accelerate launch train_text_to_image_lora.py \
 
 Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) training guide, so this guide just focuses on the LoRA relevant parameters:
 
-- `--rank`: the number of low-rank matrices to train
+- `--rank`: the inner dimension of the low-rank matrices to train; a higher rank means more trainable parameters
 - `--learning_rate`: the default learning rate is 1e-4, but with LoRA, you can use a higher learning rate
 
 ## Training script
