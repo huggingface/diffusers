@@ -569,7 +569,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                     ratio = self.get_t_condioning(t.long().cpu(), alphas_cumprod)
                     ratio = ratio.expand(latents.size(0)).to(dtype).to(device)
                 else:
-                    ratio = t.float().div(999).expand(latents.size(0)).to(dtype)
+                    ratio = t.float().div(self.scheduler.timesteps[-1]).expand(latents.size(0)).to(dtype)
             else:
                 ratio = t.expand(latents.size(0)).to(dtype)
             # 7. Denoise image embeddings
