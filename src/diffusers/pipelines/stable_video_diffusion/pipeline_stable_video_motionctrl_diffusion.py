@@ -241,7 +241,7 @@ class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
         frames = frames.float()
         return frames
 
-    def check_inputs(self, image, height, width, num_frames, camera_poses):
+    def check_inputs(self, image, height, width, num_frames, camera_pose):
         if (
             not isinstance(image, torch.Tensor)
             and not isinstance(image, PIL.Image.Image)
@@ -255,9 +255,9 @@ class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        camera_pose_lengths = [len(pose) for pose in camera_poses]
-        if len(camera_poses) != num_frames:
-            raise ValueError(f"length of `camera_poses` must be equal to {num_frames=} but got {len(camera_poses)=}")
+        camera_pose_lengths = [len(pose) for pose in camera_pose]
+        if len(camera_pose) != num_frames:
+            raise ValueError(f"length of `camera_poses` must be equal to {num_frames=} but got {len(camera_pose)=}")
         if not all(x == 12 for x in camera_pose_lengths):
             raise ValueError(f"All camera poses must have 12 values but got {camera_pose_lengths}")
 
@@ -316,7 +316,7 @@ class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
     def __call__(
         self,
         image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
-        camera_poses: List[List[float]],
+        camera_pose: List[List[float]],
         height: int = 576,
         width: int = 1024,
         num_frames: Optional[int] = None,
@@ -419,7 +419,7 @@ class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
         decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else num_frames
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(image, height, width, num_frames, camera_poses)
+        self.check_inputs(image, height, width, num_frames, camera_pose)
 
         # 2. Define call parameters
         if isinstance(image, PIL.Image.Image):
@@ -505,6 +505,8 @@ class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
 
         self._guidance_scale = guidance_scale
 
+        added_cond_kwargs = {"camera_pose": camera_pose}
+
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
@@ -523,6 +525,7 @@ class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
                     t,
                     encoder_hidden_states=image_embeddings,
                     added_time_ids=added_time_ids,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
 
