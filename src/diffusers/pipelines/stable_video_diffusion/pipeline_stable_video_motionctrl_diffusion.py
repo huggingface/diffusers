@@ -76,7 +76,7 @@ class StableVideoDiffusionPipelineOutput(BaseOutput):
     frames: Union[List[PIL.Image.Image], np.ndarray]
 
 
-class StableVideoDiffusionMotionCtrlPipeline(DiffusionPipeline):
+class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline to generate video from an input image using [MotionCtrl](https://github.com/TencentARC/MotionCtrl).
 
