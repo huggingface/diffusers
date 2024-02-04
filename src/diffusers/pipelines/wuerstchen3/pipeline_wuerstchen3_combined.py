@@ -20,8 +20,7 @@ from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import deprecate, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
-from .modeling_wuerstchen3_diffnext import WuerstchenV3DiffNeXt
-from .modeling_wuerstchen3_prior import WuerstchenV3Prior
+from .modeling_wuerstchen3_common import WuerstchenV3Unet
 from .pipeline_wuerstchen3 import WuerstchenV3DecoderPipeline
 from .pipeline_wuerstchen3_prior import WuerstchenV3PriorPipeline
 
@@ -52,7 +51,7 @@ class WuerstchenV3CombinedPipeline(DiffusionPipeline):
             The decoder tokenizer to be used for text inputs.
         text_encoder (`CLIPTextModel`):
             The decoder text encoder to be used for text inputs.
-        decoder (`WuerstchenV3DiffNeXt`):
+        decoder (`WuerstchenV3Unet`):
             The decoder model to be used for decoder image generation pipeline.
         scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for decoder image generation pipeline.
@@ -62,7 +61,7 @@ class WuerstchenV3CombinedPipeline(DiffusionPipeline):
             The prior tokenizer to be used for text inputs.
         prior_text_encoder (`CLIPTextModel`):
             The prior text encoder to be used for text inputs.
-        prior_prior (`WuerstchenV3Prior`):
+        prior_prior (`WuerstchenV3Unet`):
             The prior model to be used for prior pipeline.
         prior_scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for prior pipeline.
@@ -74,12 +73,12 @@ class WuerstchenV3CombinedPipeline(DiffusionPipeline):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
-        decoder: WuerstchenV3DiffNeXt,
+        decoder: WuerstchenV3Unet,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: PaellaVQModel,
         prior_tokenizer: CLIPTokenizer,
         prior_text_encoder: CLIPTextModel,
-        prior_prior: WuerstchenV3Prior,
+        prior_prior: WuerstchenV3Unet,
         prior_scheduler: DDPMWuerstchenScheduler,
     ):
         super().__init__()
