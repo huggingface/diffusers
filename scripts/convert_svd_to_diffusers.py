@@ -1,10 +1,10 @@
 import argparse
+import yaml
+from yaml.loader import FullLoader
 
 import torch
-import yaml
 from safetensors.torch import load_file
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
-from yaml.loader import FullLoader
 
 from diffusers import StableVideoDiffusionPipeline
 from diffusers.models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
