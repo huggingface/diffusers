@@ -48,22 +48,6 @@ from .unet_3d_condition import UNet3DConditionOutput
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def _to_tensor(inputs, device):
-    if not torch.is_tensor(inputs):
-        # TODO: this requires sync between CPU and GPU. So try to pass `inputs` as tensors if you can
-        # This would be a good case for the `match` statement (Python 3.10+)
-        is_mps = device.type == "mps"
-        if isinstance(inputs, float):
-            dtype = torch.float32 if is_mps else torch.float64
-        else:
-            dtype = torch.int32 if is_mps else torch.int64
-        inputs = torch.tensor([inputs], dtype=dtype, device=device)
-    elif len(inputs.shape) == 0:
-        inputs = inputs[None].to(device)
-
-    return inputs
-
-
 def _collapse_frames_into_batch(sample: torch.Tensor) -> torch.Tensor:
     batch_size, channels, num_frames, height, width = sample.shape
     sample = sample.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
