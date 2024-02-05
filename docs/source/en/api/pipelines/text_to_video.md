@@ -41,7 +41,7 @@ pipe = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", tor
 pipe = pipe.to("cuda")
 
 prompt = "Spiderman is surfing"
-video_frames = pipe(prompt).frames
+video_frames = pipe(prompt).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
@@ -64,7 +64,7 @@ pipe.enable_model_cpu_offload()
 pipe.enable_vae_slicing()
 
 prompt = "Darth Vader surfing a wave"
-video_frames = pipe(prompt, num_frames=64).frames
+video_frames = pipe(prompt, num_frames=64).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
@@ -83,7 +83,7 @@ pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
 
 prompt = "Spiderman is surfing"
-video_frames = pipe(prompt, num_inference_steps=25).frames
+video_frames = pipe(prompt, num_inference_steps=25).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
@@ -130,7 +130,7 @@ pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
 pipe.enable_vae_slicing()
 
 prompt = "Darth Vader surfing a wave"
-video_frames = pipe(prompt, num_frames=24).frames
+video_frames = pipe(prompt, num_frames=24).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
@@ -148,7 +148,7 @@ pipe.enable_vae_slicing()
 
 video = [Image.fromarray(frame).resize((1024, 576)) for frame in video_frames]
 
-video_frames = pipe(prompt, video=video, strength=0.6).frames
+video_frames = pipe(prompt, video=video, strength=0.6).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
