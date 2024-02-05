@@ -200,13 +200,13 @@ class PIAPipelineOutput(BaseOutput):
     Output class for PIAPipeline.
 
     Args:
-        frames (`torch.Tensor`, `np.ndarray`, or List[PIL.Image.Image]):
+        frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
         Nested list of length `batch_size` with denoised PIL image sequences of length `num_frames`,
         NumPy array of shape `(batch_size, num_frames, channels, height, width,
         Torch tensor of shape `(batch_size, num_frames, channels, height, width)`.
     """
 
-    frames: Union[torch.Tensor, np.ndarray, PIL.Image.Image]
+    frames: Union[torch.Tensor, np.ndarray, List[List[PIL.Image.Image]]]
 
 
 class PIAPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):
