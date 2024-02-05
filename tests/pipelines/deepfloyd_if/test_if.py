@@ -131,7 +131,7 @@ class IFPipelineSlowTests(unittest.TestCase):
         image = output.images[0]
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes < (13 * 10**9)
+        assert mem_bytes < 13 * 10**9
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if.npy"
@@ -157,7 +157,7 @@ class IFPipelineSlowTests(unittest.TestCase):
         assert image.shape == (256, 256, 3)
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes < (4 * 10**9)
+        assert mem_bytes < 4 * 10**9
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_superresolution_stage_II.npy"
@@ -203,7 +203,7 @@ class IFPipelineSlowTests(unittest.TestCase):
         image = output.images[0]
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes < (13 * 10**9)
+        assert mem_bytes < 13 * 10**9
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_img2img.npy"
@@ -284,7 +284,7 @@ class IFPipelineSlowTests(unittest.TestCase):
         image = output.images[0]
 
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes < (13 * 10**9)
+        assert mem_bytes < 13 * 10**9
 
         expected_image = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_inpainting.npy"
