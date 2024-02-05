@@ -573,9 +573,11 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
             [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
             [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
-        class_embed_type (`str`, *optional*, defaults to `None`):
-            The type of class embedding to use which is ultimately summed with the time embeddings. Choose from `None`,
-            `"timestep"`, `"identity"`, `"projection"`, or `"simple_projection"`.
+       reverse_transformer_layers_per_block : (`Tuple[Tuple]`, *optional*, defaults to None):
+            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling
+            blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `Tuple[Tuple]` and for
+            [`~models.unet_2d_blocks.CrossAttnDownBlock2D`], [`~models.unet_2d_blocks.CrossAttnUpBlock2D`],
+            [`~models.unet_2d_blocks.UNetMidBlock2DCrossAttn`].
         addition_embed_type (`str`, *optional*, defaults to `None`):
             Configures an optional embedding which will be summed with the time embeddings. Choose from `None` or
             "text". "text" will use the `TextTimeEmbedding` layer.
