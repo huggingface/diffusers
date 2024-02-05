@@ -102,6 +102,7 @@ def load_or_create_model_card(
     base_model: str = None,
     instance_prompt: str = None,
     license: str = None,
+    widget_str: str = None,
     inference: bool = None,
 ) -> ModelCard:
     """
@@ -122,6 +123,7 @@ def load_or_create_model_card(
         instance_prompt (`str`, *optional*): Instance prompt used for training. Useful for DreamBooth-like training.
         license: (`str`, *optional*): License of the output artifact. Helpful when using
             `load_or_create_model_card` from a training script.
+        widget_str (`str`, *optional*): Widget string to accompany a gallery template.
         inference: (`bool`, optional): Whether to turn on inference widget. Helpful when using
             `load_or_create_model_card` from a training script.
     """
@@ -145,6 +147,7 @@ def load_or_create_model_card(
                     inference=inference,
                     base_model=base_model,
                     instance_prompt=instance_prompt,
+                    widget=widget_str,
                 ),
                 template_path=MODEL_CARD_TEMPLATE_PATH,
                 model_description=model_description,
