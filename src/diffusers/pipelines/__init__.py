@@ -171,6 +171,7 @@ else:
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
+    _import_structure["pia"] = ["PIAPipeline"]
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
@@ -219,6 +220,7 @@ else:
         "TextToVideoZeroSDXLPipeline",
         "VideoToVideoSDPipeline",
     ]
+    _import_structure["i2vgen_xl"] = ["I2VGenXLPipeline"]
     _import_structure["unclip"] = ["UnCLIPImageVariationPipeline", "UnCLIPPipeline"]
     _import_structure["unidiffuser"] = [
         "ImageTextPipelineOutput",
@@ -383,6 +385,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             VersatileDiffusionTextToImagePipeline,
             VQDiffusionPipeline,
         )
+        from .i2vgen_xl import I2VGenXLPipeline
         from .kandinsky import (
             KandinskyCombinedPipeline,
             KandinskyImg2ImgCombinedPipeline,
@@ -415,6 +418,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .latent_diffusion import LDMTextToImagePipeline
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
+        from .pia import PIAPipeline
         from .pixart_alpha import PixArtAlphaPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
