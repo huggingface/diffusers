@@ -20,10 +20,12 @@ Start by creating an instance of the [`StableDiffusionDepth2ImgPipeline`]:
 
 ```python
 import torch
-from diffusers import StableDiffusionDepth2ImgPipeline
-from diffusers.utils import load_image, make_image_grid
+import requests
+from PIL import Image
 
-pipeline = StableDiffusionDepth2ImgPipeline.from_pretrained(
+from diffusers import StableDiffusionDepth2ImgPipeline
+
+pipe = StableDiffusionDepth2ImgPipeline.from_pretrained(
     "stabilityai/stable-diffusion-2-depth",
     torch_dtype=torch.float16,
     use_safetensors=True,
@@ -34,13 +36,22 @@ Now pass your prompt to the pipeline. You can also pass a `negative_prompt` to p
 
 ```python
 url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-init_image = load_image(url)
+init_image = Image.open(requests.get(url, stream=True).raw)
 prompt = "two tigers"
-negative_prompt = "bad, deformed, ugly, bad anatomy"
-image = pipeline(prompt=prompt, image=init_image, negative_prompt=negative_prompt, strength=0.7).images[0]
-make_image_grid([init_image, image], rows=1, cols=2)
+n_prompt = "bad, deformed, ugly, bad anatomy"
+image = pipe(prompt=prompt, image=init_image, negative_prompt=n_prompt, strength=0.7).images[0]
+image
 ```
 
 | Input                                                                           | Output                                                                                                                                |
 |---------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------|
 | <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/coco-cats.png" width="500"/> | <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/depth2img-tigers.png" width="500"/> |
+
+Play around with the Spaces below and see if you notice a difference between generated images with and without a depth map!
+
+<iframe
+	src="https://radames-stable-diffusion-depth2img.hf.space"
+	frameborder="0"
+	width="850"
+	height="500"
+></iframe>

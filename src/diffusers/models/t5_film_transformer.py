@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional, Tuple
 
 import torch
 from torch import nn
@@ -24,28 +23,6 @@ from .modeling_utils import ModelMixin
 
 
 class T5FilmDecoder(ModelMixin, ConfigMixin):
-    r"""
-    T5 style decoder with FiLM conditioning.
-
-    Args:
-        input_dims (`int`, *optional*, defaults to `128`):
-            The number of input dimensions.
-        targets_length (`int`, *optional*, defaults to `256`):
-            The length of the targets.
-        d_model (`int`, *optional*, defaults to `768`):
-            Size of the input hidden states.
-        num_layers (`int`, *optional*, defaults to `12`):
-            The number of `DecoderLayer`'s to use.
-        num_heads (`int`, *optional*, defaults to `12`):
-            The number of attention heads to use.
-        d_kv (`int`, *optional*, defaults to `64`):
-            Size of the key-value projection vectors.
-        d_ff (`int`, *optional*, defaults to `2048`):
-            The number of dimensions in the intermediate feed-forward layer of `DecoderLayer`'s.
-        dropout_rate (`float`, *optional*, defaults to `0.1`):
-            Dropout probability.
-    """
-
     @register_to_config
     def __init__(
         self,
@@ -86,7 +63,7 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
         self.post_dropout = nn.Dropout(p=dropout_rate)
         self.spec_out = nn.Linear(d_model, input_dims, bias=False)
 
-    def encoder_decoder_mask(self, query_input: torch.FloatTensor, key_input: torch.FloatTensor) -> torch.FloatTensor:
+    def encoder_decoder_mask(self, query_input, key_input):
         mask = torch.mul(query_input.unsqueeze(-1), key_input.unsqueeze(-2))
         return mask.unsqueeze(-3)
 
@@ -148,27 +125,7 @@ class T5FilmDecoder(ModelMixin, ConfigMixin):
 
 
 class DecoderLayer(nn.Module):
-    r"""
-    T5 decoder layer.
-
-    Args:
-        d_model (`int`):
-            Size of the input hidden states.
-        d_kv (`int`):
-            Size of the key-value projection vectors.
-        num_heads (`int`):
-            Number of attention heads.
-        d_ff (`int`):
-            Size of the intermediate feed-forward layer.
-        dropout_rate (`float`):
-            Dropout probability.
-        layer_norm_epsilon (`float`, *optional*, defaults to `1e-6`):
-            A small value used for numerical stability to avoid dividing by zero.
-    """
-
-    def __init__(
-        self, d_model: int, d_kv: int, num_heads: int, d_ff: int, dropout_rate: float, layer_norm_epsilon: float = 1e-6
-    ):
+    def __init__(self, d_model, d_kv, num_heads, d_ff, dropout_rate, layer_norm_epsilon=1e-6):
         super().__init__()
         self.layer = nn.ModuleList()
 
@@ -195,13 +152,13 @@ class DecoderLayer(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        conditioning_emb: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
+        hidden_states,
+        conditioning_emb=None,
+        attention_mask=None,
+        encoder_hidden_states=None,
+        encoder_attention_mask=None,
         encoder_decoder_position_bias=None,
-    ) -> Tuple[torch.FloatTensor]:
+    ):
         hidden_states = self.layer[0](
             hidden_states,
             conditioning_emb=conditioning_emb,
@@ -226,21 +183,7 @@ class DecoderLayer(nn.Module):
 
 
 class T5LayerSelfAttentionCond(nn.Module):
-    r"""
-    T5 style self-attention layer with conditioning.
-
-    Args:
-        d_model (`int`):
-            Size of the input hidden states.
-        d_kv (`int`):
-            Size of the key-value projection vectors.
-        num_heads (`int`):
-            Number of attention heads.
-        dropout_rate (`float`):
-            Dropout probability.
-    """
-
-    def __init__(self, d_model: int, d_kv: int, num_heads: int, dropout_rate: float):
+    def __init__(self, d_model, d_kv, num_heads, dropout_rate):
         super().__init__()
         self.layer_norm = T5LayerNorm(d_model)
         self.FiLMLayer = T5FiLMLayer(in_features=d_model * 4, out_features=d_model)
@@ -249,10 +192,10 @@ class T5LayerSelfAttentionCond(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        conditioning_emb: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        hidden_states,
+        conditioning_emb=None,
+        attention_mask=None,
+    ):
         # pre_self_attention_layer_norm
         normed_hidden_states = self.layer_norm(hidden_states)
 
@@ -268,23 +211,7 @@ class T5LayerSelfAttentionCond(nn.Module):
 
 
 class T5LayerCrossAttention(nn.Module):
-    r"""
-    T5 style cross-attention layer.
-
-    Args:
-        d_model (`int`):
-            Size of the input hidden states.
-        d_kv (`int`):
-            Size of the key-value projection vectors.
-        num_heads (`int`):
-            Number of attention heads.
-        dropout_rate (`float`):
-            Dropout probability.
-        layer_norm_epsilon (`float`):
-            A small value used for numerical stability to avoid dividing by zero.
-    """
-
-    def __init__(self, d_model: int, d_kv: int, num_heads: int, dropout_rate: float, layer_norm_epsilon: float):
+    def __init__(self, d_model, d_kv, num_heads, dropout_rate, layer_norm_epsilon):
         super().__init__()
         self.attention = Attention(query_dim=d_model, heads=num_heads, dim_head=d_kv, out_bias=False, scale_qk=False)
         self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
@@ -292,10 +219,10 @@ class T5LayerCrossAttention(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        key_value_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+        hidden_states,
+        key_value_states=None,
+        attention_mask=None,
+    ):
         normed_hidden_states = self.layer_norm(hidden_states)
         attention_output = self.attention(
             normed_hidden_states,
@@ -307,30 +234,14 @@ class T5LayerCrossAttention(nn.Module):
 
 
 class T5LayerFFCond(nn.Module):
-    r"""
-    T5 style feed-forward conditional layer.
-
-    Args:
-        d_model (`int`):
-            Size of the input hidden states.
-        d_ff (`int`):
-            Size of the intermediate feed-forward layer.
-        dropout_rate (`float`):
-            Dropout probability.
-        layer_norm_epsilon (`float`):
-            A small value used for numerical stability to avoid dividing by zero.
-    """
-
-    def __init__(self, d_model: int, d_ff: int, dropout_rate: float, layer_norm_epsilon: float):
+    def __init__(self, d_model, d_ff, dropout_rate, layer_norm_epsilon):
         super().__init__()
         self.DenseReluDense = T5DenseGatedActDense(d_model=d_model, d_ff=d_ff, dropout_rate=dropout_rate)
         self.film = T5FiLMLayer(in_features=d_model * 4, out_features=d_model)
         self.layer_norm = T5LayerNorm(d_model, eps=layer_norm_epsilon)
         self.dropout = nn.Dropout(dropout_rate)
 
-    def forward(
-        self, hidden_states: torch.FloatTensor, conditioning_emb: Optional[torch.FloatTensor] = None
-    ) -> torch.FloatTensor:
+    def forward(self, hidden_states, conditioning_emb=None):
         forwarded_states = self.layer_norm(hidden_states)
         if conditioning_emb is not None:
             forwarded_states = self.film(forwarded_states, conditioning_emb)
@@ -341,19 +252,7 @@ class T5LayerFFCond(nn.Module):
 
 
 class T5DenseGatedActDense(nn.Module):
-    r"""
-    T5 style feed-forward layer with gated activations and dropout.
-
-    Args:
-        d_model (`int`):
-            Size of the input hidden states.
-        d_ff (`int`):
-            Size of the intermediate feed-forward layer.
-        dropout_rate (`float`):
-            Dropout probability.
-    """
-
-    def __init__(self, d_model: int, d_ff: int, dropout_rate: float):
+    def __init__(self, d_model, d_ff, dropout_rate):
         super().__init__()
         self.wi_0 = nn.Linear(d_model, d_ff, bias=False)
         self.wi_1 = nn.Linear(d_model, d_ff, bias=False)
@@ -361,7 +260,7 @@ class T5DenseGatedActDense(nn.Module):
         self.dropout = nn.Dropout(dropout_rate)
         self.act = NewGELUActivation()
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states):
         hidden_gelu = self.act(self.wi_0(hidden_states))
         hidden_linear = self.wi_1(hidden_states)
         hidden_states = hidden_gelu * hidden_linear
@@ -372,17 +271,7 @@ class T5DenseGatedActDense(nn.Module):
 
 
 class T5LayerNorm(nn.Module):
-    r"""
-    T5 style layer normalization module.
-
-    Args:
-        hidden_size (`int`):
-            Size of the input hidden states.
-        eps (`float`, `optional`, defaults to `1e-6`):
-            A small value used for numerical stability to avoid dividing by zero.
-    """
-
-    def __init__(self, hidden_size: int, eps: float = 1e-6):
+    def __init__(self, hidden_size, eps=1e-6):
         """
         Construct a layernorm module in the T5 style. No bias and no subtraction of mean.
         """
@@ -390,7 +279,7 @@ class T5LayerNorm(nn.Module):
         self.weight = nn.Parameter(torch.ones(hidden_size))
         self.variance_epsilon = eps
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states):
         # T5 uses a layer_norm which only scales and doesn't shift, which is also known as Root Mean
         # Square Layer Normalization https://arxiv.org/abs/1910.07467 thus variance is calculated
         # w/o mean and there is no bias. Additionally we want to make sure that the accumulation for
@@ -418,20 +307,14 @@ class NewGELUActivation(nn.Module):
 
 class T5FiLMLayer(nn.Module):
     """
-    T5 style FiLM Layer.
-
-    Args:
-        in_features (`int`):
-            Number of input features.
-        out_features (`int`):
-            Number of output features.
+    FiLM Layer
     """
 
-    def __init__(self, in_features: int, out_features: int):
+    def __init__(self, in_features, out_features):
         super().__init__()
         self.scale_bias = nn.Linear(in_features, out_features * 2, bias=False)
 
-    def forward(self, x: torch.FloatTensor, conditioning_emb: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, x, conditioning_emb):
         emb = self.scale_bias(conditioning_emb)
         scale, shift = torch.chunk(emb, 2, -1)
         x = x * (1 + scale) + shift

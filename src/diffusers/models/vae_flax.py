@@ -214,7 +214,6 @@ class FlaxAttentionBlock(nn.Module):
             Parameters `dtype`
 
     """
-
     channels: int
     num_head_channels: int = None
     num_groups: int = 32
@@ -292,7 +291,6 @@ class FlaxDownEncoderBlock2D(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
-
     in_channels: int
     out_channels: int
     dropout: float = 0.0
@@ -349,7 +347,6 @@ class FlaxUpDecoderBlock2D(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
-
     in_channels: int
     out_channels: int
     dropout: float = 0.0
@@ -404,7 +401,6 @@ class FlaxUNetMidBlock2D(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
-
     in_channels: int
     dropout: float = 0.0
     num_layers: int = 1
@@ -492,7 +488,6 @@ class FlaxEncoder(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             Parameters `dtype`
     """
-
     in_channels: int = 3
     out_channels: int = 3
     down_block_types: Tuple[str] = ("DownEncoderBlock2D",)
@@ -605,7 +600,6 @@ class FlaxDecoder(nn.Module):
         dtype (:obj:`jnp.dtype`, *optional*, defaults to jnp.float32):
             parameters `dtype`
     """
-
     in_channels: int = 3
     out_channels: int = 3
     up_block_types: Tuple[str] = ("UpDecoderBlock2D",)
@@ -773,7 +767,6 @@ class FlaxAutoencoderKL(nn.Module, FlaxModelMixin, ConfigMixin):
         dtype (`jnp.dtype`, *optional*, defaults to `jnp.float32`):
             The `dtype` of the parameters.
     """
-
     in_channels: int = 3
     out_channels: int = 3
     down_block_types: Tuple[str] = ("DownEncoderBlock2D",)

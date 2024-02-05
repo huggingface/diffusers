@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 import torch
@@ -22,17 +22,12 @@ from ..utils import BaseOutput, is_torch_version
 from ..utils.torch_utils import randn_tensor
 from .activations import get_activation
 from .attention_processor import SpatialNorm
-from .unet_2d_blocks import (
-    AutoencoderTinyBlock,
-    UNetMidBlock2D,
-    get_down_block,
-    get_up_block,
-)
+from .unet_2d_blocks import AutoencoderTinyBlock, UNetMidBlock2D, get_down_block, get_up_block
 
 
 @dataclass
 class DecoderOutput(BaseOutput):
-    r"""
+    """
     Output of decoding method.
 
     Args:
@@ -44,39 +39,16 @@ class DecoderOutput(BaseOutput):
 
 
 class Encoder(nn.Module):
-    r"""
-    The `Encoder` layer of a variational autoencoder that encodes its input into a latent representation.
-
-    Args:
-        in_channels (`int`, *optional*, defaults to 3):
-            The number of input channels.
-        out_channels (`int`, *optional*, defaults to 3):
-            The number of output channels.
-        down_block_types (`Tuple[str, ...]`, *optional*, defaults to `("DownEncoderBlock2D",)`):
-            The types of down blocks to use. See `~diffusers.models.unet_2d_blocks.get_down_block` for available
-            options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
-            The number of output channels for each block.
-        layers_per_block (`int`, *optional*, defaults to 2):
-            The number of layers per block.
-        norm_num_groups (`int`, *optional*, defaults to 32):
-            The number of groups for normalization.
-        act_fn (`str`, *optional*, defaults to `"silu"`):
-            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-        double_z (`bool`, *optional*, defaults to `True`):
-            Whether to double the number of output channels for the last block.
-    """
-
     def __init__(
         self,
-        in_channels: int = 3,
-        out_channels: int = 3,
-        down_block_types: Tuple[str, ...] = ("DownEncoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
-        layers_per_block: int = 2,
-        norm_num_groups: int = 32,
-        act_fn: str = "silu",
-        double_z: bool = True,
+        in_channels=3,
+        out_channels=3,
+        down_block_types=("DownEncoderBlock2D",),
+        block_out_channels=(64,),
+        layers_per_block=2,
+        norm_num_groups=32,
+        act_fn="silu",
+        double_z=True,
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -135,9 +107,8 @@ class Encoder(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(self, sample: torch.FloatTensor) -> torch.FloatTensor:
-        r"""The forward method of the `Encoder` class."""
-
+    def forward(self, x):
+        sample = x
         sample = self.conv_in(sample)
 
         if self.training and self.gradient_checkpointing:
@@ -181,38 +152,16 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    r"""
-    The `Decoder` layer of a variational autoencoder that decodes its latent representation into an output sample.
-
-    Args:
-        in_channels (`int`, *optional*, defaults to 3):
-            The number of input channels.
-        out_channels (`int`, *optional*, defaults to 3):
-            The number of output channels.
-        up_block_types (`Tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-            The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
-            The number of output channels for each block.
-        layers_per_block (`int`, *optional*, defaults to 2):
-            The number of layers per block.
-        norm_num_groups (`int`, *optional*, defaults to 32):
-            The number of groups for normalization.
-        act_fn (`str`, *optional*, defaults to `"silu"`):
-            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-        norm_type (`str`, *optional*, defaults to `"group"`):
-            The normalization type to use. Can be either `"group"` or `"spatial"`.
-    """
-
     def __init__(
         self,
-        in_channels: int = 3,
-        out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
-        layers_per_block: int = 2,
-        norm_num_groups: int = 32,
-        act_fn: str = "silu",
-        norm_type: str = "group",  # group, spatial
+        in_channels=3,
+        out_channels=3,
+        up_block_types=("UpDecoderBlock2D",),
+        block_out_channels=(64,),
+        layers_per_block=2,
+        norm_num_groups=32,
+        act_fn="silu",
+        norm_type="group",  # group, spatial
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -278,13 +227,8 @@ class Decoder(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self,
-        sample: torch.FloatTensor,
-        latent_embeds: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
-        r"""The forward method of the `Decoder` class."""
-
+    def forward(self, z, latent_embeds=None):
+        sample = z
         sample = self.conv_in(sample)
 
         upscale_dtype = next(iter(self.up_blocks.parameters())).dtype
@@ -299,20 +243,14 @@ class Decoder(nn.Module):
             if is_torch_version(">=", "1.11.0"):
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block),
-                    sample,
-                    latent_embeds,
-                    use_reentrant=False,
+                    create_custom_forward(self.mid_block), sample, latent_embeds, use_reentrant=False
                 )
                 sample = sample.to(upscale_dtype)
 
                 # up
                 for up_block in self.up_blocks:
                     sample = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(up_block),
-                        sample,
-                        latent_embeds,
-                        use_reentrant=False,
+                        create_custom_forward(up_block), sample, latent_embeds, use_reentrant=False
                     )
             else:
                 # middle
@@ -345,16 +283,6 @@ class Decoder(nn.Module):
 
 
 class UpSample(nn.Module):
-    r"""
-    The `UpSample` layer of a variational autoencoder that upsamples its input.
-
-    Args:
-        in_channels (`int`, *optional*, defaults to 3):
-            The number of input channels.
-        out_channels (`int`, *optional*, defaults to 3):
-            The number of output channels.
-    """
-
     def __init__(
         self,
         in_channels: int,
@@ -366,7 +294,6 @@ class UpSample(nn.Module):
         self.deconv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=4, stride=2, padding=1)
 
     def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
-        r"""The forward method of the `UpSample` class."""
         x = torch.relu(x)
         x = self.deconv(x)
         return x
@@ -415,7 +342,6 @@ class MaskConditionEncoder(nn.Module):
         self.layers = nn.Sequential(*layers)
 
     def forward(self, x: torch.FloatTensor, mask=None) -> torch.FloatTensor:
-        r"""The forward method of the `MaskConditionEncoder` class."""
         out = {}
         for l in range(len(self.layers)):
             layer = self.layers[l]
@@ -426,38 +352,19 @@ class MaskConditionEncoder(nn.Module):
 
 
 class MaskConditionDecoder(nn.Module):
-    r"""The `MaskConditionDecoder` should be used in combination with [`AsymmetricAutoencoderKL`] to enhance the model's
-    decoder with a conditioner on the mask and masked image.
-
-    Args:
-        in_channels (`int`, *optional*, defaults to 3):
-            The number of input channels.
-        out_channels (`int`, *optional*, defaults to 3):
-            The number of output channels.
-        up_block_types (`Tuple[str, ...]`, *optional*, defaults to `("UpDecoderBlock2D",)`):
-            The types of up blocks to use. See `~diffusers.models.unet_2d_blocks.get_up_block` for available options.
-        block_out_channels (`Tuple[int, ...]`, *optional*, defaults to `(64,)`):
-            The number of output channels for each block.
-        layers_per_block (`int`, *optional*, defaults to 2):
-            The number of layers per block.
-        norm_num_groups (`int`, *optional*, defaults to 32):
-            The number of groups for normalization.
-        act_fn (`str`, *optional*, defaults to `"silu"`):
-            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-        norm_type (`str`, *optional*, defaults to `"group"`):
-            The normalization type to use. Can be either `"group"` or `"spatial"`.
-    """
+    """The `MaskConditionDecoder` should be used in combination with [`AsymmetricAutoencoderKL`] to enhance the model's
+    decoder with a conditioner on the mask and masked image."""
 
     def __init__(
         self,
-        in_channels: int = 3,
-        out_channels: int = 3,
-        up_block_types: Tuple[str, ...] = ("UpDecoderBlock2D",),
-        block_out_channels: Tuple[int, ...] = (64,),
-        layers_per_block: int = 2,
-        norm_num_groups: int = 32,
-        act_fn: str = "silu",
-        norm_type: str = "group",  # group, spatial
+        in_channels=3,
+        out_channels=3,
+        up_block_types=("UpDecoderBlock2D",),
+        block_out_channels=(64,),
+        layers_per_block=2,
+        norm_num_groups=32,
+        act_fn="silu",
+        norm_type="group",  # group, spatial
     ):
         super().__init__()
         self.layers_per_block = layers_per_block
@@ -530,14 +437,7 @@ class MaskConditionDecoder(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self,
-        z: torch.FloatTensor,
-        image: Optional[torch.FloatTensor] = None,
-        mask: Optional[torch.FloatTensor] = None,
-        latent_embeds: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
-        r"""The forward method of the `MaskConditionDecoder` class."""
+    def forward(self, z, image=None, mask=None, latent_embeds=None):
         sample = z
         sample = self.conv_in(sample)
 
@@ -553,10 +453,7 @@ class MaskConditionDecoder(nn.Module):
             if is_torch_version(">=", "1.11.0"):
                 # middle
                 sample = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.mid_block),
-                    sample,
-                    latent_embeds,
-                    use_reentrant=False,
+                    create_custom_forward(self.mid_block), sample, latent_embeds, use_reentrant=False
                 )
                 sample = sample.to(upscale_dtype)
 
@@ -564,10 +461,7 @@ class MaskConditionDecoder(nn.Module):
                 if image is not None and mask is not None:
                     masked_image = (1 - mask) * image
                     im_x = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(self.condition_encoder),
-                        masked_image,
-                        mask,
-                        use_reentrant=False,
+                        create_custom_forward(self.condition_encoder), masked_image, mask, use_reentrant=False
                     )
 
                 # up
@@ -577,10 +471,7 @@ class MaskConditionDecoder(nn.Module):
                         mask_ = nn.functional.interpolate(mask, size=sample.shape[-2:], mode="nearest")
                         sample = sample * mask_ + sample_ * (1 - mask_)
                     sample = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(up_block),
-                        sample,
-                        latent_embeds,
-                        use_reentrant=False,
+                        create_custom_forward(up_block), sample, latent_embeds, use_reentrant=False
                     )
                 if image is not None and mask is not None:
                     sample = sample * mask + im_x[str(tuple(sample.shape))] * (1 - mask)
@@ -595,9 +486,7 @@ class MaskConditionDecoder(nn.Module):
                 if image is not None and mask is not None:
                     masked_image = (1 - mask) * image
                     im_x = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(self.condition_encoder),
-                        masked_image,
-                        mask,
+                        create_custom_forward(self.condition_encoder), masked_image, mask
                     )
 
                 # up
@@ -650,14 +539,7 @@ class VectorQuantizer(nn.Module):
     # backwards compatibility we use the buggy version by default, but you can
     # specify legacy=False to fix it.
     def __init__(
-        self,
-        n_e: int,
-        vq_embed_dim: int,
-        beta: float,
-        remap=None,
-        unknown_index: str = "random",
-        sane_index_shape: bool = False,
-        legacy: bool = True,
+        self, n_e, vq_embed_dim, beta, remap=None, unknown_index="random", sane_index_shape=False, legacy=True
     ):
         super().__init__()
         self.n_e = n_e
@@ -671,7 +553,6 @@ class VectorQuantizer(nn.Module):
         self.remap = remap
         if self.remap is not None:
             self.register_buffer("used", torch.tensor(np.load(self.remap)))
-            self.used: torch.Tensor
             self.re_embed = self.used.shape[0]
             self.unknown_index = unknown_index  # "random" or "extra" or integer
             if self.unknown_index == "extra":
@@ -686,7 +567,7 @@ class VectorQuantizer(nn.Module):
 
         self.sane_index_shape = sane_index_shape
 
-    def remap_to_used(self, inds: torch.LongTensor) -> torch.LongTensor:
+    def remap_to_used(self, inds):
         ishape = inds.shape
         assert len(ishape) > 1
         inds = inds.reshape(ishape[0], -1)
@@ -700,7 +581,7 @@ class VectorQuantizer(nn.Module):
             new[unknown] = self.unknown_index
         return new.reshape(ishape)
 
-    def unmap_to_all(self, inds: torch.LongTensor) -> torch.LongTensor:
+    def unmap_to_all(self, inds):
         ishape = inds.shape
         assert len(ishape) > 1
         inds = inds.reshape(ishape[0], -1)
@@ -710,7 +591,7 @@ class VectorQuantizer(nn.Module):
         back = torch.gather(used[None, :][inds.shape[0] * [0], :], 1, inds)
         return back.reshape(ishape)
 
-    def forward(self, z: torch.FloatTensor) -> Tuple[torch.FloatTensor, torch.FloatTensor, Tuple]:
+    def forward(self, z):
         # reshape z -> (batch, height, width, channel) and flatten
         z = z.permute(0, 2, 3, 1).contiguous()
         z_flattened = z.view(-1, self.vq_embed_dim)
@@ -729,7 +610,7 @@ class VectorQuantizer(nn.Module):
             loss = torch.mean((z_q.detach() - z) ** 2) + self.beta * torch.mean((z_q - z.detach()) ** 2)
 
         # preserve gradients
-        z_q: torch.FloatTensor = z + (z_q - z).detach()
+        z_q = z + (z_q - z).detach()
 
         # reshape back to match original input shape
         z_q = z_q.permute(0, 3, 1, 2).contiguous()
@@ -744,7 +625,7 @@ class VectorQuantizer(nn.Module):
 
         return z_q, loss, (perplexity, min_encodings, min_encoding_indices)
 
-    def get_codebook_entry(self, indices: torch.LongTensor, shape: Tuple[int, ...]) -> torch.FloatTensor:
+    def get_codebook_entry(self, indices, shape):
         # shape specifying (batch, height, width, channel)
         if self.remap is not None:
             indices = indices.reshape(shape[0], -1)  # add batch axis
@@ -752,7 +633,7 @@ class VectorQuantizer(nn.Module):
             indices = indices.reshape(-1)  # flatten again
 
         # get quantized latent vectors
-        z_q: torch.FloatTensor = self.embedding(indices)
+        z_q = self.embedding(indices)
 
         if shape is not None:
             z_q = z_q.view(shape)
@@ -763,7 +644,7 @@ class VectorQuantizer(nn.Module):
 
 
 class DiagonalGaussianDistribution(object):
-    def __init__(self, parameters: torch.Tensor, deterministic: bool = False):
+    def __init__(self, parameters, deterministic=False):
         self.parameters = parameters
         self.mean, self.logvar = torch.chunk(parameters, 2, dim=1)
         self.logvar = torch.clamp(self.logvar, -30.0, 20.0)
@@ -778,23 +659,17 @@ class DiagonalGaussianDistribution(object):
     def sample(self, generator: Optional[torch.Generator] = None) -> torch.FloatTensor:
         # make sure sample is on the same device as the parameters and has same dtype
         sample = randn_tensor(
-            self.mean.shape,
-            generator=generator,
-            device=self.parameters.device,
-            dtype=self.parameters.dtype,
+            self.mean.shape, generator=generator, device=self.parameters.device, dtype=self.parameters.dtype
         )
         x = self.mean + self.std * sample
         return x
 
-    def kl(self, other: "DiagonalGaussianDistribution" = None) -> torch.Tensor:
+    def kl(self, other=None):
         if self.deterministic:
             return torch.Tensor([0.0])
         else:
             if other is None:
-                return 0.5 * torch.sum(
-                    torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar,
-                    dim=[1, 2, 3],
-                )
+                return 0.5 * torch.sum(torch.pow(self.mean, 2) + self.var - 1.0 - self.logvar, dim=[1, 2, 3])
             else:
                 return 0.5 * torch.sum(
                     torch.pow(self.mean - other.mean, 2) / other.var
@@ -805,43 +680,23 @@ class DiagonalGaussianDistribution(object):
                     dim=[1, 2, 3],
                 )
 
-    def nll(self, sample: torch.Tensor, dims: Tuple[int, ...] = [1, 2, 3]) -> torch.Tensor:
+    def nll(self, sample, dims=[1, 2, 3]):
         if self.deterministic:
             return torch.Tensor([0.0])
         logtwopi = np.log(2.0 * np.pi)
-        return 0.5 * torch.sum(
-            logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var,
-            dim=dims,
-        )
+        return 0.5 * torch.sum(logtwopi + self.logvar + torch.pow(sample - self.mean, 2) / self.var, dim=dims)
 
-    def mode(self) -> torch.Tensor:
+    def mode(self):
         return self.mean
 
 
 class EncoderTiny(nn.Module):
-    r"""
-    The `EncoderTiny` layer is a simpler version of the `Encoder` layer.
-
-    Args:
-        in_channels (`int`):
-            The number of input channels.
-        out_channels (`int`):
-            The number of output channels.
-        num_blocks (`Tuple[int, ...]`):
-            Each value of the tuple represents a Conv2d layer followed by `value` number of `AutoencoderTinyBlock`'s to
-            use.
-        block_out_channels (`Tuple[int, ...]`):
-            The number of output channels for each block.
-        act_fn (`str`):
-            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-    """
-
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
-        num_blocks: Tuple[int, ...],
-        block_out_channels: Tuple[int, ...],
+        num_blocks: int,
+        block_out_channels: int,
         act_fn: str,
     ):
         super().__init__()
@@ -853,16 +708,7 @@ class EncoderTiny(nn.Module):
             if i == 0:
                 layers.append(nn.Conv2d(in_channels, num_channels, kernel_size=3, padding=1))
             else:
-                layers.append(
-                    nn.Conv2d(
-                        num_channels,
-                        num_channels,
-                        kernel_size=3,
-                        padding=1,
-                        stride=2,
-                        bias=False,
-                    )
-                )
+                layers.append(nn.Conv2d(num_channels, num_channels, kernel_size=3, padding=1, stride=2, bias=False))
 
             for _ in range(num_block):
                 layers.append(AutoencoderTinyBlock(num_channels, num_channels, act_fn))
@@ -872,8 +718,7 @@ class EncoderTiny(nn.Module):
         self.layers = nn.Sequential(*layers)
         self.gradient_checkpointing = False
 
-    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
-        r"""The forward method of the `EncoderTiny` class."""
+    def forward(self, x):
         if self.training and self.gradient_checkpointing:
 
             def create_custom_forward(module):
@@ -895,31 +740,12 @@ class EncoderTiny(nn.Module):
 
 
 class DecoderTiny(nn.Module):
-    r"""
-    The `DecoderTiny` layer is a simpler version of the `Decoder` layer.
-
-    Args:
-        in_channels (`int`):
-            The number of input channels.
-        out_channels (`int`):
-            The number of output channels.
-        num_blocks (`Tuple[int, ...]`):
-            Each value of the tuple represents a Conv2d layer followed by `value` number of `AutoencoderTinyBlock`'s to
-            use.
-        block_out_channels (`Tuple[int, ...]`):
-            The number of output channels for each block.
-        upsampling_scaling_factor (`int`):
-            The scaling factor to use for upsampling.
-        act_fn (`str`):
-            The activation function to use. See `~diffusers.models.activations.get_activation` for available options.
-    """
-
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
-        num_blocks: Tuple[int, ...],
-        block_out_channels: Tuple[int, ...],
+        num_blocks: int,
+        block_out_channels: int,
         upsampling_scaling_factor: int,
         act_fn: str,
     ):
@@ -941,21 +767,12 @@ class DecoderTiny(nn.Module):
                 layers.append(nn.Upsample(scale_factor=upsampling_scaling_factor))
 
             conv_out_channel = num_channels if not is_final_block else out_channels
-            layers.append(
-                nn.Conv2d(
-                    num_channels,
-                    conv_out_channel,
-                    kernel_size=3,
-                    padding=1,
-                    bias=is_final_block,
-                )
-            )
+            layers.append(nn.Conv2d(num_channels, conv_out_channel, kernel_size=3, padding=1, bias=is_final_block))
 
         self.layers = nn.Sequential(*layers)
         self.gradient_checkpointing = False
 
-    def forward(self, x: torch.FloatTensor) -> torch.FloatTensor:
-        r"""The forward method of the `DecoderTiny` class."""
+    def forward(self, x):
         # Clamp.
         x = torch.tanh(x / 3) * 3
 

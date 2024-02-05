@@ -132,7 +132,6 @@ class ControlNetInpaintPipelineFastTests(
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
-            "image_encoder": None,
         }
         return components
 
@@ -249,7 +248,6 @@ class ControlNetSimpleInpaintPipelineFastTests(ControlNetInpaintPipelineFastTest
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
-            "image_encoder": None,
         }
         return components
 
@@ -344,7 +342,6 @@ class MultiControlNetInpaintPipelineFastTests(
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
-            "image_encoder": None,
         }
         return components
 

@@ -92,7 +92,6 @@ class StableDiffusionUpscalePipeline(
             A scheduler to be used in combination with `unet` to denoise the encoded image latents. Can be one of
             [`DDIMScheduler`], [`LMSDiscreteScheduler`], or [`PNDMScheduler`].
     """
-
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["watermarker", "safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
@@ -373,7 +372,7 @@ class StableDiffusionUpscalePipeline(
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder, lora_scale)
+            unscale_lora_layers(self.text_encoder)
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -821,8 +820,9 @@ class StableDiffusionUpscalePipeline(
         if output_type == "pil" and self.watermarker is not None:
             image = self.watermarker.apply_watermark(image)
 
-        # Offload all models
-        self.maybe_free_model_hooks()
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if not return_dict:
             return (image, has_nsfw_concept)

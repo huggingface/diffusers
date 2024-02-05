@@ -17,15 +17,12 @@ import os
 from huggingface_hub.constants import HUGGINGFACE_HUB_CACHE, hf_cache_home
 from packaging import version
 
-from ..dependency_versions_check import dep_version_check
-from .import_utils import ENV_VARS_TRUE_VALUES, is_peft_available, is_transformers_available
+from .import_utils import is_peft_available, is_transformers_available
 
 
 default_cache_path = HUGGINGFACE_HUB_CACHE
 
-MIN_PEFT_VERSION = "0.6.0"
-MIN_TRANSFORMERS_VERSION = "4.34.0"
-_CHECK_PEFT = os.environ.get("_CHECK_PEFT", "1") in ENV_VARS_TRUE_VALUES
+MIN_PEFT_VERSION = "0.5.0"
 
 
 CONFIG_NAME = "config.json"
@@ -43,15 +40,12 @@ DEPRECATED_REVISION_ARGS = ["fp16", "non-ema"]
 # Below should be `True` if the current version of `peft` and `transformers` are compatible with
 # PEFT backend. Will automatically fall back to PEFT backend if the correct versions of the libraries are
 # available.
-# For PEFT it is has to be greater than or equal to 0.6.0 and for transformers it has to be greater than or equal to 4.34.0.
+# For PEFT it is has to be greater than 0.6.0 and for transformers it has to be greater than 4.33.1.
 _required_peft_version = is_peft_available() and version.parse(
     version.parse(importlib.metadata.version("peft")).base_version
-) >= version.parse(MIN_PEFT_VERSION)
+) > version.parse(MIN_PEFT_VERSION)
 _required_transformers_version = is_transformers_available() and version.parse(
     version.parse(importlib.metadata.version("transformers")).base_version
-) >= version.parse(MIN_TRANSFORMERS_VERSION)
+) > version.parse("4.33")
 
 USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
-
-if USE_PEFT_BACKEND and _CHECK_PEFT:
-    dep_version_check("peft")

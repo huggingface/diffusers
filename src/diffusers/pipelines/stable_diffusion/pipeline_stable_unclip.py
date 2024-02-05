@@ -206,15 +206,17 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             prior_text_encoder_output = self.prior_text_encoder(text_input_ids.to(device))
 
             prompt_embeds = prior_text_encoder_output.text_embeds
-            text_enc_hid_states = prior_text_encoder_output.last_hidden_state
+            prior_text_encoder_hidden_states = prior_text_encoder_output.last_hidden_state
 
         else:
             batch_size = text_model_output[0].shape[0]
-            prompt_embeds, text_enc_hid_states = text_model_output[0], text_model_output[1]
+            prompt_embeds, prior_text_encoder_hidden_states = text_model_output[0], text_model_output[1]
             text_mask = text_attention_mask
 
         prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-        text_enc_hid_states = text_enc_hid_states.repeat_interleave(num_images_per_prompt, dim=0)
+        prior_text_encoder_hidden_states = prior_text_encoder_hidden_states.repeat_interleave(
+            num_images_per_prompt, dim=0
+        )
         text_mask = text_mask.repeat_interleave(num_images_per_prompt, dim=0)
 
         if do_classifier_free_guidance:
@@ -233,7 +235,9 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             )
 
             negative_prompt_embeds = negative_prompt_embeds_prior_text_encoder_output.text_embeds
-            uncond_text_enc_hid_states = negative_prompt_embeds_prior_text_encoder_output.last_hidden_state
+            uncond_prior_text_encoder_hidden_states = (
+                negative_prompt_embeds_prior_text_encoder_output.last_hidden_state
+            )
 
             # duplicate unconditional embeddings for each generation per prompt, using mps friendly method
 
@@ -241,9 +245,11 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len)
 
-            seq_len = uncond_text_enc_hid_states.shape[1]
-            uncond_text_enc_hid_states = uncond_text_enc_hid_states.repeat(1, num_images_per_prompt, 1)
-            uncond_text_enc_hid_states = uncond_text_enc_hid_states.view(
+            seq_len = uncond_prior_text_encoder_hidden_states.shape[1]
+            uncond_prior_text_encoder_hidden_states = uncond_prior_text_encoder_hidden_states.repeat(
+                1, num_images_per_prompt, 1
+            )
+            uncond_prior_text_encoder_hidden_states = uncond_prior_text_encoder_hidden_states.view(
                 batch_size * num_images_per_prompt, seq_len, -1
             )
             uncond_text_mask = uncond_text_mask.repeat_interleave(num_images_per_prompt, dim=0)
@@ -254,11 +260,13 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
             # Here we concatenate the unconditional and text embeddings into a single batch
             # to avoid doing two forward passes
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-            text_enc_hid_states = torch.cat([uncond_text_enc_hid_states, text_enc_hid_states])
+            prior_text_encoder_hidden_states = torch.cat(
+                [uncond_prior_text_encoder_hidden_states, prior_text_encoder_hidden_states]
+            )
 
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
-        return prompt_embeds, text_enc_hid_states, text_mask
+        return prompt_embeds, prior_text_encoder_hidden_states, text_mask
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline._encode_prompt
     def _encode_prompt(
@@ -471,7 +479,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder, lora_scale)
+            unscale_lora_layers(self.text_encoder)
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -934,8 +942,9 @@ class StableUnCLIPPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraL
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
-        # Offload all models
-        self.maybe_free_model_hooks()
+        # Offload last model to CPU
+        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
+            self.final_offload_hook.offload()
 
         if not return_dict:
             return (image,)

@@ -58,7 +58,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.24.0")
+check_min_version("0.22.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -74,7 +74,6 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         unet=unet,
         controlnet=controlnet,
         revision=args.revision,
-        variant=args.variant,
         torch_dtype=weight_dtype,
     )
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
@@ -245,17 +244,14 @@ def parse_args(input_args=None):
         " If not specified controlnet weights are initialized from unet.",
     )
     parser.add_argument(
-        "--variant",
-        type=str,
-        default=None,
-        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
-    )
-    parser.add_argument(
         "--revision",
         type=str,
         default=None,
         required=False,
-        help="Revision of pretrained model identifier from huggingface.co/models.",
+        help=(
+            "Revision of pretrained model identifier from huggingface.co/models. Trainable model components should be"
+            " float32 precision."
+        ),
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -797,16 +793,10 @@ def main(args):
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer",
-        revision=args.revision,
-        use_fast=False,
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer_2",
-        revision=args.revision,
-        use_fast=False,
+        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False
     )
 
     # import correct text encoder classes
@@ -820,10 +810,10 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
     )
     vae_path = (
         args.pretrained_model_name_or_path
@@ -834,10 +824,9 @@ def main(args):
         vae_path,
         subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
         revision=args.revision,
-        variant=args.variant,
     )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
     )
 
     if args.controlnet_model_name_or_path:

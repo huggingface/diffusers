@@ -112,7 +112,6 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         - **config_name** ([`str`]) -- The configuration filename that stores the class and module names of all the
           diffusion pipeline's components.
     """
-
     config_name = "model_index.json"
 
     def register_modules(self, **kwargs):
@@ -538,13 +537,12 @@ class FlaxDiffusionPipeline(ConfigMixin, PushToHubMixin):
         model = pipeline_class(**init_kwargs, dtype=dtype)
         return model, params
 
-    @classmethod
-    def _get_signature_keys(cls, obj):
+    @staticmethod
+    def _get_signature_keys(obj):
         parameters = inspect.signature(obj.__init__).parameters
         required_parameters = {k: v for k, v in parameters.items() if v.default == inspect._empty}
         optional_parameters = set({k for k, v in parameters.items() if v.default != inspect._empty})
         expected_modules = set(required_parameters.keys()) - {"self"}
-
         return expected_modules, optional_parameters
 
     @property

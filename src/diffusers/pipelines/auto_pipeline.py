@@ -42,9 +42,6 @@ from .kandinsky2_2 import (
     KandinskyV22InpaintPipeline,
     KandinskyV22Pipeline,
 )
-from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
-from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
-from .pixart_alpha import PixArtAlphaPipeline
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
@@ -65,12 +62,9 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("if", IFPipeline),
         ("kandinsky", KandinskyCombinedPipeline),
         ("kandinsky22", KandinskyV22CombinedPipeline),
-        ("kandinsky3", Kandinsky3Pipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
         ("wuerstchen", WuerstchenCombinedPipeline),
-        ("lcm", LatentConsistencyModelPipeline),
-        ("pixart", PixArtAlphaPipeline),
     ]
 )
 
@@ -81,10 +75,8 @@ AUTO_IMAGE2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("if", IFImg2ImgPipeline),
         ("kandinsky", KandinskyImg2ImgCombinedPipeline),
         ("kandinsky22", KandinskyV22Img2ImgCombinedPipeline),
-        ("kandinsky3", Kandinsky3Img2ImgPipeline),
         ("stable-diffusion-controlnet", StableDiffusionControlNetImg2ImgPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetImg2ImgPipeline),
-        ("lcm", LatentConsistencyModelImg2ImgPipeline),
     ]
 )
 
@@ -184,7 +176,6 @@ class AutoPipelineForText2Image(ConfigMixin):
           diffusion pipeline's components.
 
     """
-
     config_name = "model_index.json"
 
     def __init__(self, *args, **kwargs):
@@ -378,7 +369,7 @@ class AutoPipelineForText2Image(ConfigMixin):
             if kwargs["controlnet"] is not None:
                 text_2_image_cls = _get_task_class(
                     AUTO_TEXT2IMAGE_PIPELINES_MAPPING,
-                    text_2_image_cls.__name__.replace("ControlNet", "").replace("Pipeline", "ControlNetPipeline"),
+                    text_2_image_cls.__name__.replace("Pipeline", "ControlNetPipeline"),
                 )
             else:
                 text_2_image_cls = _get_task_class(
@@ -455,7 +446,6 @@ class AutoPipelineForImage2Image(ConfigMixin):
           diffusion pipeline's components.
 
     """
-
     config_name = "model_index.json"
 
     def __init__(self, *args, **kwargs):
@@ -652,9 +642,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
             if kwargs["controlnet"] is not None:
                 image_2_image_cls = _get_task_class(
                     AUTO_IMAGE2IMAGE_PIPELINES_MAPPING,
-                    image_2_image_cls.__name__.replace("ControlNet", "").replace(
-                        "Img2ImgPipeline", "ControlNetImg2ImgPipeline"
-                    ),
+                    image_2_image_cls.__name__.replace("Img2ImgPipeline", "ControlNetImg2ImgPipeline"),
                 )
             else:
                 image_2_image_cls = _get_task_class(
@@ -731,7 +719,6 @@ class AutoPipelineForInpainting(ConfigMixin):
           diffusion pipeline's components.
 
     """
-
     config_name = "model_index.json"
 
     def __init__(self, *args, **kwargs):
@@ -926,9 +913,7 @@ class AutoPipelineForInpainting(ConfigMixin):
             if kwargs["controlnet"] is not None:
                 inpainting_cls = _get_task_class(
                     AUTO_INPAINT_PIPELINES_MAPPING,
-                    inpainting_cls.__name__.replace("ControlNet", "").replace(
-                        "InpaintPipeline", "ControlNetInpaintPipeline"
-                    ),
+                    inpainting_cls.__name__.replace("InpaintPipeline", "ControlNetInpaintPipeline"),
                 )
             else:
                 inpainting_cls = _get_task_class(

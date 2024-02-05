@@ -17,7 +17,6 @@ https://github.com/allenai/allennlp.
 """
 import os
 from datetime import datetime as dt
-from datetime import timezone
 
 from github import Github
 
@@ -44,8 +43,8 @@ def main():
         if (
             last_comment is not None
             and last_comment.user.login == "github-actions[bot]"
-            and (dt.now(timezone.utc) - issue.updated_at).days > 7
-            and (dt.now(timezone.utc) - issue.created_at).days >= 30
+            and (dt.utcnow() - issue.updated_at).days > 7
+            and (dt.utcnow() - issue.created_at).days >= 30
             and not any(label.name.lower() in LABELS_TO_EXEMPT for label in issue.get_labels())
         ):
             # Closes the issue after 7 days of inactivity since the Stalebot notification.
@@ -59,8 +58,8 @@ def main():
             issue.edit(state="open")
             issue.remove_from_labels("stale")
         elif (
-            (dt.now(timezone.utc) - issue.updated_at).days > 23
-            and (dt.now(timezone.utc) - issue.created_at).days >= 30
+            (dt.utcnow() - issue.updated_at).days > 23
+            and (dt.utcnow() - issue.created_at).days >= 30
             and not any(label.name.lower() in LABELS_TO_EXEMPT for label in issue.get_labels())
         ):
             # Post a Stalebot notification after 23 days of inactivity.

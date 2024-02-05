@@ -24,8 +24,7 @@ from parameterized import parameterized
 from pytest import mark
 
 from diffusers import UNet2DConditionModel
-from diffusers.models.attention_processor import CustomDiffusionAttnProcessor, IPAdapterAttnProcessor
-from diffusers.models.embeddings import ImageProjection
+from diffusers.models.attention_processor import CustomDiffusionAttnProcessor
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
@@ -44,57 +43,6 @@ from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
 logger = logging.get_logger(__name__)
 
 enable_full_determinism()
-
-
-def create_ip_adapter_state_dict(model):
-    # "ip_adapter" (cross-attention weights)
-    ip_cross_attn_state_dict = {}
-    key_id = 1
-
-    for name in model.attn_processors.keys():
-        cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
-        if name.startswith("mid_block"):
-            hidden_size = model.config.block_out_channels[-1]
-        elif name.startswith("up_blocks"):
-            block_id = int(name[len("up_blocks.")])
-            hidden_size = list(reversed(model.config.block_out_channels))[block_id]
-        elif name.startswith("down_blocks"):
-            block_id = int(name[len("down_blocks.")])
-            hidden_size = model.config.block_out_channels[block_id]
-        if cross_attention_dim is not None:
-            sd = IPAdapterAttnProcessor(
-                hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
-            ).state_dict()
-            ip_cross_attn_state_dict.update(
-                {
-                    f"{key_id}.to_k_ip.weight": sd["to_k_ip.weight"],
-                    f"{key_id}.to_v_ip.weight": sd["to_v_ip.weight"],
-                }
-            )
-
-            key_id += 2
-
-    # "image_proj" (ImageProjection layer weights)
-    cross_attention_dim = model.config["cross_attention_dim"]
-    image_projection = ImageProjection(
-        cross_attention_dim=cross_attention_dim, image_embed_dim=cross_attention_dim, num_image_text_embeds=4
-    )
-
-    ip_image_projection_state_dict = {}
-    sd = image_projection.state_dict()
-    ip_image_projection_state_dict.update(
-        {
-            "proj.weight": sd["image_embeds.weight"],
-            "proj.bias": sd["image_embeds.bias"],
-            "norm.weight": sd["norm.weight"],
-            "norm.bias": sd["norm.bias"],
-        }
-    )
-
-    del sd
-    ip_state_dict = {}
-    ip_state_dict.update({"image_proj": ip_image_projection_state_dict, "ip_adapter": ip_cross_attn_state_dict})
-    return ip_state_dict
 
 
 def create_custom_diffusion_layers(model, mock_weights: bool = True):
@@ -657,72 +605,6 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         sample_copy = copy.copy(sample)
 
         assert (sample - sample_copy).abs().max() < 1e-4
-
-    def test_asymmetrical_unet(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-        # Add asymmetry to configs
-        init_dict["transformer_layers_per_block"] = [[3, 2], 1]
-        init_dict["reverse_transformer_layers_per_block"] = [[3, 4], 1]
-
-        torch.manual_seed(0)
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        output = model(**inputs_dict).sample
-        expected_shape = inputs_dict["sample"].shape
-
-        # Check if input and output shapes are the same
-        self.assertEqual(output.shape, expected_shape, "Input and output shapes do not match")
-
-    def test_ip_adapter(self):
-        init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
-
-        init_dict["attention_head_dim"] = (8, 16)
-
-        model = self.model_class(**init_dict)
-        model.to(torch_device)
-
-        # forward pass without ip-adapter
-        with torch.no_grad():
-            sample1 = model(**inputs_dict).sample
-
-        # update inputs_dict for ip-adapter
-        batch_size = inputs_dict["encoder_hidden_states"].shape[0]
-        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
-        inputs_dict["added_cond_kwargs"] = {"image_embeds": image_embeds}
-
-        # make ip_adapter_1 and ip_adapter_2
-        ip_adapter_1 = create_ip_adapter_state_dict(model)
-
-        image_proj_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["image_proj"].items()}
-        cross_attn_state_dict_2 = {k: w + 1.0 for k, w in ip_adapter_1["ip_adapter"].items()}
-        ip_adapter_2 = {}
-        ip_adapter_2.update({"image_proj": image_proj_state_dict_2, "ip_adapter": cross_attn_state_dict_2})
-
-        # forward pass ip_adapter_1
-        model._load_ip_adapter_weights(ip_adapter_1)
-        assert model.config.encoder_hid_dim_type == "ip_image_proj"
-        assert model.encoder_hid_proj is not None
-        assert model.down_blocks[0].attentions[0].transformer_blocks[0].attn2.processor.__class__.__name__ in (
-            "IPAdapterAttnProcessor",
-            "IPAdapterAttnProcessor2_0",
-        )
-        with torch.no_grad():
-            sample2 = model(**inputs_dict).sample
-
-        # forward pass with ip_adapter_2
-        model._load_ip_adapter_weights(ip_adapter_2)
-        with torch.no_grad():
-            sample3 = model(**inputs_dict).sample
-
-        # forward pass with ip_adapter_1 again
-        model._load_ip_adapter_weights(ip_adapter_1)
-        with torch.no_grad():
-            sample4 = model(**inputs_dict).sample
-
-        assert not sample1.allclose(sample2, atol=1e-4, rtol=1e-4)
-        assert not sample2.allclose(sample3, atol=1e-4, rtol=1e-4)
-        assert sample2.allclose(sample4, atol=1e-4, rtol=1e-4)
 
 
 @slow

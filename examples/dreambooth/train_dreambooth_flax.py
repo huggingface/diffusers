@@ -1,8 +1,10 @@
 import argparse
+import hashlib
 import logging
 import math
 import os
 from pathlib import Path
+from typing import Optional
 
 import jax
 import jax.numpy as jnp
@@ -14,8 +16,7 @@ import transformers
 from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
-from huggingface_hub import create_repo, upload_folder
-from huggingface_hub.utils import insecure_hashlib
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from jax.experimental.compilation_cache import compilation_cache as cc
 from PIL import Image
 from torch.utils.data import Dataset
@@ -35,7 +36,7 @@ from diffusers.utils import check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.24.0")
+check_min_version("0.22.0.dev0")
 
 # Cache compiled models across invocations of this script.
 cc.initialize_cache(os.path.expanduser("~/.cache/jax/compilation_cache"))
@@ -317,6 +318,16 @@ class PromptDataset(Dataset):
         return example
 
 
+def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
+    if token is None:
+        token = HfFolder.get_token()
+    if organization is None:
+        username = whoami(token)["name"]
+        return f"{username}/{model_id}"
+    else:
+        return f"{organization}/{model_id}"
+
+
 def get_params_to_save(params):
     return jax.device_get(jax.tree_util.tree_map(lambda x: x[0], params))
 
@@ -373,7 +384,7 @@ def main():
                 images = pipeline.numpy_to_pil(np.array(images))
 
                 for i, image in enumerate(images):
-                    hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
@@ -381,13 +392,21 @@ def main():
 
     # Handle the repository creation
     if jax.process_index() == 0:
-        if args.output_dir is not None:
-            os.makedirs(args.output_dir, exist_ok=True)
-
         if args.push_to_hub:
-            repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-            ).repo_id
+            if args.hub_model_id is None:
+                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
+            else:
+                repo_name = args.hub_model_id
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
+
+            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
+                if "step_*" not in gitignore:
+                    gitignore.write("step_*\n")
+                if "epoch_*" not in gitignore:
+                    gitignore.write("epoch_*\n")
+        elif args.output_dir is not None:
+            os.makedirs(args.output_dir, exist_ok=True)
 
     # Load the tokenizer and add the placeholder token as a additional special token
     if args.tokenizer_name:
@@ -460,10 +479,7 @@ def main():
 
     # Load models and create wrapper for stable diffusion
     text_encoder = FlaxCLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="text_encoder",
-        dtype=weight_dtype,
-        revision=args.revision,
+        args.pretrained_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype, revision=args.revision
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
         vae_arg,
@@ -471,10 +487,7 @@ def main():
         **vae_kwargs,
     )
     unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="unet",
-        dtype=weight_dtype,
-        revision=args.revision,
+        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype, revision=args.revision
     )
 
     # Optimization
@@ -655,12 +668,7 @@ def main():
 
         if args.push_to_hub:
             message = f"checkpoint-{step}" if step is not None else "End of training"
-            upload_folder(
-                repo_id=repo_id,
-                folder_path=args.output_dir,
-                commit_message=message,
-                ignore_patterns=["step_*", "epoch_*"],
-            )
+            repo.push_to_hub(commit_message=message, blocking=False, auto_lfs_prune=True)
 
     global_step = 0
 

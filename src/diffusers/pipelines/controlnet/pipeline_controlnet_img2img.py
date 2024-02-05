@@ -91,20 +91,6 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
-
-
 def prepare_image(image):
     if isinstance(image, torch.Tensor):
         # Batch single image
@@ -164,11 +150,9 @@ class StableDiffusionControlNetImg2ImgPipeline(
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
-
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
@@ -464,7 +448,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
 
         if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
             # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder, lora_scale)
+            unscale_lora_layers(self.text_encoder)
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -524,19 +508,13 @@ class StableDiffusionControlNetImg2ImgPipeline(
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
-        callback_on_step_end_tensor_inputs=None,
     ):
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
-            )
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -755,12 +733,11 @@ class StableDiffusionControlNetImg2ImgPipeline(
 
             elif isinstance(generator, list):
                 init_latents = [
-                    retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
-                    for i in range(batch_size)
+                    self.vae.encode(image[i : i + 1]).latent_dist.sample(generator[i]) for i in range(batch_size)
                 ]
                 init_latents = torch.cat(init_latents, dim=0)
             else:
-                init_latents = retrieve_latents(self.vae.encode(image), generator=generator)
+                init_latents = self.vae.encode(image).latent_dist.sample(generator)
 
             init_latents = self.vae.config.scaling_factor * init_latents
 
@@ -819,29 +796,6 @@ class StableDiffusionControlNetImg2ImgPipeline(
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
 
-    @property
-    def guidance_scale(self):
-        return self._guidance_scale
-
-    @property
-    def clip_skip(self):
-        return self._clip_skip
-
-    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-    # corresponds to doing no classifier free guidance.
-    @property
-    def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1
-
-    @property
-    def cross_attention_kwargs(self):
-        return self._cross_attention_kwargs
-
-    @property
-    def num_timesteps(self):
-        return self._num_timesteps
-
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -863,15 +817,14 @@ class StableDiffusionControlNetImg2ImgPipeline(
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         controlnet_conditioning_scale: Union[float, List[float]] = 0.8,
         guess_mode: bool = False,
         control_guidance_start: Union[float, List[float]] = 0.0,
         control_guidance_end: Union[float, List[float]] = 1.0,
         clip_skip: Optional[int] = None,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -927,6 +880,12 @@ class StableDiffusionControlNetImg2ImgPipeline(
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
+            callback (`Callable`, *optional*):
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
@@ -944,15 +903,6 @@ class StableDiffusionControlNetImg2ImgPipeline(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
 
         Examples:
 
@@ -963,23 +913,6 @@ class StableDiffusionControlNetImg2ImgPipeline(
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
-
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-
         controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
 
         # align format for control guidance
@@ -989,10 +922,9 @@ class StableDiffusionControlNetImg2ImgPipeline(
             control_guidance_end = len(control_guidance_start) * [control_guidance_end]
         elif not isinstance(control_guidance_start, list) and not isinstance(control_guidance_end, list):
             mult = len(controlnet.nets) if isinstance(controlnet, MultiControlNetModel) else 1
-            control_guidance_start, control_guidance_end = (
-                mult * [control_guidance_start],
-                mult * [control_guidance_end],
-            )
+            control_guidance_start, control_guidance_end = mult * [control_guidance_start], mult * [
+                control_guidance_end
+            ]
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -1005,12 +937,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
             controlnet_conditioning_scale,
             control_guidance_start,
             control_guidance_end,
-            callback_on_step_end_tensor_inputs,
         )
-
-        self._guidance_scale = guidance_scale
-        self._clip_skip = clip_skip
-        self._cross_attention_kwargs = cross_attention_kwargs
 
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
@@ -1021,6 +948,10 @@ class StableDiffusionControlNetImg2ImgPipeline(
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # corresponds to doing no classifier free guidance.
+        do_classifier_free_guidance = guidance_scale > 1.0
 
         if isinstance(controlnet, MultiControlNetModel) and isinstance(controlnet_conditioning_scale, float):
             controlnet_conditioning_scale = [controlnet_conditioning_scale] * len(controlnet.nets)
@@ -1034,27 +965,27 @@ class StableDiffusionControlNetImg2ImgPipeline(
 
         # 3. Encode input prompt
         text_encoder_lora_scale = (
-            self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
+            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
         )
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
             num_images_per_prompt,
-            self.do_classifier_free_guidance,
+            do_classifier_free_guidance,
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
-            clip_skip=self.clip_skip,
+            clip_skip=clip_skip,
         )
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
-        if self.do_classifier_free_guidance:
+        if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare image
-        image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        image = self.image_processor.preprocess(image).to(dtype=torch.float32)
 
         # 5. Prepare controlnet_conditioning_image
         if isinstance(controlnet, ControlNetModel):
@@ -1066,7 +997,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
-                do_classifier_free_guidance=self.do_classifier_free_guidance,
+                do_classifier_free_guidance=do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
         elif isinstance(controlnet, MultiControlNetModel):
@@ -1081,7 +1012,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
-                    do_classifier_free_guidance=self.do_classifier_free_guidance,
+                    do_classifier_free_guidance=do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
 
@@ -1095,7 +1026,6 @@ class StableDiffusionControlNetImg2ImgPipeline(
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
-        self._num_timesteps = len(timesteps)
 
         # 6. Prepare latent variables
         latents = self.prepare_latents(
@@ -1125,11 +1055,11 @@ class StableDiffusionControlNetImg2ImgPipeline(
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # controlnet(s) inference
-                if guess_mode and self.do_classifier_free_guidance:
+                if guess_mode and do_classifier_free_guidance:
                     # Infer ControlNet only for the conditional batch.
                     control_model_input = latents
                     control_model_input = self.scheduler.scale_model_input(control_model_input, t)
@@ -1156,7 +1086,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
                     return_dict=False,
                 )
 
-                if guess_mode and self.do_classifier_free_guidance:
+                if guess_mode and do_classifier_free_guidance:
                     # Infered ControlNet only for the conditional batch.
                     # To apply the output of ControlNet to both the unconditional and conditional batches,
                     # add 0 to the unconditional batch to keep it unchanged.
@@ -1168,29 +1098,19 @@ class StableDiffusionControlNetImg2ImgPipeline(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
+                    cross_attention_kwargs=cross_attention_kwargs,
                     down_block_additional_residuals=down_block_res_samples,
                     mid_block_additional_residual=mid_block_res_sample,
                     return_dict=False,
                 )[0]
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
+                if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -1207,9 +1127,7 @@ class StableDiffusionControlNetImg2ImgPipeline(
             torch.cuda.empty_cache()
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
-                0
-            ]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents

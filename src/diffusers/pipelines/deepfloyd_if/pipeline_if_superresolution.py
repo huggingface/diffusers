@@ -84,19 +84,7 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
     watermarker: Optional[IFWatermarker]
 
     bad_punct_regex = re.compile(
-        r"["
-        + "#®•©™&@·º½¾¿¡§~"
-        + r"\)"
-        + r"\("
-        + r"\]"
-        + r"\["
-        + r"\}"
-        + r"\{"
-        + r"\|"
-        + "\\"
-        + r"\/"
-        + r"\*"
-        + r"]{1,}"
+        r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
     )  # noqa
 
     _optional_components = ["tokenizer", "text_encoder", "safety_checker", "feature_extractor", "watermarker"]
@@ -308,11 +296,11 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
     # Copied from diffusers.pipelines.deepfloyd_if.pipeline_if.IFPipeline.encode_prompt
     def encode_prompt(
         self,
-        prompt: Union[str, List[str]],
-        do_classifier_free_guidance: bool = True,
-        num_images_per_prompt: int = 1,
-        device: Optional[torch.device] = None,
-        negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt,
+        do_classifier_free_guidance=True,
+        num_images_per_prompt=1,
+        device=None,
+        negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
@@ -321,14 +309,14 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
         Encodes the prompt into text encoder hidden states.
 
         Args:
-            prompt (`str` or `List[str]`, *optional*):
+             prompt (`str` or `List[str]`, *optional*):
                 prompt to be encoded
-            do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
-                whether to use classifier free guidance or not
-            num_images_per_prompt (`int`, *optional*, defaults to 1):
-                number of images that should be generated per prompt
             device: (`torch.device`, *optional*):
                 torch device to place the resulting embeddings on
+            num_images_per_prompt (`int`, *optional*, defaults to 1):
+                number of images that should be generated per prompt
+            do_classifier_free_guidance (`bool`, *optional*, defaults to `True`):
+                whether to use classifier free guidance or not
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. If not defined, one has to pass
                 `negative_prompt_embeds`. instead. If not defined, one has to pass `negative_prompt_embeds`. instead.
@@ -340,8 +328,6 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            clean_caption (bool, defaults to `False`):
-                If `True`, the function will preprocess and clean the provided caption before encoding.
         """
         if prompt is not None and negative_prompt is not None:
             if type(prompt) is not type(negative_prompt):
@@ -651,19 +637,19 @@ class IFSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide the image generation. If not defined, one has to pass `prompt_embeds`.
                 instead.
-            height (`int`, *optional*, defaults to None):
+            height (`int`, *optional*, defaults to self.unet.config.sample_size):
                 The height in pixels of the generated image.
-            width (`int`, *optional*, defaults to None):
+            width (`int`, *optional*, defaults to self.unet.config.sample_size):
                 The width in pixels of the generated image.
             image (`PIL.Image.Image`, `np.ndarray`, `torch.FloatTensor`):
                 The image to be upscaled.
             num_inference_steps (`int`, *optional*, defaults to 50):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*, defaults to None):
+            timesteps (`List[int]`, *optional*):
                 Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
                 timesteps are used. Must be in descending order.
-            guidance_scale (`float`, *optional*, defaults to 4.0):
+            guidance_scale (`float`, *optional*, defaults to 7.5):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
                 Paper](https://arxiv.org/pdf/2205.11487.pdf). Guidance scale is enabled by setting `guidance_scale >

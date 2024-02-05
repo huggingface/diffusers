@@ -5,8 +5,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from diffusers.utils import deprecate
-
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models import ModelMixin
 from ...models.activations import get_activation
@@ -281,7 +279,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         down_block_types (`Tuple[str]`, *optional*, defaults to `("CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "CrossAttnDownBlockFlat", "DownBlockFlat")`):
             The tuple of downsample blocks to use.
         mid_block_type (`str`, *optional*, defaults to `"UNetMidBlockFlatCrossAttn"`):
-            Block type for middle of UNet, it can be one of `UNetMidBlockFlatCrossAttn`, `UNetMidBlockFlat`, or
+            Block type for middle of UNet, it can be either `UNetMidBlockFlatCrossAttn` or
             `UNetMidBlockFlatSimpleCrossAttn`. If `None`, the mid block layer is skipped.
         up_block_types (`Tuple[str]`, *optional*, defaults to `("UpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat", "CrossAttnUpBlockFlat")`):
             The tuple of upsample blocks to use.
@@ -300,13 +298,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_eps (`float`, *optional*, defaults to 1e-5): The epsilon to use for the normalization.
         cross_attention_dim (`int` or `Tuple[int]`, *optional*, defaults to 1280):
             The dimension of the cross attention features.
-        transformer_layers_per_block (`int`, `Tuple[int]`, or `Tuple[Tuple]` , *optional*, defaults to 1):
+        transformer_layers_per_block (`int` or `Tuple[int]`, *optional*, defaults to 1):
             The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`]. Only relevant for
-            [`~models.unet_2d_blocks.CrossAttnDownBlockFlat`], [`~models.unet_2d_blocks.CrossAttnUpBlockFlat`],
-            [`~models.unet_2d_blocks.UNetMidBlockFlatCrossAttn`].
-       reverse_transformer_layers_per_block : (`Tuple[Tuple]`, *optional*, defaults to None):
-            The number of transformer blocks of type [`~models.attention.BasicTransformerBlock`], in the upsampling
-            blocks of the U-Net. Only relevant if `transformer_layers_per_block` is of type `Tuple[Tuple]` and for
             [`~models.unet_2d_blocks.CrossAttnDownBlockFlat`], [`~models.unet_2d_blocks.CrossAttnUpBlockFlat`],
             [`~models.unet_2d_blocks.UNetMidBlockFlatCrossAttn`].
         encoder_hid_dim (`int`, *optional*, defaults to None):
@@ -342,9 +335,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
         time_cond_proj_dim (`int`, *optional*, defaults to `None`):
             The dimension of `cond_proj` layer in the timestep embedding.
-        conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer. conv_out_kernel (`int`,
-        *optional*, default to `3`): The kernel size of `conv_out` layer. projection_class_embeddings_input_dim (`int`,
-        *optional*): The dimension of the `class_labels` input when
+        conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
+        conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
+        projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
             `class_embed_type="projection"`. Required when `class_embed_type="projection"`.
         class_embeddings_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the time
             embeddings with the class embeddings.
@@ -389,8 +382,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         norm_num_groups: Optional[int] = 32,
         norm_eps: float = 1e-5,
         cross_attention_dim: Union[int, Tuple[int]] = 1280,
-        transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
-        reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]]] = None,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
@@ -425,7 +417,10 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         if num_attention_heads is not None:
             raise ValueError(
-                "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
+                "At the moment it is not possible to define the number of attention heads via `num_attention_heads`"
+                " because of a naming issue as described in"
+                " https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing"
+                " `num_attention_heads` will only be supported in diffusers v0.19."
             )
 
         # If `num_attention_heads` is not defined (which is the case for most models)
@@ -439,42 +434,45 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         # Check inputs
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
-                f"Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`: {down_block_types}. `up_block_types`: {up_block_types}."
+                "Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`:"
+                f" {down_block_types}. `up_block_types`: {up_block_types}."
             )
 
         if len(block_out_channels) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
+                "Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`:"
+                f" {block_out_channels}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(only_cross_attention, bool) and len(only_cross_attention) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `only_cross_attention` as `down_block_types`. `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
+                "Must provide the same number of `only_cross_attention` as `down_block_types`."
+                f" `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
+                "Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`:"
+                f" {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
+                "Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`:"
+                f" {attention_head_dim}. `down_block_types`: {down_block_types}."
             )
 
         if isinstance(cross_attention_dim, list) and len(cross_attention_dim) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `cross_attention_dim` as `down_block_types`. `cross_attention_dim`: {cross_attention_dim}. `down_block_types`: {down_block_types}."
+                "Must provide the same number of `cross_attention_dim` as `down_block_types`. `cross_attention_dim`:"
+                f" {cross_attention_dim}. `down_block_types`: {down_block_types}."
             )
 
         if not isinstance(layers_per_block, int) and len(layers_per_block) != len(down_block_types):
             raise ValueError(
-                f"Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`: {layers_per_block}. `down_block_types`: {down_block_types}."
+                "Must provide the same number of `layers_per_block` as `down_block_types`. `layers_per_block`:"
+                f" {layers_per_block}. `down_block_types`: {down_block_types}."
             )
-        if isinstance(transformer_layers_per_block, list) and reverse_transformer_layers_per_block is None:
-            for layer_number_per_block in transformer_layers_per_block:
-                if isinstance(layer_number_per_block, list):
-                    raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
 
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
@@ -710,19 +708,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 only_cross_attention=mid_block_only_cross_attention,
                 cross_attention_norm=cross_attention_norm,
             )
-        elif mid_block_type == "UNetMidBlockFlat":
-            self.mid_block = UNetMidBlockFlat(
-                in_channels=block_out_channels[-1],
-                temb_channels=blocks_time_embed_dim,
-                dropout=dropout,
-                num_layers=0,
-                resnet_eps=norm_eps,
-                resnet_act_fn=act_fn,
-                output_scale_factor=mid_block_scale_factor,
-                resnet_groups=norm_num_groups,
-                resnet_time_scale_shift=resnet_time_scale_shift,
-                add_attention=False,
-            )
         elif mid_block_type is None:
             self.mid_block = None
         else:
@@ -736,11 +721,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         reversed_num_attention_heads = list(reversed(num_attention_heads))
         reversed_layers_per_block = list(reversed(layers_per_block))
         reversed_cross_attention_dim = list(reversed(cross_attention_dim))
-        reversed_transformer_layers_per_block = (
-            list(reversed(transformer_layers_per_block))
-            if reverse_transformer_layers_per_block is None
-            else reverse_transformer_layers_per_block
-        )
+        reversed_transformer_layers_per_block = list(reversed(transformer_layers_per_block))
         only_cross_attention = list(reversed(only_cross_attention))
 
         output_channel = reversed_block_out_channels[0]
@@ -887,7 +868,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             processor = AttnProcessor()
         else:
             raise ValueError(
-                f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
+                "Cannot call `set_default_attn_processor` when attention processors are of type"
+                f" {next(iter(self.attn_processors.values()))}"
             )
 
         self.set_attn_processor(processor, _remove_lora=True)
@@ -990,7 +972,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         freeu_keys = {"s1", "s2", "b1", "b2"}
         for i, upsample_block in enumerate(self.up_blocks):
             for k in freeu_keys:
-                if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
+                if hasattr(upsample_block, k) or getattr(upsample_block, k) is not None:
                     setattr(upsample_block, k, None)
 
     def forward(
@@ -1005,7 +987,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         down_block_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         mid_block_additional_residual: Optional[torch.Tensor] = None,
-        down_intrablock_additional_residuals: Optional[Tuple[torch.Tensor]] = None,
         encoder_attention_mask: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNet2DConditionOutput, Tuple]:
@@ -1050,13 +1031,6 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             added_cond_kwargs: (`dict`, *optional*):
                 A kwargs dictionary containin additional embeddings that if specified are added to the embeddings that
                 are passed along to the UNet blocks.
-            down_block_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
-                additional residuals to be added to UNet long skip connections from down blocks to up blocks for
-                example from ControlNet side model(s)
-            mid_block_additional_residual (`torch.Tensor`, *optional*):
-                additional residual to be added to UNet mid block output, for example from ControlNet side model
-            down_intrablock_additional_residuals (`tuple` of `torch.Tensor`, *optional*):
-                additional residuals to be added within UNet down blocks, for example from T2I-Adapter side model(s)
 
         Returns:
             [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
@@ -1073,11 +1047,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
         forward_upsample_size = False
         upsample_size = None
 
-        for dim in sample.shape[-2:]:
-            if dim % default_overall_up_factor != 0:
-                # Forward upsample size to force interpolation output size.
-                forward_upsample_size = True
-                break
+        if any(s % default_overall_up_factor != 0 for s in sample.shape[-2:]):
+            # Forward upsample size to force interpolation output size.
+            forward_upsample_size = True
 
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension
         # expects mask of shape:
@@ -1155,7 +1127,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kandinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_image' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_image' which requires"
+                    " the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
                 )
 
             image_embs = added_cond_kwargs.get("image_embeds")
@@ -1165,12 +1138,14 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # SDXL - style
             if "text_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires"
+                    " the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
                 )
             text_embeds = added_cond_kwargs.get("text_embeds")
             if "time_ids" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires"
+                    " the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
                 )
             time_ids = added_cond_kwargs.get("time_ids")
             time_embeds = self.add_time_proj(time_ids.flatten())
@@ -1182,7 +1157,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'image' which requires the keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'image' which requires the"
+                    " keyword argument `image_embeds` to be passed in `added_cond_kwargs`"
                 )
             image_embs = added_cond_kwargs.get("image_embeds")
             aug_emb = self.add_embedding(image_embs)
@@ -1190,7 +1166,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs or "hint" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `addition_embed_type` set to 'image_hint' which requires the keyword arguments `image_embeds` and `hint` to be passed in `added_cond_kwargs`"
+                    f"{self.__class__} has the config param `addition_embed_type` set to 'image_hint' which requires"
+                    " the keyword arguments `image_embeds` and `hint` to be passed in `added_cond_kwargs`"
                 )
             image_embs = added_cond_kwargs.get("image_embeds")
             hint = added_cond_kwargs.get("hint")
@@ -1208,7 +1185,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kadinsky 2.1 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'text_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'text_image_proj' which"
+                    " requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
 
             image_embeds = added_cond_kwargs.get("image_embeds")
@@ -1217,19 +1195,11 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             # Kandinsky 2.2 - style
             if "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
+                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'image_proj' which requires"
+                    " the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(image_embeds)
-        elif self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
-            if "image_embeds" not in added_cond_kwargs:
-                raise ValueError(
-                    f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
-                )
-            image_embeds = added_cond_kwargs.get("image_embeds")
-            image_embeds = self.encoder_hid_proj(image_embeds).to(encoder_hidden_states.dtype)
-            encoder_hidden_states = torch.cat([encoder_hidden_states, image_embeds], dim=1)
-
         # 2. pre-process
         sample = self.conv_in(sample)
 
@@ -1246,30 +1216,15 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             scale_lora_layers(self, lora_scale)
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
-        # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
-        is_adapter = down_intrablock_additional_residuals is not None
-        # maintain backward compatibility for legacy usage, where
-        #       T2I-Adapter and ControlNet both use down_block_additional_residuals arg
-        #       but can only use one or the other
-        if not is_adapter and mid_block_additional_residual is None and down_block_additional_residuals is not None:
-            deprecate(
-                "T2I should not use down_block_additional_residuals",
-                "1.3.0",
-                "Passing intrablock residual connections with `down_block_additional_residuals` is deprecated \
-                       and will be removed in diffusers 1.3.0.  `down_block_additional_residuals` should only be used \
-                       for ControlNet. Please make sure use `down_intrablock_additional_residuals` instead. ",
-                standard_warn=False,
-            )
-            down_intrablock_additional_residuals = down_block_additional_residuals
-            is_adapter = True
+        is_adapter = mid_block_additional_residual is None and down_block_additional_residuals is not None
 
         down_block_res_samples = (sample,)
         for downsample_block in self.down_blocks:
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 # For t2i-adapter CrossAttnDownBlockFlat
                 additional_residuals = {}
-                if is_adapter and len(down_intrablock_additional_residuals) > 0:
-                    additional_residuals["additional_residuals"] = down_intrablock_additional_residuals.pop(0)
+                if is_adapter and len(down_block_additional_residuals) > 0:
+                    additional_residuals["additional_residuals"] = down_block_additional_residuals.pop(0)
 
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
@@ -1282,8 +1237,9 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                 )
             else:
                 sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
-                if is_adapter and len(down_intrablock_additional_residuals) > 0:
-                    sample += down_intrablock_additional_residuals.pop(0)
+
+                if is_adapter and len(down_block_additional_residuals) > 0:
+                    sample += down_block_additional_residuals.pop(0)
 
             down_block_res_samples += res_samples
 
@@ -1300,25 +1256,21 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         # 4. mid
         if self.mid_block is not None:
-            if hasattr(self.mid_block, "has_cross_attention") and self.mid_block.has_cross_attention:
-                sample = self.mid_block(
-                    sample,
-                    emb,
-                    encoder_hidden_states=encoder_hidden_states,
-                    attention_mask=attention_mask,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    encoder_attention_mask=encoder_attention_mask,
-                )
-            else:
-                sample = self.mid_block(sample, emb)
-
+            sample = self.mid_block(
+                sample,
+                emb,
+                encoder_hidden_states=encoder_hidden_states,
+                attention_mask=attention_mask,
+                cross_attention_kwargs=cross_attention_kwargs,
+                encoder_attention_mask=encoder_attention_mask,
+            )
             # To support T2I-Adapter-XL
             if (
                 is_adapter
-                and len(down_intrablock_additional_residuals) > 0
-                and sample.shape == down_intrablock_additional_residuals[0].shape
+                and len(down_block_additional_residuals) > 0
+                and sample.shape == down_block_additional_residuals[0].shape
             ):
-                sample += down_intrablock_additional_residuals.pop(0)
+                sample += down_block_additional_residuals.pop(0)
 
         if is_controlnet:
             sample = sample + mid_block_additional_residual
@@ -1363,7 +1315,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
 
         if USE_PEFT_BACKEND:
             # remove `lora_scale` from each PEFT layer
-            unscale_lora_layers(self, lora_scale)
+            unscale_lora_layers(self)
 
         if not return_dict:
             return (sample,)
@@ -1484,6 +1436,7 @@ class ResnetBlockFlat(nn.Module):
         return output_tensor
 
 
+# Copied from diffusers.models.unet_2d_blocks.DownBlock2D with DownBlock2D->DownBlockFlat, ResnetBlock2D->ResnetBlockFlat, Downsample2D->LinearMultiDim
 class DownBlockFlat(nn.Module):
     def __init__(
         self,
@@ -1497,9 +1450,9 @@ class DownBlockFlat(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        output_scale_factor: float = 1.0,
-        add_downsample: bool = True,
-        downsample_padding: int = 1,
+        output_scale_factor=1.0,
+        add_downsample=True,
+        downsample_padding=1,
     ):
         super().__init__()
         resnets = []
@@ -1536,9 +1489,7 @@ class DownBlockFlat(nn.Module):
 
         self.gradient_checkpointing = False
 
-    def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = 1.0
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+    def forward(self, hidden_states, temb=None, scale: float = 1.0):
         output_states = ()
 
         for resnet in self.resnets:
@@ -1572,6 +1523,7 @@ class DownBlockFlat(nn.Module):
         return hidden_states, output_states
 
 
+# Copied from diffusers.models.unet_2d_blocks.CrossAttnDownBlock2D with CrossAttnDownBlock2D->CrossAttnDownBlockFlat, ResnetBlock2D->ResnetBlockFlat, Downsample2D->LinearMultiDim
 class CrossAttnDownBlockFlat(nn.Module):
     def __init__(
         self,
@@ -1580,22 +1532,22 @@ class CrossAttnDownBlockFlat(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        num_attention_heads: int = 1,
-        cross_attention_dim: int = 1280,
-        output_scale_factor: float = 1.0,
-        downsample_padding: int = 1,
-        add_downsample: bool = True,
-        dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
-        only_cross_attention: bool = False,
-        upcast_attention: bool = False,
-        attention_type: str = "default",
+        num_attention_heads=1,
+        cross_attention_dim=1280,
+        output_scale_factor=1.0,
+        downsample_padding=1,
+        add_downsample=True,
+        dual_cross_attention=False,
+        use_linear_projection=False,
+        only_cross_attention=False,
+        upcast_attention=False,
+        attention_type="default",
     ):
         super().__init__()
         resnets = []
@@ -1603,8 +1555,6 @@ class CrossAttnDownBlockFlat(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
-        if isinstance(transformer_layers_per_block, int):
-            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1628,7 +1578,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
-                        num_layers=transformer_layers_per_block[i],
+                        num_layers=transformer_layers_per_block,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -1672,8 +1622,8 @@ class CrossAttnDownBlockFlat(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-        additional_residuals: Optional[torch.FloatTensor] = None,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        additional_residuals=None,
+    ):
         output_states = ()
 
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
@@ -1741,7 +1691,7 @@ class UpBlockFlat(nn.Module):
         prev_output_channel: int,
         out_channels: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
@@ -1749,8 +1699,8 @@ class UpBlockFlat(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        output_scale_factor: float = 1.0,
-        add_upsample: bool = True,
+        output_scale_factor=1.0,
+        add_upsample=True,
     ):
         super().__init__()
         resnets = []
@@ -1784,14 +1734,7 @@ class UpBlockFlat(nn.Module):
         self.gradient_checkpointing = False
         self.resolution_idx = resolution_idx
 
-    def forward(
-        self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
-        temb: Optional[torch.FloatTensor] = None,
-        upsample_size: Optional[int] = None,
-        scale: float = 1.0,
-    ) -> torch.FloatTensor:
+    def forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, scale: float = 1.0):
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -1852,24 +1795,24 @@ class CrossAttnUpBlockFlat(nn.Module):
         out_channels: int,
         prev_output_channel: int,
         temb_channels: int,
-        resolution_idx: Optional[int] = None,
+        resolution_idx: int = None,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        num_attention_heads: int = 1,
-        cross_attention_dim: int = 1280,
-        output_scale_factor: float = 1.0,
-        add_upsample: bool = True,
-        dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
-        only_cross_attention: bool = False,
-        upcast_attention: bool = False,
-        attention_type: str = "default",
+        num_attention_heads=1,
+        cross_attention_dim=1280,
+        output_scale_factor=1.0,
+        add_upsample=True,
+        dual_cross_attention=False,
+        use_linear_projection=False,
+        only_cross_attention=False,
+        upcast_attention=False,
+        attention_type="default",
     ):
         super().__init__()
         resnets = []
@@ -1877,9 +1820,6 @@ class CrossAttnUpBlockFlat(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
-
-        if isinstance(transformer_layers_per_block, int):
-            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -1905,7 +1845,7 @@ class CrossAttnUpBlockFlat(nn.Module):
                         num_attention_heads,
                         out_channels // num_attention_heads,
                         in_channels=out_channels,
-                        num_layers=transformer_layers_per_block[i],
+                        num_layers=transformer_layers_per_block,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -1946,7 +1886,7 @@ class CrossAttnUpBlockFlat(nn.Module):
         upsample_size: Optional[int] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+    ):
         lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         is_freeu_enabled = (
             getattr(self, "s1", None)
@@ -2018,132 +1958,6 @@ class CrossAttnUpBlockFlat(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unet_2d_blocks.UNetMidBlock2D with UNetMidBlock2D->UNetMidBlockFlat, ResnetBlock2D->ResnetBlockFlat
-class UNetMidBlockFlat(nn.Module):
-    """
-    A 2D UNet mid-block [`UNetMidBlockFlat`] with multiple residual blocks and optional attention blocks.
-
-    Args:
-        in_channels (`int`): The number of input channels.
-        temb_channels (`int`): The number of temporal embedding channels.
-        dropout (`float`, *optional*, defaults to 0.0): The dropout rate.
-        num_layers (`int`, *optional*, defaults to 1): The number of residual blocks.
-        resnet_eps (`float`, *optional*, 1e-6 ): The epsilon value for the resnet blocks.
-        resnet_time_scale_shift (`str`, *optional*, defaults to `default`):
-            The type of normalization to apply to the time embeddings. This can help to improve the performance of the
-            model on tasks with long-range temporal dependencies.
-        resnet_act_fn (`str`, *optional*, defaults to `swish`): The activation function for the resnet blocks.
-        resnet_groups (`int`, *optional*, defaults to 32):
-            The number of groups to use in the group normalization layers of the resnet blocks.
-        attn_groups (`Optional[int]`, *optional*, defaults to None): The number of groups for the attention blocks.
-        resnet_pre_norm (`bool`, *optional*, defaults to `True`):
-            Whether to use pre-normalization for the resnet blocks.
-        add_attention (`bool`, *optional*, defaults to `True`): Whether to add attention blocks.
-        attention_head_dim (`int`, *optional*, defaults to 1):
-            Dimension of a single attention head. The number of attention heads is determined based on this value and
-            the number of input channels.
-        output_scale_factor (`float`, *optional*, defaults to 1.0): The output scale factor.
-
-    Returns:
-        `torch.FloatTensor`: The output of the last residual block, which is a tensor of shape `(batch_size,
-        in_channels, height, width)`.
-
-    """
-
-    def __init__(
-        self,
-        in_channels: int,
-        temb_channels: int,
-        dropout: float = 0.0,
-        num_layers: int = 1,
-        resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",  # default, spatial
-        resnet_act_fn: str = "swish",
-        resnet_groups: int = 32,
-        attn_groups: Optional[int] = None,
-        resnet_pre_norm: bool = True,
-        add_attention: bool = True,
-        attention_head_dim: int = 1,
-        output_scale_factor: float = 1.0,
-    ):
-        super().__init__()
-        resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
-        self.add_attention = add_attention
-
-        if attn_groups is None:
-            attn_groups = resnet_groups if resnet_time_scale_shift == "default" else None
-
-        # there is always at least one resnet
-        resnets = [
-            ResnetBlockFlat(
-                in_channels=in_channels,
-                out_channels=in_channels,
-                temb_channels=temb_channels,
-                eps=resnet_eps,
-                groups=resnet_groups,
-                dropout=dropout,
-                time_embedding_norm=resnet_time_scale_shift,
-                non_linearity=resnet_act_fn,
-                output_scale_factor=output_scale_factor,
-                pre_norm=resnet_pre_norm,
-            )
-        ]
-        attentions = []
-
-        if attention_head_dim is None:
-            logger.warn(
-                f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
-            )
-            attention_head_dim = in_channels
-
-        for _ in range(num_layers):
-            if self.add_attention:
-                attentions.append(
-                    Attention(
-                        in_channels,
-                        heads=in_channels // attention_head_dim,
-                        dim_head=attention_head_dim,
-                        rescale_output_factor=output_scale_factor,
-                        eps=resnet_eps,
-                        norm_num_groups=attn_groups,
-                        spatial_norm_dim=temb_channels if resnet_time_scale_shift == "spatial" else None,
-                        residual_connection=True,
-                        bias=True,
-                        upcast_softmax=True,
-                        _from_deprecated_attn_block=True,
-                    )
-                )
-            else:
-                attentions.append(None)
-
-            resnets.append(
-                ResnetBlockFlat(
-                    in_channels=in_channels,
-                    out_channels=in_channels,
-                    temb_channels=temb_channels,
-                    eps=resnet_eps,
-                    groups=resnet_groups,
-                    dropout=dropout,
-                    time_embedding_norm=resnet_time_scale_shift,
-                    non_linearity=resnet_act_fn,
-                    output_scale_factor=output_scale_factor,
-                    pre_norm=resnet_pre_norm,
-                )
-            )
-
-        self.attentions = nn.ModuleList(attentions)
-        self.resnets = nn.ModuleList(resnets)
-
-    def forward(self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None) -> torch.FloatTensor:
-        hidden_states = self.resnets[0](hidden_states, temb)
-        for attn, resnet in zip(self.attentions, self.resnets[1:]):
-            if attn is not None:
-                hidden_states = attn(hidden_states, temb=temb)
-            hidden_states = resnet(hidden_states, temb)
-
-        return hidden_states
-
-
 # Copied from diffusers.models.unet_2d_blocks.UNetMidBlock2DCrossAttn with UNetMidBlock2DCrossAttn->UNetMidBlockFlatCrossAttn, ResnetBlock2D->ResnetBlockFlat
 class UNetMidBlockFlatCrossAttn(nn.Module):
     def __init__(
@@ -2152,29 +1966,25 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         temb_channels: int,
         dropout: float = 0.0,
         num_layers: int = 1,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        transformer_layers_per_block: int = 1,
         resnet_eps: float = 1e-6,
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        num_attention_heads: int = 1,
-        output_scale_factor: float = 1.0,
-        cross_attention_dim: int = 1280,
-        dual_cross_attention: bool = False,
-        use_linear_projection: bool = False,
-        upcast_attention: bool = False,
-        attention_type: str = "default",
+        num_attention_heads=1,
+        output_scale_factor=1.0,
+        cross_attention_dim=1280,
+        dual_cross_attention=False,
+        use_linear_projection=False,
+        upcast_attention=False,
+        attention_type="default",
     ):
         super().__init__()
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
-
-        # support for variable transformer layers per block
-        if isinstance(transformer_layers_per_block, int):
-            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
         # there is always at least one resnet
         resnets = [
@@ -2193,14 +2003,14 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         ]
         attentions = []
 
-        for i in range(num_layers):
+        for _ in range(num_layers):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
                         num_attention_heads,
                         in_channels // num_attention_heads,
                         in_channels=in_channels,
-                        num_layers=transformer_layers_per_block[i],
+                        num_layers=transformer_layers_per_block,
                         cross_attention_dim=cross_attention_dim,
                         norm_num_groups=resnet_groups,
                         use_linear_projection=use_linear_projection,
@@ -2304,12 +2114,12 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        attention_head_dim: int = 1,
-        output_scale_factor: float = 1.0,
-        cross_attention_dim: int = 1280,
-        skip_time_act: bool = False,
-        only_cross_attention: bool = False,
-        cross_attention_norm: Optional[str] = None,
+        attention_head_dim=1,
+        output_scale_factor=1.0,
+        cross_attention_dim=1280,
+        skip_time_act=False,
+        only_cross_attention=False,
+        cross_attention_norm=None,
     ):
         super().__init__()
 
@@ -2385,7 +2195,7 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor:
+    ):
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
         lora_scale = cross_attention_kwargs.get("scale", 1.0)
 

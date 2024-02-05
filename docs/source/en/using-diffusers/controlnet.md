@@ -1,22 +1,10 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
-
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
-the License. You may obtain a copy of the License at
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on
-an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the
-specific language governing permissions and limitations under the License.
--->
-
 # ControlNet
 
 ControlNet is a type of model for controlling image diffusion models by conditioning the model with an additional input image. There are many types of conditioning inputs (canny edge, user sketching, human pose, depth, and more) you can use to control a diffusion model. This is hugely useful because it affords you greater control over image generation, making it easier to generate specific images without experimenting with different text prompts or denoising values as much.
 
 <Tip>
 
-Check out Section 3.5 of the [ControlNet](https://huggingface.co/papers/2302.05543) paper v1 for a list of ControlNet implementations on various conditioning inputs. You can find the official Stable Diffusion ControlNet conditioned models on [lllyasviel](https://huggingface.co/lllyasviel)'s Hub profile, and more [community-trained](https://huggingface.co/models?other=stable-diffusion&other=controlnet) ones on the Hub.
+Check out Section 3.5 of the [ControlNet](https://huggingface.co/papers/2302.05543) paper for a list of ControlNet implementations on various conditioning inputs. You can find the official Stable Diffusion ControlNet conditioned models on [lllyasviel](https://huggingface.co/lllyasviel)'s Hub profile, and more [community-trained](https://huggingface.co/models?other=stable-diffusion&other=controlnet) ones on the Hub.
 
 For Stable Diffusion XL (SDXL) ControlNet models, you can find them on the 🤗 [Diffusers](https://huggingface.co/diffusers) Hub organization, or you can browse [community-trained](https://huggingface.co/models?other=stable-diffusion-xl&other=controlnet) ones on the Hub.
 
@@ -35,7 +23,7 @@ Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install -q diffusers transformers accelerate opencv-python
+#!pip install diffusers transformers accelerate safetensors opencv-python
 ```
 
 ## Text-to-image
@@ -45,16 +33,17 @@ For text-to-image, you normally pass a text prompt to the model. But with Contro
 Load an image and use the [opencv-python](https://github.com/opencv/opencv-python) library to extract the canny image:
 
 ```py
-from diffusers.utils import load_image, make_image_grid
+from diffusers import StableDiffusionControlNetPipeline
+from diffusers.utils import load_image
 from PIL import Image
 import cv2
 import numpy as np
 
-original_image = load_image(
+image = load_image(
     "https://hf.co/datasets/huggingface/documentation-images/resolve/main/diffusers/input_image_vermeer.png"
 )
 
-image = np.array(original_image)
+image = np.array(image)
 
 low_threshold = 100
 high_threshold = 200
@@ -85,7 +74,7 @@ import torch
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16, use_safetensors=True)
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True
-)
+).to("cuda")
 
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
@@ -97,7 +86,6 @@ Now pass your prompt and canny image to the pipeline:
 output = pipe(
     "the mona lisa", image=canny_image
 ).images[0]
-make_image_grid([original_image, canny_image, output], rows=1, cols=3)
 ```
 
 <div class="flex justify-center">
@@ -117,11 +105,12 @@ import torch
 import numpy as np
 
 from transformers import pipeline
-from diffusers.utils import load_image, make_image_grid
+from diffusers.utils import load_image
 
 image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-img2img.jpg"
-)
+).resize((768, 768))
+
 
 def get_depth_map(image, depth_estimator):
     image = depth_estimator(image)["depth"]
@@ -145,7 +134,7 @@ import torch
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth", torch_dtype=torch.float16, use_safetensors=True)
 pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True
-)
+).to("cuda")
 
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
@@ -157,7 +146,6 @@ Now pass your prompt, initial image, and depth map to the pipeline:
 output = pipe(
     "lego batman and robin", image=image, control_image=depth_map,
 ).images[0]
-make_image_grid([image, output], rows=1, cols=2)
 ```
 
 <div class="flex gap-4">
@@ -171,14 +159,18 @@ make_image_grid([image, output], rows=1, cols=2)
   </div>
 </div>
 
+
 ## Inpainting
 
-For inpainting, you need an initial image, a mask image, and a prompt describing what to replace the mask with. ControlNet models allow you to add another control image to condition a model with. Let’s condition the model with an inpainting mask. This way, the ControlNet can use the inpainting mask as a control to guide the model to generate an image within the mask area.
+For inpainting, you need an initial image, a mask image, and a prompt describing what to replace the mask with. ControlNet models allow you to add another control image to condition a model with. Let’s condition the model with a canny image, a white outline of an image on a black background. This way, the ControlNet can use the canny image as a control to guide the model to generate an image with the same outline.
 
 Load an initial image and a mask image:
 
 ```py
-from diffusers.utils import load_image, make_image_grid
+from diffusers import StableDiffusionControlNetInpaintPipeline, ControlNetModel, UniPCMultistepScheduler
+from diffusers.utils import load_image
+import numpy as np
+import torch
 
 init_image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-inpaint.jpg"
@@ -189,15 +181,11 @@ mask_image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/controlnet-inpaint-mask.jpg"
 )
 mask_image = mask_image.resize((512, 512))
-make_image_grid([init_image, mask_image], rows=1, cols=2)
 ```
 
 Create a function to prepare the control image from the initial and mask images. This'll create a tensor to mark the pixels in `init_image` as masked if the corresponding pixel in `mask_image` is over a certain threshold.
 
 ```py
-import numpy as np
-import torch
-
 def make_inpaint_condition(image, image_mask):
     image = np.array(image.convert("RGB")).astype(np.float32) / 255.0
     image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
@@ -226,11 +214,12 @@ Load a ControlNet model conditioned on inpainting and pass it to the [`StableDif
 
 ```py
 from diffusers import StableDiffusionControlNetInpaintPipeline, ControlNetModel, UniPCMultistepScheduler
+import torch
 
 controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_inpaint", torch_dtype=torch.float16, use_safetensors=True)
 pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16, use_safetensors=True
-)
+).to("cuda")
 
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
@@ -247,7 +236,6 @@ output = pipe(
     mask_image=mask_image,
     control_image=control_image,
 ).images[0]
-make_image_grid([init_image, mask_image, output], rows=1, cols=3)
 ```
 
 <div class="flex justify-center">
@@ -270,29 +258,14 @@ Set `guess_mode=True` in the pipeline, and it is [recommended](https://github.co
 
 ```py
 from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
-from diffusers.utils import load_image, make_image_grid
-import numpy as np
 import torch
-from PIL import Image
-import cv2
 
 controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-canny", use_safetensors=True)
-pipe = StableDiffusionControlNetPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", controlnet=controlnet, use_safetensors=True).to("cuda")
-
-original_image = load_image("https://huggingface.co/takuma104/controlnet_dev/resolve/main/bird_512x512.png")
-
-image = np.array(original_image)
-
-low_threshold = 100
-high_threshold = 200
-
-image = cv2.Canny(image, low_threshold, high_threshold)
-image = image[:, :, None]
-image = np.concatenate([image, image, image], axis=2)
-canny_image = Image.fromarray(image)
-
+pipe = StableDiffusionControlNetPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", controlnet=controlnet, use_safetensors=True).to(
+    "cuda"
+)
 image = pipe("", image=canny_image, guess_mode=True, guidance_scale=3.0).images[0]
-make_image_grid([original_image, canny_image, image], rows=1, cols=3)
+image
 ```
 
 <div class="flex gap-4">
@@ -308,23 +281,22 @@ make_image_grid([original_image, canny_image, image], rows=1, cols=3)
 
 ## ControlNet with Stable Diffusion XL
 
-There aren't too many ControlNet models compatible with Stable Diffusion XL (SDXL) at the moment, but we've trained two full-sized ControlNet models for SDXL conditioned on canny edge detection and depth maps. We're also experimenting with creating smaller versions of these SDXL-compatible ControlNet models so it is easier to run on resource-constrained hardware. You can find these checkpoints on the [🤗 Diffusers Hub organization](https://huggingface.co/diffusers)!
+There aren't too many ControlNet models compatible with Stable Diffusion XL (SDXL) at the moment, but we've trained two full-sized ControlNet models for SDXL conditioned on canny edge detection and depth maps. We're also experimenting with creating smaller versions of these SDXL-compatible ControlNet models so it is easier to run on resource-constrained hardware. You can find these checkpoints on the 🤗 [Diffusers](https://huggingface.co/diffusers) Hub organization!
 
 Let's use a SDXL ControlNet conditioned on canny images to generate an image. Start by loading an image and prepare the canny image:
 
 ```py
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL
-from diffusers.utils import load_image, make_image_grid
+from diffusers.utils import load_image
 from PIL import Image
 import cv2
 import numpy as np
-import torch
 
-original_image = load_image(
+image = load_image(
     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
 )
 
-image = np.array(original_image)
+image = np.array(image)
 
 low_threshold = 100
 high_threshold = 200
@@ -333,7 +305,7 @@ image = cv2.Canny(image, low_threshold, high_threshold)
 image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image)
-make_image_grid([original_image, canny_image], rows=1, cols=2)
+canny_image
 ```
 
 <div class="flex gap-4">
@@ -378,13 +350,13 @@ The [`controlnet_conditioning_scale`](https://huggingface.co/docs/diffusers/main
 prompt = "aerial view, a futuristic research complex in a bright foggy jungle, hard lighting"
 negative_prompt = 'low quality, bad quality, sketches'
 
-image = pipe(
-    prompt,
-    negative_prompt=negative_prompt,
-    image=canny_image,
+images = pipe(
+    prompt, 
+    negative_prompt=negative_prompt, 
+    image=image, 
     controlnet_conditioning_scale=0.5,
 ).images[0]
-make_image_grid([original_image, canny_image, image], rows=1, cols=3)
+images
 ```
 
 <div class="flex justify-center">
@@ -395,16 +367,17 @@ You can use [`StableDiffusionXLControlNetPipeline`] in guess mode as well by set
 
 ```py
 from diffusers import StableDiffusionXLControlNetPipeline, ControlNetModel, AutoencoderKL
-from diffusers.utils import load_image, make_image_grid
+from diffusers.utils import load_image
 import numpy as np
 import torch
+
 import cv2
 from PIL import Image
 
 prompt = "aerial view, a futuristic research complex in a bright foggy jungle, hard lighting"
 negative_prompt = "low quality, bad quality, sketches"
 
-original_image = load_image(
+image = load_image(
     "https://hf.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/hf-logo.png"
 )
 
@@ -417,16 +390,15 @@ pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
 )
 pipe.enable_model_cpu_offload()
 
-image = np.array(original_image)
+image = np.array(image)
 image = cv2.Canny(image, 100, 200)
 image = image[:, :, None]
 image = np.concatenate([image, image, image], axis=2)
 canny_image = Image.fromarray(image)
 
 image = pipe(
-    prompt, negative_prompt=negative_prompt, controlnet_conditioning_scale=0.5, image=canny_image, guess_mode=True,
+    prompt, controlnet_conditioning_scale=0.5, image=canny_image, guess_mode=True,
 ).images[0]
-make_image_grid([original_image, canny_image, image], rows=1, cols=3)
 ```
 
 ### MultiControlNet
@@ -447,30 +419,29 @@ In this example, you'll combine a canny image and a human pose estimation image 
 Prepare the canny image conditioning:
 
 ```py
-from diffusers.utils import load_image, make_image_grid
+from diffusers.utils import load_image
 from PIL import Image
-import numpy as np
+import numpy as np 
 import cv2
 
-original_image = load_image(
+canny_image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/landscape.png"
 )
-image = np.array(original_image)
+canny_image = np.array(canny_image)
 
 low_threshold = 100
 high_threshold = 200
 
-image = cv2.Canny(image, low_threshold, high_threshold)
+canny_image = cv2.Canny(canny_image, low_threshold, high_threshold)
 
-# zero out middle columns of image where pose will be overlaid
-zero_start = image.shape[1] // 4
-zero_end = zero_start + image.shape[1] // 2
-image[:, zero_start:zero_end] = 0
+# zero out middle columns of image where pose will be overlayed
+zero_start = canny_image.shape[1] // 4
+zero_end = zero_start + canny_image.shape[1] // 2
+canny_image[:, zero_start:zero_end] = 0
 
-image = image[:, :, None]
-image = np.concatenate([image, image, image], axis=2)
-canny_image = Image.fromarray(image)
-make_image_grid([original_image, canny_image], rows=1, cols=2)
+canny_image = canny_image[:, :, None]
+canny_image = np.concatenate([canny_image, canny_image, canny_image], axis=2)
+canny_image = Image.fromarray(canny_image).resize((1024, 1024))
 ```
 
 <div class="flex gap-4">
@@ -484,24 +455,18 @@ make_image_grid([original_image, canny_image], rows=1, cols=2)
   </div>
 </div>
 
-For human pose estimation, install [controlnet_aux](https://github.com/patrickvonplaten/controlnet_aux):
-  
-```py
-# uncomment to install the necessary library in Colab
-#!pip install -q controlnet-aux
-```
-
 Prepare the human pose estimation conditioning:
 
 ```py
 from controlnet_aux import OpenposeDetector
+from diffusers.utils import load_image
 
 openpose = OpenposeDetector.from_pretrained("lllyasviel/ControlNet")
-original_image = load_image(
+
+openpose_image = load_image(
     "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/person.png"
 )
-openpose_image = openpose(original_image)
-make_image_grid([original_image, openpose_image], rows=1, cols=2)
+openpose_image = openpose(openpose_image).resize((1024, 1024))
 ```
 
 <div class="flex gap-4">
@@ -523,7 +488,7 @@ import torch
 
 controlnets = [
     ControlNetModel.from_pretrained(
-        "thibaud/controlnet-openpose-sdxl-1.0", torch_dtype=torch.float16
+        "thibaud/controlnet-openpose-sdxl-1.0", torch_dtype=torch.float16, use_safetensors=True
     ),
     ControlNetModel.from_pretrained(
         "diffusers/controlnet-canny-sdxl-1.0", torch_dtype=torch.float16, use_safetensors=True
@@ -546,7 +511,7 @@ negative_prompt = "monochrome, lowres, bad anatomy, worst quality, low quality"
 
 generator = torch.manual_seed(1)
 
-images = [openpose_image.resize((1024, 1024)), canny_image.resize((1024, 1024))]
+images = [openpose_image, canny_image]
 
 images = pipe(
     prompt,
@@ -556,9 +521,7 @@ images = pipe(
     negative_prompt=negative_prompt,
     num_images_per_prompt=3,
     controlnet_conditioning_scale=[1.0, 0.8],
-).images
-make_image_grid([original_image, canny_image, openpose_image,
-                images[0].resize((512, 512)), images[1].resize((512, 512)), images[2].resize((512, 512))], rows=2, cols=3)
+).images[0]
 ```
 
 <div class="flex justify-center">

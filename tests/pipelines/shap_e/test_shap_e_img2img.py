@@ -181,7 +181,7 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 1,
             "frame_size": 32,
-            "output_type": "latent",
+            "output_type": "np",
         }
         return inputs
 
@@ -197,12 +197,22 @@ class ShapEImg2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
         output = pipe(**self.get_dummy_inputs(device))
         image = output.images[0]
-        image_slice = image[-3:, -3:].cpu().numpy()
+        image_slice = image[0, -3:, -3:, -1]
 
-        assert image.shape == (32, 16)
+        assert image.shape == (20, 32, 32, 3)
 
         expected_slice = np.array(
-            [-1.0, 0.40668195, 0.57322013, -0.9469888, 0.4283227, 0.30348337, -0.81094897, 0.74555075, 0.15342723]
+            [
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+                0.00039216,
+            ]
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2

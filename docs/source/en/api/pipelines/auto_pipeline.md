@@ -35,18 +35,18 @@ image = pipeline(prompt, num_inference_steps=25).images[0]
 
 <Tip>
 
-Check out the [AutoPipeline](../../tutorials/autopipeline) tutorial to learn how to use this API!
+Check out the [AutoPipeline](/tutorials/autopipeline) tutorial to learn how to use this API!
 
 </Tip>
 
 `AutoPipeline` supports text-to-image, image-to-image, and inpainting for the following diffusion models:
 
-- [Stable Diffusion](./stable_diffusion/overview)
+- [Stable Diffusion](./stable_diffusion)
 - [ControlNet](./controlnet)
 - [Stable Diffusion XL (SDXL)](./stable_diffusion/stable_diffusion_xl)
-- [DeepFloyd IF](./deepfloyd_if)
-- [Kandinsky 2.1](./kandinsky)
-- [Kandinsky 2.2](./kandinsky_v22)
+- [DeepFloyd IF](./if) 
+- [Kandinsky](./kandinsky)
+- [Kandinsky 2.2](./kandinsky#kandinsky-22)
 
 
 ## AutoPipelineForText2Image
@@ -55,6 +55,7 @@ Check out the [AutoPipeline](../../tutorials/autopipeline) tutorial to learn how
 	- all
 	- from_pretrained
 	- from_pipe
+
 
 ## AutoPipelineForImage2Image
 
@@ -69,3 +70,5 @@ Check out the [AutoPipeline](../../tutorials/autopipeline) tutorial to learn how
 	- all
 	- from_pretrained
 	- from_pipe
+
+

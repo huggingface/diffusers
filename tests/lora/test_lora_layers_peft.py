@@ -22,25 +22,25 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from huggingface_hub import hf_hub_download
 from huggingface_hub.repocard import RepoCard
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
-    AutoPipelineForImage2Image,
     ControlNetModel,
     DDIMScheduler,
     DiffusionPipeline,
     EulerDiscreteScheduler,
-    LCMScheduler,
     StableDiffusionPipeline,
     StableDiffusionXLControlNetPipeline,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProcessor2_0
+from diffusers.models.attention_processor import (
+    LoRAAttnProcessor,
+    LoRAAttnProcessor2_0,
+)
 from diffusers.utils.import_utils import is_accelerate_available, is_peft_available
 from diffusers.utils.testing_utils import (
     floats_tensor,
@@ -106,12 +106,10 @@ class PeftLoraLoaderMixinTests:
     unet_kwargs = None
     vae_kwargs = None
 
-    def get_dummy_components(self, scheduler_cls=None):
-        scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
-
+    def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**self.unet_kwargs)
-        scheduler = scheduler_cls(**self.scheduler_kwargs)
+        scheduler = self.scheduler_cls(**self.scheduler_kwargs)
         torch.manual_seed(0)
         vae = AutoencoderKL(**self.vae_kwargs)
         text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
@@ -140,8 +138,6 @@ class PeftLoraLoaderMixinTests:
                 "tokenizer": tokenizer,
                 "text_encoder_2": text_encoder_2,
                 "tokenizer_2": tokenizer_2,
-                "image_encoder": None,
-                "feature_extractor": None,
             }
         else:
             pipeline_components = {
@@ -152,7 +148,6 @@ class PeftLoraLoaderMixinTests:
                 "tokenizer": tokenizer,
                 "safety_checker": None,
                 "feature_extractor": None,
-                "image_encoder": None,
             }
         lora_components = {
             "unet_lora_layers": unet_lora_layers,
@@ -204,896 +199,673 @@ class PeftLoraLoaderMixinTests:
         """
         Tests a simple inference and makes sure it works as expected
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
+        components, _, _, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
-            _, _, inputs = self.get_dummy_inputs()
-            output_no_lora = pipe(**inputs).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        _, _, inputs = self.get_dummy_inputs()
+        output_no_lora = pipe(**inputs).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
     def test_simple_inference_with_text_lora(self):
         """
         Tests a simple inference with lora attached on the text encoder
         and makes sure it works as expected
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
-            )
+        output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(
+            not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+        )
 
     def test_simple_inference_with_text_lora_and_scale(self):
         """
         Tests a simple inference with lora attached on the text encoder + scale argument
         and makes sure it works as expected
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+        output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(
+            not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+        )
 
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
-            )
+        output_lora_scale = pipe(
+            **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
+        ).images
+        self.assertTrue(
+            not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+            "Lora + scale should change the output",
+        )
 
-            output_lora_scale = pipe(
-                **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
-            ).images
-            self.assertTrue(
-                not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
-                "Lora + scale should change the output",
-            )
-
-            output_lora_0_scale = pipe(
-                **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
-            ).images
-            self.assertTrue(
-                np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
-                "Lora + 0 scale should lead to same result as no LoRA",
-            )
+        output_lora_0_scale = pipe(
+            **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
+        ).images
+        self.assertTrue(
+            np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
+            "Lora + 0 scale should lead to same result as no LoRA",
+        )
 
     def test_simple_inference_with_text_lora_fused(self):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
         and makes sure it works as expected
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+        pipe.fuse_lora()
+        # Fusing should still keep the LoRA layers
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
-            pipe.fuse_lora()
-            # Fusing should still keep the LoRA layers
+        if self.has_two_text_encoders:
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-            if self.has_two_text_encoders:
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-
-            ouput_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertFalse(
-                np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
-            )
+        ouput_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertFalse(
+            np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+        )
 
     def test_simple_inference_with_text_lora_unloaded(self):
         """
         Tests a simple inference with lora attached to text encoder, then unloads the lora weights
         and makes sure it works as expected
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+        pipe.unload_lora_weights()
+        # unloading should remove the LoRA layers
+        self.assertFalse(
+            self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder"
+        )
 
-            pipe.unload_lora_weights()
-            # unloading should remove the LoRA layers
+        if self.has_two_text_encoders:
             self.assertFalse(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly unloaded in text encoder 2"
             )
 
-            if self.has_two_text_encoders:
-                self.assertFalse(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2),
-                    "Lora not correctly unloaded in text encoder 2",
-                )
-
-            ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(
-                np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3),
-                "Fused lora should change the output",
-            )
+        ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(
+            np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+        )
 
     def test_simple_inference_with_text_lora_save_load(self):
         """
         Tests a simple usecase where users could use saving utilities for LoRA.
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
+        images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
             if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+
+                self.pipeline_class.save_lora_weights(
+                    save_directory=tmpdirname,
+                    text_encoder_lora_layers=text_encoder_state_dict,
+                    text_encoder_2_lora_layers=text_encoder_2_state_dict,
+                    safe_serialization=False,
+                )
+            else:
+                self.pipeline_class.save_lora_weights(
+                    save_directory=tmpdirname,
+                    text_encoder_lora_layers=text_encoder_state_dict,
+                    safe_serialization=False,
                 )
 
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            pipe.unload_lora_weights()
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
-                if self.has_two_text_encoders:
-                    text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
-                    self.pipeline_class.save_lora_weights(
-                        save_directory=tmpdirname,
-                        text_encoder_lora_layers=text_encoder_state_dict,
-                        text_encoder_2_lora_layers=text_encoder_2_state_dict,
-                        safe_serialization=False,
-                    )
-                else:
-                    self.pipeline_class.save_lora_weights(
-                        save_directory=tmpdirname,
-                        text_encoder_lora_layers=text_encoder_state_dict,
-                        safe_serialization=False,
-                    )
+        images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
 
-                self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
-                pipe.unload_lora_weights()
-
-                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
-
-            images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+        if self.has_two_text_encoders:
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-            if self.has_two_text_encoders:
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-
-            self.assertTrue(
-                np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
-                "Loading from saved checkpoints should give same results.",
-            )
+        self.assertTrue(
+            np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
+            "Loading from saved checkpoints should give same results.",
+        )
 
     def test_simple_inference_save_pretrained(self):
         """
         Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, _ = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+        images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            pipe.save_pretrained(tmpdirname)
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                pipe.save_pretrained(tmpdirname)
+            pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
+            pipe_from_pretrained.to(self.torch_device)
 
-                pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
-                pipe_from_pretrained.to(self.torch_device)
+        self.assertTrue(
+            self.check_if_lora_correctly_set(pipe_from_pretrained.text_encoder),
+            "Lora not correctly set in text encoder",
+        )
 
+        if self.has_two_text_encoders:
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe_from_pretrained.text_encoder),
-                "Lora not correctly set in text encoder",
+                self.check_if_lora_correctly_set(pipe_from_pretrained.text_encoder_2),
+                "Lora not correctly set in text encoder 2",
             )
 
-            if self.has_two_text_encoders:
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe_from_pretrained.text_encoder_2),
-                    "Lora not correctly set in text encoder 2",
-                )
+        images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0)).images
 
-            images_lora_save_pretrained = pipe_from_pretrained(**inputs, generator=torch.manual_seed(0)).images
-
-            self.assertTrue(
-                np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
-                "Loading from saved checkpoints should give same results.",
-            )
+        self.assertTrue(
+            np.allclose(images_lora, images_lora_save_pretrained, atol=1e-3, rtol=1e-3),
+            "Loading from saved checkpoints should give same results.",
+        )
 
     def test_simple_inference_with_text_unet_lora_save_load(self):
         """
         Tests a simple usecase where users could use saving utilities for LoRA for Unet + text encoder
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
-            pipe.unet.add_adapter(unet_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.unet.add_adapter(unet_lora_config)
 
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
+        images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
+            unet_state_dict = get_peft_model_state_dict(pipe.unet)
             if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+
+                self.pipeline_class.save_lora_weights(
+                    save_directory=tmpdirname,
+                    text_encoder_lora_layers=text_encoder_state_dict,
+                    text_encoder_2_lora_layers=text_encoder_2_state_dict,
+                    unet_lora_layers=unet_state_dict,
+                    safe_serialization=False,
+                )
+            else:
+                self.pipeline_class.save_lora_weights(
+                    save_directory=tmpdirname,
+                    text_encoder_lora_layers=text_encoder_state_dict,
+                    unet_lora_layers=unet_state_dict,
+                    safe_serialization=False,
                 )
 
-            images_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
+            pipe.unload_lora_weights()
 
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                text_encoder_state_dict = get_peft_model_state_dict(pipe.text_encoder)
-                unet_state_dict = get_peft_model_state_dict(pipe.unet)
-                if self.has_two_text_encoders:
-                    text_encoder_2_state_dict = get_peft_model_state_dict(pipe.text_encoder_2)
+            pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
 
-                    self.pipeline_class.save_lora_weights(
-                        save_directory=tmpdirname,
-                        text_encoder_lora_layers=text_encoder_state_dict,
-                        text_encoder_2_lora_layers=text_encoder_2_state_dict,
-                        unet_lora_layers=unet_state_dict,
-                        safe_serialization=False,
-                    )
-                else:
-                    self.pipeline_class.save_lora_weights(
-                        save_directory=tmpdirname,
-                        text_encoder_lora_layers=text_encoder_state_dict,
-                        unet_lora_layers=unet_state_dict,
-                        safe_serialization=False,
-                    )
+        images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
-                self.assertTrue(os.path.isfile(os.path.join(tmpdirname, "pytorch_lora_weights.bin")))
-                pipe.unload_lora_weights()
-
-                pipe.load_lora_weights(os.path.join(tmpdirname, "pytorch_lora_weights.bin"))
-
-            images_lora_from_pretrained = pipe(**inputs, generator=torch.manual_seed(0)).images
+        if self.has_two_text_encoders:
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
-            if self.has_two_text_encoders:
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-
-            self.assertTrue(
-                np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
-                "Loading from saved checkpoints should give same results.",
-            )
+        self.assertTrue(
+            np.allclose(images_lora, images_lora_from_pretrained, atol=1e-3, rtol=1e-3),
+            "Loading from saved checkpoints should give same results.",
+        )
 
     def test_simple_inference_with_text_unet_lora_and_scale(self):
         """
         Tests a simple inference with lora attached on the text encoder + Unet + scale argument
         and makes sure it works as expected
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
-            pipe.unet.add_adapter(unet_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.unet.add_adapter(unet_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-            )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
-
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-
-            output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(
-                not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-            output_lora_scale = pipe(
-                **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
-            ).images
-            self.assertTrue(
-                not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
-                "Lora + scale should change the output",
-            )
+        output_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(
+            not np.allclose(output_lora, output_no_lora, atol=1e-3, rtol=1e-3), "Lora should change the output"
+        )
 
-            output_lora_0_scale = pipe(
-                **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
-            ).images
-            self.assertTrue(
-                np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
-                "Lora + 0 scale should lead to same result as no LoRA",
-            )
+        output_lora_scale = pipe(
+            **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
+        ).images
+        self.assertTrue(
+            not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+            "Lora + scale should change the output",
+        )
 
-            self.assertTrue(
-                pipe.text_encoder.text_model.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0,
-                "The scaling parameter has not been correctly restored!",
-            )
+        output_lora_0_scale = pipe(
+            **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.0}
+        ).images
+        self.assertTrue(
+            np.allclose(output_no_lora, output_lora_0_scale, atol=1e-3, rtol=1e-3),
+            "Lora + 0 scale should lead to same result as no LoRA",
+        )
+
+        self.assertTrue(
+            pipe.text_encoder.text_model.encoder.layers[0].self_attn.q_proj.scaling["default"] == 1.0,
+            "The scaling parameter has not been correctly restored!",
+        )
 
     def test_simple_inference_with_text_lora_unet_fused(self):
         """
         Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
         and makes sure it works as expected - with unet
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
-            pipe.unet.add_adapter(unet_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.unet.add_adapter(unet_lora_config)
 
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+        pipe.fuse_lora()
+        # Fusing should still keep the LoRA layers
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in unet")
 
-            pipe.fuse_lora()
-            # Fusing should still keep the LoRA layers
+        if self.has_two_text_encoders:
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in unet")
 
-            if self.has_two_text_encoders:
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-
-            ouput_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertFalse(
-                np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
-            )
+        ouput_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertFalse(
+            np.allclose(ouput_fused, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+        )
 
     def test_simple_inference_with_text_unet_lora_unloaded(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
         and makes sure it works as expected
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
 
-            pipe.text_encoder.add_adapter(text_lora_config)
-            pipe.unet.add_adapter(unet_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.unet.add_adapter(unet_lora_config)
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+        pipe.unload_lora_weights()
+        # unloading should remove the LoRA layers
+        self.assertFalse(
+            self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder"
+        )
+        self.assertFalse(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly unloaded in Unet")
 
-            pipe.unload_lora_weights()
-            # unloading should remove the LoRA layers
+        if self.has_two_text_encoders:
             self.assertFalse(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly unloaded in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly unloaded in text encoder 2"
             )
-            self.assertFalse(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly unloaded in Unet")
 
-            if self.has_two_text_encoders:
-                self.assertFalse(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2),
-                    "Lora not correctly unloaded in text encoder 2",
-                )
-
-            ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
-            self.assertTrue(
-                np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3),
-                "Fused lora should change the output",
-            )
+        ouput_unloaded = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertTrue(
+            np.allclose(ouput_unloaded, output_no_lora, atol=1e-3, rtol=1e-3), "Fused lora should change the output"
+        )
 
     def test_simple_inference_with_text_unet_lora_unfused(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
         and makes sure it works as expected
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            pipe.text_encoder.add_adapter(text_lora_config)
-            pipe.unet.add_adapter(unet_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.unet.add_adapter(unet_lora_config)
 
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+        pipe.fuse_lora()
 
-            pipe.fuse_lora()
+        output_fused_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-            output_fused_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        pipe.unfuse_lora()
 
-            pipe.unfuse_lora()
+        output_unfused_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        # unloading should remove the LoRA layers
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Unfuse should still keep LoRA layers")
 
-            output_unfused_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-            # unloading should remove the LoRA layers
+        if self.has_two_text_encoders:
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Unfuse should still keep LoRA layers"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Unfuse should still keep LoRA layers"
             )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Unfuse should still keep LoRA layers")
 
-            if self.has_two_text_encoders:
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Unfuse should still keep LoRA layers"
-                )
-
-            # Fuse and unfuse should lead to the same results
-            self.assertTrue(
-                np.allclose(output_fused_lora, output_unfused_lora, atol=1e-3, rtol=1e-3),
-                "Fused lora should change the output",
-            )
+        # Fuse and unfuse should lead to the same results
+        self.assertTrue(
+            np.allclose(output_fused_lora, output_unfused_lora, atol=1e-3, rtol=1e-3),
+            "Fused lora should change the output",
+        )
 
     def test_simple_inference_with_text_unet_multi_adapter(self):
         """
         Tests a simple inference with lora attached to text encoder and unet, attaches
         multiple adapters and set them
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
 
-            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
-            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-2")
 
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+            pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-            )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
-
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-
-            pipe.set_adapters("adapter-1")
-
-            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            pipe.set_adapters("adapter-2")
-            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            pipe.set_adapters(["adapter-1", "adapter-2"])
-
-            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            # Fuse and unfuse should lead to the same results
-            self.assertFalse(
-                np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
-                "Adapter 1 and 2 should give different results",
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
 
-            self.assertFalse(
-                np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
-                "Adapter 1 and mixed adapters should give different results",
-            )
+        pipe.set_adapters("adapter-1")
 
-            self.assertFalse(
-                np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
-                "Adapter 2 and mixed adapters should give different results",
-            )
+        output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-            pipe.disable_lora()
+        pipe.set_adapters("adapter-2")
+        output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-            output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images
+        pipe.set_adapters(["adapter-1", "adapter-2"])
 
-            self.assertTrue(
-                np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
-                "output with no lora and output with lora disabled should give same results",
-            )
+        output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-    def test_simple_inference_with_text_unet_multi_adapter_delete_adapter(self):
-        """
-        Tests a simple inference with lora attached to text encoder and unet, attaches
-        multiple adapters and set/delete them
-        """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        # Fuse and unfuse should lead to the same results
+        self.assertFalse(
+            np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
+            "Adapter 1 and 2 should give different results",
+        )
 
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+        self.assertFalse(
+            np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
+            "Adapter 1 and mixed adapters should give different results",
+        )
 
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+        self.assertFalse(
+            np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
+            "Adapter 2 and mixed adapters should give different results",
+        )
 
-            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
-            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+        pipe.disable_lora()
 
-            self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-            )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+        output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-
-            pipe.set_adapters("adapter-1")
-
-            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            pipe.set_adapters("adapter-2")
-            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            pipe.set_adapters(["adapter-1", "adapter-2"])
-
-            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            self.assertFalse(
-                np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
-                "Adapter 1 and 2 should give different results",
-            )
-
-            self.assertFalse(
-                np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
-                "Adapter 1 and mixed adapters should give different results",
-            )
-
-            self.assertFalse(
-                np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
-                "Adapter 2 and mixed adapters should give different results",
-            )
-
-            pipe.delete_adapters("adapter-1")
-            output_deleted_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            self.assertTrue(
-                np.allclose(output_deleted_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
-                "Adapter 1 and 2 should give different results",
-            )
-
-            pipe.delete_adapters("adapter-2")
-            output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            self.assertTrue(
-                np.allclose(output_no_lora, output_deleted_adapters, atol=1e-3, rtol=1e-3),
-                "output with no lora and output with lora disabled should give same results",
-            )
-
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
-
-            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
-            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
-
-            pipe.set_adapters(["adapter-1", "adapter-2"])
-            pipe.delete_adapters(["adapter-1", "adapter-2"])
-
-            output_deleted_adapters = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            self.assertTrue(
-                np.allclose(output_no_lora, output_deleted_adapters, atol=1e-3, rtol=1e-3),
-                "output with no lora and output with lora disabled should give same results",
-            )
-
-    def test_simple_inference_with_text_unet_multi_adapter_weighted(self):
-        """
-        Tests a simple inference with lora attached to text encoder and unet, attaches
-        multiple adapters and set them
-        """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
-
-            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
-
-            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
-            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
-
-            self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-            )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
-
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
-                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
-
-            pipe.set_adapters("adapter-1")
-
-            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            pipe.set_adapters("adapter-2")
-            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            pipe.set_adapters(["adapter-1", "adapter-2"])
-
-            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            # Fuse and unfuse should lead to the same results
-            self.assertFalse(
-                np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
-                "Adapter 1 and 2 should give different results",
-            )
-
-            self.assertFalse(
-                np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
-                "Adapter 1 and mixed adapters should give different results",
-            )
-
-            self.assertFalse(
-                np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
-                "Adapter 2 and mixed adapters should give different results",
-            )
-
-            pipe.set_adapters(["adapter-1", "adapter-2"], [0.5, 0.6])
-            output_adapter_mixed_weighted = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            self.assertFalse(
-                np.allclose(output_adapter_mixed_weighted, output_adapter_mixed, atol=1e-3, rtol=1e-3),
-                "Weighted adapter and mixed adapter should give different results",
-            )
-
-            pipe.disable_lora()
-
-            output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images
-
-            self.assertTrue(
-                np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
-                "output with no lora and output with lora disabled should give same results",
-            )
+        self.assertTrue(
+            np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
+            "output with no lora and output with lora disabled should give same results",
+        )
 
     def test_lora_fuse_nan(self):
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
 
-            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-1")
 
-            self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        # corrupt one LoRA weight with `inf` values
+        with torch.no_grad():
+            pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_A["adapter-1"].weight += float(
+                "inf"
             )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
-            # corrupt one LoRA weight with `inf` values
-            with torch.no_grad():
-                pipe.unet.mid_block.attentions[0].transformer_blocks[0].attn1.to_q.lora_A["adapter-1"].weight += float(
-                    "inf"
-                )
+        # with `safe_fusing=True` we should see an Error
+        with self.assertRaises(ValueError):
+            pipe.fuse_lora(safe_fusing=True)
 
-            # with `safe_fusing=True` we should see an Error
-            with self.assertRaises(ValueError):
-                pipe.fuse_lora(safe_fusing=True)
+        # without we should not see an error, but every image will be black
+        pipe.fuse_lora(safe_fusing=False)
 
-            # without we should not see an error, but every image will be black
-            pipe.fuse_lora(safe_fusing=False)
+        out = pipe("test", num_inference_steps=2, output_type="np").images
 
-            out = pipe("test", num_inference_steps=2, output_type="np").images
-
-            self.assertTrue(np.isnan(out).all())
+        self.assertTrue(np.isnan(out).all())
 
     def test_get_adapters(self):
         """
         Tests a simple usecase where we attach multiple adapters and check if the results
         are the expected results
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-1")
 
-            adapter_names = pipe.get_active_adapters()
-            self.assertListEqual(adapter_names, ["adapter-1"])
+        adapter_names = pipe.get_active_adapters()
+        self.assertListEqual(adapter_names, ["adapter-1"])
 
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
-            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-2")
 
-            adapter_names = pipe.get_active_adapters()
-            self.assertListEqual(adapter_names, ["adapter-2"])
+        adapter_names = pipe.get_active_adapters()
+        self.assertListEqual(adapter_names, ["adapter-2"])
 
-            pipe.set_adapters(["adapter-1", "adapter-2"])
-            self.assertListEqual(pipe.get_active_adapters(), ["adapter-1", "adapter-2"])
+        pipe.set_adapters(["adapter-1", "adapter-2"])
+        self.assertListEqual(pipe.get_active_adapters(), ["adapter-1", "adapter-2"])
 
     def test_get_list_adapters(self):
         """
         Tests a simple usecase where we attach multiple adapters and check if the results
         are the expected results
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
 
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-1")
 
-            adapter_names = pipe.get_list_adapters()
-            self.assertDictEqual(adapter_names, {"text_encoder": ["adapter-1"], "unet": ["adapter-1"]})
+        adapter_names = pipe.get_list_adapters()
+        self.assertDictEqual(adapter_names, {"text_encoder": ["adapter-1"], "unet": ["adapter-1"]})
 
-            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
-            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-2")
 
-            adapter_names = pipe.get_list_adapters()
-            self.assertDictEqual(
-                adapter_names, {"text_encoder": ["adapter-1", "adapter-2"], "unet": ["adapter-1", "adapter-2"]}
-            )
+        adapter_names = pipe.get_list_adapters()
+        self.assertDictEqual(
+            adapter_names, {"text_encoder": ["adapter-1", "adapter-2"], "unet": ["adapter-1", "adapter-2"]}
+        )
 
-            pipe.set_adapters(["adapter-1", "adapter-2"])
-            self.assertDictEqual(
-                pipe.get_list_adapters(),
-                {"unet": ["adapter-1", "adapter-2"], "text_encoder": ["adapter-1", "adapter-2"]},
-            )
+        pipe.set_adapters(["adapter-1", "adapter-2"])
+        self.assertDictEqual(
+            pipe.get_list_adapters(), {"unet": ["adapter-1", "adapter-2"], "text_encoder": ["adapter-1", "adapter-2"]}
+        )
 
-            pipe.unet.add_adapter(unet_lora_config, "adapter-3")
-            self.assertDictEqual(
-                pipe.get_list_adapters(),
-                {"unet": ["adapter-1", "adapter-2", "adapter-3"], "text_encoder": ["adapter-1", "adapter-2"]},
-            )
+        pipe.unet.add_adapter(unet_lora_config, "adapter-3")
+        self.assertDictEqual(
+            pipe.get_list_adapters(),
+            {"unet": ["adapter-1", "adapter-2", "adapter-3"], "text_encoder": ["adapter-1", "adapter-2"]},
+        )
 
     @unittest.skip("This is failing for now - need to investigate")
     def test_simple_inference_with_text_unet_lora_unfused_torch_compile(self):
@@ -1101,35 +873,32 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
         and makes sure it works as expected
         """
-        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
-            pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
-            pipe.set_progress_bar_config(disable=None)
-            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+        components, _, text_lora_config, unet_lora_config = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
-            pipe.text_encoder.add_adapter(text_lora_config)
-            pipe.unet.add_adapter(unet_lora_config)
+        pipe.text_encoder.add_adapter(text_lora_config)
+        pipe.unet.add_adapter(unet_lora_config)
 
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+        self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config)
             self.assertTrue(
-                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+                self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
             )
-            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2.add_adapter(text_lora_config)
-                self.assertTrue(
-                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
-                )
+        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+        pipe.text_encoder = torch.compile(pipe.text_encoder, mode="reduce-overhead", fullgraph=True)
 
-            pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
-            pipe.text_encoder = torch.compile(pipe.text_encoder, mode="reduce-overhead", fullgraph=True)
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, mode="reduce-overhead", fullgraph=True)
 
-            if self.has_two_text_encoders:
-                pipe.text_encoder_2 = torch.compile(pipe.text_encoder_2, mode="reduce-overhead", fullgraph=True)
-
-            # Just makes sure it works..
-            _ = pipe(**inputs, generator=torch.manual_seed(0)).images
+        # Just makes sure it works..
+        _ = pipe(**inputs, generator=torch.manual_seed(0)).images
 
 
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
@@ -1304,6 +1073,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         expected_slice_scale = np.array([0.538, 0.539, 0.540, 0.540, 0.542, 0.539, 0.538, 0.541, 0.539])
 
         predicted_slice = images[0, -3:, -3:, -1].flatten()
+        # import pdb; pdb.set_trace()
         self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
         pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
@@ -1336,7 +1106,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             output_type="np",
         ).images
         predicted_slice = images[0, -3:, -3:, -1].flatten()
-        expected_slice_scale = np.array([0.5888, 0.5897, 0.5946, 0.5888, 0.5935, 0.5946, 0.5857, 0.5891, 0.5909])
+        expected_slice_scale = np.array([0.5977, 0.5985, 0.6039, 0.5976, 0.6025, 0.6036, 0.5946, 0.5979, 0.5998])
         self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
         # Lora disabled
@@ -1350,7 +1120,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             output_type="np",
         ).images
         predicted_slice = images[0, -3:, -3:, -1].flatten()
-        expected_slice_scale = np.array([0.5456, 0.5466, 0.5487, 0.5458, 0.5469, 0.5454, 0.5446, 0.5479, 0.5487])
+        expected_slice_scale = np.array([0.54625, 0.5473, 0.5495, 0.5465, 0.5476, 0.5461, 0.5452, 0.5485, 0.5493])
         self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
 
@@ -1731,97 +1501,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-4))
         release_memory(pipe)
 
-    def test_sdxl_lcm_lora(self):
-        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
-        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-        pipe.enable_model_cpu_offload()
-
-        generator = torch.Generator().manual_seed(0)
-
-        lora_model_id = "latent-consistency/lcm-lora-sdxl"
-
-        pipe.load_lora_weights(lora_model_id)
-
-        image = pipe(
-            "masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5
-        ).images[0]
-
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdxl_lcm_lora.png"
-        )
-
-        image_np = pipe.image_processor.pil_to_numpy(image)
-        expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
-
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
-
-        pipe.unload_lora_weights()
-
-        release_memory(pipe)
-
-    def test_sdv1_5_lcm_lora(self):
-        pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-        pipe.to("cuda")
-        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-
-        generator = torch.Generator().manual_seed(0)
-
-        lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
-        pipe.load_lora_weights(lora_model_id)
-
-        image = pipe(
-            "masterpiece, best quality, mountain", generator=generator, num_inference_steps=4, guidance_scale=0.5
-        ).images[0]
-
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora.png"
-        )
-
-        image_np = pipe.image_processor.pil_to_numpy(image)
-        expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
-
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
-
-        pipe.unload_lora_weights()
-
-        release_memory(pipe)
-
-    def test_sdv1_5_lcm_lora_img2img(self):
-        pipe = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-        pipe.to("cuda")
-        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
-
-        init_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.png"
-        )
-
-        generator = torch.Generator().manual_seed(0)
-
-        lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
-        pipe.load_lora_weights(lora_model_id)
-
-        image = pipe(
-            "snowy mountain",
-            generator=generator,
-            image=init_image,
-            strength=0.5,
-            num_inference_steps=4,
-            guidance_scale=0.5,
-        ).images[0]
-
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/lcm_lora/sdv15_lcm_lora_img2img.png"
-        )
-
-        image_np = pipe.image_processor.pil_to_numpy(image)
-        expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
-
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
-
-        pipe.unload_lora_weights()
-
-        release_memory(pipe)
-
     def test_sdxl_1_0_lora_fusion(self):
         generator = torch.Generator().manual_seed(0)
 
@@ -2020,28 +1699,6 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipe)
-
-    def test_sd_load_civitai_empty_network_alpha(self):
-        """
-        This test simply checks that loading a LoRA with an empty network alpha works fine
-        See: https://github.com/huggingface/diffusers/issues/5606
-        """
-        pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5").to("cuda")
-        pipeline.enable_sequential_cpu_offload()
-        civitai_path = hf_hub_download("ybelkada/test-ahi-civitai", "ahi_lora_weights.safetensors")
-        pipeline.load_lora_weights(civitai_path, adapter_name="ahri")
-
-        images = pipeline(
-            "ahri, masterpiece, league of legends",
-            output_type="np",
-            generator=torch.manual_seed(156),
-            num_inference_steps=5,
-        ).images
-        images = images[0, -3:, -3:, -1].flatten()
-        expected = np.array([0.0, 0.0, 0.0, 0.002557, 0.020954, 0.001792, 0.006581, 0.00591, 0.002995])
-
-        self.assertTrue(np.allclose(images, expected, atol=1e-3))
-        release_memory(pipeline)
 
     def test_canny_lora(self):
         controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")

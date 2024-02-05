@@ -14,12 +14,7 @@
 
 from typing import TYPE_CHECKING
 
-from ..utils import (
-    DIFFUSERS_SLOW_IMPORT,
-    _LazyModule,
-    is_flax_available,
-    is_torch_available,
-)
+from ..utils import DIFFUSERS_SLOW_IMPORT, _LazyModule, is_flax_available, is_torch_available
 
 
 _import_structure = {}
@@ -28,9 +23,7 @@ if is_torch_available():
     _import_structure["adapter"] = ["MultiAdapter", "T2IAdapter"]
     _import_structure["autoencoder_asym_kl"] = ["AsymmetricAutoencoderKL"]
     _import_structure["autoencoder_kl"] = ["AutoencoderKL"]
-    _import_structure["autoencoder_kl_temporal_decoder"] = ["AutoencoderKLTemporalDecoder"]
     _import_structure["autoencoder_tiny"] = ["AutoencoderTiny"]
-    _import_structure["consistency_decoder_vae"] = ["ConsistencyDecoderVAE"]
     _import_structure["controlnet"] = ["ControlNetModel"]
     _import_structure["dual_transformer_2d"] = ["DualTransformer2DModel"]
     _import_structure["modeling_utils"] = ["ModelMixin"]
@@ -42,9 +35,6 @@ if is_torch_available():
     _import_structure["unet_2d"] = ["UNet2DModel"]
     _import_structure["unet_2d_condition"] = ["UNet2DConditionModel"]
     _import_structure["unet_3d_condition"] = ["UNet3DConditionModel"]
-    _import_structure["unet_kandi3"] = ["Kandinsky3UNet"]
-    _import_structure["unet_motion_model"] = ["MotionAdapter", "UNetMotionModel"]
-    _import_structure["unet_spatio_temporal_condition"] = ["UNetSpatioTemporalConditionModel"]
     _import_structure["vq_model"] = ["VQModel"]
 
 if is_flax_available():
@@ -58,9 +48,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .adapter import MultiAdapter, T2IAdapter
         from .autoencoder_asym_kl import AsymmetricAutoencoderKL
         from .autoencoder_kl import AutoencoderKL
-        from .autoencoder_kl_temporal_decoder import AutoencoderKLTemporalDecoder
         from .autoencoder_tiny import AutoencoderTiny
-        from .consistency_decoder_vae import ConsistencyDecoderVAE
         from .controlnet import ControlNetModel
         from .dual_transformer_2d import DualTransformer2DModel
         from .modeling_utils import ModelMixin
@@ -72,9 +60,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .unet_2d import UNet2DModel
         from .unet_2d_condition import UNet2DConditionModel
         from .unet_3d_condition import UNet3DConditionModel
-        from .unet_kandi3 import Kandinsky3UNet
-        from .unet_motion_model import MotionAdapter, UNetMotionModel
-        from .unet_spatio_temporal_condition import UNetSpatioTemporalConditionModel
         from .vq_model import VQModel
 
     if is_flax_available():

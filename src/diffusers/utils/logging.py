@@ -28,7 +28,7 @@ from logging import (
     WARN,  # NOQA
     WARNING,  # NOQA
 )
-from typing import Dict, Optional
+from typing import Optional
 
 from tqdm import auto as tqdm_lib
 
@@ -49,7 +49,7 @@ _default_log_level = logging.WARNING
 _tqdm_active = True
 
 
-def _get_default_logging_level() -> int:
+def _get_default_logging_level():
     """
     If DIFFUSERS_VERBOSITY env var is set to one of the valid choices return that as the new default level. If it is
     not - fall back to `_default_log_level`
@@ -104,7 +104,7 @@ def _reset_library_root_logger() -> None:
         _default_handler = None
 
 
-def get_log_levels_dict() -> Dict[str, int]:
+def get_log_levels_dict():
     return log_levels
 
 
@@ -161,22 +161,22 @@ def set_verbosity(verbosity: int) -> None:
     _get_library_root_logger().setLevel(verbosity)
 
 
-def set_verbosity_info() -> None:
+def set_verbosity_info():
     """Set the verbosity to the `INFO` level."""
     return set_verbosity(INFO)
 
 
-def set_verbosity_warning() -> None:
+def set_verbosity_warning():
     """Set the verbosity to the `WARNING` level."""
     return set_verbosity(WARNING)
 
 
-def set_verbosity_debug() -> None:
+def set_verbosity_debug():
     """Set the verbosity to the `DEBUG` level."""
     return set_verbosity(DEBUG)
 
 
-def set_verbosity_error() -> None:
+def set_verbosity_error():
     """Set the verbosity to the `ERROR` level."""
     return set_verbosity(ERROR)
 
@@ -263,7 +263,7 @@ def reset_format() -> None:
         handler.setFormatter(None)
 
 
-def warning_advice(self, *args, **kwargs) -> None:
+def warning_advice(self, *args, **kwargs):
     """
     This method is identical to `logger.warning()`, but if env var DIFFUSERS_NO_ADVISORY_WARNINGS=1 is set, this
     warning will not be printed
@@ -327,13 +327,13 @@ def is_progress_bar_enabled() -> bool:
     return bool(_tqdm_active)
 
 
-def enable_progress_bar() -> None:
+def enable_progress_bar():
     """Enable tqdm progress bar."""
     global _tqdm_active
     _tqdm_active = True
 
 
-def disable_progress_bar() -> None:
+def disable_progress_bar():
     """Disable tqdm progress bar."""
     global _tqdm_active
     _tqdm_active = False

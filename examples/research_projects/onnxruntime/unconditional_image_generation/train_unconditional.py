@@ -4,6 +4,7 @@ import logging
 import math
 import os
 from pathlib import Path
+from typing import Optional
 
 import accelerate
 import datasets
@@ -13,7 +14,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration
 from datasets import load_dataset
-from huggingface_hub import create_repo, upload_folder
+from huggingface_hub import HfFolder, Repository, create_repo, whoami
 from onnxruntime.training.optim.fp16_optimizer import FP16_Optimizer as ORT_FP16_Optimizer
 from onnxruntime.training.ortmodule import ORTModule
 from packaging import version
@@ -276,6 +277,16 @@ def parse_args():
     return args
 
 
+def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
+    if token is None:
+        token = HfFolder.get_token()
+    if organization is None:
+        username = whoami(token)["name"]
+        return f"{username}/{model_id}"
+    else:
+        return f"{organization}/{model_id}"
+
+
 def main(args):
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
@@ -349,13 +360,21 @@ def main(args):
 
     # Handle the repository creation
     if accelerator.is_main_process:
-        if args.output_dir is not None:
-            os.makedirs(args.output_dir, exist_ok=True)
-
         if args.push_to_hub:
-            repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
-            ).repo_id
+            if args.hub_model_id is None:
+                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
+            else:
+                repo_name = args.hub_model_id
+            create_repo(repo_name, exist_ok=True, token=args.hub_token)
+            repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
+
+            with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
+                if "step_*" not in gitignore:
+                    gitignore.write("step_*\n")
+                if "epoch_*" not in gitignore:
+                    gitignore.write("epoch_*\n")
+        elif args.output_dir is not None:
+            os.makedirs(args.output_dir, exist_ok=True)
 
     # Initialize the model
     if args.model_config_name_or_path is None:
@@ -672,12 +691,7 @@ def main(args):
                     ema_model.restore(unet.parameters())
 
                 if args.push_to_hub:
-                    upload_folder(
-                        repo_id=repo_id,
-                        folder_path=args.output_dir,
-                        commit_message=f"Epoch {epoch}",
-                        ignore_patterns=["step_*", "epoch_*"],
-                    )
+                    repo.push_to_hub(commit_message=f"Epoch {epoch}", blocking=False)
 
     accelerator.end_training()
 

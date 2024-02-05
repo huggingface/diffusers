@@ -21,9 +21,8 @@ from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
-from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
@@ -62,7 +61,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class StableDiffusionIPEXPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion on IPEX.
 
@@ -89,7 +88,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
-
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
@@ -252,7 +250,9 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
 
         # optimize with ipex
         if dtype == torch.bfloat16:
-            self.unet = ipex.optimize(self.unet.eval(), dtype=torch.bfloat16, inplace=True)
+            self.unet = ipex.optimize(
+                self.unet.eval(), dtype=torch.bfloat16, inplace=True, sample_input=unet_input_example
+            )
             self.vae.decoder = ipex.optimize(self.vae.decoder.eval(), dtype=torch.bfloat16, inplace=True)
             self.text_encoder = ipex.optimize(self.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
             if self.safety_checker is not None:
@@ -262,6 +262,8 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                 self.unet.eval(),
                 dtype=torch.float32,
                 inplace=True,
+                sample_input=unet_input_example,
+                level="O1",
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
@@ -269,6 +271,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                 self.vae.decoder.eval(),
                 dtype=torch.float32,
                 inplace=True,
+                level="O1",
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
@@ -276,6 +279,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                 self.text_encoder.eval(),
                 dtype=torch.float32,
                 inplace=True,
+                level="O1",
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
@@ -284,6 +288,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                     self.safety_checker.eval(),
                     dtype=torch.float32,
                     inplace=True,
+                    level="O1",
                     weights_prepack=True,
                     auto_kernel_selection=False,
                 )
@@ -449,10 +454,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
-
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -512,10 +513,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
                 )
             else:
                 uncond_tokens = negative_prompt
-
-            # textual inversion: procecss multi-vector tokens if necessary
-            if isinstance(self, TextualInversionLoaderMixin):
-                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(

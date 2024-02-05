@@ -172,7 +172,6 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "output_type",
         "return_dict",
     ]
-    callback_cfg_params = ["image_embds"]
     test_xformers_attention = False
 
     def get_dummy_inputs(self, device, seed=0):

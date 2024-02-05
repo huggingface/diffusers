@@ -89,7 +89,6 @@ from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (
     check_peft_version,
-    delete_adapter_layers,
     get_adapter_name,
     get_peft_kwargs,
     recurse_remove_peft_layers,

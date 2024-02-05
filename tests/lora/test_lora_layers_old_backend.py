@@ -41,7 +41,7 @@ from diffusers import (
     UNet2DConditionModel,
     UNet3DConditionModel,
 )
-from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin
+from diffusers.loaders import AttnProcsLayers, LoraLoaderMixin, PatchedLoraProjection, text_encoder_attn_modules
 from diffusers.models.attention_processor import (
     Attention,
     AttnProcessor,
@@ -51,7 +51,6 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-from diffusers.models.lora import PatchedLoraProjection, text_encoder_attn_modules
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     deprecate_after_peft_backend,
@@ -246,7 +245,6 @@ class LoraLoaderMixinTests(unittest.TestCase):
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
-            "image_encoder": None,
         }
         lora_components = {
             "unet_lora_layers": unet_lora_layers,
@@ -758,7 +756,6 @@ class SDXInpaintLoraMixinTests(unittest.TestCase):
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
-            "image_encoder": None,
         }
         return components
 
@@ -868,8 +865,6 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
             "text_encoder_2": text_encoder_2,
             "tokenizer": tokenizer,
             "tokenizer_2": tokenizer_2,
-            "image_encoder": None,
-            "feature_extractor": None,
         }
         lora_components = {
             "unet_lora_layers": unet_lora_layers,

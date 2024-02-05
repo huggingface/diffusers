@@ -19,6 +19,8 @@ import sys
 import tempfile
 import unittest
 
+import black
+
 
 git_repo_path = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 sys.path.append(os.path.join(git_repo_path, "utils"))
@@ -63,7 +65,8 @@ class CopyCheckTester(unittest.TestCase):
         code = comment + f"\nclass {class_name}(nn.Module):\n" + class_code
         if overwrite_result is not None:
             expected = comment + f"\nclass {class_name}(nn.Module):\n" + overwrite_result
-        code = check_copies.run_ruff(code)
+        mode = black.Mode(target_versions={black.TargetVersion.PY35}, line_length=119)
+        code = black.format_str(code, mode=mode)
         fname = os.path.join(self.diffusers_dir, "new_code.py")
         with open(fname, "w", newline="\n") as f:
             f.write(code)

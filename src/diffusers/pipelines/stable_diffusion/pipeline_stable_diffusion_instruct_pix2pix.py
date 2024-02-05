@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import PIL.Image
@@ -58,20 +58,6 @@ def preprocess(image):
     return image
 
 
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(
-    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
-):
-    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
-        return encoder_output.latent_dist.sample(generator)
-    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
-        return encoder_output.latent_dist.mode()
-    elif hasattr(encoder_output, "latents"):
-        return encoder_output.latents
-    else:
-        raise AttributeError("Could not access latents of provided encoder_output")
-
-
 class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for pixel-level image editing by following text instructions (based on Stable Diffusion).
@@ -103,11 +89,9 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
-
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "image_latents"]
 
     def __init__(
         self,
@@ -168,9 +152,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -218,15 +201,12 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeline class.
+            callback (`Callable`, *optional*):
+                A function that calls every `callback_steps` steps during inference. The function is called with the
+                following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function is called. If not specified, the callback is called at
+                every step.
 
         Examples:
 
@@ -264,34 +244,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                 second element is a list of `bool`s indicating whether the corresponding generated image contains
                 "not-safe-for-work" (nsfw) content.
         """
-
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
-            )
-
         # 0. Check inputs
-        self.check_inputs(
-            prompt,
-            callback_steps,
-            negative_prompt,
-            prompt_embeds,
-            negative_prompt_embeds,
-            callback_on_step_end_tensor_inputs,
-        )
-        self._guidance_scale = guidance_scale
-        self._image_guidance_scale = image_guidance_scale
+        self.check_inputs(prompt, callback_steps, negative_prompt, prompt_embeds, negative_prompt_embeds)
 
         if image is None:
             raise ValueError("`image` input cannot be undefined.")
@@ -305,6 +259,10 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             batch_size = prompt_embeds.shape[0]
 
         device = self._execution_device
+        # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
+        # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
+        # corresponds to doing no classifier free guidance.
+        do_classifier_free_guidance = guidance_scale > 1.0 and image_guidance_scale >= 1.0
         # check if scheduler is in sigmas space
         scheduler_is_in_sigma_space = hasattr(self.scheduler, "sigmas")
 
@@ -313,7 +271,7 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             prompt,
             device,
             num_images_per_prompt,
-            self.do_classifier_free_guidance,
+            do_classifier_free_guidance,
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -333,7 +291,8 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
             num_images_per_prompt,
             prompt_embeds.dtype,
             device,
-            self.do_classifier_free_guidance,
+            do_classifier_free_guidance,
+            generator,
         )
 
         height, width = image_latents.shape[-2:]
@@ -369,13 +328,12 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
 
         # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # Expand the latents if we are doing classifier free guidance.
                 # The latents are expanded 3 times because for pix2pix the guidance\
                 # is applied for both the text and the input image.
-                latent_model_input = torch.cat([latents] * 3) if self.do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 3) if do_classifier_free_guidance else latents
 
                 # concat latents, image_latents in the channel dimension
                 scaled_latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
@@ -396,12 +354,12 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
                     noise_pred = latent_model_input - sigma * noise_pred
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
+                if do_classifier_free_guidance:
                     noise_pred_text, noise_pred_image, noise_pred_uncond = noise_pred.chunk(3)
                     noise_pred = (
                         noise_pred_uncond
-                        + self.guidance_scale * (noise_pred_text - noise_pred_image)
-                        + self.image_guidance_scale * (noise_pred_image - noise_pred_uncond)
+                        + guidance_scale * (noise_pred_text - noise_pred_image)
+                        + image_guidance_scale * (noise_pred_image - noise_pred_uncond)
                     )
 
                 # Hack:
@@ -415,17 +373,6 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
-
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-                    image_latents = callback_outputs.pop("image_latents", image_latents)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
@@ -649,25 +596,14 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         return image
 
     def check_inputs(
-        self,
-        prompt,
-        callback_steps,
-        negative_prompt=None,
-        prompt_embeds=None,
-        negative_prompt_embeds=None,
-        callback_on_step_end_tensor_inputs=None,
+        self, prompt, callback_steps, negative_prompt=None, prompt_embeds=None, negative_prompt_embeds=None
     ):
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
-            )
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -729,7 +665,17 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
         if image.shape[1] == 4:
             image_latents = image
         else:
-            image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
+            if isinstance(generator, list) and len(generator) != batch_size:
+                raise ValueError(
+                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+                )
+
+            if isinstance(generator, list):
+                image_latents = [self.vae.encode(image[i : i + 1]).latent_dist.mode() for i in range(batch_size)]
+                image_latents = torch.cat(image_latents, dim=0)
+            else:
+                image_latents = self.vae.encode(image).latent_dist.mode()
 
         if batch_size > image_latents.shape[0] and batch_size % image_latents.shape[0] == 0:
             # expand image_latents for batch_size
@@ -782,22 +728,3 @@ class StableDiffusionInstructPix2PixPipeline(DiffusionPipeline, TextualInversion
     def disable_freeu(self):
         """Disables the FreeU mechanism if enabled."""
         self.unet.disable_freeu()
-
-    @property
-    def guidance_scale(self):
-        return self._guidance_scale
-
-    @property
-    def image_guidance_scale(self):
-        return self._image_guidance_scale
-
-    @property
-    def num_timesteps(self):
-        return self._num_timesteps
-
-    # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
-    # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
-    # corresponds to doing no classifier free guidance.
-    @property
-    def do_classifier_free_guidance(self):
-        return self.guidance_scale > 1.0 and self.image_guidance_scale >= 1.0

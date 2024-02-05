@@ -17,7 +17,9 @@ import argparse
 import glob
 import os
 import re
-import subprocess
+
+import black
+from doc_builder.style_doc import style_docstrings_in_code
 
 
 # All paths are set with the intent you should run this script from the root of the repo with the command
@@ -44,12 +46,7 @@ def find_code_in_diffusers(object_name):
     if i >= len(parts):
         raise ValueError(f"`object_name` should begin with the name of a module of diffusers but got {object_name}.")
 
-    with open(
-        os.path.join(DIFFUSERS_PATH, f"{module}.py"),
-        "r",
-        encoding="utf-8",
-        newline="\n",
-    ) as f:
+    with open(os.path.join(DIFFUSERS_PATH, f"{module}.py"), "r", encoding="utf-8", newline="\n") as f:
         lines = f.readlines()
 
     # Now let's find the class / func in the code!
@@ -93,29 +90,17 @@ def get_indent(code):
     return ""
 
 
-def run_ruff(code):
-    command = ["ruff", "format", "-", "--config", "pyproject.toml", "--silent"]
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
-    stdout, _ = process.communicate(input=code.encode())
-    return stdout.decode()
-
-
-def stylify(code: str) -> str:
+def blackify(code):
     """
-    Applies the ruff part of our `make style` command to some code. This formats the code using `ruff format`.
-    As `ruff` does not provide a python api this cannot be done on the fly.
-
-    Args:
-        code (`str`): The code to format.
-
-    Returns:
-        `str`: The formatted code.
+    Applies the black part of our `make style` command to `code`.
     """
     has_indent = len(get_indent(code)) > 0
     if has_indent:
         code = f"class Bla:\n{code}"
-    formatted_code = run_ruff(code)
-    return formatted_code[len("class Bla:\n") :] if has_indent else formatted_code
+    mode = black.Mode(target_versions={black.TargetVersion.PY37}, line_length=119, preview=True)
+    result = black.format_str(code, mode=mode)
+    result, _ = style_docstrings_in_code(result)
+    return result[len("class Bla:\n") :] if has_indent else result
 
 
 def is_copy_consistent(filename, overwrite=False):
@@ -175,9 +160,9 @@ def is_copy_consistent(filename, overwrite=False):
                     theoretical_code = re.sub(obj1.lower(), obj2.lower(), theoretical_code)
                     theoretical_code = re.sub(obj1.upper(), obj2.upper(), theoretical_code)
 
-            # stylify after replacement. To be able to do that, we need the header (class or function definition)
+            # Blackify after replacement. To be able to do that, we need the header (class or function definition)
             # from the previous line
-            theoretical_code = stylify(lines[start_index - 1] + theoretical_code)
+            theoretical_code = blackify(lines[start_index - 1] + theoretical_code)
             theoretical_code = theoretical_code[len(lines[start_index - 1]) :]
 
         # Test for a diff and act accordingly.
@@ -212,11 +197,7 @@ def check_copies(overwrite: bool = False):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--fix_and_overwrite",
-        action="store_true",
-        help="Whether to fix inconsistencies.",
-    )
+    parser.add_argument("--fix_and_overwrite", action="store_true", help="Whether to fix inconsistencies.")
     args = parser.parse_args()
 
     check_copies(args.fix_and_overwrite)

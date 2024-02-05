@@ -36,6 +36,7 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
+    print_tensor_test,
     require_torch_gpu,
     slow,
     torch_device,
@@ -201,6 +202,7 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
 
         assert image.shape == (1, 512, 512, 3)
         expected_slice = np.array([0.8449, 0.9079, 0.7571, 0.7873, 0.8348, 0.7010, 0.6694, 0.6873, 0.6138])
+        print_tensor_test(image_slice)
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 1e-4
