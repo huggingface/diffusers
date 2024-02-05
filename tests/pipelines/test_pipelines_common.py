@@ -59,6 +59,34 @@ def check_same_shape(tensor_list):
     return all(shape == shapes[0] for shape in shapes[1:])
 
 
+class IPAdapterTesterMixin:
+    """
+    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
+    It provides a set of common tests for pipelines that support IP Adapters.
+    """
+
+    @property
+    def ip_adapter_params(self) -> frozenset:
+        raise NotImplementedError(
+            "You need to set the attribute `ip_adapter_params` in the child test class. "
+            "`ip_adapter_params` are tested for if all accepted input image types (i.e. `pt`,`pil`,`np`) are producing same results"
+        )
+
+    def test_image_encoder_exists(self):
+        components = self.get_dummy_components()
+        self.assertIsNotNone(components.get("image_encoder", None))
+
+    # def test_ip_adapter(self):
+    #     components = self.get_dummy_components()
+    #     pipe = self.pipeline_class(**components)
+    #     pipe = pipe.to(torch_device)
+    #     pipe.set_progress_bar_config(disable=None)
+
+    # def test_multi_ip_adapter(self):
+    #     # TODO
+    #     pass
+
+
 class PipelineLatentTesterMixin:
     """
     This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
