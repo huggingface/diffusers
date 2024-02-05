@@ -76,6 +76,7 @@ from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_
 
 if is_accelerate_available():
     import accelerate
+    from accelerate.utils import compute_module_sizes, get_max_memory
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -1259,6 +1260,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
+        if device_map is not None and device_map != "auto":
+            raise ValueError(f"'{device_map}' is not supported, 'auto' is only supported as `device_map`.")
+
         # import it here to avoid circular import
         from diffusers import pipelines
 
@@ -1311,6 +1315,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
+        print(f"pipeline_class._load_connected_pipes: {pipeline_class._load_connected_pipes}")
         if pipeline_class._load_connected_pipes and os.path.isfile(os.path.join(cached_folder, "README.md")):
             modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
             connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
@@ -1374,12 +1379,46 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )
 
+        # 7.1 device_map
+        module_sizes = {
+            module_name: sum(compute_module_sizes(module, dtype=torch_dtype).values())
+            for module_name, module in init_kwargs.items()
+            if isinstance(module, torch.nn.Module)
+        }
+        module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
+        print(module_sizes)
+
+        # 7.2 memory determination
+        max_memory = get_max_memory(max_memory)
+        max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
+        max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
+        print(max_memory)
+
+        result_mapping = cls._assign_components_to_devices(module_sizes, max_memory)
+        print(result_mapping)
+
         # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
 
         # 9. Save where the model was instantiated from
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         return model
+
+    def _assign_components_to_devices(sorted_components: dict, devices: dict):
+        device_ids = list(devices.keys())
+        device_cycle = device_ids + device_ids[::-1]
+
+        mapping = {}
+        current_device_index = 0
+        for component in sorted_components:
+            device_id = device_cycle[current_device_index % len(device_cycle)]
+            if device_id not in mapping:
+                mapping[device_id] = [component]
+            else:
+                mapping[device_id].append(component)
+            current_device_index += 1
+
+        return mapping
 
     @property
     def name_or_path(self) -> str:
