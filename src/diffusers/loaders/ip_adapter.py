@@ -11,8 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
-from typing import Dict, Union
+
+from pathlib import Path
+from typing import Dict, List, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
@@ -45,9 +46,9 @@ class IPAdapterMixin:
     @validate_hf_hub_args
     def load_ip_adapter(
         self,
-        pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
-        subfolder: str,
-        weight_name: str,
+        pretrained_model_name_or_path_or_dict: Union[str, List[str], Dict[str, torch.Tensor]],
+        subfolder: Union[str, List[str]],
+        weight_name: Union[str, List[str]],
         **kwargs,
     ):
         """
@@ -87,6 +88,26 @@ class IPAdapterMixin:
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
         """
 
+        # handle the list inputs for multiple IP Adapters
+        if not isinstance(weight_name, list):
+            weight_name = [weight_name]
+
+        if not isinstance(pretrained_model_name_or_path_or_dict, list):
+            pretrained_model_name_or_path_or_dict = [pretrained_model_name_or_path_or_dict]
+        if len(pretrained_model_name_or_path_or_dict) == 1:
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict * len(weight_name)
+
+        if not isinstance(subfolder, list):
+            subfolder = [subfolder]
+        if len(subfolder) == 1:
+            subfolder = subfolder * len(weight_name)
+
+        if len(weight_name) != len(pretrained_model_name_or_path_or_dict):
+            raise ValueError("`weight_name` and `pretrained_model_name_or_path_or_dict` must have the same length.")
+
+        if len(weight_name) != len(subfolder):
+            raise ValueError("`weight_name` and `subfolder` must have the same length.")
+
         # Load the main state dict first.
         cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
@@ -100,61 +121,68 @@ class IPAdapterMixin:
             "file_type": "attn_procs_weights",
             "framework": "pytorch",
         }
-
-        if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-            model_file = _get_model_file(
-                pretrained_model_name_or_path_or_dict,
-                weights_name=weight_name,
-                cache_dir=cache_dir,
-                force_download=force_download,
-                resume_download=resume_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                subfolder=subfolder,
-                user_agent=user_agent,
-            )
-            if weight_name.endswith(".safetensors"):
-                state_dict = {"image_proj": {}, "ip_adapter": {}}
-                with safe_open(model_file, framework="pt", device="cpu") as f:
-                    for key in f.keys():
-                        if key.startswith("image_proj."):
-                            state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
-                        elif key.startswith("ip_adapter."):
-                            state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
-            else:
-                state_dict = torch.load(model_file, map_location="cpu")
-        else:
-            state_dict = pretrained_model_name_or_path_or_dict
-
-        keys = list(state_dict.keys())
-        if keys != ["image_proj", "ip_adapter"]:
-            raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
-
-        # load CLIP image encoder here if it has not been registered to the pipeline yet
-        if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
+        state_dicts = []
+        for pretrained_model_name_or_path_or_dict, weight_name, subfolder in zip(
+            pretrained_model_name_or_path_or_dict, weight_name, subfolder
+        ):
             if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-                logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
-                image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+                model_file = _get_model_file(
                     pretrained_model_name_or_path_or_dict,
-                    subfolder=os.path.join(subfolder, "image_encoder"),
-                ).to(self.device, dtype=self.dtype)
-                self.image_encoder = image_encoder
-                self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
+                    weights_name=weight_name,
+                    cache_dir=cache_dir,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                    subfolder=subfolder,
+                    user_agent=user_agent,
+                )
+                if weight_name.endswith(".safetensors"):
+                    state_dict = {"image_proj": {}, "ip_adapter": {}}
+                    with safe_open(model_file, framework="pt", device="cpu") as f:
+                        for key in f.keys():
+                            if key.startswith("image_proj."):
+                                state_dict["image_proj"][key.replace("image_proj.", "")] = f.get_tensor(key)
+                            elif key.startswith("ip_adapter."):
+                                state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
+                else:
+                    state_dict = torch.load(model_file, map_location="cpu")
             else:
-                raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
+                state_dict = pretrained_model_name_or_path_or_dict
 
-        # create feature extractor if it has not been registered to the pipeline yet
-        if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
-            self.feature_extractor = CLIPImageProcessor()
-            self.register_to_config(feature_extractor=["transformers", "CLIPImageProcessor"])
+            keys = list(state_dict.keys())
+            if keys != ["image_proj", "ip_adapter"]:
+                raise ValueError("Required keys are (`image_proj` and `ip_adapter`) missing from the state dict.")
 
-        # load ip-adapter into unet
+            state_dicts.append(state_dict)
+
+            # load CLIP image encoder here if it has not been registered to the pipeline yet
+            if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
+                if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+                    logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
+                    image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+                        pretrained_model_name_or_path_or_dict,
+                        subfolder=Path(subfolder, "image_encoder").as_posix(),
+                    ).to(self.device, dtype=self.dtype)
+                    self.image_encoder = image_encoder
+                    self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
+                else:
+                    raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
+
+            # create feature extractor if it has not been registered to the pipeline yet
+            if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
+                feature_extractor = CLIPImageProcessor()
+                self.register_modules(feature_extractor=feature_extractor)
+
+            # load ip-adapter into unet
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet._load_ip_adapter_weights(state_dict)
+        unet._load_ip_adapter_weights(state_dicts)
 
     def set_ip_adapter_scale(self, scale):
+        if not isinstance(scale, list):
+            scale = [scale]
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         for attn_processor in unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):

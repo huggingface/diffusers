@@ -143,7 +143,7 @@ class BasicTransformerBlock(nn.Module):
         double_self_attention: bool = False,
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single'
+        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single', 'layer_norm_i2vgen'
         norm_eps: float = 1e-5,
         final_dropout: bool = False,
         attention_type: str = "default",
@@ -170,6 +170,9 @@ class BasicTransformerBlock(nn.Module):
                 f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
             )
 
+        self.norm_type = norm_type
+        self.num_embeds_ada_norm = num_embeds_ada_norm
+
         if positional_embeddings and (num_positional_embeddings is None):
             raise ValueError(
                 "If `positional_embedding` type is defined, `num_positition_embeddings` must also be defined."
@@ -182,11 +185,11 @@ class BasicTransformerBlock(nn.Module):
 
         # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
-        if self.use_ada_layer_norm:
+        if norm_type == "ada_norm":
             self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
-        elif self.use_ada_layer_norm_zero:
+        elif norm_type == "ada_norm_zero":
             self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
-        elif self.use_ada_layer_norm_continuous:
+        elif norm_type == "ada_norm_continuous":
             self.norm1 = AdaLayerNormContinuous(
                 dim,
                 ada_norm_continous_conditioning_embedding_dim,
@@ -214,9 +217,9 @@ class BasicTransformerBlock(nn.Module):
             # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
             # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
             # the second cross attention block.
-            if self.use_ada_layer_norm:
+            if norm_type == "ada_norm":
                 self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm)
-            elif self.use_ada_layer_norm_continuous:
+            elif norm_type == "ada_norm_continuous":
                 self.norm2 = AdaLayerNormContinuous(
                     dim,
                     ada_norm_continous_conditioning_embedding_dim,
@@ -243,7 +246,7 @@ class BasicTransformerBlock(nn.Module):
             self.attn2 = None
 
         # 3. Feed-forward
-        if self.use_ada_layer_norm_continuous:
+        if norm_type == "ada_norm_continuous":
             self.norm3 = AdaLayerNormContinuous(
                 dim,
                 ada_norm_continous_conditioning_embedding_dim,
@@ -252,8 +255,11 @@ class BasicTransformerBlock(nn.Module):
                 ada_norm_bias,
                 "layer_norm",
             )
-        elif not self.use_ada_layer_norm_single:
+
+        elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm", "ada_norm_continuous"]:
             self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+        elif norm_type == "layer_norm_i2vgen":
+            self.norm3 = None
 
         self.ff = FeedForward(
             dim,
@@ -269,7 +275,7 @@ class BasicTransformerBlock(nn.Module):
             self.fuser = GatedSelfAttentionDense(dim, cross_attention_dim, num_attention_heads, attention_head_dim)
 
         # 5. Scale-shift for PixArt-Alpha.
-        if self.use_ada_layer_norm_single:
+        if norm_type == "ada_norm_single":
             self.scale_shift_table = nn.Parameter(torch.randn(6, dim) / dim**0.5)
 
         # let chunk size default to None
@@ -296,17 +302,17 @@ class BasicTransformerBlock(nn.Module):
         # 0. Self-Attention
         batch_size = hidden_states.shape[0]
 
-        if self.use_ada_layer_norm:
+        if self.norm_type == "ada_norm":
             norm_hidden_states = self.norm1(hidden_states, timestep)
-        elif self.use_ada_layer_norm_zero:
+        elif self.norm_type == "ada_norm_zero":
             norm_hidden_states, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.norm1(
                 hidden_states, timestep, class_labels, hidden_dtype=hidden_states.dtype
             )
-        elif self.use_layer_norm:
+        elif self.norm_type in ["layer_norm", "layer_norm_i2vgen"]:
             norm_hidden_states = self.norm1(hidden_states)
-        elif self.use_ada_layer_norm_continuous:
+        elif self.norm_type == "ada_norm_continuous":
             norm_hidden_states = self.norm1(hidden_states, added_cond_kwargs["pooled_text_emb"])
-        elif self.use_ada_layer_norm_single:
+        elif self.norm_type == "ada_norm_single":
             shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = (
                 self.scale_shift_table[None] + timestep.reshape(batch_size, 6, -1)
             ).chunk(6, dim=1)
@@ -332,9 +338,9 @@ class BasicTransformerBlock(nn.Module):
             attention_mask=attention_mask,
             **cross_attention_kwargs,
         )
-        if self.use_ada_layer_norm_zero:
+        if self.norm_type == "ada_norm_zero":
             attn_output = gate_msa.unsqueeze(1) * attn_output
-        elif self.use_ada_layer_norm_single:
+        elif self.norm_type == "ada_norm_single":
             attn_output = gate_msa * attn_output
 
         hidden_states = attn_output + hidden_states
@@ -347,20 +353,20 @@ class BasicTransformerBlock(nn.Module):
 
         # 3. Cross-Attention
         if self.attn2 is not None:
-            if self.use_ada_layer_norm:
+            if self.norm_type == "ada_norm":
                 norm_hidden_states = self.norm2(hidden_states, timestep)
-            elif self.use_ada_layer_norm_zero or self.use_layer_norm:
+            elif self.norm_type in ["ada_norm_zero", "layer_norm", "layer_norm_i2vgen"]:
                 norm_hidden_states = self.norm2(hidden_states)
-            elif self.use_ada_layer_norm_single:
+            elif self.norm_type == "ada_norm_single":
                 # For PixArt norm2 isn't applied here:
                 # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L70C1-L76C103
                 norm_hidden_states = hidden_states
-            elif self.use_ada_layer_norm_continuous:
+            elif self.norm_type == "ada_norm_continuous":
                 norm_hidden_states = self.norm2(hidden_states, added_cond_kwargs["pooled_text_emb"])
             else:
                 raise ValueError("Incorrect norm")
 
-            if self.pos_embed is not None and self.use_ada_layer_norm_single is False:
+            if self.pos_embed is not None and self.norm_type != "ada_norm_single":
                 norm_hidden_states = self.pos_embed(norm_hidden_states)
 
             attn_output = self.attn2(
@@ -372,15 +378,16 @@ class BasicTransformerBlock(nn.Module):
             hidden_states = attn_output + hidden_states
 
         # 4. Feed-forward
-        if self.use_ada_layer_norm_continuous:
+        # i2vgen doesn't have this norm 🤷‍♂️
+        if self.norm_type == "ada_norm_continuous":
             norm_hidden_states = self.norm3(hidden_states, added_cond_kwargs["pooled_text_emb"])
-        elif not self.use_ada_layer_norm_single:
+        elif not self.norm_type == "ada_norm_single":
             norm_hidden_states = self.norm3(hidden_states)
 
-        if self.use_ada_layer_norm_zero:
+        if self.norm_type == "ada_norm_zero":
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp[:, None]) + shift_mlp[:, None]
 
-        if self.use_ada_layer_norm_single:
+        if self.norm_type == "ada_norm_single":
             norm_hidden_states = self.norm2(hidden_states)
             norm_hidden_states = norm_hidden_states * (1 + scale_mlp) + shift_mlp
 
@@ -392,9 +399,9 @@ class BasicTransformerBlock(nn.Module):
         else:
             ff_output = self.ff(norm_hidden_states, scale=lora_scale)
 
-        if self.use_ada_layer_norm_zero:
+        if self.norm_type == "ada_norm_zero":
             ff_output = gate_mlp.unsqueeze(1) * ff_output
-        elif self.use_ada_layer_norm_single:
+        elif self.norm_type == "ada_norm_single":
             ff_output = gate_mlp * ff_output
 
         hidden_states = ff_output + hidden_states

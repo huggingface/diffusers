@@ -14,6 +14,7 @@
 import inspect
 import os
 from contextlib import nullcontext
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
@@ -581,7 +582,6 @@ class LoraLoaderMixin:
                     lora_config_kwargs = get_peft_kwargs(
                         rank, network_alphas, text_encoder_lora_state_dict, is_unet=False
                     )
-
                     lora_config = LoraConfig(**lora_config_kwargs)
 
                     # adapter_name
@@ -961,8 +961,9 @@ class LoraLoaderMixin:
             else:
                 weight_name = LORA_WEIGHT_NAME
 
-        save_function(state_dict, os.path.join(save_directory, weight_name))
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
+        save_path = Path(save_directory, weight_name).as_posix()
+        save_function(state_dict, save_path)
+        logger.info(f"Model weights saved in {save_path}")
 
     def unload_lora_weights(self):
         """
@@ -980,7 +981,7 @@ class LoraLoaderMixin:
 
         if not USE_PEFT_BACKEND:
             if version.parse(__version__) > version.parse("0.23"):
-                logger.warn(
+                logger.warning(
                     "You are using `unload_lora_weights` to disable and unload lora weights. If you want to iteratively enable and disable adapter weights,"
                     "you can use `pipe.enable_lora()` or `pipe.disable_lora()`. After installing the latest version of PEFT."
                 )

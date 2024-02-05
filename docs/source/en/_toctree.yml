@@ -160,6 +160,8 @@
       title: xFormers
     - local: optimization/tome
       title: Token merging
+    - local: optimization/deepcache
+      title: DeepCache
     title: General optimizations
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
@@ -210,6 +212,8 @@
       title: Textual Inversion
     - local: api/loaders/unet
       title: UNet
+    - local: api/loaders/peft
+      title: PEFT
     title: Loaders
   - sections:
     - local: api/models/overview
@@ -224,6 +228,8 @@
       title: UNet3DConditionModel
     - local: api/models/unet-motion
       title: UNetMotionModel
+    - local: api/models/uvit2d
+      title: UViT2DModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
@@ -278,6 +284,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/i2vgenxl
+      title: I2VGen-XL
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
@@ -296,6 +304,8 @@
       title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: Paint by Example
+    - local: api/pipelines/pia
+      title: Personalized Image Animator (PIA)
     - local: api/pipelines/pixart
       title: PixArt-α
     - local: api/pipelines/self_attention_guidance
@@ -329,6 +339,8 @@
         title: Latent upscaler
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-resolution
+      - local: api/pipelines/stable_diffusion/k_diffusion
+        title: K-Diffusion
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
       - local: api/pipelines/stable_diffusion/adapter

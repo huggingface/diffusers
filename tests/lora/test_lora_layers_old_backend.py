@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import gc
 import os
 import random
 import tempfile
@@ -61,7 +62,8 @@ from diffusers.utils.testing_utils import (
 )
 
 
-def text_encoder_attn_modules(text_encoder):
+def text_encoder_attn_modules(text_encoder: nn.Module):
+    """Fetches the attention modules from `text_encoder`."""
     attn_modules = []
 
     if isinstance(text_encoder, (CLIPTextModel, CLIPTextModelWithProjection)):
@@ -75,7 +77,8 @@ def text_encoder_attn_modules(text_encoder):
     return attn_modules
 
 
-def text_encoder_lora_state_dict(text_encoder):
+def text_encoder_lora_state_dict(text_encoder: nn.Module):
+    """Returns the LoRA state dict of the `text_encoder`. Assumes that `_modify_text_encoder()` was already called on it."""
     state_dict = {}
 
     for name, module in text_encoder_attn_modules(text_encoder):
@@ -95,6 +98,8 @@ def text_encoder_lora_state_dict(text_encoder):
 
 
 def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
+    """Creates and returns the LoRA state dict for the UNet."""
+    # So that we accidentally don't end up using the in-place modified UNet.
     unet_lora_parameters = []
 
     for attn_processor_name, attn_processor in unet.attn_processors.items():
@@ -145,10 +150,15 @@ def create_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
         unet_lora_parameters.extend(attn_module.to_v.lora_layer.parameters())
         unet_lora_parameters.extend(attn_module.to_out[0].lora_layer.parameters())
 
-    return unet_lora_parameters, unet_lora_state_dict(unet)
+    unet_lora_sd = unet_lora_state_dict(unet)
+    # Unload LoRA.
+    unet.unload_lora()
+
+    return unet_lora_parameters, unet_lora_sd
 
 
 def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
+    """Creates and returns the LoRA state dict for the 3D UNet."""
     for attn_processor_name in unet.attn_processors.keys():
         has_cross_attention = attn_processor_name.endswith("attn2.processor") and not (
             attn_processor_name.startswith("transformer_in") or "temp_attentions" in attn_processor_name.split(".")
@@ -216,10 +226,16 @@ def create_3d_unet_lora_layers(unet: nn.Module, rank=4, mock_weights=True):
                 attn_module.to_v.lora_layer.up.weight += 1
                 attn_module.to_out[0].lora_layer.up.weight += 1
 
-    return unet_lora_state_dict(unet)
+    unet_lora_sd = unet_lora_state_dict(unet)
+
+    # Unload LoRA.
+    unet.unload_lora()
+
+    return unet_lora_sd
 
 
 def set_lora_weights(lora_attn_parameters, randn_weight=False, var=1.0):
+    """Randomizes the LoRA params if specified."""
     if not isinstance(lora_attn_parameters, dict):
         with torch.no_grad():
             for parameter in lora_attn_parameters:
@@ -298,9 +314,9 @@ class LoraLoaderMixinTests(unittest.TestCase):
         text_encoder_lora_params = LoraLoaderMixin._modify_text_encoder(
             text_encoder, dtype=torch.float32, rank=self.lora_rank
         )
-        text_encoder_lora_params = set_lora_weights(
-            text_encoder_lora_state_dict(text_encoder), randn_weight=True, var=0.1
-        )
+        text_encoder_lora_params = text_encoder_lora_state_dict(text_encoder)
+        # We call this to ensure that the effects of the in-place `_modify_text_encoder` have been erased.
+        LoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder)
 
         pipeline_components = {
             "unet": unet,
@@ -918,18 +934,17 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
         _, unet_lora_params = create_unet_lora_layers(unet, rank=self.lora_rank)
 
         if modify_text_encoder:
-            text_encoder_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
+            _ = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
                 text_encoder, dtype=torch.float32, rank=self.lora_rank
             )
-            text_encoder_lora_params = set_lora_weights(
-                text_encoder_lora_state_dict(text_encoder), randn_weight=True, var=0.1
-            )
-            text_encoder_two_lora_params = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
+            text_encoder_lora_params = text_encoder_lora_state_dict(text_encoder)
+            StableDiffusionXLLoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder)
+
+            _ = StableDiffusionXLLoraLoaderMixin._modify_text_encoder(
                 text_encoder_2, dtype=torch.float32, rank=self.lora_rank
             )
-            text_encoder_two_lora_params = set_lora_weights(
-                text_encoder_lora_state_dict(text_encoder_2), randn_weight=True, var=0.1
-            )
+            text_encoder_two_lora_params = text_encoder_lora_state_dict(text_encoder_2)
+            StableDiffusionXLLoraLoaderMixin._remove_text_encoder_monkey_patch_classmethod(text_encoder_2)
         else:
             text_encoder_lora_params = None
             text_encoder_two_lora_params = None
@@ -1427,7 +1442,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdirname:
             sd_pipe.save_pretrained(tmpdirname)
-            sd_pipe_loaded = StableDiffusionXLPipeline.from_pretrained(tmpdirname)
+            sd_pipe_loaded = StableDiffusionXLPipeline.from_pretrained(tmpdirname).to(torch_device)
 
         loaded_lora_images = sd_pipe_loaded(**pipeline_inputs, generator=torch.manual_seed(0)).images
         loaded_lora_image_slice = loaded_lora_images[0, -3:, -3:, -1]
@@ -1441,6 +1456,7 @@ class SDXLLoraLoaderMixinTests(unittest.TestCase):
 class UNet2DConditionLoRAModelTests(unittest.TestCase):
     model_class = UNet2DConditionModel
     main_input_name = "sample"
+    lora_rank = 4
 
     @property
     def dummy_input(self):
@@ -1477,7 +1493,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_lora_processors(self):
+    def test_lora_at_different_scales(self):
         # enable deterministic behavior for gradient checkpointing
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
@@ -1489,14 +1505,11 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         with torch.no_grad():
             sample1 = model(**inputs_dict).sample
 
-        _, lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model, rank=self.lora_rank)
 
         # make sure we can set a list of attention processors
         model.load_attn_procs(lora_params)
         model.to(torch_device)
-
-        # test that attn processors can be set to itself
-        model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
@@ -1522,13 +1535,14 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         with torch.no_grad():
             old_sample = model(**inputs_dict).sample
 
-        _, lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model, rank=self.lora_rank)
         model.load_attn_procs(lora_params)
 
         with torch.no_grad():
             sample = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
 
-        model.set_default_attn_processor()
+        # Unload LoRA.
+        model.unload_lora()
 
         with torch.no_grad():
             new_sample = model(**inputs_dict).sample
@@ -1552,7 +1566,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
         torch.manual_seed(0)
         model = self.model_class(**init_dict)
         model.to(torch_device)
-        _, lora_params = create_unet_lora_layers(model)
+        _, lora_params = create_unet_lora_layers(model, rank=self.lora_rank)
         model.load_attn_procs(lora_params)
 
         # default
@@ -1573,7 +1587,7 @@ class UNet2DConditionLoRAModelTests(unittest.TestCase):
 
 
 @deprecate_after_peft_backend
-class UNet3DConditionModelTests(unittest.TestCase):
+class UNet3DConditionLoRAModelTests(unittest.TestCase):
     model_class = UNet3DConditionModel
     main_input_name = "sample"
 
@@ -1616,7 +1630,7 @@ class UNet3DConditionModelTests(unittest.TestCase):
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
 
-    def test_lora_processors(self):
+    def test_lora_at_different_scales(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
 
         init_dict["attention_head_dim"] = 8
@@ -1632,9 +1646,6 @@ class UNet3DConditionModelTests(unittest.TestCase):
         # make sure we can set a list of attention processors
         model.load_attn_procs(unet_lora_params)
         model.to(torch_device)
-
-        # test that attn processors can be set to itself
-        model.set_attn_processor(model.attn_processors)
 
         with torch.no_grad():
             sample2 = model(**inputs_dict, cross_attention_kwargs={"scale": 0.0}).sample
@@ -1652,6 +1663,11 @@ class UNet3DConditionModelTests(unittest.TestCase):
 @deprecate_after_peft_backend
 @require_torch_gpu
 class LoraIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_dreambooth_old_format(self):
         generator = torch.Generator("cpu").manual_seed(0)
 
