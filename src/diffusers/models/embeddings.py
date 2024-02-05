@@ -279,10 +279,7 @@ class TimestepsADM(nn.Module):
         self.num_channels = num_channels
 
     def forward(self, timesteps):
-        t_emb = timestep_embedding_adm(
-            timesteps,
-            self.num_channels,
-        )
+        t_emb = timestep_embedding_adm(timesteps, self.num_channels)
         return t_emb
 
 
