@@ -23,7 +23,7 @@ import unittest
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig, CLIPVisionModelWithProjection
 
 from diffusers import (
     AutoencoderKL,
@@ -55,12 +55,18 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import (
+    IP_ADAPTER_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -100,13 +106,18 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
 
 
 class StableDiffusionPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
+    ip_adapter_params = IP_ADAPTER_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
 
     def get_dummy_components(self, time_cond_proj_dim=None):
@@ -154,6 +165,14 @@ class StableDiffusionPipelineFastTests(
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        image_encoder_config = CLIPVisionConfig(
+            hidden_size=8,
+            intermediate_size=8,
+            projection_dim=4,
+            num_hidden_layers=1,
+            num_attention_heads=1,
+        )
+        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
 
         components = {
             "unet": unet,
@@ -163,7 +182,7 @@ class StableDiffusionPipelineFastTests(
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
-            "image_encoder": None,
+            "image_encoder": image_encoder,
         }
         return components
 
