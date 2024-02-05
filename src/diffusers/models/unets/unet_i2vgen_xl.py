@@ -467,7 +467,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     def forward(
         self,
         sample: torch.FloatTensor,
-        timestep: torch.Tensor,
+        timestep: Union[torch.Tensor, float, int],
         fps: torch.Tensor,
         image_latents: torch.Tensor,
         image_embeddings: Optional[torch.Tensor] = None,
@@ -482,7 +482,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         Args:
             sample (`torch.FloatTensor`):
                 The noisy input tensor with the following shape `(batch, num_frames, channel, height, width`.
-            timestep (`torch.Tensor`): The number of timesteps to denoise an input.
+            timestep (`torch.FloatTensor` or `float` or `int`): The number of timesteps to denoise an input.
             fps (`torch.Tensor`): Frames per second for the video being generated. Used as a "micro-condition".
             image_latents (`torch.FloatTensor`): Image encodings from the VAE.
             image_embeddings (`torch.FloatTensor`): Projection embeddings of the conditioning image computed with a vision encoder.
@@ -519,7 +519,17 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # 1. time
         timesteps = timestep
-        timesteps = timesteps.to(sample.device)
+        if not torch.is_tensor(timesteps):
+            # TODO: this requires sync between CPU and GPU. So try to pass `timesteps` as tensors if you can
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = sample.device.type == "mps"
+            if isinstance(timesteps, float):
+                dtype = torch.float32 if is_mps else torch.float64
+            else:
+                dtype = torch.int32 if is_mps else torch.int64
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+        elif len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
