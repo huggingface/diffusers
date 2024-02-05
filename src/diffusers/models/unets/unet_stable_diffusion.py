@@ -49,7 +49,7 @@ from .unet_utils import UNet2DConditionModelUtilsMixin
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class SDCrossAttnDownBlock2D(nn.Module):
+class CrossAttnDownBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -187,7 +187,7 @@ class SDCrossAttnDownBlock2D(nn.Module):
         return hidden_states, output_states
 
 
-class SDDownBlock2D(nn.Module):
+class DownBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -265,7 +265,7 @@ class SDDownBlock2D(nn.Module):
         return hidden_states, output_states
 
 
-class SDCrossAttnUpBlock2D(nn.Module):
+class CrossAttnUpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -421,7 +421,7 @@ class SDCrossAttnUpBlock2D(nn.Module):
         return hidden_states
 
 
-class SDUpBlock2D(nn.Module):
+class UpBlock2D(nn.Module):
     def __init__(
         self,
         in_channels: int,
@@ -594,16 +594,16 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
         in_channels: int = 4,
         out_channels: int = 4,
         down_block_types: Tuple[str] = (
-            "SDCrossAttnDownBlock2D",
-            "SDCrossAttnDownBlock2D",
-            "SDCrossAttnDownBlock2D",
-            "SDDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "DownBlock2D",
         ),
         up_block_types: Tuple[str] = (
-            "SDUpBlock2D",
-            "SDCrossAttnUpBlock2D",
-            "SDCrossAttnUpBlock2D",
-            "SDCrossAttnUpBlock2D",
+            "UpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
+            "CrossAttnUpBlock2D",
         ),
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         layers_per_block: Union[int, Tuple[int]] = 2,
@@ -693,8 +693,8 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
             output_channel = block_out_channels[i]
             is_final_block = i == len(block_out_channels) - 1
 
-            if down_block_type == "SDCrossAttnDownBlock2D":
-                down_block = SDCrossAttnDownBlock2D(
+            if down_block_type == "CrossAttnDownBlock2D":
+                down_block = CrossAttnDownBlock2D(
                     in_channels=input_channel,
                     out_channels=output_channel,
                     temb_channels=blocks_time_embed_dim,
@@ -710,7 +710,7 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
                     attention_type="default",
                 )
             else:
-                down_block = SDDownBlock2D(
+                down_block = DownBlock2D(
                     in_channels=input_channel,
                     out_channels=output_channel,
                     temb_channels=blocks_time_embed_dim,
@@ -769,8 +769,8 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
             else:
                 add_upsample = False
 
-            if up_block_type == "SDCrossAttnUpBlock2D":
-                up_block = SDCrossAttnUpBlock2D(
+            if up_block_type == "CrossAttnUpBlock2D":
+                up_block = CrossAttnUpBlock2D(
                     in_channels=input_channel,
                     out_channels=output_channel,
                     prev_output_channel=prev_output_channel,
@@ -789,7 +789,7 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
                 )
 
             else:
-                up_block = SDUpBlock2D(
+                up_block = UpBlock2D(
                     in_channels=input_channel,
                     out_channels=output_channel,
                     prev_output_channel=prev_output_channel,
