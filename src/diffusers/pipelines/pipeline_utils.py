@@ -1379,23 +1379,24 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )
 
-        # 7.1 device_map
-        module_sizes = {
-            module_name: sum(compute_module_sizes(module, dtype=torch_dtype).values())
-            for module_name, module in init_kwargs.items()
-            if isinstance(module, torch.nn.Module)
-        }
-        module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
-        print(module_sizes)
+        if device_map is not None and device_map == "auto":
+            # 7.1 device_map
+            module_sizes = {
+                module_name: sum(compute_module_sizes(module, dtype=torch_dtype).values())
+                for module_name, module in init_kwargs.items()
+                if isinstance(module, torch.nn.Module)
+            }
+            module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
+            print(module_sizes)
 
-        # 7.2 memory determination
-        max_memory = get_max_memory(max_memory)
-        max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
-        max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
-        print(max_memory)
+            # 7.2 memory determination
+            max_memory = get_max_memory(max_memory)
+            max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
+            max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
+            print(max_memory)
 
-        result_mapping = cls._assign_components_to_devices(module_sizes, max_memory)
-        print(result_mapping)
+            result_mapping = cls._assign_components_to_devices(module_sizes, max_memory)
+            print(result_mapping)
 
         # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
