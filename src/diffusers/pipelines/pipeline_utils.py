@@ -1260,8 +1260,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
-        if device_map is not None and device_map != "auto":
-            raise ValueError(f"'{device_map}' is not supported, 'auto' is only supported as `device_map`.")
+        if device_map is not None and device_map not in ["auto", "sequential"]:
+            raise ValueError(f"'{device_map}' is not supported, 'auto' and 'sequential' are only supported as `device_map`.")
 
         # import it here to avoid circular import
         from diffusers import pipelines
