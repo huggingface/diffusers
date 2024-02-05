@@ -96,39 +96,68 @@ class IPAdapterTesterMixin:
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
+        # forward pass without ip adapter
         inputs = self.get_dummy_inputs(device)
         output_without_adapter = pipe(**inputs).images
 
-        adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
-        pipe.unet._load_ip_adapter_weights(adapter_state_dict)
+        adapter_state_dict_1 = create_ip_adapter_state_dict(pipe.unet)
+        adapter_state_dict_2 = create_ip_adapter_state_dict(pipe.unet)
 
+        pipe.unet._load_ip_adapter_weights(adapter_state_dict_1)
+
+        # forward pass with single ip adapter, but scale=0 which should have no effect
         inputs = self.get_dummy_inputs(device)
         inputs["ip_adapter_image"] = self._get_dummy_image()
         pipe.set_ip_adapter_scale(0.0)
-        output_with_adapter_scale_0 = pipe(**inputs).images
+        output_without_adapter_scale = pipe(**inputs).images
 
+        # forward pass with single ip adapter, but with scale of adapter weights
         inputs = self.get_dummy_inputs(device)
         inputs["ip_adapter_image"] = self._get_dummy_image()
         pipe.set_ip_adapter_scale(1.0)
-        output_with_adapter_scale_1 = pipe(**inputs).images
+        output_with_adapter_scale = pipe(**inputs).images
 
-        max_diff_scale_0 = np.abs(output_with_adapter_scale_0 - output_without_adapter).max()
-        max_diff_scale_1 = np.abs(output_with_adapter_scale_1 - output_without_adapter).max()
+        pipe.unet._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
 
-        print(max_diff_scale_0, max_diff_scale_1)
+        # forward pass with multi ip adapter, but scale=0 which should have no effect
+        inputs = self.get_dummy_inputs(device)
+        inputs["ip_adapter_image"] = [self._get_dummy_image()] * 2
+        pipe.set_ip_adapter_scale([0.0, 0.0])
+        output_without_multi_adapter_scale = pipe(**inputs).images
+
+        # forward pass with multi ip adapter, but with scale of adapter weights
+        inputs = self.get_dummy_inputs(device)
+        inputs["ip_adapter_image"] = [self._get_dummy_image()] * 2
+        pipe.set_ip_adapter_scale([0.5, 0.5])
+        output_with_multi_adapter_scale = pipe(**inputs).images
+
+        max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
+        max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
+        max_diff_without_multi_adapter_scale = np.abs(
+            output_without_multi_adapter_scale - output_without_adapter
+        ).max()
+        max_diff_with_multi_adapter_scale = np.abs(output_with_multi_adapter_scale - output_without_adapter).max()
 
         self.assertLess(
-            max_diff_scale_0, expected_max_diff, "Output with ip-adapter scale=0 must be same as normal inference"
+            max_diff_without_adapter_scale,
+            expected_max_diff,
+            "Output without ip-adapter must be same as normal inference",
         )
         self.assertGreater(
-            max_diff_scale_1, 0.1, "Output with ip-adapter scale=1 must be different from normal inference"
+            max_diff_with_adapter_scale, 0.1, "Output with ip-adapter must be different from normal inference"
+        )
+        self.assertLess(
+            max_diff_without_multi_adapter_scale,
+            expected_max_diff,
+            "Output without multi-ip-adapter must be same as normal inference",
+        )
+        self.assertGreater(
+            max_diff_with_multi_adapter_scale,
+            0.1,
+            "Output with multi-ip-adapter scale must be different from normal inference",
         )
 
     def test_ip_adapter_plus(self):
-        # TODO
-        pass
-
-    def test_multi_ip_adapter(self):
         # TODO
         pass
 
