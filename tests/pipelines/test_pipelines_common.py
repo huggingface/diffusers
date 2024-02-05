@@ -97,8 +97,7 @@ class IPAdapterTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["ip_adapter_image"] = self._get_dummy_image()
-        output_without_adapter = pipe(**inputs)
+        output_without_adapter = pipe(**inputs).images
 
         adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
         pipe.unet._load_ip_adapter_weights(adapter_state_dict)
@@ -106,23 +105,23 @@ class IPAdapterTesterMixin:
         inputs = self.get_dummy_inputs(device)
         inputs["ip_adapter_image"] = self._get_dummy_image()
         pipe.set_ip_adapter_scale(0.0)
-        output_with_adapter_scale_0 = pipe(**inputs)
+        output_with_adapter_scale_0 = pipe(**inputs).images
 
         inputs = self.get_dummy_inputs(device)
         inputs["ip_adapter_image"] = self._get_dummy_image()
         pipe.set_ip_adapter_scale(1.0)
-        output_with_adapter_scale_1 = pipe(**inputs)
+        output_with_adapter_scale_1 = pipe(**inputs).images
 
         max_diff_scale_0 = np.abs(output_with_adapter_scale_0 - output_without_adapter).max()
         max_diff_scale_1 = np.abs(output_with_adapter_scale_1 - output_without_adapter).max()
+
+        print(max_diff_scale_0, max_diff_scale_1)
 
         self.assertLess(
             max_diff_scale_0, expected_max_diff, "Output with ip-adapter scale=0 must be same as normal inference"
         )
         self.assertGreater(
-            max_diff_scale_1,
-            10 * expected_max_diff,
-            "Output with ip-adapter scale=1 must be different from normal inference",
+            max_diff_scale_1, 0.1, "Output with ip-adapter scale=1 must be different from normal inference"
         )
 
     def test_ip_adapter_plus(self):

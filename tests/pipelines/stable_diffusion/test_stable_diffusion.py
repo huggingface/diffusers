@@ -23,7 +23,14 @@ import unittest
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer, CLIPVisionConfig, CLIPVisionModelWithProjection
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTokenizer,
+    CLIPVisionConfig,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -165,10 +172,11 @@ class StableDiffusionPipelineFastTests(
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
+        feature_extractor = CLIPImageProcessor()
         image_encoder_config = CLIPVisionConfig(
             hidden_size=8,
             intermediate_size=8,
-            projection_dim=4,
+            projection_dim=32,
             num_hidden_layers=1,
             num_attention_heads=1,
         )
@@ -181,7 +189,7 @@ class StableDiffusionPipelineFastTests(
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "safety_checker": None,
-            "feature_extractor": None,
+            "feature_extractor": feature_extractor,
             "image_encoder": image_encoder,
         }
         return components
@@ -196,7 +204,7 @@ class StableDiffusionPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
