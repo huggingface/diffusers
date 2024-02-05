@@ -2210,6 +2210,7 @@ class IPAdapterAttnProcessor(nn.Module):
 
             ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
             current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
+            current_ip_hidden_states = attn.batch_to_head_dim(current_ip_hidden_states)
             current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
 
             if mask is not None:
