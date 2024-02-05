@@ -94,6 +94,7 @@ DreamBooth for the text encoder was enabled: {train_text_encoder}.
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
+        from_training=True,
         license="creativeml-openrail-m",
         base_model=base_model,
         instance_prompt=prompt,

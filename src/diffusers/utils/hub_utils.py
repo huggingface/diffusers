@@ -65,7 +65,7 @@ from .logging import get_logger
 
 logger = get_logger(__name__)
 
-
+MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
 
 
@@ -94,7 +94,15 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
 
 
 def load_or_create_model_card(
-    repo_id_or_path: Optional[str] = None, token: Optional[str] = None, is_pipeline: bool = False, **kwargs
+    repo_id_or_path: Optional[str] = None,
+    token: Optional[str] = None,
+    is_pipeline: bool = False,
+    from_training: bool = False,
+    model_description: str = None,
+    base_model: str = None,
+    instance_prompt: str = None,
+    license: str = None,
+    inference: bool = None,
 ) -> ModelCard:
     """
     Loads or creates a model card.
@@ -106,6 +114,16 @@ def load_or_create_model_card(
             Authentication token. Will default to the stored token. See https://huggingface.co/settings/token for more details.
         is_pipeline (`bool`, *optional*):
             Boolean to indicate if we're adding tag to a [`DiffusionPipeline`].
+        from_training: (`bool`, *optional*): Boolean flag to denote if the model card is being created from a training script.
+        model_description (`str`, *optional*): Model description to add to the model card. Helpful when using
+            `load_or_create_model_card` from a training script.
+        base_model (`str`, *optional*): Base model identifier (e.g., "stabilityai/stable-diffusion-xl-base-1.0"). Useful
+            for DreamBooth-like training.
+        instance_prompt (`str`, *optional*): Instance prompt used for training. Useful for DreamBooth-like training.
+        license: (`str`, *optional*): License of the output artifact. Helpful when using
+            `load_or_create_model_card` from a training script.
+        inference: (`bool`, optional): Whether to turn on inference widget. Helpful when using
+            `load_or_create_model_card` from a training script.
     """
     if not is_jinja_available():
         raise ValueError(
@@ -119,18 +137,24 @@ def load_or_create_model_card(
         model_card = ModelCard.load(repo_id_or_path, token=token)
     except (EntryNotFoundError, RepositoryNotFoundError):
         # Otherwise create a model card from template
-        component = "pipeline" if is_pipeline else "model"
-
-        if kwargs is not None:
-            model_description = kwargs.pop("model_description", None)
-            card_data = ModelCardData(**kwargs) if kwargs is not None else ModelCardData()
+        if from_training:
+            model_card = ModelCard.from_template(
+                card_data=ModelCardData(  # Card metadata object that will be converted to YAML block
+                    license=license,
+                    library_name="diffusers",
+                    inference=inference,
+                    base_model=base_model,
+                    instance_prompt=instance_prompt,
+                ),
+                template_path=MODEL_CARD_TEMPLATE_PATH,
+                model_description=model_description,
+            )
         else:
-            model_description = None
-
-        if model_description is None:
-            model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
-
-        model_card = ModelCard.from_template(card_data, model_description=model_description)
+            card_data = ModelCardData()
+            component = "pipeline" if is_pipeline else "model"
+            if model_description is None:
+                model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
+            model_card = ModelCard.from_template(card_data, model_description=model_description)
 
     return model_card
 
