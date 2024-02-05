@@ -29,6 +29,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import IPAdapterMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
@@ -44,6 +45,7 @@ from ..models.autoencoders.test_models_vae import (
     get_autoencoder_tiny_config,
     get_consistency_vae_config,
 )
+from ..models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
@@ -76,15 +78,61 @@ class IPAdapterTesterMixin:
         components = self.get_dummy_components()
         self.assertIsNotNone(components.get("image_encoder", None))
 
-    # def test_ip_adapter(self):
-    #     components = self.get_dummy_components()
-    #     pipe = self.pipeline_class(**components)
-    #     pipe = pipe.to(torch_device)
-    #     pipe.set_progress_bar_config(disable=None)
+    def test_pipeline_signature(self):
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
 
-    # def test_multi_ip_adapter(self):
-    #     # TODO
-    #     pass
+        assert issubclass(self.pipeline_class, IPAdapterMixin)
+        self.assertIn(
+            "ip_adapter_image", parameters, "`ip_adapter_image` argument must be supported by the `__call__` method"
+        )
+
+    def _get_dummy_image(self, height: int = 512, width: int = 512):
+        return PIL.Image.new("RGB", (width, height))
+
+    def test_ip_adapter(self, expected_max_diff: float = 1e-4):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["ip_adapter_image"] = self._get_dummy_image()
+        output_without_adapter = pipe(**inputs)
+
+        adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
+        pipe.unet._load_ip_adapter_weights(adapter_state_dict)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["ip_adapter_image"] = self._get_dummy_image()
+        pipe.set_ip_adapter_scale(0.0)
+        output_with_adapter_scale_0 = pipe(**inputs)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["ip_adapter_image"] = self._get_dummy_image()
+        pipe.set_ip_adapter_scale(1.0)
+        output_with_adapter_scale_1 = pipe(**inputs)
+
+        max_diff_scale_0 = np.abs(output_with_adapter_scale_0 - output_without_adapter).max()
+        max_diff_scale_1 = np.abs(output_with_adapter_scale_1 - output_without_adapter).max()
+
+        self.assertLess(
+            max_diff_scale_0, expected_max_diff, "Output with ip-adapter scale=0 must be same as normal inference"
+        )
+        self.assertGreater(
+            max_diff_scale_1,
+            10 * expected_max_diff,
+            "Output with ip-adapter scale=1 must be different from normal inference",
+        )
+
+    def test_ip_adapter_plus(self):
+        # TODO
+        pass
+
+    def test_multi_ip_adapter(self):
+        # TODO
+        pass
 
 
 class PipelineLatentTesterMixin:
