@@ -165,6 +165,10 @@ list_adapters_component_wise
 {"text_encoder": ["toy", "pixel"], "unet": ["toy", "pixel"], "text_encoder_2": ["toy", "pixel"]}
 ```
 
+## Compatibility with `torch.compile`
+
+If you want to compile your model with `torch.compile` make sure to first fuse the LoRA weights into the base model as explained in the section below.
+
 ## Fusing adapters into the model
 
 You can use PEFT to easily fuse/unfuse multiple adapters directly into the model weights (both UNet and text encoder) using the [`~diffusers.loaders.LoraLoaderMixin.fuse_lora`] method, which can lead to a speed-up in inference and lower VRAM usage.
