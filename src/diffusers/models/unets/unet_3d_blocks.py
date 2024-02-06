@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from ...utils import is_torch_version
+from ...utils import deprecate, is_torch_version
 from ...utils.torch_utils import apply_freeu
 from ..attention import Attention
 from ..resnet import (
@@ -44,7 +44,8 @@ def get_down_block(
     add_downsample: bool,
     resnet_eps: float,
     resnet_act_fn: str,
-    num_attention_heads: int,
+    num_attention_heads: Optional[int] = None,
+    attention_head_dim: Optional[int] = None,
     resnet_groups: Optional[int] = None,
     cross_attention_dim: Optional[int] = None,
     downsample_padding: Optional[int] = None,
@@ -80,6 +81,16 @@ def get_down_block(
     elif down_block_type == "CrossAttnDownBlock3D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for CrossAttnDownBlock3D")
+        if num_attention_heads is not None:
+            deprecation_message = (
+                " passing `num`_attention_heads` to `unet_3d_blocks.get_down_block` for CrossAttnDownBlock3D is deprecated. "
+                " Please use `attention_head_dim` instead."
+            )
+            deprecate("num_attention_heads not None", "1.0.0", deprecation_message, standard_warn=False)
+            if attention_head_dim is None:
+                attention_head_dim = num_attention_heads
+        if attention_head_dim is None:
+            raise ValueError("`attention_head_dim` must be specified for CrossAttnDownBlock3D")
         return CrossAttnDownBlock3D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -91,7 +102,8 @@ def get_down_block(
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
-            num_attention_heads=num_attention_heads,
+            num_attention_heads=None,
+            attention_head_dim=attention_head_dim,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
@@ -173,7 +185,8 @@ def get_up_block(
     add_upsample: bool,
     resnet_eps: float,
     resnet_act_fn: str,
-    num_attention_heads: int,
+    num_attention_heads: Optional[int] = None,
+    attention_head_dim: Optional[int] = None,
     resolution_idx: Optional[int] = None,
     resnet_groups: Optional[int] = None,
     cross_attention_dim: Optional[int] = None,
@@ -212,6 +225,16 @@ def get_up_block(
     elif up_block_type == "CrossAttnUpBlock3D":
         if cross_attention_dim is None:
             raise ValueError("cross_attention_dim must be specified for CrossAttnUpBlock3D")
+        if num_attention_heads is not None:
+            deprecation_message = (
+                " passing `num`_attention_heads` to `unet_3d_blocks.get_up_block` for CrossAttnUpBlock3D is deprecated. "
+                " Please use `attention_head_dim` instead."
+            )
+            deprecate("num_attention_heads not None", "1.0.0", deprecation_message, standard_warn=False)
+            if attention_head_dim is None:
+                attention_head_dim = num_attention_heads
+        if attention_head_dim is None:
+            raise ValueError("`attention_head_dim` must be specified for CrossAttnUpBlock3D")
         return CrossAttnUpBlock3D(
             num_layers=num_layers,
             in_channels=in_channels,
@@ -223,7 +246,8 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
-            num_attention_heads=num_attention_heads,
+            num_attention_heads=None,
+            attention_head_dim=attention_head_dim,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
@@ -314,7 +338,8 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        num_attention_heads: int = 1,
+        num_attention_heads: Optional[int] = 1,
+        attention_head_dim: Optional[int] = None,
         output_scale_factor: float = 1.0,
         cross_attention_dim: int = 1280,
         dual_cross_attention: bool = False,
@@ -322,9 +347,19 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         upcast_attention: bool = False,
     ):
         super().__init__()
-
+        if num_attention_heads is not None:
+            deprecation_message = (
+                " passing `num`_attention_heads` to `unet_3d_blocks.UNetMidBlock3DCrossAttn` is deprecated. "
+                " Please use `attention_head_dim` instead."
+            )
+            deprecate("num_attention_heads not None", "1.0.0", deprecation_message, standard_warn=False)
+            if attention_head_dim is None:
+                attention_head_dim = num_attention_heads
+            self.num_attention_heads = num_attention_heads
+        if attention_head_dim is None:
+            raise ValueError("`attention_head_dim` must be specified for UNetMidBlock3DCrossAttn")
         self.has_cross_attention = True
-        self.num_attention_heads = num_attention_heads
+
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
         # there is always at least one resnet
@@ -356,8 +391,8 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         for _ in range(num_layers):
             attentions.append(
                 Transformer2DModel(
-                    in_channels // num_attention_heads,
-                    num_attention_heads,
+                    in_channels // attention_head_dim,
+                    attention_head_dim,
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -368,8 +403,8 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             )
             temp_attentions.append(
                 TransformerTemporalModel(
-                    in_channels // num_attention_heads,
-                    num_attention_heads,
+                    in_channels // attention_head_dim,
+                    attention_head_dim,
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -449,7 +484,8 @@ class CrossAttnDownBlock3D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        num_attention_heads: int = 1,
+        num_attention_heads: Optional[int] = 1,
+        attention_head_dim: Optional[int] = None,
         cross_attention_dim: int = 1280,
         output_scale_factor: float = 1.0,
         downsample_padding: int = 1,
@@ -460,13 +496,23 @@ class CrossAttnDownBlock3D(nn.Module):
         upcast_attention: bool = False,
     ):
         super().__init__()
+        if num_attention_heads is not None:
+            deprecation_message = (
+                " passing `num`_attention_heads` to `unet_3d_blocks.CrossAttnDownBlock3D` is deprecated. "
+                " Please use `attention_head_dim` instead."
+            )
+            deprecate("num_attention_heads not None", "1.0.0", deprecation_message, standard_warn=False)
+            if attention_head_dim is None:
+                attention_head_dim = num_attention_heads
+            self.num_attention_heads = num_attention_heads
+        if attention_head_dim is None:
+            raise ValueError("`attention_head_dim` must be specified for CrossAttnDownBlock3D")
         resnets = []
         attentions = []
         temp_attentions = []
         temp_convs = []
 
         self.has_cross_attention = True
-        self.num_attention_heads = num_attention_heads
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -494,8 +540,8 @@ class CrossAttnDownBlock3D(nn.Module):
             )
             attentions.append(
                 Transformer2DModel(
-                    out_channels // num_attention_heads,
-                    num_attention_heads,
+                    out_channels // attention_head_dim,
+                    attention_head_dim,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -507,8 +553,8 @@ class CrossAttnDownBlock3D(nn.Module):
             )
             temp_attentions.append(
                 TransformerTemporalModel(
-                    out_channels // num_attention_heads,
-                    num_attention_heads,
+                    out_channels // attention_head_dim,
+                    attention_head_dim,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -681,7 +727,8 @@ class CrossAttnUpBlock3D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
-        num_attention_heads: int = 1,
+        num_attention_heads: Optional[int] = 1,
+        attention_head_dim: Optional[int] = None,
         cross_attention_dim: int = 1280,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
@@ -692,13 +739,25 @@ class CrossAttnUpBlock3D(nn.Module):
         resolution_idx: Optional[int] = None,
     ):
         super().__init__()
+        if num_attention_heads is not None:
+            deprecation_message = (
+                " passing `num`_attention_heads` to `unet_3d_blocks.CrossAttnUpBlock3D` is deprecated. "
+                " Please use `attention_head_dim` instead."
+            )
+            deprecate("num_attention_heads not None", "1.0.0", deprecation_message, standard_warn=False)
+            if attention_head_dim is None:
+                attention_head_dim = num_attention_heads
+            self.num_attention_heads = num_attention_heads
+
+        if attention_head_dim is None:
+            raise ValueError("`attention_head_dim` must be specified for CrossAttnUpBlock3D")
+
         resnets = []
         temp_convs = []
         attentions = []
         temp_attentions = []
 
         self.has_cross_attention = True
-        self.num_attention_heads = num_attention_heads
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -728,8 +787,8 @@ class CrossAttnUpBlock3D(nn.Module):
             )
             attentions.append(
                 Transformer2DModel(
-                    out_channels // num_attention_heads,
-                    num_attention_heads,
+                    out_channels // attention_head_dim,
+                    attention_head_dim,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -741,8 +800,8 @@ class CrossAttnUpBlock3D(nn.Module):
             )
             temp_attentions.append(
                 TransformerTemporalModel(
-                    out_channels // num_attention_heads,
-                    num_attention_heads,
+                    out_channels // attention_head_dim,
+                    attention_head_dim,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
