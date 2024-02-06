@@ -1002,6 +1002,7 @@ class StableDiffusionPipeline(
             print(f"image_embeds: {len(image_embeds)}")
             for image_embed in image_embeds:
                 print(f"image embed: {image_embed.shape}")
+                print(image_embed[0, :1, :1])
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
