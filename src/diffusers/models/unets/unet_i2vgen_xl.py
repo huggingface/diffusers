@@ -120,6 +120,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
+        attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
         num_attention_heads (`int`, *optional*): The number of attention heads.
     """
 
@@ -147,9 +148,15 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         layers_per_block: int = 2,
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: int = 1024,
+        attention_head_dim: Union[int, Tuple[int]] = None,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = 64,
     ):
         super().__init__()
+
+        # When we first integrated the UNet into the library, we didn't have `attention_head_dim`. As a consequence
+        # of that, we used `num_attention_heads` for arguments that actually denote attention head dimension. This
+        # is why we correct the behaviour here.
+        attention_head_dim = num_attention_heads or attention_head_dim
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -172,7 +179,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         self.transformer_in = TransformerTemporalModel(
             num_attention_heads=8,
-            attention_head_dim=num_attention_heads,
+            attention_head_dim=attention_head_dim,
             in_channels=block_out_channels[0],
             num_layers=1,
             norm_num_groups=norm_num_groups,
