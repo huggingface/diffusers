@@ -308,7 +308,7 @@ image = pipeline(prompt=prompt).images[0]
 image
 ```
 
-## IP-Adapter 
+## IP-Adapter
 
 [IP-Adapter](https://ip-adapter.github.io/) is an effective and lightweight adapter that adds image prompting capabilities to a diffusion model. This adapter works by decoupling the cross-attention layers of the image and text features. All the other model components are frozen and only the embedded image features in the UNet are trained. As a result, IP-Adapter files are typically only ~100MBs.
 
