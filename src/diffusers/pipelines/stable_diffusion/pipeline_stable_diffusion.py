@@ -1004,6 +1004,7 @@ class StableDiffusionPipeline(
             for image_embed in image_embeds:
                 print(f"image embed: {image_embed.shape}")
                 print(image_embed.squeeze(1)[0, :4])
+            torch.save(image_embed, "image_embeds.pt" if ip_adapter_image_embeds is not None else "no_image_embeds.pt")
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
