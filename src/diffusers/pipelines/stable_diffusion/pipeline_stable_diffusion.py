@@ -996,15 +996,9 @@ class StableDiffusionPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
-            print(f"Num images per prompt: {batch_size * num_images_per_prompt}")
             image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_images_per_prompt
             )
-            print(f"image_embeds: {len(image_embeds)}")
-            for image_embed in image_embeds:
-                print(f"image embed: {image_embed.shape}")
-                print(image_embed.squeeze(1)[0, :4])
-            torch.save(image_embed, "image_embeds.pt" if ip_adapter_image_embeds is not None else "no_image_embeds.pt")
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
