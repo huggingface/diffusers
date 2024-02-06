@@ -157,11 +157,6 @@ class IPAdapterTesterMixin:
             "Output with multi-ip-adapter scale must be different from normal inference",
         )
 
-    def test_ip_adapter_plus(self):
-        # TODO
-        pass
-
-
 class PipelineLatentTesterMixin:
     """
     This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
