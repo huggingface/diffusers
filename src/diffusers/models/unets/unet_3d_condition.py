@@ -214,6 +214,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             resnet_act_fn=act_fn,
             output_scale_factor=mid_block_scale_factor,
             cross_attention_dim=cross_attention_dim,
+            num_attention_heads=None,
             attention_head_dim=attention_head_dim[-1],
             resnet_groups=norm_num_groups,
             dual_cross_attention=False,
