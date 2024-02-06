@@ -996,6 +996,7 @@ class StableDiffusionPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+            print(f"Num images per prompt: {batch_size * num_images_per_prompt}")
             image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_images_per_prompt
             )
