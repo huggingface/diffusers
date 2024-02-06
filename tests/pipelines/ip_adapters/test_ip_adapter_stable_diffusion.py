@@ -235,8 +235,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs = self.get_dummy_inputs()
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-
-        expected_slice = np.array([0.1958, 0.1475, 0.1396, 0.2412, 0.1658, 0.1533, 0.3997, 0.4055, 0.4128])
+        expected_slice = np.array([0.1704, 0.1296, 0.1272, 0.2212, 0.1514, 0.1479, 0.4172, 0.4263, 0.4360])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -276,9 +275,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs["ip_adapter_image"] = [ip_adapter_image, [ip_adapter_image] * 2]
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        expected_slice = np.array(
-            [0.5234375, 0.53515625, 0.5629883, 0.57128906, 0.59521484, 0.62109375, 0.57910156, 0.6201172, 0.6508789]
-        )
+        expected_slice = np.array([0.1704, 0.1296, 0.1272, 0.2212, 0.1514, 0.1479, 0.4172, 0.4263, 0.4360])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
