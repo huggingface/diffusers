@@ -158,7 +158,6 @@ class BasicTransformerBlock(nn.Module):
         super().__init__()
         self.only_cross_attention = only_cross_attention
 
-        # We keep these boolean flags for backwards-compatibility.
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
         self.use_ada_layer_norm_single = norm_type == "ada_norm_single"
