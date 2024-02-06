@@ -1035,16 +1035,10 @@ class DownBlockMotion(nn.Module):
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(resnet), hidden_states, temb, scale
                     )
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(motion_module),
-                    hidden_states.requires_grad_(),
-                    temb,
-                    num_frames,
-                )
 
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
 
             output_states = output_states + (hidden_states,)
 
@@ -1225,10 +1219,10 @@ class CrossAttnDownBlockMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(
-                    hidden_states,
-                    num_frames=num_frames,
-                )[0]
+            hidden_states = motion_module(
+                hidden_states,
+                num_frames=num_frames,
+            )[0]
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -1429,10 +1423,10 @@ class CrossAttnUpBlockMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(
-                    hidden_states,
-                    num_frames=num_frames,
-                )[0]
+            hidden_states = motion_module(
+                hidden_states,
+                num_frames=num_frames,
+            )[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -1567,15 +1561,10 @@ class UpBlockMotion(nn.Module):
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(resnet), hidden_states, temb
                     )
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                )
 
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
