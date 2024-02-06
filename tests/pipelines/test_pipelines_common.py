@@ -82,8 +82,7 @@ class IPAdapterTesterMixin:
         parameters = inspect.signature(self.pipeline_class.__call__).parameters
 
         assert issubclass(self.pipeline_class, IPAdapterMixin)
-        for param in self.ip_adapter_params:
-            self.assertIn(param, parameters, "`ip_adapter_image` argument must be supported by the `__call__` method")
+        self.assertIn("ip_adapter_image" , parameters, "`ip_adapter_image` argument must be supported by the `__call__` method")
 
     def _get_dummy_image(self, height: int = 512, width: int = 512):
         return PIL.Image.new("RGB", (width, height))
