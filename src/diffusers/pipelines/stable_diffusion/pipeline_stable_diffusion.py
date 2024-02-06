@@ -995,6 +995,7 @@ class StableDiffusionPipeline(
             image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_images_per_prompt
             )
+            print(f"image_embeds: {len(image_embeds)}")
             for image_embed in image_embeds:
                 print(f"image embed: {image_embed.shape}")
 
