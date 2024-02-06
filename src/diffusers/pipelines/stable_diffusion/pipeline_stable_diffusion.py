@@ -831,7 +831,7 @@ class StableDiffusionPipeline(
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
-        ip_adapter_image_embeds: Optional[torch.FloatTensor] = None,
+        ip_adapter_image_embeds: Optional[List[torch.FloatTensor]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -883,7 +883,7 @@ class StableDiffusionPipeline(
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
-            ip_adapter_image_embeds (`torch.FloatTensor`, *optional*):
+            ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
                 Pre-generated image embeddings for IP-Adapter. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, embeddings are computed from the `ip_adapter_image_embeds` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
