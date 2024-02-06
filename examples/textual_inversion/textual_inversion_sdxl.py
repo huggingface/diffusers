@@ -372,7 +372,7 @@ def parse_args():
     parser.add_argument(
         "--validation_prompt",
         type=str,
-        default="A <cat-toy> backpack",
+        default=None,
         help="A prompt that is used during validation to verify that the model is learning.",
     )
     parser.add_argument(
