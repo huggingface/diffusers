@@ -514,7 +514,9 @@ class StableDiffusionPipeline(
 
             return image_embeds, uncond_image_embeds
 
-    def prepare_ip_adapter_image_embeds(self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt):
+    def prepare_ip_adapter_image_embeds(
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
+    ):
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
                 ip_adapter_image = [ip_adapter_image]
@@ -533,7 +535,9 @@ class StableDiffusionPipeline(
                     single_ip_adapter_image, device, 1, output_hidden_state
                 )
                 single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
-                single_negative_image_embeds = torch.stack([single_negative_image_embeds] * num_images_per_prompt, dim=0)
+                single_negative_image_embeds = torch.stack(
+                    [single_negative_image_embeds] * num_images_per_prompt, dim=0
+                )
 
                 if self.do_classifier_free_guidance:
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
@@ -639,7 +643,7 @@ class StableDiffusionPipeline(
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
-        
+
         if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
             raise ValueError(
                 "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
@@ -947,7 +951,7 @@ class StableDiffusionPipeline(
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
-            ip_adapter_image, 
+            ip_adapter_image,
             ip_adapter_image_embeds,
             callback_on_step_end_tensor_inputs,
         )

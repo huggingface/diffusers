@@ -205,10 +205,12 @@ class IPAdapterMixin:
             self.image_encoder = None
             self.register_to_config(image_encoder=[None, None])
 
-        # remove feature extractor
-        if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
-            self.feature_extractor = None
-            self.register_to_config(feature_extractor=[None, None])
+        # remove feature extractor only when safety_checker is None as safety_checker uses
+        # the feature_extractor later
+        if hasattr(self, "safety_checker") and getattr(self, "safety_checker", None) is None:
+            if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
+                self.feature_extractor = None
+                self.register_to_config(feature_extractor=[None, None])
 
         # remove hidden encoder
         self.unet.encoder_hid_proj = None
