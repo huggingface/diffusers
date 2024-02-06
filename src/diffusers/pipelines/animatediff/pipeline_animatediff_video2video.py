@@ -919,10 +919,10 @@ class AnimateDiffVideoToVideoPipeline(
         for free_init_iter in range(num_free_init_iters):
             if self.free_init_enabled:
                 latents = self._apply_freeinit(latents, free_init_iter, num_inference_steps, device, latents.dtype)
-                timesteps = self.scheduler.timesteps
+                num_inference_steps = len(self.scheduler.timesteps)
+                timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
 
             # 8. Denoising loop
-            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
