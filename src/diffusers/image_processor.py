@@ -893,15 +893,15 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
     def __init__(self):
         super().__init__(do_normalize=False, do_binarize=True, do_convert_grayscale=True)
 
-    def process(self, images: List[PIL.Image.Image]) -> np.ndarray:
+    def process(self, images: List[PIL.Image.Image]) -> torch.FloatTensor:
         """
-        Convert a list of PIL.Image.Image images to a np.ndarray
+        Convert a list of PIL.Image.Image images to a torch.FloatTensor
         """
         images = self.preprocess(images)
         return images
 
     @staticmethod
-    def downsample(mask: np.ndarray, batch_size: int, seq_length: int, value_embed_dim: int):
+    def downsample(mask: torch.FloatTensor, batch_size: int, seq_length: int, value_embed_dim: int):
         """
         Downsample a mask to target seq_length
         """
@@ -912,9 +912,7 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
         mask_h = int(mask_h) + int((seq_length % int(mask_h)) != 0)
         mask_w = seq_length // mask_h
 
-        mask_downsample = F.interpolate(
-            torch.tensor(mask, dtype=torch.float32).clone().detach().unsqueeze(0), size=(mask_h, mask_w), mode="bicubic"
-        ).squeeze(0)
+        mask_downsample = F.interpolate(mask.unsqueeze(0), size=(mask_h, mask_w), mode="bicubic").squeeze(0)
 
         if mask_downsample.shape[0] < batch_size:
             mask_downsample = mask_downsample.repeat(batch_size, 1, 1)
