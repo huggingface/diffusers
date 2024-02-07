@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -339,6 +339,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
         self,
         image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
         camera_pose: List[List[float]],
+        camera_speed: float = 1.0,
         height: int = 576,
         width: int = 1024,
         num_frames: Optional[int] = None,
@@ -527,10 +528,11 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
 
         self._guidance_scale = guidance_scale
 
-        camera_pose = np.array(camera_pose)
+        camera_pose = np.array(camera_pose).reshape(-1, 3, 4)
+        camera_pose[:, :, -1] = camera_pose[:, :, -1] * np.array([3, 1, 4]) * camera_speed  # rescale
         camera_pose = self._to_relative_camera_pose(camera_pose)
         camera_pose = torch.FloatTensor(camera_pose).to(device=device, dtype=image_embeddings.dtype)
-        camera_pose = camera_pose.unsqueeze(0).repeat(2, 1, 1)
+        camera_pose = camera_pose.repeat(2, 1, 1)
         added_cond_kwargs = {"camera_pose": camera_pose}
 
         # 8. Denoising loop
