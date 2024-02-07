@@ -843,7 +843,7 @@ if __name__ == "__main__":
     original_svd_model_id = "stabilityai/stable-video-diffusion-img2vid-xt"
     image_encoder = CLIPVisionModelWithProjection.from_pretrained(original_svd_model_id, subfolder="image_encoder")
     feature_extractor = CLIPImageProcessor()
-    scheduler = EulerDiscreteScheduler.from_pretrained(original_svd_model_id)
+    scheduler = EulerDiscreteScheduler.from_pretrained(original_svd_model_id, subfolder="scheduler")
 
     pipe = StableVideoDiffusionPipeline(
         vae=vae,
