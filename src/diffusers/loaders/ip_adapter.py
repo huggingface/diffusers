@@ -181,11 +181,16 @@ class IPAdapterMixin:
         unet._load_ip_adapter_weights(state_dicts)
 
     def set_ip_adapter_scale(self, scale):
-        if not isinstance(scale, list):
-            scale = [scale]
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         for attn_processor in unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+                if not isinstance(scale, list):
+                    scale = [scale] * len(attn_processor.scale)
+                if len(attn_processor.scale) != len(scale):
+                    raise ValueError(
+                        f"`scale` should be a list of same length as the number if ip-adapters "
+                        f"Expected {len(attn_processor.scale)} but got {len(scale)}."
+                    )
                 attn_processor.scale = scale
 
     def unload_ip_adapter(self):
