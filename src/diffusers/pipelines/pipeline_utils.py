@@ -60,6 +60,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
+from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -351,7 +352,7 @@ def get_class_obj_and_candidates(
 
 def _get_pipeline_class(
     class_obj,
-    config,
+    config=None,
     load_connected_pipeline=False,
     custom_pipeline=None,
     repo_id=None,
@@ -389,7 +390,12 @@ def _get_pipeline_class(
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    class_name = config["_class_name"]
+    class_name = class_name or config["_class_name"]
+    if not class_name:
+        raise ValueError(
+            "The class name could not be found in the configuration file. Please make sure to pass the correct `class_name`."
+        )
+
     class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
     pipeline_cls = getattr(diffusers_module, class_name)
@@ -720,6 +726,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self.save_config(save_directory)
 
         if push_to_hub:
+            # Create a new empty model card and eventually tag it
+            model_card = load_or_create_model_card(repo_id, token=token, is_pipeline=True)
+            model_card = populate_model_card(model_card)
+            model_card.save(os.path.join(save_directory, "README.md"))
+
             self._upload_folder(
                 save_directory,
                 repo_id,

@@ -14,7 +14,6 @@
 
 import inspect
 import math
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -37,7 +36,6 @@ from ...schedulers import (
 )
 from ...utils import (
     USE_PEFT_BACKEND,
-    BaseOutput,
     deprecate,
     logging,
     replace_example_docstring,
@@ -46,6 +44,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
+from .pipeline_output import AnimateDiffPipelineOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -151,11 +150,6 @@ def _freq_mix_3d(x: torch.Tensor, noise: torch.Tensor, LPF: torch.Tensor) -> tor
     x_mixed = fft.ifftn(x_freq_mixed, dim=(-3, -2, -1)).real
 
     return x_mixed
-
-
-@dataclass
-class AnimateDiffPipelineOutput(BaseOutput):
-    frames: Union[torch.Tensor, np.ndarray]
 
 
 class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):
@@ -431,6 +425,35 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             uncond_image_embeds = torch.zeros_like(image_embeds)
 
             return image_embeds, uncond_image_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(self, ip_adapter_image, device, num_images_per_prompt):
+        if not isinstance(ip_adapter_image, list):
+            ip_adapter_image = [ip_adapter_image]
+
+        if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+            raise ValueError(
+                f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+            )
+
+        image_embeds = []
+        for single_ip_adapter_image, image_proj_layer in zip(
+            ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+        ):
+            output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+            single_image_embeds, single_negative_image_embeds = self.encode_image(
+                single_ip_adapter_image, device, 1, output_hidden_state
+            )
+            single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
+            single_negative_image_embeds = torch.stack([single_negative_image_embeds] * num_images_per_prompt, dim=0)
+
+            if self.do_classifier_free_guidance:
+                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                single_image_embeds = single_image_embeds.to(device)
+
+            image_embeds.append(single_image_embeds)
+
+        return image_embeds
 
     # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
     def decode_latents(self, latents):
@@ -997,12 +1020,9 @@ class AnimateDiffPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdap
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         if ip_adapter_image is not None:
-            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
-            image_embeds, negative_image_embeds = self.encode_image(
-                ip_adapter_image, device, num_videos_per_prompt, output_hidden_state
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image, device, batch_size * num_videos_per_prompt
             )
-            if self.do_classifier_free_guidance:
-                image_embeds = torch.cat([negative_image_embeds, image_embeds])
 
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
