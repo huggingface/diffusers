@@ -1090,11 +1090,11 @@ class LoraLoaderMixin:
         #                 mlp_module.fc1._fuse_lora(lora_scale, safe_fusing)
         #                 mlp_module.fc2._fuse_lora(lora_scale, safe_fusing)
 
-        # if fuse_text_encoder:
-        #     if hasattr(self, "text_encoder"):
-        #         fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing, adapter_names=adapter_names)
-        #     if hasattr(self, "text_encoder_2"):
-        #         fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing, adapter_names=adapter_names)
+        if fuse_text_encoder:
+            if hasattr(self, "text_encoder"):
+                fuse_text_encoder_lora(self.text_encoder, lora_scale, safe_fusing, adapter_names=adapter_names)
+            if hasattr(self, "text_encoder_2"):
+                fuse_text_encoder_lora(self.text_encoder_2, lora_scale, safe_fusing, adapter_names=adapter_names)
 
     def unfuse_lora(self, unfuse_unet: bool = True, unfuse_text_encoder: bool = True):
         r"""
@@ -1148,11 +1148,11 @@ class LoraLoaderMixin:
         #                 mlp_module.fc1._unfuse_lora()
         #                 mlp_module.fc2._unfuse_lora()
 
-        # if unfuse_text_encoder:
-        #     if hasattr(self, "text_encoder"):
-        #         unfuse_text_encoder_lora(self.text_encoder)
-        #     if hasattr(self, "text_encoder_2"):
-        #         unfuse_text_encoder_lora(self.text_encoder_2)
+        if unfuse_text_encoder:
+            if hasattr(self, "text_encoder"):
+                unfuse_text_encoder_lora(self.text_encoder)
+            if hasattr(self, "text_encoder_2"):
+                unfuse_text_encoder_lora(self.text_encoder_2)
 
         self.num_fused_loras -= 1
 
