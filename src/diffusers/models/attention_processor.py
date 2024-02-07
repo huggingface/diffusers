@@ -2233,7 +2233,14 @@ class IPAdapterAttnProcessor(nn.Module):
                 if mask_downsample.shape[0] > batch_size:
                     mask_downsample = mask_downsample[:batch_size, :, :]
 
-                mask_downsample = mask_downsample.view(mask_downsample.shape[0], -1, 1).repeat(
+                mask_downsample = mask_downsample.view(mask_downsample.shape[0], -1)
+
+                if mask_h * mask_w < seq_len:
+                    mask_downsample = F.pad(mask_downsample, (0, seq_len-mask_downsample.shape[1]), value=0.0)
+                if mask_h * mask_w > seq_len:
+                    mask_downsample = mask_downsample[:, :seq_len]
+
+                mask_downsample = mask_downsample.view(mask_downsample.shape[0], mask_downsample.shape[1], 1).repeat(
                     1, 1, current_ip_hidden_states.shape[-1]
                 )
 
@@ -2430,8 +2437,15 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                 if mask_downsample.shape[0] > batch_size:
                     mask_downsample = mask_downsample[:batch_size, :, :]
 
-                mask_downsample = mask_downsample.view(mask_downsample.shape[0], -1, 1).repeat(
-                    1, 1, attn.heads * head_dim
+                mask_downsample = mask_downsample.view(mask_downsample.shape[0], -1)
+
+                if mask_h * mask_w < seq_len:
+                    mask_downsample = F.pad(mask_downsample, (0, seq_len-mask_downsample.shape[1]), value=0.0)
+                if mask_h * mask_w > seq_len:
+                    mask_downsample = mask_downsample[:, :seq_len]
+
+                mask_downsample = mask_downsample.view(mask_downsample.shape[0], mask_downsample.shape[1], 1).repeat(
+                    1, 1, current_ip_hidden_states.shape[-1]
                 )
 
                 mask_downsample = mask_downsample.to(query.dtype).to(current_ip_hidden_states.device)
