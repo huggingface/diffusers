@@ -18,6 +18,7 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
+import torch.nn.functional as F
 from PIL import Image, ImageFilter, ImageOps
 
 from .configuration_utils import ConfigMixin, register_to_config
@@ -882,3 +883,53 @@ class VaeImageProcessorLDM3D(VaeImageProcessor):
             depth = self.binarize(depth)
 
         return rgb, depth
+
+
+class IPAdapterMaskProcessor(VaeImageProcessor):
+    """
+    Image processor for IP Adapter image masks.
+
+    """
+    def __init__(self):
+        super().__init__(do_normalize=False, do_binarize=True, do_convert_grayscale=True)
+
+    def process(self, images: List[PIL.Image.Image]) -> np.ndarray:
+        """
+        Convert a list of PIL.Image.Image images to a np.ndarray
+        """
+        images = self.preprocess(images)
+        return images
+
+    @staticmethod
+    def downsample(mask: np.ndarray, batch_size: int, seq_length: int, value_embed_dim: int):
+        """
+        Downsample a mask to target seq_length
+        """
+        o_h = mask.shape[1]
+        o_w = mask.shape[2]
+        ratio = o_w / o_h
+        mask_h = int(torch.sqrt(torch.tensor(seq_length / ratio)))
+        mask_h = int(mask_h) + int((seq_length % int(mask_h)) != 0)
+        mask_w = seq_length // mask_h
+
+        mask_downsample = F.interpolate(
+            torch.tensor(mask, dtype=torch.float32).clone().detach().unsqueeze(0), size=(mask_h, mask_w), mode="bicubic"
+        ).squeeze(0)
+
+        if mask_downsample.shape[0] < batch_size:
+            mask_downsample = mask_downsample.repeat(batch_size, 1, 1)
+        if mask_downsample.shape[0] > batch_size:
+            mask_downsample = mask_downsample[:batch_size, :, :]
+
+        mask_downsample = mask_downsample.view(mask_downsample.shape[0], -1)
+
+        if mask_h * mask_w < seq_length:
+            mask_downsample = F.pad(mask_downsample, (0, seq_length-mask_downsample.shape[1]), value=0.0)
+        if mask_h * mask_w > seq_length:
+            mask_downsample = mask_downsample[:, :seq_length]
+
+        mask_downsample = mask_downsample.view(mask_downsample.shape[0], mask_downsample.shape[1], 1).repeat(
+            1, 1, value_embed_dim
+        )
+
+        return mask_downsample
