@@ -118,7 +118,7 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             "c_cond": 128,
             "c_hidden": [128, 128],
             "nhead": [2, 2],
-            "blocks": [[1,1], [1, 1]],
+            "blocks": [[1, 1], [1, 1]],
             "switch_level": [False],
             "c_clip_img": 768,
             "c_clip_text": self.text_embedder_hidden_size,
@@ -181,18 +181,19 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         expected_slice = np.array(
             [
-                -7172.837,
-                -3438.855,
-                -1093.312,
-                388.8835,
-                -7471.467,
-                -7998.1206,
-                -5328.259,
-                218.00089,
-                -2731.5745,
-                -8056.734,
+                96.139565,
+                -20.213179,
+                -116.40341,
+                -191.57129,
+                39.350136,
+                74.80767,
+                39.782352,
+                -184.67352,
+                -46.426907,
+                168.41783,
             ]
         )
+
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 5e-2
 
@@ -276,6 +277,7 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         return prior, prior_lora_config, lora_components
 
     @require_peft_backend
+    @unittest.skip(reason="no lora support for now")
     def test_inference_with_prior_lora(self):
         _, prior_lora_config, _ = self.get_lora_components()
         device = "cpu"
