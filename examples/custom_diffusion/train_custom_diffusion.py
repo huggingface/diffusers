@@ -92,7 +92,7 @@ These are Custom Diffusion adaption weights for {base_model}. The weights were t
         from_training=True,
         license="creativeml-openrail-m",
         base_model=base_model,
-        instance_prompt=prompt,
+        prompt=prompt,
         model_description=model_description,
         inference=True,
     )
