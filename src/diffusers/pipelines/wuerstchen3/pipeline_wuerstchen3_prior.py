@@ -515,7 +515,10 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             uncond_image_embeds_pooled = torch.zeros(
                 batch_size * num_images_per_prompt, 1, self.prior.config.c_clip_img, device=device, dtype=dtype
             )
-        image_embeds = torch.cat([image_embeds_pooled, uncond_image_embeds_pooled], dim=0)
+        if self.do_classifier_free_guidance:
+            image_embeds = torch.cat([image_embeds_pooled, uncond_image_embeds_pooled], dim=0)
+        else:
+            image_embeds = image_embeds_pooled
 
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
@@ -526,7 +529,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         text_encoder_pooled = (
             torch.cat([prompt_embeds_pooled, negative_prompt_embeds_pooled])
             if negative_prompt_embeds is not None
-            else prompt_embeds
+            else prompt_embeds_pooled
         )
 
         # 3. Determine latent shape of image embeddings

@@ -140,6 +140,8 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "scheduler": scheduler,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
 
         return components
@@ -217,8 +219,7 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
     # override because we need to make sure latent_mean and latent_std to be 0
     def test_callback_inputs(self):
         components = self.get_dummy_components()
-        components["latent_mean"] = 0
-        components["latent_std"] = 0
+
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
