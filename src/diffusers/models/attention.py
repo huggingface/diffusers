@@ -534,7 +534,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         # MotionCtrl specific
         if self.use_camera_projection:
             camera_pose: torch.FloatTensor = added_cond_kwargs.get("camera_pose")
-            camera_pose.repeat_interleave(seq_length, dim=0)  # [batch_size * seq_length, num_frames, 12]
+            camera_pose = camera_pose.repeat_interleave(seq_length, dim=0)  # [batch_size * seq_length, num_frames, 12]
 
             hidden_states = torch.cat([hidden_states, camera_pose], dim=-1)
             hidden_states = self.cc_projection(hidden_states)
