@@ -776,7 +776,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             [`DiffusionPipeline`]: The pipeline converted to specified `dtype` and/or `dtype`.
         """
         dtype = kwargs.pop("dtype", None)
-        device= kwargs.pop("device", None)
+        device = kwargs.pop("device", None)
         silence_dtype_warnings = kwargs.pop("silence_dtype_warnings", False)
 
         dtype_arg = None
@@ -851,12 +851,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             if is_loaded_in_8bit and dtype is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {torch_dtype} is not yet supported. Module is still in 8bit precision."
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {dtype} is not yet supported. Module is still in 8bit precision."
                 )
 
             if is_loaded_in_8bit and device is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {torch_dtype} via `.to()` is not yet supported. Module is still on {module.device}."
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {dtype} via `.to()` is not yet supported. Module is still on {module.device}."
                 )
             else:
                 module.to(device, dtype)
