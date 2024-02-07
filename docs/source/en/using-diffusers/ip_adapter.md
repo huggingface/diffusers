@@ -229,7 +229,7 @@ export_to_gif(frames, "gummy_bear.gif")
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter image</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gummy_bear.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gummy_bear.gif"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">generated video</figcaption>
   </div>
 </div>
@@ -339,7 +339,7 @@ style_images =  [load_image(f"{style_folder}/img{i}.png") for i in range(10)]
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter image of face</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_multi_out.png"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_style_grid.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter style images</figcaption>
   </div>
 </div>
