@@ -863,11 +863,6 @@ def main(args):
     )
     unet.add_adapter(lora_config)
 
-    # Make sure the trainable params are in float32.
-    if args.mixed_precision == "fp16":
-        # only upcast trainable parameters (LoRA) into fp32
-        cast_training_params(unet, dtype=torch.float32)
-
     # Also move the alpha and sigma noise schedules to accelerator.device.
     alpha_schedule = alpha_schedule.to(accelerator.device)
     sigma_schedule = sigma_schedule.to(accelerator.device)
@@ -916,8 +911,8 @@ def main(args):
             # are in `weight_dtype`. More details:
             # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
             if args.mixed_precision == "fp16":
-                models_to_load_in_fp32 = [unet_]
-                cast_training_params(models_to_load_in_fp32, dtype=torch.float32)
+                models = [unet_]
+                cast_training_params(models, dtype=torch.float32)
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1116,6 +1111,11 @@ def main(args):
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
+
+    # Make sure the trainable params are in float32.
+    if args.mixed_precision == "fp16":
+        # only upcast trainable parameters (LoRA) into fp32
+        cast_training_params(unet, dtype=torch.float32)
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,
