@@ -135,7 +135,9 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         if isinstance(attention_head_dim, int):
             num_attention_heads = [out_channels // attention_head_dim for out_channels in block_out_channels]
         else:
-            num_attention_heads = [out_channels // attn_dim for out_channels, attn_dim in zip(block_out_channels, attention_head_dim)]
+            num_attention_heads = [
+                out_channels // attn_dim for out_channels, attn_dim in zip(block_out_channels, attention_head_dim)
+            ]
 
         # If `num_attention_heads` is not defined (which is the case for most models)
         # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
