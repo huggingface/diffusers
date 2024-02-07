@@ -202,7 +202,6 @@ pipeline.scheduler = scheduler
 pipeline.enable_vae_slicing()
 
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
-pipeline.set_ip_adapter_scale(0.6)
 pipeline.enable_model_cpu_offload()
 ```
 
@@ -221,7 +220,7 @@ output = pipeline(
     generator=torch.Generator(device="cpu").manual_seed(0),
 )
 frames = output.frames[0]
-export_to_gif(frames, "animation1.gif")
+export_to_gif(frames, "gummy_bear.gif")
 ```
 
 <div class="flex flex-row gap-4">
@@ -230,7 +229,7 @@ export_to_gif(frames, "animation1.gif")
     <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter image</figcaption>
   </div>
   <div class="flex-1">
-    <img class="rounded-xl" src=""/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gummy_bear.png"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">generated video</figcaption>
   </div>
 </div>
@@ -242,10 +241,219 @@ export_to_gif(frames, "animation1.gif")
 
 IP-Adapters image prompting and compatibility with other adapters and models makes it a versatile tool for a variety of use cases. Let's have a look at some of them.
 
-### Face model  
+### Face model
+
+Generating accurate faces is challenging because they are complex and nuanced. [IP-Adapter-FaceID](https://huggingface.co/h94/IP-Adapter-FaceID) is a face-specific IP-Adapter trained with face ID embeddings instead of CLIP image embeddings, allowing you to generate more consistent faces in different contexts and styles.
+
+For face models, use the [h94/IP-Adapter-FaceID](https://huggingface.co/h94/IP-Adapter-FaceID) checkpoint. It is also recommended to use [`DDIMScheduler`] or [`EulerDiscreteScheduler`] for face models.
+
+```py
+import torch
+from diffusers import StableDiffusionPipeline, DDIMScheduler
+from diffusers.utils import load_image
+
+pipeline = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16,
+).to("cuda")
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
+
+pipeline.set_ip_adapter_scale(0.5)
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_einstein_base.png")
+generator = torch.Generator(device="cpu").manual_seed(26)
+
+image = pipeline(
+    prompt="A photo of Einstein as a chef, wearing an apron, cooking in a French restaurant",
+    ip_adapter_image=image,
+    negative_prompt="lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=100,
+    generator=generator,
+).images[0]
+image
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_einstein_base.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter image</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_einstein.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
+  </div>
+</div>
 
 ### Multi IP-Adapter
 
+More than one IP-Adapter can be used at the same time to generate specific images in more diverse styles. For example, you can use IP-Adapter FaceID to generate consistent faces and characters, and IP-Adapter Plus to generate those faces in a specific style. Let's try this out!
+
+IP-Adapter uses an image encoder to generate the image features. The image encoder is automatically loaded if the image encoder model weights exist in an `image_encoder` subfolder in your repository. You don't need to explicitly load the image encoder if this subfolder exists. Otherwise, you'll need to load the image encoder weights into [`~transformers.CLIPVisionModelWithProjection`] and pass that to your pipeline. In this example, you'll manually load the image encoder just to see how it's done.
+
+```py
+import torch
+from diffusers import AutoPipelineForText2Image, DDIMScheduler
+from transformers import CLIPVisionModelWithProjection
+from diffusers.utils import load_image
+
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16,
+)
+```
+
+Next, you'll load a base model, scheduler, and IP-Adapter's. The IP-Adapter's to use are passed as a list to the `weight_name` parameter:
+
+* ip-adapter-plus_sdxl_vit-h uses patch embeddings and a ViT H image encoder
+* ip-adapter-plus-face_sdxl_vit-h has the same architecture but it is conditioned with images of cropped faces
+
+```py
+pipeline = AutoPipelineForText2Image.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    image_encoder=image_encoder,
+)
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.load_ip_adapter(
+  "h94/IP-Adapter", 
+  subfolder="sdxl_models", 
+  weight_name=["ip-adapter-plus_sdxl_vit-h.safetensors", "ip-adapter-plus-face_sdxl_vit-h.safetensors"]
+)
+pipeline.set_ip_adapter_scale([0.7, 0.3])
+pipeline.enable_model_cpu_offload()
+```
+
+Load an image prompt and a folder containing images of a certain style you want to use.
+
+```py
+face_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/women_input.png")
+style_folder = "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/style_ziggy"
+style_images =  [load_image(f"{style_folder}/img{i}.png") for i in range(10)]
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/women_input.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter image of face</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_multi_out.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter style images</figcaption>
+  </div>
+</div>
+
+Pass the image prompt and style images as a list to the `ip_adapter_image` parameter, and run the pipeline!
+
+```py
+generator = torch.Generator(device="cpu").manual_seed(0)
+
+image = pipeline(
+    prompt="wonderwoman",
+    ip_adapter_image=[style_images, face_image],
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=50, num_images_per_prompt=1,
+    generator=generator,
+).images[0]
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_multi_out.png" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
+</div>
+
 ### Instant generation
 
+[Latent Consistency Models (LCM)](../using-diffusers/inference_with_lcm_lora) are diffusion models that can generate images in as little as 4 steps compared to other diffusion models like SDXL that typically require way more steps. This is why image generation with a LCM feels "instantaneous". IP-Adapter's can be plugged into a LCM-LoRA model to instantly generate images with an image prompt.
+
+The IP-Adapter weights need to be loaded first, then you can use [`~StableDiffusionPipeline.load_lora_weights`] to load the LoRA style and weight you want to apply to your image.
+
+```py
+from diffusers import DiffusionPipeline, LCMScheduler
+import torch
+from diffusers.utils import load_image
+
+model_id =  "sd-dreambooth-library/herge-style"
+lcm_lora_id = "latent-consistency/lcm-lora-sdv1-5"
+
+pipeline = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
+
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+pipeline.load_lora_weights(lcm_lora_id)
+pipeline.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+pipeline.enable_model_cpu_offload()
+
+prompt = "best quality, high quality"
+ip_adapter_image = load_image("https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png")
+image = pipeline(
+    prompt=prompt,
+    ip_adapter_image=ip_adapter_image,
+    num_inference_steps=4,
+    guidance_scale=1,
+).images[0]
+image
+```
+
+<div class="flex justify-center">
+    <img src="" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
+</div>
+
 ### Structural control
+
+To control image generation to an even greater degree, you can combine IP-Adapter with a model like [ControlNet](../using-diffusers/controlnet). A ControlNet is also an adapter that can be inserted into a diffusion model to allow for conditioning on an additional control image. The control image can be depth maps, edge maps, pose estimations, and more.
+
+Load a [`ControlNetModel`] checkpoint conditioned on depth maps, insert it into a diffusion model, and load the IP-Adapter.
+
+```py
+from diffusers import StableDiffusionControlNetPipeline, ControlNetModel
+import torch
+from diffusers.utils import load_image
+
+controlnet_model_path = "lllyasviel/control_v11f1p_sd15_depth"
+controlnet = ControlNetModel.from_pretrained(controlnet_model_path, torch_dtype=torch.float16)
+
+pipeline = StableDiffusionControlNetPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16)
+pipeline.to("cuda")
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
+```
+
+Now load the IP-Adapter image and depth map.
+
+```py
+ip_adapter_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/statue.png")
+depth_map = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/depth.png")
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/statue.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter image</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/depth.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">depth map</figcaption>
+  </div>
+</div>
+
+Pass the depth map and IP-Adapter image to the pipeline to generate an image.
+
+```py
+generator = torch.Generator(device="cpu").manual_seed(33)
+image = pipeline(
+    prompt="best quality, high quality", 
+    image=depth_map,
+    ip_adapter_image=ip_adapter_image,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=50,
+    generator=generator,
+).image[0]
+image
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ipa-controlnet-out.png" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
+</div>
