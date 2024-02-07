@@ -256,7 +256,7 @@ class ResnetBlock2D(nn.Module):
                 "This class cannot be used with `time_embedding_norm==spatial`, please use `ResnetBlockCondNorm2D` instead",
             )
 
-        self.pre_norm = True
+        self.pre_norm = pre_norm
         self.in_channels = in_channels
         out_channels = in_channels if out_channels is None else out_channels
         self.out_channels = out_channels
