@@ -17,7 +17,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenV3CombinedPipeline
 from diffusers.pipelines.wuerstchen import PaellaVQModel
@@ -81,7 +81,7 @@ class WuerstchenV3CombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             pad_token_id=1,
             vocab_size=1000,
         )
-        return CLIPTextModel(config).eval()
+        return CLIPTextModelWithProjection(config).eval()
 
     @property
     def dummy_text_encoder(self):
@@ -98,7 +98,7 @@ class WuerstchenV3CombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             pad_token_id=1,
             vocab_size=1000,
         )
-        return CLIPTextModel(config).eval()
+        return CLIPTextModelWithProjection(config).eval()
 
     @property
     def dummy_vqgan(self):

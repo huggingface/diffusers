@@ -17,7 +17,7 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenV3DecoderPipeline
 from diffusers.pipelines.wuerstchen import PaellaVQModel
@@ -82,7 +82,7 @@ class WuerstchenV3DecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             pad_token_id=1,
             vocab_size=1000,
         )
-        return CLIPTextModel(config).eval()
+        return CLIPTextModelWithProjection(config).eval()
 
     @property
     def dummy_vqgan(self):
@@ -107,6 +107,16 @@ class WuerstchenV3DecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             "level_config": ["CT"],
             "clip_embd": self.text_embedder_hidden_size,
             "inject_effnet": [False],
+        }
+
+        model_kwargs = {
+            "c_cond": 128,
+            "block_repeat": [[1,1,1,1],[3,3,2,2]],
+            "c_hidden": [16, 32, 64, 128],
+            "nhead": [-1, -1, 1, 2],
+            "level_config": ["CT", "CT", "CTA","CTA"],
+            "blocks": [[1,1,1,1], [1,1,1,1]],
+            "switch_level": None,
         }
 
         model = WuerstchenV3Unet(**model_kwargs)

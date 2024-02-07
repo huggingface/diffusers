@@ -19,7 +19,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, WuerstchenV3PriorPipeline
 from diffusers.loaders import AttnProcsLayers
@@ -100,6 +100,7 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             bos_token_id=0,
             eos_token_id=2,
             hidden_size=self.text_embedder_hidden_size,
+            projection_dim=self.text_embedder_hidden_size,
             intermediate_size=37,
             layer_norm_eps=1e-05,
             num_attention_heads=4,
@@ -107,19 +108,21 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             pad_token_id=1,
             vocab_size=1000,
         )
-        return CLIPTextModel(config).eval()
+        return CLIPTextModelWithProjection(config).eval()
 
     @property
     def dummy_prior(self):
         torch.manual_seed(0)
 
         model_kwargs = {
-            "c_in": 2,
-            "c": 8,
-            "depth": 2,
-            "c_cond": 32,
-            "c_r": 8,
-            "nhead": 2,
+            "c_cond": 128,
+            "c_hidden": [128, 128],
+            "nhead": [2, 2],
+            "blocks": [[1,1], [1, 1]],
+            "switch_level": [False],
+            "c_clip_img": 768,
+            "c_clip_text": self.text_embedder_hidden_size,
+            "c_clip_text_pooled": self.text_embedder_hidden_size,
         }
 
         model = WuerstchenV3Unet(**model_kwargs)
@@ -172,7 +175,7 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         image_slice = image[0, 0, 0, -10:]
         image_from_tuple_slice = image_from_tuple[0, 0, 0, -10:]
-        assert image.shape == (1, 2, 24, 24)
+        assert image.shape == (1, 16, 24, 24)
 
         expected_slice = np.array(
             [
@@ -285,7 +288,7 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 
         output_no_lora = pipe(**self.get_dummy_inputs(device))
         image_embed = output_no_lora.image_embeddings
-        self.assertTrue(image_embed.shape == (1, 2, 24, 24))
+        self.assertTrue(image_embed.shape == (1, 16, 24, 24))
 
         pipe.prior.add_adapter(prior_lora_config)
         self.assertTrue(self.check_if_lora_correctly_set(pipe.prior), "Lora not correctly set in prior")
