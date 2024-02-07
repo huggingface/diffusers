@@ -720,7 +720,7 @@ class AttnProcessor:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
-        masks=None,
+        ip_adapter_masks=None,
     ) -> torch.Tensor:
         residual = hidden_states
 
@@ -1197,7 +1197,7 @@ class AttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
-        masks=None,
+        ip_adapter_masks=None,
     ) -> torch.FloatTensor:
         residual = hidden_states
         if attn.spatial_norm is not None:
@@ -2133,7 +2133,7 @@ class IPAdapterAttnProcessor(nn.Module):
         attention_mask=None,
         temb=None,
         scale=1.0,
-        masks=None,
+        ip_adapter_masks=None,
     ):
         residual = hidden_states
 
@@ -2189,8 +2189,8 @@ class IPAdapterAttnProcessor(nn.Module):
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         if masks is not None:
-            if not isinstance(masks, list):
-                masks = [masks]
+            if not isinstance(masks,np.ndarray) or mask.ndim != 4:
+                raise ValueError(" ip_adapter_mask should be a numpy array with shape num_ip_adapter, 1, height, width. Please use `IPAdapterMaskProcessor` to preprocess your mask") 
             if len(masks) != len(ip_hidden_states):
                 raise ValueError(
                     f"Number of masks ({len(masks)}) must match number of IP-Adapters ({len(self.scale)})"
