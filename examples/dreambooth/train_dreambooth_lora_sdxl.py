@@ -124,7 +124,7 @@ Weights for this model are available in Safetensors format.
         base_model=base_model,
         instance_prompt=instance_prompt,
         model_description=model_description,
-        widget_str=widget_dict,
+        widget=widget_dict,
     )
     tags = [
         "text-to-image",
