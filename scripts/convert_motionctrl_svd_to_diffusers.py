@@ -825,15 +825,8 @@ if __name__ == "__main__":
         vae_state_dict[key.replace("spatial_res_block.", "")] = vae_state_dict.pop(key)
 
     missing_keys, unexpected_keys = vae.load_state_dict(vae_state_dict)
-    if missing_keys:
-        logger.error("VAE conversion failed")
-        raise ValueError(
-            f"VAE conversion failed due to missing keys: {missing_keys}, and unexpected keys: {unexpected_keys}"
-        )
-    if unexpected_keys:
-        vae.load_state_dict(vae_state_dict, strict=False)
-        logger.info(f"VAE conversion occured successfully but some unexpected keys were found: {unexpected_keys}")
-    logger.info("VAE conversion succeeded")
+    logger.info(f"[VAE] missing_keys: {missing_keys}")
+    logger.info(f"[VAE] unexpected_keys: {unexpected_keys}")
 
     unet_config = create_unet_diffusers_config(original_config, args.sample_size)
     unet_config["motionctrl_kwargs"] = {
@@ -843,26 +836,14 @@ if __name__ == "__main__":
     unet_state_dict = convert_ldm_unet_checkpoint(state_dict, unet_config)
     unet = UNetSpatioTemporalConditionModel.from_config(unet_config)
     missing_keys, unexpected_keys = unet.load_state_dict(unet_state_dict)
-
-    if missing_keys:
-        logger.error("UNet conversion failed")
-        raise ValueError(
-            f"UNet conversion failed due to missing keys: {missing_keys}, and unexpected keys: {unexpected_keys}"
-        )
-    if unexpected_keys:
-        unet.load_state_dict(unet_state_dict, strict=False)
-        logger.info(f"UNet conversion occured successfully but some unexpected keys were found: {unexpected_keys}")
+    logger.info(f"[UNet] missing_keys: {missing_keys}")
+    logger.info(f"[UNet] unexpected_keys: {unexpected_keys}")
     logger.info("UNet conversion succeeded")
 
-    image_encoder = CLIPVisionModelWithProjection.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+    original_svd_model_id = "stabilityai/stable-video-diffusion-img2vid-xt"
+    image_encoder = CLIPVisionModelWithProjection.from_pretrained(original_svd_model_id, subfolder="image_encoder")
     feature_extractor = CLIPImageProcessor()
-    scheduler = EulerDiscreteScheduler(
-        beta_start=0.00085,
-        beta_end=0.012,
-        beta_schedule="scaled_linear",
-        num_train_timesteps=1000,
-        use_karras_sigmas=True,
-    )
+    scheduler = EulerDiscreteScheduler.from_pretrained(original_svd_model_id)
 
     pipe = StableVideoDiffusionPipeline(
         vae=vae,
