@@ -225,13 +225,6 @@ def renew_attention_paths(old_list, n_shave_prefix_segments=0):
     for old_item in old_list:
         new_item = old_item
 
-        #         new_item = new_item.replace('norm.weight', 'group_norm.weight')
-        #         new_item = new_item.replace('norm.bias', 'group_norm.bias')
-
-        #         new_item = new_item.replace('proj_out.weight', 'proj_attn.weight')
-        #         new_item = new_item.replace('proj_out.bias', 'proj_attn.bias')
-
-        #         new_item = shave_segments(new_item, n_shave_prefix_segments=n_shave_prefix_segments)
         new_item = new_item.replace("time_stack", "temporal_transformer_blocks")
 
         new_item = new_item.replace("time_pos_embed.0.bias", "time_pos_embed.linear_1.bias")
@@ -323,18 +316,6 @@ def convert_ldm_unet_checkpoint(
     new_checkpoint["time_embedding.linear_2.weight"] = unet_state_dict["time_embed.2.weight"]
     new_checkpoint["time_embedding.linear_2.bias"] = unet_state_dict["time_embed.2.bias"]
 
-    # if config["class_embed_type"] is None:
-    #     # No parameters to port
-    #     ...
-    # elif config["class_embed_type"] == "timestep" or config["class_embed_type"] == "projection":
-    #     new_checkpoint["class_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
-    #     new_checkpoint["class_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
-    #     new_checkpoint["class_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
-    #     new_checkpoint["class_embedding.linear_2.bias"] = unet_state_dict["label_emb.0.2.bias"]
-    # else:
-    #     raise NotImplementedError(f"Not implemented `class_embed_type`: {config['class_embed_type']}")
-
-    # if config["addition_embed_type"] == "text_time":
     new_checkpoint["add_embedding.linear_1.weight"] = unet_state_dict["label_emb.0.0.weight"]
     new_checkpoint["add_embedding.linear_1.bias"] = unet_state_dict["label_emb.0.0.bias"]
     new_checkpoint["add_embedding.linear_2.weight"] = unet_state_dict["label_emb.0.2.weight"]
@@ -679,11 +660,6 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     new_checkpoint["decoder.conv_norm_out.bias"] = vae_state_dict["decoder.norm_out.bias"]
     new_checkpoint["decoder.time_conv_out.weight"] = vae_state_dict["decoder.conv_out.time_mix_conv.weight"]
     new_checkpoint["decoder.time_conv_out.bias"] = vae_state_dict["decoder.conv_out.time_mix_conv.bias"]
-
-    # new_checkpoint["quant_conv.weight"] = vae_state_dict["quant_conv.weight"]
-    # new_checkpoint["quant_conv.bias"] = vae_state_dict["quant_conv.bias"]
-    # new_checkpoint["post_quant_conv.weight"] = vae_state_dict["post_quant_conv.weight"]
-    # new_checkpoint["post_quant_conv.bias"] = vae_state_dict["post_quant_conv.bias"]
 
     # Retrieves the keys for the encoder down blocks only
     num_down_blocks = len({".".join(layer.split(".")[:3]) for layer in vae_state_dict if "encoder.down" in layer})
