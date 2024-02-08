@@ -518,7 +518,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
 
         if torch_dtype is not None:
-            deprecate("torch_dtype", "0.27.0", "Using `torch_dtype` is depcrecated. Use `dtype`, instead.")
+            deprecate("torch_dtype", "0.30.0", "Using `torch_dtype` is depcrecated. Use `dtype`, instead.")
 
         dtype_kwarg = kwargs.pop("dtype", None)
 
