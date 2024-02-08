@@ -172,7 +172,6 @@ else:
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
     _import_structure["ledits_pp"].extend(
         [
-            "LEditsPPPipelineIF",
             "LEditsPPPipelineStableDiffusion",
             "LEditsPPPipelineStableDiffusionXL",
         ]

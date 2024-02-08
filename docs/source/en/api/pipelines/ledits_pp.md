@@ -24,7 +24,7 @@ You can find additional information about LEDITS++ on the [project page](https:/
 
 </Tip>
 
-We provide three distinct pipelines based on different pre-trained models. 
+We provide two distinct pipelines based on different pre-trained models. 
 
 ## LEditsPPPipelineStableDiffusion
 [[autodoc]] LEditsPPPipelineStableDiffusion
@@ -39,11 +39,6 @@ We provide three distinct pipelines based on different pre-trained models.
 	- invert
 
 
-## LEditsPPPipelineIF
-[[autodoc]] LEditsPPPipelineIF
-	- all
-	- __call__
-	- invert
 
 ## LEditsPPDiffusionPipelineOutput
 [[autodoc]] pipelines.ledits_pp.pipeline_output.LEditsPPDiffusionPipelineOutput
