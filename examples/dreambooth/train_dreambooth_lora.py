@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,6 +61,7 @@ from diffusers.utils import (
     convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -85,21 +86,7 @@ def save_model_card(
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"![img_{i}](./image_{i}.png)\n"
 
-    yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {base_model}
-instance_prompt: {prompt}
-tags:
-- {'stable-diffusion' if isinstance(pipeline, StableDiffusionPipeline) else 'if'}
-- {'stable-diffusion-diffusers' if isinstance(pipeline, StableDiffusionPipeline) else 'if-diffusers'}
-- text-to-image
-- diffusers
-- lora
-inference: true
----
-    """
-    model_card = f"""
+    model_description = f"""
 # LoRA DreamBooth - {repo_id}
 
 These are LoRA adaption weights for {base_model}. The weights were trained on {prompt} using [DreamBooth](https://dreambooth.github.io/). You can find some example images in the following. \n
@@ -107,8 +94,23 @@ These are LoRA adaption weights for {base_model}. The weights were trained on {p
 
 LoRA for the text encoder was enabled: {train_text_encoder}.
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=base_model,
+        prompt=prompt,
+        model_description=model_description,
+        inference=True,
+    )
+    tags = ["text-to-image", "diffusers", "lora"]
+    if isinstance(pipeline, StableDiffusionPipeline):
+        tags.extend(["stable-diffusion", "stable-diffusion-diffusers"])
+    else:
+        tags.extend(["if", "if-diffusers"])
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):

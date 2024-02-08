@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import itertools
 import logging
 import math
 import os
+import random
 import re
 import shutil
 import warnings
@@ -45,6 +46,7 @@ from PIL.ImageOps import exif_transpose
 from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
+from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
@@ -121,7 +123,7 @@ def save_model_card(
         diffusers_imports_pivotal = """from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
         """
-        diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id='{repo_id}', filename='{embeddings_filename}.safetensors' repo_type="model")
+        diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id='{repo_id}', filename='{embeddings_filename}.safetensors', repo_type="model")
 state_dict = load_file(embedding_path)
 pipeline.load_textual_inversion(state_dict["clip_l"], token=[{ti_keys}], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
 pipeline.load_textual_inversion(state_dict["clip_g"], token=[{ti_keys}], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
@@ -398,18 +400,6 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--crops_coords_top_left_h",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
-    )
-    parser.add_argument(
-        "--crops_coords_top_left_w",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
-    )
-    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -417,6 +407,11 @@ def parse_args(input_args=None):
             "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
             " cropped. The images will be resized to the resolution first before cropping."
         ),
+    )
+    parser.add_argument(
+        "--random_flip",
+        action="store_true",
+        help="whether to randomly flip images horizontally",
     )
     parser.add_argument(
         "--train_text_encoder",
@@ -659,6 +654,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
+    parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
     parser.add_argument(
         "--rank",
         type=int,
@@ -901,6 +897,41 @@ class DreamBoothDataset(Dataset):
         self.instance_images = []
         for img in instance_images:
             self.instance_images.extend(itertools.repeat(img, repeats))
+
+        # image processing to prepare for using SD-XL micro-conditioning
+        self.original_sizes = []
+        self.crop_top_lefts = []
+        self.pixel_values = []
+        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+        train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
+        train_flip = transforms.RandomHorizontalFlip(p=1.0)
+        train_transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+        for image in self.instance_images:
+            image = exif_transpose(image)
+            if not image.mode == "RGB":
+                image = image.convert("RGB")
+            self.original_sizes.append((image.height, image.width))
+            image = train_resize(image)
+            if args.random_flip and random.random() < 0.5:
+                # flip
+                image = train_flip(image)
+            if args.center_crop:
+                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
+                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+                image = train_crop(image)
+            else:
+                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                image = crop(image, y1, x1, h, w)
+            crop_top_left = (y1, x1)
+            self.crop_top_lefts.append(crop_top_left)
+            image = train_transforms(image)
+            self.pixel_values.append(image)
+
         self.num_instance_images = len(self.instance_images)
         self._length = self.num_instance_images
 
@@ -930,12 +961,12 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = self.instance_images[index % self.num_instance_images]
-        instance_image = exif_transpose(instance_image)
-
-        if not instance_image.mode == "RGB":
-            instance_image = instance_image.convert("RGB")
-        example["instance_images"] = self.image_transforms(instance_image)
+        instance_image = self.pixel_values[index % self.num_instance_images]
+        original_size = self.original_sizes[index % self.num_instance_images]
+        crop_top_left = self.crop_top_lefts[index % self.num_instance_images]
+        example["instance_images"] = instance_image
+        example["original_size"] = original_size
+        example["crop_top_left"] = crop_top_left
 
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
@@ -966,6 +997,8 @@ class DreamBoothDataset(Dataset):
 def collate_fn(examples, with_prior_preservation=False):
     pixel_values = [example["instance_images"] for example in examples]
     prompts = [example["instance_prompt"] for example in examples]
+    original_sizes = [example["original_size"] for example in examples]
+    crop_top_lefts = [example["crop_top_left"] for example in examples]
 
     # Concat class and instance examples for prior preservation.
     # We do this to avoid doing two forward passes.
@@ -976,7 +1009,12 @@ def collate_fn(examples, with_prior_preservation=False):
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    batch = {"pixel_values": pixel_values, "prompts": prompts}
+    batch = {
+        "pixel_values": pixel_values,
+        "prompts": prompts,
+        "original_sizes": original_sizes,
+        "crop_top_lefts": crop_top_lefts,
+    }
     return batch
 
 
@@ -1198,7 +1236,9 @@ def main(args):
             args.instance_prompt = args.instance_prompt.replace(token_abs, "".join(token_replacement))
             if args.with_prior_preservation:
                 args.class_prompt = args.class_prompt.replace(token_abs, "".join(token_replacement))
-
+            if args.validation_prompt:
+                args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
+                print("validation prompt:", args.validation_prompt)
         # initialize the new tokens for textual inversion
         embedding_handler = TokenEmbeddingsHandler(
             [text_encoder_one, text_encoder_two], [tokenizer_one, tokenizer_two]
@@ -1539,11 +1579,11 @@ def main(args):
     # pooled text embeddings
     # time ids
 
-    def compute_time_ids():
+    def compute_time_ids(crops_coords_top_left, original_size=None):
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-        original_size = (args.resolution, args.resolution)
+        if original_size is None:
+            original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
-        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids])
         add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
@@ -1560,9 +1600,6 @@ def main(args):
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
 
-    # Handle instance prompt.
-    instance_time_ids = compute_time_ids()
-
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
@@ -1573,7 +1610,6 @@ def main(args):
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
-        class_time_ids = compute_time_ids()
         if freeze_text_encoder:
             class_prompt_hidden_states, class_pooled_prompt_embeds = compute_text_embeddings(
                 args.class_prompt, text_encoders, tokenizers
@@ -1588,9 +1624,6 @@ def main(args):
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
-    add_time_ids = instance_time_ids
-    if args.with_prior_preservation:
-        add_time_ids = torch.cat([add_time_ids, class_time_ids], dim=0)
 
     # if --train_text_encoder_ti we need add_special_tokens to be True fo textual inversion
     add_special_tokens = True if args.train_text_encoder_ti else False
@@ -1612,12 +1645,6 @@ def main(args):
                 class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt, add_special_tokens)
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
-
-    if args.train_text_encoder_ti and args.validation_prompt:
-        # replace instances of --token_abstraction in validation prompt with the new tokens: "<si><si+1>" etc.
-        for token_abs, token_replacement in train_dataset.token_abstraction_dict.items():
-            args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
-    print("validation prompt:", args.validation_prompt)
 
     if args.cache_latents:
         latents_cache = []
@@ -1778,6 +1805,12 @@ def main(args):
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
+                if args.noise_offset:
+                    # https://www.crosslabs.org//blog/diffusion-with-offset-noise
+                    noise += args.noise_offset * torch.randn(
+                        (model_input.shape[0], model_input.shape[1], 1, 1), device=model_input.device
+                    )
+
                 bsz = model_input.shape[0]
                 # Sample a random timestep for each image
                 timesteps = torch.randint(
@@ -1789,19 +1822,26 @@ def main(args):
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
 
+                # time ids
+                add_time_ids = torch.cat(
+                    [
+                        compute_time_ids(original_size=s, crops_coords_top_left=c)
+                        for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])
+                    ]
+                )
+
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
                 if not train_dataset.custom_instance_prompts:
                     elems_to_repeat_text_embeds = bsz // 2 if args.with_prior_preservation else bsz
-                    elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 else:
                     elems_to_repeat_text_embeds = 1
-                    elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 # Predict the noise residual
                 if freeze_text_encoder:
                     unet_added_conditions = {
-                        "time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1),
+                        "time_ids": add_time_ids,
+                        # "time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1),
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat_text_embeds, 1),
                     }
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
@@ -1812,7 +1852,7 @@ def main(args):
                         added_cond_kwargs=unet_added_conditions,
                     ).sample
                 else:
-                    unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
+                    unet_added_conditions = {"time_ids": add_time_ids}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
                         tokenizers=None,
@@ -1954,6 +1994,8 @@ def main(args):
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
+                    tokenizer=tokenizer_one,
+                    tokenizer_2=tokenizer_two,
                     text_encoder=accelerator.unwrap_model(text_encoder_one),
                     text_encoder_2=accelerator.unwrap_model(text_encoder_two),
                     unet=accelerator.unwrap_model(unet),
@@ -2033,6 +2075,11 @@ def main(args):
             text_encoder_lora_layers=text_encoder_lora_layers,
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
+
+        if args.train_text_encoder_ti:
+            embeddings_path = f"{args.output_dir}/{args.output_dir}_emb.safetensors"
+            embedding_handler.save_embeddings(embeddings_path)
+
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
             # Final inference
@@ -2068,6 +2115,25 @@ def main(args):
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
 
+            # load new tokens
+            if args.train_text_encoder_ti:
+                state_dict = load_file(embeddings_path)
+                all_new_tokens = []
+                for key, value in token_abstraction_dict.items():
+                    all_new_tokens.extend(value)
+                pipeline.load_textual_inversion(
+                    state_dict["clip_l"],
+                    token=all_new_tokens,
+                    text_encoder=pipeline.text_encoder,
+                    tokenizer=pipeline.tokenizer,
+                )
+                pipeline.load_textual_inversion(
+                    state_dict["clip_g"],
+                    token=all_new_tokens,
+                    text_encoder=pipeline.text_encoder_2,
+                    tokenizer=pipeline.tokenizer_2,
+                )
+
             # run inference
             pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
@@ -2089,11 +2155,6 @@ def main(args):
                             ]
                         }
                     )
-
-        if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(
-                f"{args.output_dir}/{args.output_dir}_emb.safetensors",
-            )
 
         # Conver to WebUI format
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
