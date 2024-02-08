@@ -400,7 +400,7 @@ class MusicLDMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes.values()))
 
         # Once we send to fp16, all params are in half-precision, including the logit scale
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 
