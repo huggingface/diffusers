@@ -20,7 +20,7 @@ import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
-from ...utils import deprecate, logging
+from ...utils import logging
 from ..activations import get_activation
 from ..attention import Attention, FeedForward
 from ..attention_processor import (
@@ -156,12 +156,6 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # When we first integrated the UNet into the library, we didn't have `attention_head_dim`. As a consequence
         # of that, we used `num_attention_heads` for arguments that actually denote attention head dimension. This
         # is why we ignore `num_attention_heads` and calculate it from `attention_head_dims` below.
-        if num_attention_heads is not None:
-            deprecate(
-                "num_atention_heads not None",
-                "1.0.0",
-                "The configuration file of I2VGenXLUNet is outdated. You should not use `num_attention_heads`. Please use `attention_head_dim` instead.",
-            )
         # This is still an incorrect way of calculating `num_attention_heads` but we need to stick to it
         # without running proper depcrecation cycles for the {down,mid,up} blocks which are a
         # part of the public API.
