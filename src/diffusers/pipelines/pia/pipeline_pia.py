@@ -1037,8 +1037,9 @@ class PIAPipeline(
         num_free_init_iters = self._free_init_num_iters if self.free_init_enabled else 1
         for free_init_iter in range(num_free_init_iters):
             if self.free_init_enabled:
-                latents = self._apply_freeinit(latents, free_init_iter, num_inference_steps, device, latents.dtype)
-                timesteps = self.scheduler.timesteps
+                latents, timesteps = self._apply_freeinit(
+                    latents, free_init_iter, num_inference_steps, device, latents.dtype, generator
+                )
 
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             with self.progress_bar(total=num_inference_steps) as progress_bar:

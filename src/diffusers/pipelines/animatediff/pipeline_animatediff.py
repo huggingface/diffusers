@@ -471,6 +471,10 @@ class AnimateDiffPipeline(
             raise ValueError("The pipeline must have `unet` for using FreeU.")
         self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
 
+    def disable_freeu(self):
+        """Disables the FreeU mechanism if enabled."""
+        self.unet.disable_freeu()
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -765,8 +769,6 @@ class AnimateDiffPipeline(
         # 4. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
-        self._num_timesteps = len(timesteps)
-        num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -791,9 +793,11 @@ class AnimateDiffPipeline(
         num_free_init_iters = self._free_init_num_iters if self.free_init_enabled else 1
         for free_init_iter in range(num_free_init_iters):
             if self.free_init_enabled:
-                latents = self._apply_freeinit(latents, free_init_iter, num_inference_steps, device, latents.dtype)
-                timesteps = self.scheduler.timesteps
+                latents, timesteps = self._apply_freeinit(
+                    latents, free_init_iter, num_inference_steps, device, latents.dtype, generator
+                )
 
+            self._num_timesteps = len(timesteps)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):

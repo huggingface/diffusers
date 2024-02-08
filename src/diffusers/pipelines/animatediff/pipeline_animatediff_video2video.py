@@ -598,12 +598,12 @@ class AnimateDiffVideoToVideoPipeline(
         if video is not None and latents is not None:
             raise ValueError("Only one of `video` or `latents` should be provided")
 
-    def get_timesteps(self, num_inference_steps, strength, device):
+    def get_timesteps(self, num_inference_steps, timesteps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
-        timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        timesteps = timesteps[t_start * self.scheduler.order :]
 
         return timesteps, num_inference_steps - t_start
 
@@ -890,9 +890,8 @@ class AnimateDiffVideoToVideoPipeline(
 
         # 4. Prepare timesteps
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
-        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
-        self._num_timesteps = len(timesteps)
 
         # 5. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
@@ -918,10 +917,15 @@ class AnimateDiffVideoToVideoPipeline(
         num_free_init_iters = self._free_init_num_iters if self.free_init_enabled else 1
         for free_init_iter in range(num_free_init_iters):
             if self.free_init_enabled:
-                latents = self._apply_freeinit(latents, free_init_iter, num_inference_steps, device, latents.dtype)
-                num_inference_steps = len(self.scheduler.timesteps)
-                timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+                latents, timesteps = self._apply_freeinit(
+                    latents, free_init_iter, num_inference_steps, device, latents.dtype, generator
+                )
+                num_inference_steps = len(timesteps)
+                # make sure to readjust timesteps based on strength
+                timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, timesteps, strength, device)
 
+            self._num_timesteps = len(timesteps)
+            num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
             # 8. Denoising loop
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
@@ -956,7 +960,9 @@ class AnimateDiffVideoToVideoPipeline(
                         prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                         negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                    progress_bar.update()
+                    # call the callback, if provided
+                    if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                        progress_bar.update()
 
         if output_type == "latent":
             return AnimateDiffPipelineOutput(frames=latents)
