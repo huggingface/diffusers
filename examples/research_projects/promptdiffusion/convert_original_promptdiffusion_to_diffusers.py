@@ -15,7 +15,6 @@
 """ Conversion script for stable diffusion checkpoints which _only_ contain a controlnet. """
 
 import argparse
-
 import re
 from contextlib import nullcontext
 from io import BytesIO
@@ -24,6 +23,7 @@ from typing import Dict, Optional, Union
 import requests
 import torch
 import yaml
+from promptdiffusioncontrolnet import PromptDiffusionControlNetModel
 from transformers import (
     AutoFeatureExtractor,
     BertTokenizerFast,
@@ -42,6 +42,11 @@ from diffusers.models import (
     PriorTransformer,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
+from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 from diffusers.schedulers import (
     DDIMScheduler,
     DDPMScheduler,
@@ -54,11 +59,6 @@ from diffusers.schedulers import (
     UnCLIPScheduler,
 )
 from diffusers.utils import is_accelerate_available, logging
-from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import LDMBertConfig, LDMBertModel
-from diffusers.pipelines.paint_by_example import PaintByExampleImageEncoder
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from diffusers.pipelines.stable_diffusion.stable_unclip_image_normalizer import StableUnCLIPImageNormalizer
 
 
 if is_accelerate_available():
@@ -388,7 +388,13 @@ def create_ldm_bert_config(original_config):
 
 
 def convert_ldm_unet_checkpoint(
-    checkpoint, config, path=None, extract_ema=False, controlnet=False, skip_extract_state_dict=False,promptdiffusion=False,
+    checkpoint,
+    config,
+    path=None,
+    extract_ema=False,
+    controlnet=False,
+    skip_extract_state_dict=False,
+    promptdiffusion=False,
 ):
     """
     Takes a state dict and a config, and returns a converted checkpoint.
@@ -1196,6 +1202,7 @@ def convert_controlnet_checkpoint(
 
     return controlnet
 
+
 def convert_promptdiffusion_checkpoint(
     checkpoint,
     original_config,
@@ -1245,6 +1252,7 @@ def convert_promptdiffusion_checkpoint(
         controlnet.load_state_dict(converted_ctrl_checkpoint)
 
     return controlnet
+
 
 def download_from_original_stable_diffusion_ckpt(
     checkpoint_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -1967,6 +1975,7 @@ def download_controlnet_from_original_ckpt(
 
     return controlnet
 
+
 def download_promptdiffusion_from_original_ckpt(
     checkpoint_path: str,
     original_config_file: str,
@@ -2018,7 +2027,6 @@ def download_promptdiffusion_from_original_ckpt(
 
     return controlnet
 
-from promptdiffusioncontrolnet import PromptDiffusionControlNetModel
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
