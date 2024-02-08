@@ -148,15 +148,15 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         layers_per_block: int = 2,
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: int = 1024,
-        attention_head_dim: Union[int, Tuple[int]] = None,
+        attention_head_dim: Union[int, Tuple[int]] = 64,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = 64,
     ):
         super().__init__()
 
         # When we first integrated the UNet into the library, we didn't have `attention_head_dim`. As a consequence
         # of that, we used `num_attention_heads` for arguments that actually denote attention head dimension. This
-        # is why we correct the behaviour here.
-        attention_head_dim = num_attention_heads or attention_head_dim
+        # is why we ignore `num_attention_heads` and calculate it from `attention_head_dims`.
+        # attention_head_dim = num_attention_heads or attention_head_dim
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
