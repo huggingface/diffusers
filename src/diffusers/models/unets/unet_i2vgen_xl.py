@@ -163,7 +163,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 "The configuration file of I2VGenXLUNet is outdated. You should not use `num_attention_heads`. Please use `attention_head_dim` instead.",
             )
         num_attention_heads = [channel // attention_head_dim for channel in block_out_channels]
-        
+
         # Check inputs
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
