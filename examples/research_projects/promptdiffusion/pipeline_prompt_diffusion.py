@@ -13,28 +13,28 @@
 # limitations under the License.
 #
 # Based on [In-Context Learning Unlocked for Diffusion Models](https://arxiv.org/abs/2305.01115)
-# Authors: Zhendong Wang, Yifan Jiang, Yadong Lu, Yelong Shen, Pengcheng He, Weizhu Chen, Zhangyang Wang, Mingyuan Zhou 
+# Authors: Zhendong Wang, Yifan Jiang, Yadong Lu, Yelong Shen, Pengcheng He, Weizhu Chen, Zhangyang Wang, Mingyuan Zhou
 # Project Page: https://zhendong-wang.github.io/prompt-diffusion.github.io/
 # Code: https://github.com/Zhendong-Wang/Prompt-Diffusion
 #
 # Adapted to Diffusers by [iczaw](https://github.com/iczaw).
-
-
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
 import torch
-from torch import nn
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
+from diffusers.models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -45,10 +45,6 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -64,7 +60,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> from diffusers.pipelines.pipeline_utils import DiffusionPipeline
         >>> from diffusers import UniPCMultistepScheduler
-        >>> from PIL import Image,ImageOps
+        >>> from PIL import ImageOps
 
         >>> # download an image
         >>> image_a = ImageOps.invert(load_image(
@@ -99,6 +95,7 @@ EXAMPLE_DOC_STRING = """
         ... ).images[0]
         ```
 """
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -144,9 +141,8 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
-class PromptDiffusionPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
-):
+
+class PromptDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion with ControlNet guidance.
 
@@ -653,7 +649,7 @@ class PromptDiffusionPipeline(
                 self.check_image(image_, prompt, prompt_embeds)
         else:
             assert False
-        
+
         # Check `image_pair`
         if len(image_pair) == 2:
             for image in image_pair:
@@ -1111,23 +1107,26 @@ class PromptDiffusionPipeline(
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-
         # 3.1 Prepare image pair
 
         if isinstance(controlnet, ControlNetModel):
-            image_pair = torch.cat(           
-               [self.prepare_image(
-                    image=im,
-                    width=width,
-                    height=height,
-                    batch_size=batch_size * num_images_per_prompt,
-                    num_images_per_prompt=num_images_per_prompt,
-                    device=device,
-                    dtype=controlnet.dtype,
-                    do_classifier_free_guidance=self.do_classifier_free_guidance,
-                    guess_mode=guess_mode,
-                ) for im in image_pair]
-            ,1)
+            image_pair = torch.cat(
+                [
+                    self.prepare_image(
+                        image=im,
+                        width=width,
+                        height=height,
+                        batch_size=batch_size * num_images_per_prompt,
+                        num_images_per_prompt=num_images_per_prompt,
+                        device=device,
+                        dtype=controlnet.dtype,
+                        do_classifier_free_guidance=self.do_classifier_free_guidance,
+                        guess_mode=guess_mode,
+                    )
+                    for im in image_pair
+                ],
+                1,
+            )
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
             image = self.prepare_image(
