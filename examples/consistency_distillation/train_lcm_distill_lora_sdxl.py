@@ -310,7 +310,7 @@ def parse_args():
     parser.add_argument(
         "--cache_dir",
         type=str,
-        default="/workspace/cache",
+        default=None,
         help="The directory where the downloaded models and datasets will be stored.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
