@@ -1080,14 +1080,14 @@ class PIAPipeline(
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
 
-        # 9. Offload all models
-        self.maybe_free_model_hooks()
-
         if output_type == "latent":
             return PIAPipelineOutput(frames=latents)
 
         video_tensor = self.decode_latents(latents)
         video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+
+        # 9. Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (video,)

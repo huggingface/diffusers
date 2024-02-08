@@ -118,7 +118,7 @@ class AnimateDiffPipeline(
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
-    _optional_components = ["feature_extractor", "image_encoder"]
+    _optional_components = ["feature_extractor", "image_encoder", "motion_adapter"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -838,14 +838,14 @@ class AnimateDiffPipeline(
                         if callback is not None and i % callback_steps == 0:
                             callback(i, t, latents)
 
-        # 9. Offload all models
-        self.maybe_free_model_hooks()
-
         if output_type == "latent":
             return AnimateDiffPipelineOutput(frames=latents)
 
         video_tensor = self.decode_latents(latents)
         video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+
+        # 9. Offload all models
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (video,)
