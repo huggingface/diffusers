@@ -893,10 +893,12 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
     def __init__(self):
         super().__init__(do_normalize=False, do_binarize=True, do_convert_grayscale=True)
 
-    def process(self, images: List[PIL.Image.Image]) -> torch.FloatTensor:
+    def process(self, images: Union[List[PIL.Image.Image], PIL.Image.Image]) -> torch.FloatTensor:
         """
-        Convert a list of PIL.Image.Image images to a torch.FloatTensor
+        Convert a PIL.Image.Image or a list of PIL.Image.Image to a torch.FloatTensor
         """
+        if not isinstance(images, list):
+            images = [images]
         images = self.preprocess(images)
         return images
 
@@ -914,18 +916,21 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
 
         mask_downsample = F.interpolate(mask.unsqueeze(0), size=(mask_h, mask_w), mode="bicubic").squeeze(0)
 
+        # Repeat mask until batch_size
         if mask_downsample.shape[0] < batch_size:
             mask_downsample = mask_downsample.repeat(batch_size, 1, 1)
-        if mask_downsample.shape[0] > batch_size:
-            mask_downsample = mask_downsample[:batch_size, :, :]
 
         mask_downsample = mask_downsample.view(mask_downsample.shape[0], -1)
 
+        # If the output image and the mask do not have the same aspect ratio, tensor shapes will not match
+        # Pad tensor if downsampled_mask.shape[1] is smaller than seq_length
         if mask_h * mask_w < seq_length:
             mask_downsample = F.pad(mask_downsample, (0, seq_length-mask_downsample.shape[1]), value=0.0)
+        # Discard last embeddings if downsampled_mask.shape[1] is bigger than seq_length
         if mask_h * mask_w > seq_length:
             mask_downsample = mask_downsample[:, :seq_length]
 
+        # Repeat last dimension to match SDPA output shape
         mask_downsample = mask_downsample.view(mask_downsample.shape[0], mask_downsample.shape[1], 1).repeat(
             1, 1, value_embed_dim
         )
