@@ -217,8 +217,8 @@ These are controlnet weights trained on {base_model} with new type of conditioni
     )
 
     tags = [
-        "stable-diffusion",
-        "stable-diffusion-diffusers",
+        "stable-diffusion-xl",
+        "stable-diffusion-xl-diffusers",
         "text-to-image",
         "diffusers",
         "controlnet",
