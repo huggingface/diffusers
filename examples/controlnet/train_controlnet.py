@@ -235,7 +235,6 @@ These are controlnet weights trained on {base_model} with new type of conditioni
     model_card.save(os.path.join(repo_folder, "README.md"))
 
 
-
 def parse_args(input_args=None):
     parser = argparse.ArgumentParser(description="Simple example of a ControlNet training script.")
     parser.add_argument(
