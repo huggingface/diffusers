@@ -1778,7 +1778,7 @@ class StyleAlignedSDXLPipeline(
                 num_inference_steps,
                 strength,
                 device,
-                denoising_start=self.denoising_start if denoising_value_valid else None,
+                denoising_start=self.denoising_start if denoising_value_valid(self.denoising_start) else None,
             )
 
             # check that number of inference steps is not < 1 - as this doesn't make sense
