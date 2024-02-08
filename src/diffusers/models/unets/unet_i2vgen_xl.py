@@ -231,7 +231,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         # if isinstance(num_attention_heads, int):
         #     num_attention_heads = (num_attention_heads,) * len(down_block_types)
         # correct the behaviour of `num_attention_heads` for down blocks.
-        down_block_num_attention_heads = [channel // attention_head_dim for channel in block_out_channels]
+        num_attention_heads = [channel // attention_head_dim for channel in block_out_channels]
 
         # down
         output_channel = block_out_channels[0]
@@ -251,7 +251,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 resnet_act_fn="silu",
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                num_attention_heads=down_block_num_attention_heads[i],
+                num_attention_heads=num_attention_heads[i],
                 downsample_padding=1,
                 dual_cross_attention=False,
             )
@@ -265,7 +265,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             resnet_act_fn="silu",
             output_scale_factor=1,
             cross_attention_dim=cross_attention_dim,
-            num_attention_heads=down_block_num_attention_heads[-1],
+            num_attention_heads=num_attention_heads[-1],
             resnet_groups=norm_num_groups,
             dual_cross_attention=False,
         )
@@ -275,7 +275,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
-        up_block_num_attention_heads = list(reversed(down_block_num_attention_heads))
+        up_block_num_attention_heads = list(reversed(num_attention_heads))
 
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
