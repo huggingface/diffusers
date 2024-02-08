@@ -31,12 +31,13 @@ from diffusers import (
 from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
+from ..test_pipelines_common import IPAdapterTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
+class StableDiffusionLDM3DPipelineFastTests(IPAdapterTesterMixin, unittest.TestCase):
     pipeline_class = StableDiffusionLDM3DPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS

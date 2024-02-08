@@ -26,8 +26,10 @@ from diffusers import AutoencoderKL, DDIMScheduler, LMSDiscreteScheduler, PNDMSc
 from diffusers.pipelines.stable_diffusion_safe import StableDiffusionPipelineSafe as StableDiffusionPipeline
 from diffusers.utils.testing_utils import floats_tensor, nightly, require_torch_gpu, torch_device
 
+from ..test_pipelines_common import IPAdapterTesterMixin
 
-class SafeDiffusionPipelineFastTests(unittest.TestCase):
+
+class SafeDiffusionPipelineFastTests(IPAdapterTesterMixin, unittest.TestCase):
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
