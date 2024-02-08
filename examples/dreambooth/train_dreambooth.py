@@ -97,7 +97,7 @@ DreamBooth for the text encoder was enabled: {train_text_encoder}.
         from_training=True,
         license="creativeml-openrail-m",
         base_model=base_model,
-        instance_prompt=prompt,
+        prompt=prompt,
         model_description=model_description,
         inference=True,
     )

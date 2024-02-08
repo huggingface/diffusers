@@ -122,7 +122,7 @@ Weights for this model are available in Safetensors format.
         from_training=True,
         license="openrail++",
         base_model=base_model,
-        instance_prompt=instance_prompt,
+        prompt=instance_prompt,
         model_description=model_description,
         widget=widget_dict,
     )
