@@ -19,14 +19,13 @@ To learn about how to convert the fine-tuned stable diffusion model, see the [Lo
 
 ```py
 import torch
-import diffusers
 from diffusers import UniPCMultistepScheduler
 from diffusers.utils import load_image
 from promptdiffusioncontrolnet import PromptDiffusionControlNetModel
 from pipeline_prompt_diffusion import PromptDiffusionPipeline
 
 
-from PIL import Image,ImageOps
+from PIL import ImageOps
 
 image_a = ImageOps.invert(load_image("https://github.com/Zhendong-Wang/Prompt-Diffusion/blob/main/images_to_try/house_line.png?raw=true"))
 
