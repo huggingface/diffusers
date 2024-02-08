@@ -98,24 +98,14 @@ class WuerstchenV3DecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     @property
     def dummy_decoder(self):
         torch.manual_seed(0)
-
-        model_kwargs = {
-            "c_cond": self.text_embedder_hidden_size,
-            "c_hidden": [320],
-            "nhead": [-1],
-            "blocks": [4],
-            "level_config": ["CT"],
-            "clip_embd": self.text_embedder_hidden_size,
-            "inject_effnet": [False],
-        }
-
         model_kwargs = {
             "c_cond": 128,
-            "block_repeat": [[1,1,1,1],[3,3,2,2]],
+            "block_repeat": [[1, 1, 1, 1], [3, 3, 2, 2]],
             "c_hidden": [16, 32, 64, 128],
+            "dropout": [0.1, 0.1, 0.1, 0.1],
             "nhead": [-1, -1, 1, 2],
-            "level_config": ["CT", "CT", "CTA","CTA"],
-            "blocks": [[1,1,1,1], [1,1,1,1]],
+            "level_config": ["CT", "CT", "CTA", "CTA"],
+            "blocks": [[1, 1, 1, 1], [1, 1, 1, 1]],
             "switch_level": None,
         }
 
