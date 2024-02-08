@@ -142,6 +142,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # which is why we correct for the naming here.
         num_attention_heads = num_attention_heads or attention_head_dim
 
+        num_attention_heads = [channel // attention_head_dim for channel in block_out_channels]
+
         # Check inputs
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
@@ -188,8 +190,6 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         # class embedding
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
-
-        num_attention_heads = [channel // attention_head_dim for channel in block_out_channels]
 
         # down
         output_channel = block_out_channels[0]

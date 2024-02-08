@@ -81,6 +81,7 @@ class I2VGenXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
             cross_attention_dim=4,
             attention_head_dim=4,
+            num_attention_heads=None,
             norm_num_groups=2,
         )
 
