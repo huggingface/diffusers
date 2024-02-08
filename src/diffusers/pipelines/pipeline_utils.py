@@ -1078,6 +1078,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
+        if torch_dtype is not None:
+            deprecate("torch_dtype", "0.27.0", "Using `torch_dtype` is depcrecated. Use `dtype`, instead.")
+
+        dtype_kwarg = kwargs.pop("dtype", None)
+
+        if torch_dtype is not None and dtype_kwarg is not None:
+            raise ValueError(
+                "You have passed both `torch_dtype` and `dtype` as a keyword argument. Please make sure to only pass `dtype`."
+            )
+
+        dtype = torch_dtype or dtype_kwarg
+
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
@@ -1268,7 +1280,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     pipelines=pipelines,
                     is_pipeline_module=is_pipeline_module,
                     pipeline_class=pipeline_class,
-                    torch_dtype=torch_dtype,
+                    torch_dtype=dtype,
                     provider=provider,
                     sess_options=sess_options,
                     device_map=device_map,
@@ -1300,7 +1312,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "local_files_only": local_files_only,
                 "token": token,
                 "revision": revision,
-                "torch_dtype": torch_dtype,
+                "torch_dtype": dtype,
                 "custom_pipeline": custom_pipeline,
                 "custom_revision": custom_revision,
                 "provider": provider,
