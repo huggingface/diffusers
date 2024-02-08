@@ -46,7 +46,7 @@ enable_full_determinism()
 
 
 class IPAdapterNightlyTestsMixin(unittest.TestCase):
-    dtype = torch.float16
+    dtype = torch.float32
 
     def tearDown(self):
         super().tearDown()
@@ -118,20 +118,24 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array([0.80810547, 0.88183594, 0.9296875, 0.9189453, 0.9848633, 1.0, 0.97021484, 1.0, 1.0])
+        expected_slice = np.array([0.6091, 0.6404, 0.6684, 0.6642, 0.6932, 0.7178, 0.7093, 0.7421, 0.7572])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
+    def test_text_to_image_ip_adapter_plus(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
         inputs = self.get_dummy_inputs()
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.30444336, 0.26513672, 0.22436523, 0.2758789, 0.25585938, 0.20751953, 0.25390625, 0.24633789, 0.21923828]
-        )
+        expected_slice = np.array([0.2688, 0.2210, 0.1819, 0.2221, 0.1880, 0.1525, 0.1925, 0.1696, 0.1483])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -148,22 +152,24 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.22167969, 0.21875, 0.21728516, 0.22607422, 0.21948242, 0.23925781, 0.22387695, 0.25268555, 0.2722168]
-        )
+        expected_slice = np.array([0.0000, 0.0000, 0.0000, 0.0000, 0.0000, 0.0047, 0.0000, 0.0028, 0.0131])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
+    def test_image_to_image_ip_adapter_plus(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionImg2ImgPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
         inputs = self.get_dummy_inputs(for_image_to_image=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.35913086, 0.265625, 0.26367188, 0.24658203, 0.19750977, 0.39990234, 0.15258789, 0.20336914, 0.5517578]
-        )
+        expected_slice = np.array([0.0060, 0.0000, 0.0000, 0.0000, 0.0000, 0.0020, 0.0000, 0.0000, 0.0115])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -180,18 +186,24 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.27148438, 0.24047852, 0.22167969, 0.23217773, 0.21118164, 0.21142578, 0.21875, 0.20751953, 0.20019531]
-        )
+        expected_slice = np.array([0.2328, 0.2031, 0.1928, 0.1982, 0.1783, 0.1875, 0.1875, 0.1795, 0.1808])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
+    def test_inpainting_ip_adapter_plus(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionInpaintPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-plus_sd15.bin")
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
+
+        expected_slice = np.array([0.2328, 0.2031, 0.1928, 0.1982, 0.1783, 0.1875, 0.1875, 0.1795, 0.1808])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -235,7 +247,8 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs = self.get_dummy_inputs()
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        expected_slice = np.array([0.1704, 0.1296, 0.1272, 0.2212, 0.1514, 0.1479, 0.4172, 0.4263, 0.4360])
+
+        expected_slice = np.array([0.3279, 0.3586, 0.3474, 0.3510, 0.3018, 0.3492, 0.3534, 0.3556, 0.4356])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -275,7 +288,8 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs["ip_adapter_image"] = [ip_adapter_image, [ip_adapter_image] * 2]
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        expected_slice = np.array([0.1704, 0.1296, 0.1272, 0.2212, 0.1514, 0.1479, 0.4172, 0.4263, 0.4360])
+
+        expected_slice = np.array([0.2531, 0.1991, 0.1577, 0.2078, 0.1644, 0.1243, 0.1822, 0.1716, 0.1386])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -284,6 +298,9 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
 @slow
 @require_torch_gpu
 class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
+    # Override dtype to float16 here to avoid OOM
+    dtype = torch.float16
+
     def test_text_to_image_sdxl(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="sdxl_models/image_encoder")
         feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
@@ -294,31 +311,21 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs()
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [
-                0.09630299,
-                0.09551358,
-                0.08480701,
-                0.09070173,
-                0.09437338,
-                0.09264627,
-                0.08883232,
-                0.09287417,
-                0.09197289,
-            ]
-        )
+        expected_slice = np.array([0.0962, 0.0954, 0.0846, 0.0906, 0.0942, 0.0924, 0.0887, 0.0926, 0.0917])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
+    def test_text_to_image_sdxl_ip_adapter_plus(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
         pipeline = StableDiffusionXLPipeline.from_pretrained(
             "stabilityai/stable-diffusion-xl-base-1.0",
@@ -326,7 +333,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter(
             "h94/IP-Adapter",
             subfolder="sdxl_models",
@@ -337,9 +344,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [0.0576596, 0.05600825, 0.04479006, 0.05288461, 0.05461192, 0.05137569, 0.04867965, 0.05301541, 0.04939842]
-        )
+        expected_slice = np.array([0.0582, 0.0565, 0.0451, 0.0533, 0.0550, 0.0516, 0.0490, 0.0533, 0.0496])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
@@ -354,29 +359,19 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_image_to_image=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [
-                0.06513795,
-                0.07009393,
-                0.07234055,
-                0.07426041,
-                0.07002589,
-                0.06415862,
-                0.07827643,
-                0.07962808,
-                0.07411247,
-            ]
-        )
+        expected_slice = np.array([0.0652, 0.0701, 0.0722, 0.0743, 0.0700, 0.0641, 0.0784, 0.0797, 0.0744])
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
 
+    def test_image_to_image_sdxl_ip_adapter_plus(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
@@ -386,7 +381,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter(
             "h94/IP-Adapter",
             subfolder="sdxl_models",
@@ -397,21 +392,10 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
 
-        expected_slice = np.array(
-            [
-                0.07126552,
-                0.07025367,
-                0.07348302,
-                0.07580167,
-                0.07467338,
-                0.06918576,
-                0.07480252,
-                0.08279955,
-                0.08547315,
-            ]
-        )
+        expected_slice = np.array([0.0712, 0.0700, 0.0732, 0.0758, 0.0749, 0.0692, 0.0749, 0.0828, 0.0860])
 
-        assert np.allclose(image_slice, expected_slice, atol=1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
 
     def test_inpainting_sdxl(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="sdxl_models/image_encoder")
@@ -423,21 +407,19 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        image_slice.tolist()
 
-        expected_slice = np.array(
-            [0.14181179, 0.1493012, 0.14283323, 0.14602411, 0.14915377, 0.15015268, 0.14725655, 0.15009224, 0.15164584]
-        )
+        expected_slice = np.array([0.1419, 0.1493, 0.1429, 0.1461, 0.1492, 0.1502, 0.1473, 0.1501, 0.1517])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
 
+    def test_inpainting_sdxl_ip_adapter_plus(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         feature_extractor = self.get_image_processor("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
 
@@ -447,7 +429,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter(
             "h94/IP-Adapter",
             subfolder="sdxl_models",
@@ -457,9 +439,8 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs = self.get_dummy_inputs(for_inpainting=True)
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        image_slice.tolist()
 
-        expected_slice = np.array([0.1398, 0.1476, 0.1407, 0.1442, 0.1470, 0.1480, 0.1449, 0.1481, 0.1494])
+        expected_slice = np.array([0.1397, 0.1476, 0.1406, 0.1441, 0.1469, 0.1479, 0.1448, 0.1481, 0.1494])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
