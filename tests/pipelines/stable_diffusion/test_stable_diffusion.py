@@ -24,12 +24,9 @@ import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
 from transformers import (
-    CLIPImageProcessor,
     CLIPTextConfig,
     CLIPTextModel,
     CLIPTokenizer,
-    CLIPVisionConfig,
-    CLIPVisionModelWithProjection,
 )
 
 from diffusers import (
@@ -62,7 +59,6 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import (
-    IP_ADAPTER_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
@@ -124,7 +120,6 @@ class StableDiffusionPipelineFastTests(
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
-    ip_adapter_params = IP_ADAPTER_PARAMS
     callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS
 
     def get_dummy_components(self, time_cond_proj_dim=None):
@@ -172,15 +167,6 @@ class StableDiffusionPipelineFastTests(
         )
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
-        feature_extractor = CLIPImageProcessor()
-        image_encoder_config = CLIPVisionConfig(
-            hidden_size=8,
-            intermediate_size=8,
-            projection_dim=32,
-            num_hidden_layers=1,
-            num_attention_heads=1,
-        )
-        image_encoder = CLIPVisionModelWithProjection(image_encoder_config)
 
         components = {
             "unet": unet,
@@ -189,8 +175,8 @@ class StableDiffusionPipelineFastTests(
             "text_encoder": text_encoder,
             "tokenizer": tokenizer,
             "safety_checker": None,
-            "feature_extractor": feature_extractor,
-            "image_encoder": image_encoder,
+            "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 

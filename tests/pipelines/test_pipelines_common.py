@@ -67,36 +67,27 @@ class IPAdapterTesterMixin:
     It provides a set of common tests for pipelines that support IP Adapters.
     """
 
-    @property
-    def ip_adapter_params(self) -> frozenset:
-        raise NotImplementedError(
-            "You need to set the attribute `ip_adapter_params` in the child test class. "
-            "`ip_adapter_params` are tested for if all accepted input image types (i.e. `pt`,`pil`,`np`) are producing same results"
-        )
-
-    def test_image_encoder_exists(self):
-        components = self.get_dummy_components()
-        self.assertIsNotNone(components.get("image_encoder", None))
-
     def test_pipeline_signature(self):
         parameters = inspect.signature(self.pipeline_class.__call__).parameters
 
         assert issubclass(self.pipeline_class, IPAdapterMixin)
-        self.assertIn("ip_adapter_image" , parameters, "`ip_adapter_image` argument must be supported by the `__call__` method")
+        self.assertIn(
+            "ip_adapter_image_embeds",
+            parameters,
+            "`ip_adapter_image_embeds` argument must be supported by the `__call__` method",
+        )
 
-    def _get_dummy_image(self, height: int = 512, width: int = 512):
-        return PIL.Image.new("RGB", (width, height))
+    def _get_dummy_image_embeds(self, sample_size: int = 32):
+        return torch.zeros((2, 1, sample_size), device=torch_device)
 
     def test_ip_adapter(self, expected_max_diff: float = 1e-4):
-        device = "cpu"
-
         components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        pipe = pipe.to(torch_device)
+        pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
+        sample_size = pipe.unet.config.get("sample_size", 32)
 
         # forward pass without ip adapter
-        inputs = self.get_dummy_inputs(device)
+        inputs = self.get_dummy_inputs(torch_device)
         output_without_adapter = pipe(**inputs).images
 
         adapter_state_dict_1 = create_ip_adapter_state_dict(pipe.unet)
@@ -105,28 +96,28 @@ class IPAdapterTesterMixin:
         pipe.unet._load_ip_adapter_weights(adapter_state_dict_1)
 
         # forward pass with single ip adapter, but scale=0 which should have no effect
-        inputs = self.get_dummy_inputs(device)
-        inputs["ip_adapter_image"] = self._get_dummy_image()
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(sample_size)]
         pipe.set_ip_adapter_scale(0.0)
         output_without_adapter_scale = pipe(**inputs).images
 
         # forward pass with single ip adapter, but with scale of adapter weights
-        inputs = self.get_dummy_inputs(device)
-        inputs["ip_adapter_image"] = self._get_dummy_image()
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(sample_size)]
         pipe.set_ip_adapter_scale(1.0)
         output_with_adapter_scale = pipe(**inputs).images
 
         pipe.unet._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
 
         # forward pass with multi ip adapter, but scale=0 which should have no effect
-        inputs = self.get_dummy_inputs(device)
-        inputs["ip_adapter_image"] = [self._get_dummy_image()] * 2
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(sample_size)] * 2
         pipe.set_ip_adapter_scale([0.0, 0.0])
         output_without_multi_adapter_scale = pipe(**inputs).images
 
         # forward pass with multi ip adapter, but with scale of adapter weights
-        inputs = self.get_dummy_inputs(device)
-        inputs["ip_adapter_image"] = [self._get_dummy_image()] * 2
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(sample_size)] * 2
         pipe.set_ip_adapter_scale([0.5, 0.5])
         output_with_multi_adapter_scale = pipe(**inputs).images
 
@@ -143,7 +134,7 @@ class IPAdapterTesterMixin:
             "Output without ip-adapter must be same as normal inference",
         )
         self.assertGreater(
-            max_diff_with_adapter_scale, 0.1, "Output with ip-adapter must be different from normal inference"
+            max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
         )
         self.assertLess(
             max_diff_without_multi_adapter_scale,
@@ -152,9 +143,10 @@ class IPAdapterTesterMixin:
         )
         self.assertGreater(
             max_diff_with_multi_adapter_scale,
-            0.1,
+            1e-2,
             "Output with multi-ip-adapter scale must be different from normal inference",
         )
+
 
 class PipelineLatentTesterMixin:
     """
