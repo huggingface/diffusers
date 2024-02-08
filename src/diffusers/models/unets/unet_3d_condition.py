@@ -127,6 +127,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
 
         self.sample_size = sample_size
 
+        # (sayakpaul) the following can be safely ignored now?
+        # till `num_attention_heads = num_attention_heads or attention_head_dim`
         if num_attention_heads is not None:
             raise NotImplementedError(
                 "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
@@ -187,8 +189,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
 
-        if isinstance(num_attention_heads, int):
-            num_attention_heads = (num_attention_heads,) * len(down_block_types)
+        num_attention_heads = [channel // attention_head_dim for channel in block_out_channels]
 
         # down
         output_channel = block_out_channels[0]
