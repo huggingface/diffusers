@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -62,6 +62,7 @@ from diffusers.utils import (
     convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -75,40 +76,22 @@ logger = get_logger(__name__)
 def save_model_card(
     repo_id: str,
     images=None,
-    base_model=str,
+    base_model: str = None,
     train_text_encoder=False,
-    instance_prompt=str,
-    validation_prompt=str,
+    instance_prompt=None,
+    validation_prompt=None,
     repo_folder=None,
     vae_path=None,
 ):
-    img_str = "widget:\n" if images else ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"""
-        - text: '{validation_prompt if validation_prompt else ' ' }'
-          output:
-            url:
-                "image_{i}.png"
-        """
+    widget_dict = []
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            widget_dict.append(
+                {"text": validation_prompt if validation_prompt else " ", "output": {"url": f"image_{i}.png"}}
+            )
 
-    yaml = f"""
----
-tags:
-- stable-diffusion-xl
-- stable-diffusion-xl-diffusers
-- text-to-image
-- diffusers
-- lora
-- template:sd-lora
-{img_str}
-base_model: {base_model}
-instance_prompt: {instance_prompt}
-license: openrail++
----
-    """
-
-    model_card = f"""
+    model_description = f"""
 # SDXL LoRA DreamBooth - {repo_id}
 
 <Gallery />
@@ -134,8 +117,27 @@ Weights for this model are available in Safetensors format.
 [Download]({repo_id}/tree/main) them in the Files & versions tab.
 
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="openrail++",
+        base_model=base_model,
+        prompt=instance_prompt,
+        model_description=model_description,
+        widget=widget_dict,
+    )
+    tags = [
+        "text-to-image",
+        "stable-diffusion-xl",
+        "stable-diffusion-xl-diffusers",
+        "text-to-image",
+        "diffusers",
+        "lora",
+        "template:sd-lora",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def import_model_class_from_model_name_or_path(

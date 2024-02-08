@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -649,6 +649,8 @@ class PIAPipeline(
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        ip_adapter_image=None,
+        ip_adapter_image_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if height % 8 != 0 or width % 8 != 0:
@@ -687,33 +689,44 @@ class PIAPipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
-    def prepare_ip_adapter_image_embeds(self, ip_adapter_image, device, num_images_per_prompt):
-        if not isinstance(ip_adapter_image, list):
-            ip_adapter_image = [ip_adapter_image]
-
-        if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+        if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
             raise ValueError(
-                f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
             )
 
-        image_embeds = []
-        for single_ip_adapter_image, image_proj_layer in zip(
-            ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
-        ):
-            output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
-            single_image_embeds, single_negative_image_embeds = self.encode_image(
-                single_ip_adapter_image, device, 1, output_hidden_state
-            )
-            single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
-            single_negative_image_embeds = torch.stack([single_negative_image_embeds] * num_images_per_prompt, dim=0)
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
+    ):
+        if ip_adapter_image_embeds is None:
+            if not isinstance(ip_adapter_image, list):
+                ip_adapter_image = [ip_adapter_image]
 
-            if self.do_classifier_free_guidance:
-                single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
-                single_image_embeds = single_image_embeds.to(device)
+            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+                raise ValueError(
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                )
 
-            image_embeds.append(single_image_embeds)
+            image_embeds = []
+            for single_ip_adapter_image, image_proj_layer in zip(
+                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+            ):
+                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+                single_image_embeds, single_negative_image_embeds = self.encode_image(
+                    single_ip_adapter_image, device, 1, output_hidden_state
+                )
+                single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
+                single_negative_image_embeds = torch.stack(
+                    [single_negative_image_embeds] * num_images_per_prompt, dim=0
+                )
 
+                if self.do_classifier_free_guidance:
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                    single_image_embeds = single_image_embeds.to(device)
+
+                image_embeds.append(single_image_embeds)
+        else:
+            image_embeds = ip_adapter_image_embeds
         return image_embeds
 
     # Copied from diffusers.pipelines.text_to_video_synthesis.pipeline_text_to_video_synth.TextToVideoSDPipeline.prepare_latents
@@ -998,6 +1011,7 @@ class PIAPipeline(
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         ip_adapter_image: Optional[PipelineImageInput] = None,
+        ip_adapter_image_embeds: Optional[List[torch.FloatTensor]] = None,
         motion_scale: int = 0,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
@@ -1050,6 +1064,9 @@ class PIAPipeline(
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
+            ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
+                Pre-generated image embeddings for IP-Adapter. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             motion_scale: (`int`, *optional*, defaults to 0):
                 Parameter that controls the amount and type of motion that is added to the image. Increasing the value increases the amount of motion, while specific
                 ranges of values control the type of motion that is added. Must be between 0 and 8.
@@ -1099,6 +1116,8 @@ class PIAPipeline(
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
+            ip_adapter_image,
+            ip_adapter_image_embeds,
             callback_on_step_end_tensor_inputs,
         )
 
@@ -1137,9 +1156,9 @@ class PIAPipeline(
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        if ip_adapter_image is not None:
+        if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
-                ip_adapter_image, device, batch_size * num_videos_per_prompt
+                ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_videos_per_prompt
             )
 
         # 4. Prepare timesteps
