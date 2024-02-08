@@ -120,7 +120,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
-        attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
+        attention_head_dim (`int`, *optional*, defaults to 64): Attention head dim.
         num_attention_heads (`int`, *optional*): The number of attention heads.
     """
 
@@ -149,7 +149,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = 64,
+        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
     ):
         super().__init__()
 
@@ -162,7 +162,10 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 "1.0.0",
                 "The configuration file of I2VGenXLUNet is outdated. You should not use `num_attention_heads`. Please use `attention_head_dim` instead.",
             )
-        num_attention_heads = [channel // attention_head_dim for channel in block_out_channels]
+        # This is still an incorrect way of calculating `num_attention_heads` but we need to stick to it
+        # without running proper depcrecation cycles for the {down,mid,up} blocks which are a
+        # part of the public API.
+        num_attention_heads = attention_head_dim
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -185,7 +188,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         self.transformer_in = TransformerTemporalModel(
             num_attention_heads=8,
-            attention_head_dim=attention_head_dim,
+            attention_head_dim=num_attention_heads,
             in_channels=block_out_channels[0],
             num_layers=1,
             norm_num_groups=norm_num_groups,
@@ -234,6 +237,9 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
 
+        if isinstance(num_attention_heads, int):
+            num_attention_heads = (num_attention_heads,) * len(down_block_types)
+
         # down
         output_channel = block_out_channels[0]
         for i, down_block_type in enumerate(down_block_types):
@@ -276,7 +282,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
-        up_block_num_attention_heads = list(reversed(num_attention_heads))
+        reversed_num_attention_heads = list(reversed(num_attention_heads))
 
         output_channel = reversed_block_out_channels[0]
         for i, up_block_type in enumerate(up_block_types):
@@ -305,7 +311,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 resnet_act_fn="silu",
                 resnet_groups=norm_num_groups,
                 cross_attention_dim=cross_attention_dim,
-                num_attention_heads=up_block_num_attention_heads[i],
+                num_attention_heads=reversed_num_attention_heads[i],
                 dual_cross_attention=False,
                 resolution_idx=i,
             )

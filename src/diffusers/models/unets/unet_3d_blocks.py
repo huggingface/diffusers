@@ -356,8 +356,8 @@ class UNetMidBlock3DCrossAttn(nn.Module):
         for _ in range(num_layers):
             attentions.append(
                 Transformer2DModel(
-                    num_attention_heads,
                     in_channels // num_attention_heads,
+                    num_attention_heads,
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -368,8 +368,8 @@ class UNetMidBlock3DCrossAttn(nn.Module):
             )
             temp_attentions.append(
                 TransformerTemporalModel(
-                    num_attention_heads,
                     in_channels // num_attention_heads,
+                    num_attention_heads,
                     in_channels=in_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -494,8 +494,8 @@ class CrossAttnDownBlock3D(nn.Module):
             )
             attentions.append(
                 Transformer2DModel(
-                    num_attention_heads,
                     out_channels // num_attention_heads,
+                    num_attention_heads,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -507,8 +507,8 @@ class CrossAttnDownBlock3D(nn.Module):
             )
             temp_attentions.append(
                 TransformerTemporalModel(
-                    num_attention_heads,
                     out_channels // num_attention_heads,
+                    num_attention_heads,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -703,6 +703,7 @@ class CrossAttnUpBlock3D(nn.Module):
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
+
             resnets.append(
                 ResnetBlock2D(
                     in_channels=resnet_in_channels + res_skip_channels,
@@ -727,8 +728,8 @@ class CrossAttnUpBlock3D(nn.Module):
             )
             attentions.append(
                 Transformer2DModel(
-                    num_attention_heads,
                     out_channels // num_attention_heads,
+                    num_attention_heads,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
@@ -740,8 +741,8 @@ class CrossAttnUpBlock3D(nn.Module):
             )
             temp_attentions.append(
                 TransformerTemporalModel(
-                    num_attention_heads,
                     out_channels // num_attention_heads,
+                    num_attention_heads,
                     in_channels=out_channels,
                     num_layers=1,
                     cross_attention_dim=cross_attention_dim,
