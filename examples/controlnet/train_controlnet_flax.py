@@ -50,6 +50,7 @@ from diffusers import (
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 
+
 # To prevent an error that occurs when there are abnormally large compressed data chunk in the png image
 # see more https://github.com/python-pillow/Pillow/issues/5610
 LARGE_ENOUGH_NUMBER = 100
