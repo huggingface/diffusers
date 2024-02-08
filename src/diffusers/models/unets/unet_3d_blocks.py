@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ from torch import nn
 from ...utils import is_torch_version
 from ...utils.torch_utils import apply_freeu
 from ..attention import Attention
-from ..dual_transformer_2d import DualTransformer2DModel
 from ..resnet import (
     Downsample2D,
     ResnetBlock2D,
@@ -28,8 +27,9 @@ from ..resnet import (
     TemporalConvLayer,
     Upsample2D,
 )
-from ..transformer_2d import Transformer2DModel
-from ..transformer_temporal import (
+from ..transformers.dual_transformer_2d import DualTransformer2DModel
+from ..transformers.transformer_2d import Transformer2DModel
+from ..transformers.transformer_temporal import (
     TransformerSpatioTemporalModel,
     TransformerTemporalModel,
 )
@@ -1033,16 +1033,10 @@ class DownBlockMotion(nn.Module):
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(resnet), hidden_states, temb, scale
                     )
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(motion_module),
-                    hidden_states.requires_grad_(),
-                    temb,
-                    num_frames,
-                )
 
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
 
             output_states = output_states + (hidden_states,)
 
@@ -1223,10 +1217,10 @@ class CrossAttnDownBlockMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(
-                    hidden_states,
-                    num_frames=num_frames,
-                )[0]
+            hidden_states = motion_module(
+                hidden_states,
+                num_frames=num_frames,
+            )[0]
 
             # apply additional residuals to the output of the last pair of resnet and attention blocks
             if i == len(blocks) - 1 and additional_residuals is not None:
@@ -1427,10 +1421,10 @@ class CrossAttnUpBlockMotion(nn.Module):
                     encoder_attention_mask=encoder_attention_mask,
                     return_dict=False,
                 )[0]
-                hidden_states = motion_module(
-                    hidden_states,
-                    num_frames=num_frames,
-                )[0]
+            hidden_states = motion_module(
+                hidden_states,
+                num_frames=num_frames,
+            )[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
@@ -1565,15 +1559,10 @@ class UpBlockMotion(nn.Module):
                     hidden_states = torch.utils.checkpoint.checkpoint(
                         create_custom_forward(resnet), hidden_states, temb
                     )
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                )
 
             else:
                 hidden_states = resnet(hidden_states, temb, scale=scale)
-                hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
+            hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:

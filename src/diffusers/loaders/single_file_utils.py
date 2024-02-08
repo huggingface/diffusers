@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -513,11 +513,12 @@ def create_controlnet_diffusers_config(original_config, image_size: int):
     return controlnet_config
 
 
-def create_vae_diffusers_config(original_config, image_size, scaling_factor=0.18125):
+def create_vae_diffusers_config(original_config, image_size, scaling_factor=None):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
+    scaling_factor = scaling_factor or original_config["model"]["params"]["scale_factor"]
 
     block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
