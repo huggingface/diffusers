@@ -664,6 +664,7 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step, name="stude
         unet=unet,
         revision=args.revision,
         torch_dtype=weight_dtype,
+        safety_checker=None,
     )
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
