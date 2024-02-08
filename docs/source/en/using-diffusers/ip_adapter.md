@@ -383,8 +383,16 @@ pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-a
 pipeline.load_lora_weights(lcm_lora_id)
 pipeline.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipeline.enable_model_cpu_offload()
+```
 
-prompt = "best quality, high quality"
+Try using with a lower IP-Adapter scale to condition image generation more on the herge_style checkpoint, and remember to use the special token `herge_style` in your prompt to trigger and apply the style.
+
+```py
+pipeline.set_ip_adapter_scale(0.4)
+
+prompt = "herge_style woman in armor, best quality, high quality"
+generator = torch.Generator(device="cpu").manual_seed(0)
+
 ip_adapter_image = load_image("https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png")
 image = pipeline(
     prompt=prompt,
@@ -396,7 +404,7 @@ image
 ```
 
 <div class="flex justify-center">
-    <img src="" />
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_herge.png" />
     <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
 </div>
 
