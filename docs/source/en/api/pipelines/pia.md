@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -70,7 +70,7 @@ Here are some sample outputs:
 <table>
     <tr>
         <td><center>
-        masterpiece, bestquality, sunset.
+        cat in a field.
         <br>
         <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pia-default-output.gif"
             alt="cat in a field"
@@ -119,7 +119,7 @@ image = load_image(
     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/pix2pix/cat_6.png?download=true"
 )
 image = image.resize((512, 512))
-prompt = "cat in a hat"
+prompt = "cat in a field"
 negative_prompt = "wrong white balance, dark, sketches,worst quality,low quality"
 
 generator = torch.Generator("cpu").manual_seed(0)
@@ -132,7 +132,7 @@ export_to_gif(frames, "pia-freeinit-animation.gif")
 <table>
     <tr>
         <td><center>
-        masterpiece, bestquality, sunset.
+        cat in a field.
         <br>
         <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/pia-freeinit-output-cat.gif"
             alt="cat in a field"
