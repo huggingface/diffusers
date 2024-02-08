@@ -310,7 +310,7 @@ def parse_args():
     parser.add_argument(
         "--cache_dir",
         type=str,
-        default=None,
+        default="/workspace/cache",
         help="The directory where the downloaded models and datasets will be stored.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
@@ -887,8 +887,7 @@ def main(args):
         def load_model_hook(models, input_dir):
             # load the LoRA into the model
             unet_ = accelerator.unwrap_model(unet)
-            lora_state_dict, network_alphas = StableDiffusionXLPipeline.lora_state_dict(input_dir)
-            StableDiffusionXLPipeline.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+            lora_state_dict, _ = StableDiffusionXLPipeline.lora_state_dict(input_dir)
             unet_state_dict = {
                 f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")
             }
@@ -911,8 +910,7 @@ def main(args):
             # are in `weight_dtype`. More details:
             # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
             if args.mixed_precision == "fp16":
-                models = [unet_]
-                cast_training_params(models, dtype=torch.float32)
+                cast_training_params(unet_, dtype=torch.float32)
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
