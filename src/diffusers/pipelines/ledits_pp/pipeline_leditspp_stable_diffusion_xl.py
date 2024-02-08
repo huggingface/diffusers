@@ -244,17 +244,6 @@ class CrossAttnProcessor:
         attention_mask=None,
         temb=None,
     ):
-        if attn.residual_connection:
-            raise ValueError("`attn` should not have residual connections!")
-        if attn.spatial_norm is not None:
-            raise ValueError("`attn.spatial_norm` should be None!")
-        if attn.group_norm is not None:
-            raise ValueError("`attn.group_norm` should be None!")
-        if hidden_states.ndim == 4:
-            raise ValueError("`hidden_states.ndim should be different than 4!")
-        if attn.encoder_hidden_states is None:
-            raise ValueError("`encoder_hidden_states cannot be `None`")
-
         batch_size, sequence_length, _ = (
             hidden_states.shape if encoder_hidden_states is None else encoder_hidden_states.shape
         )
