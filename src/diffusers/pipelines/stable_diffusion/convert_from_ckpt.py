@@ -1320,6 +1320,9 @@ def download_from_original_stable_diffusion_ckpt(
         else:
             with open(original_config_file, "r") as f:
                 original_config_file = f.read()
+    else:
+        with open(original_config_file, "r") as f:
+            original_config_file = f.read()
 
     original_config = yaml.safe_load(original_config_file)
 
