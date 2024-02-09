@@ -386,6 +386,12 @@ def download_image(url):
 def main():
     args = parse_args()
 
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     if args.non_ema_revision is not None:
         deprecate(
             "non_ema_revision!=None",
