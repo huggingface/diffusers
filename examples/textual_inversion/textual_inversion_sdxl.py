@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -372,7 +372,7 @@ def parse_args():
     parser.add_argument(
         "--validation_prompt",
         type=str,
-        default="A <cat-toy> backpack",
+        default=None,
         help="A prompt that is used during validation to verify that the model is learning.",
     )
     parser.add_argument(
