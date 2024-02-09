@@ -893,6 +893,12 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
     """
 
     def __init__(self):
+        do_resize: bool = True,
+        vae_scale_factor: int = 8,
+        resample: str = "lanczos",
+        do_normalize: bool = False,
+        do_binarize: bool = True,
+        do_convert_grayscale: bool = True)
         super().__init__(do_normalize=False, do_binarize=True, do_convert_grayscale=True)
 
     @staticmethod
