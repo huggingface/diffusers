@@ -1,4 +1,4 @@
-# Copyright 2023 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipeline = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
         >>> pipeline.enable_model_cpu_offload()
 
-        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?raw=true"
+        >>> image_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"
         >>> image = load_image(image_url).convert("RGB")
 
         >>> prompt = "Papers were floating in the air on a table in the library"
