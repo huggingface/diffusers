@@ -376,8 +376,8 @@ After training, LoRA weights can be loaded very easily into the original pipelin
 load the original pipeline:
 
 ```python
-from diffusers import StableDiffusionPipeline
-pipe = StableDiffusionPipeline.from_pretrained("base-model-name").to("cuda")
+from diffusers import DiffusionPipeline
+pipe = DiffusionPipeline.from_pretrained("base-model-name").to("cuda")
 ```
 
 Next, we can load the adapter layers into the pipeline with the [`load_lora_weights` function](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters#lora).
