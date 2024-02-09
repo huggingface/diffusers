@@ -23,14 +23,14 @@ This guide will walk you through using IP-Adapter for various tasks and use case
 
 Let's take a look at how to use IP-Adapter's image prompting capabilities with the [`StableDiffusionXLPipeline`] for tasks like text-to-image, image-to-image, and inpainting. We also encourage you to try out other pipelines such as Stable Diffusion, LCM-LoRA, ControlNet, T2I-Adapter, or AnimateDiff!
 
-In all the following examples, you'll see the [`~IPAdapterMixin.set_ip_adapter_scale`] method. This method controls the amount of text or image conditioning to apply to the model. A value of `1.0` means the model is only conditioned on the image prompt. Lowering this value encourages the model to produce more diverse images, but they may not be as aligned with the image prompt. Typically, a value of `0.5` achieves a good balance between the two prompt types and produces good results.
+In all the following examples, you'll see the [`~loaders.IPAdapterMixin.set_ip_adapter_scale`] method. This method controls the amount of text or image conditioning to apply to the model. A value of `1.0` means the model is only conditioned on the image prompt. Lowering this value encourages the model to produce more diverse images, but they may not be as aligned with the image prompt. Typically, a value of `0.5` achieves a good balance between the two prompt types and produces good results.
 
 <hfoptions id="tasks">
 <hfoption id="Text-to-image">
 
 Crafting the precise text prompt to generate the image you want can be difficult because it may not always capture what you'd like to express. Adding an image alongside the text prompt helps the model better understand what it should generate and can lead to more accurate results.
 
-Load a Stable Diffusion XL (SDXL) model and insert an IP-Adapter into the model with the [`~IPAdapterMixin.load_ip_adapter`] method. Use the `subfolder` parameter to load the weights for SDXL.
+Load a Stable Diffusion XL (SDXL) model and insert an IP-Adapter into the model with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method. Use the `subfolder` parameter to load the SDXL model weights.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -73,7 +73,7 @@ images[0]
 
 IP-Adapter can also help with image-to-image by guiding the model to generate an image that resembles the original image and the image prompt.
 
-Load a Stable Diffusion XL (SDXL) model and insert an IP-Adapter into the model with the [`~IPAdapterMixin.load_ip_adapter`] method. Use the `subfolder` parameter to load the weights for SDXL.
+Load a Stable Diffusion XL (SDXL) model and insert an IP-Adapter into the model with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method. Use the `subfolder` parameter to load the SDXL model weights.
 
 ```py
 from diffusers import AutoPipelineForImage2Image
@@ -122,7 +122,7 @@ images[0]
 
 IP-Adapter is also useful for inpainting because the image prompt allows you to be much more specific about what you'd like to generate.
 
-Load a Stable Diffusion XL (SDXL) model and insert an IP-Adapter into the model with the [`~IPAdapterMixin.load_ip_adapter`] method. Use the `subfolder` parameter to load the weights for SDXL.
+Load a Stable Diffusion XL (SDXL) model and insert an IP-Adapter into the model with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method. Use the `subfolder` parameter to load the SDXL model weights.
 
 ```py
 from diffusers import AutoPipelineForInpainting
@@ -134,7 +134,7 @@ pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=
 pipeline.set_ip_adapter_scale(0.6)
 ```
 
-Pass a prompt, the original image, mask image, and the IP-Adapter image prompt to the pipeline to generate an image. Providing a text prompt to the pipeline is optional, but in this example, a text prompt is used to increase image quality.
+Pass a prompt, the original image, mask image, and the IP-Adapter image prompt to the pipeline to generate an image.
 
 ```py
 mask_image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_mask.png")
@@ -171,7 +171,7 @@ images[0]
 </hfoption>
 <hfoption id="Video">
 
-IP-Adapter can also help you generate videos that are more aligned with your text prompt. For example, let's load [AnimateDiff](../api/pipelines/animatediff) with it's motion adapter, and insert an IP-Adapter into the model with the [`~IPAdapterMixin.load_ip_adapter`] method.
+IP-Adapter can also help you generate videos that are more aligned with your text prompt. For example, let's load [AnimateDiff](../api/pipelines/animatediff) with it's motion adapter and insert an IP-Adapter into the model with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method.
 
 > [!WARNING]
 > If you're planning on offloading the model to the CPU, make sure you run it after you've loaded the IP-Adapter. When you call [`~DiffusionPipeline.enable_model_cpu_offload`] before loading the IP-Adapter, it offloads the image encoder module to the CPU and it'll return an error when you try to run the pipeline.
@@ -233,7 +233,7 @@ export_to_gif(frames, "gummy_bear.gif")
 
 ## Specific use cases
 
-IP-Adapters image prompting and compatibility with other adapters and models makes it a versatile tool for a variety of use cases. Let's have a look at some of them.
+IP-Adapters image prompting and compatibility with other adapters and models makes it a versatile tool for a variety of use cases. This section covers some of the more popular applications of IP-Adapter, and we can't wait to see what you come up with!
 
 ### Face model
 
@@ -281,10 +281,12 @@ image
 
 ### Multi IP-Adapter
 
-More than one IP-Adapter can be used at the same time to generate specific images in more diverse styles. For example, you can use IP-Adapter FaceID to generate consistent faces and characters, and IP-Adapter Plus to generate those faces in a specific style. Let's try this out!
+More than one IP-Adapter can be used at the same time to generate specific images in more diverse styles. For example, you can use IP-Adapter-FaceID to generate consistent faces and characters, and IP-Adapter Plus to generate those faces in a specific style.
 
 > [!TIP]
 > Read the [IP-Adapter Plus](../using-diffusers/loading_adapters#ip-adapter-plus) section to learn why you need to manually load the image encoder.
+
+Load the image encoder with [`~transformers.CLIPVisionModelWithProjection`].
 
 ```py
 import torch
@@ -299,9 +301,9 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
 )
 ```
 
-Next, you'll load a base model, scheduler, and IP-Adapter's. The IP-Adapter's to use are passed as a list to the `weight_name` parameter:
+Next, you'll load a base model, scheduler, and the IP-Adapter's. The IP-Adapter's to use are passed as a list to the `weight_name` parameter:
 
-* [ip-adapter-plus_sdxl_vit-h](https://huggingface.co/h94/IP-Adapter#ip-adapter-for-sdxl-10) uses patch embeddings and a ViT H image encoder
+* [ip-adapter-plus_sdxl_vit-h](https://huggingface.co/h94/IP-Adapter#ip-adapter-for-sdxl-10) uses patch embeddings and a ViT-H image encoder
 * [ip-adapter-plus-face_sdxl_vit-h](https://huggingface.co/h94/IP-Adapter#ip-adapter-for-sdxl-10) has the same architecture but it is conditioned with images of cropped faces
 
 ```py
@@ -355,7 +357,6 @@ image = pipeline(
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_multi_out.png" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
 </div>
 
 ### Instant generation
@@ -380,7 +381,7 @@ pipeline.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 pipeline.enable_model_cpu_offload()
 ```
 
-Try using with a lower IP-Adapter scale to condition image generation more on the herge_style checkpoint, and remember to use the special token `herge_style` in your prompt to trigger and apply the style.
+Try using with a lower IP-Adapter scale to condition image generation more on the [herge_style](https://huggingface.co/sd-dreambooth-library/herge-style) checkpoint, and remember to use the special token `herge_style` in your prompt to trigger and apply the style.
 
 ```py
 pipeline.set_ip_adapter_scale(0.4)
@@ -400,7 +401,6 @@ image
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_herge.png" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
 </div>
 
 ### Structural control
@@ -458,5 +458,4 @@ image
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ipa-controlnet-out.png" />
-    <figcaption class="mt-2 text-center text-sm text-gray-500">generated image</figcaption>
 </div>

@@ -355,13 +355,16 @@ images
 
 ### IP-Adapter Plus
 
-IP-Adapter relies on an image encoder to generate image features. If the IP-Adapter repository contains a `image_encoder` subfolder, the image encoder is automatically loaded and registed to the pipeline. Otherwise, you'll need to explicitly load the image encoder with a [`~transformers.CLIPVisionModelWithProjection`] model and pass it to the pipeline. This is the case for *IP-Adapter Plus* checkpoints which use the ViT-H image encoder.
+IP-Adapter relies on an image encoder to generate image features. If the IP-Adapter repository contains a `image_encoder` subfolder, the image encoder is automatically loaded and registed to the pipeline. Otherwise, you'll need to explicitly load the image encoder with a [`~transformers.CLIPVisionModelWithProjection`] model and pass it to the pipeline.
+
+This is the case for *IP-Adapter Plus* checkpoints which use the ViT-H image encoder.
 
 ```py
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "h94/IP-Adapter",
     subfolder="models/image_encoder",
-    torch_dtype=torch.float16)
+    torch_dtype=torch.float16
+)
 
 pipeline = AutoPipelineForText2Image.from_pretrained(
     "stabilityai/stable-diffusion-xl-base-1.0",

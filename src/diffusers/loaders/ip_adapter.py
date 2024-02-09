@@ -183,6 +183,12 @@ class IPAdapterMixin:
     def set_ip_adapter_scale(self, scale):
         """
         Sets the conditioning scale between text and image.
+
+        Example:
+
+        ```py
+        pipeline.set_ip_adapter_scale(0.5)
+        ```
         """
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         for attn_processor in unet.attn_processors.values():
