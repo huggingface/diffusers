@@ -12,16 +12,18 @@ specific language governing permissions and limitations under the License.
 
 # IP-Adapter
 
-[IP-Adapter](https://hf.co/papers/2308.06721) is an image prompt adapter that can be plugged into diffusion models to enable image prompting without any changes to the underlying model. Furthermore, this adapter can be reused with other models finetuned from the same base model and it can be combined with other adapters like ControlNet. The key idea behind IP-Adapter is the *decoupled cross-attention* mechanism which adds a separate cross-attention layer just for image features instead of using the same cross-attention layer for both text and image features. This allows the model to learn more image-specific features.
+[IP-Adapter](https://hf.co/papers/2308.06721) is an image prompt adapter that can be plugged into diffusion models to enable image prompting without any changes to the underlying model. Furthermore, this adapter can be reused with other models finetuned from the same base model and it can be combined with other adapters like [ControlNet](../using-diffusers/controlnet). The key idea behind IP-Adapter is the *decoupled cross-attention* mechanism which adds a separate cross-attention layer just for image features instead of using the same cross-attention layer for both text and image features. This allows the model to learn more image-specific features.
 
 > [!TIP]
-> Learn how to load an IP-Adapter in the [Load adapters](../using-diffusers/loading_adapters#ip-adapter) guide.
+> Learn how to load an IP-Adapter in the [Load adapters](../using-diffusers/loading_adapters#ip-adapter) guide, and make sure you check out the [IP-Adapter Plus](../using-diffusers/loading_adapters#ip-adapter-plus) section which requires manually loading the image encoder.
 
 This guide will walk you through using IP-Adapter for various tasks and use cases.
 
 ## General tasks
 
-Let's take a look at how to use IP-Adapter's image prompting capabilities with the [`StableDiffusionXLPipeline`] for tasks like text-to-image, image-to-image, and inpainting. Feel free to use another pipeline such as Stable Diffusion, LCM-LoRA, ControlNet, T2I-Adapter, or AnimateDiff!
+Let's take a look at how to use IP-Adapter's image prompting capabilities with the [`StableDiffusionXLPipeline`] for tasks like text-to-image, image-to-image, and inpainting. We also encourage you to try out other pipelines such as Stable Diffusion, LCM-LoRA, ControlNet, T2I-Adapter, or AnimateDiff!
+
+In all the following examples, you'll see the [`~IPAdapterMixin.set_ip_adapter_scale`] method. This method controls the amount of text or image conditioning to apply to the model. A value of `1.0` means the model is only conditioned on the image prompt. Lowering this value encourages the model to produce more diverse images, but they may not be as aligned with the image prompt. Typically, a value of `0.5` achieves a good balance between the two prompt types and produces good results.
 
 <hfoptions id="tasks">
 <hfoption id="Text-to-image">
@@ -29,8 +31,6 @@ Let's take a look at how to use IP-Adapter's image prompting capabilities with t
 Crafting the precise text prompt to generate the image you want can be difficult because it may not always capture what you'd like to express. Adding an image alongside the text prompt helps the model better understand what it should generate and can lead to more accurate results.
 
 Load a Stable Diffusion XL (SDXL) model and insert an IP-Adapter into the model with the [`~IPAdapterMixin.load_ip_adapter`] method. Use the `subfolder` parameter to load the weights for SDXL.
-
-The [`~IPAdapterMixin.set_ip_adapter_scale`] method controls the amount of text or image conditioning to apply to the model. A value of `1.0` means the model is only conditioned on the image prompt. Lowering this value encourages the model to produce more diverse images, but they may not be as aligned with the image prompt. Typically, a value of `0.5` achieves a good balance between the two prompt types and produces good results.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -74,8 +74,6 @@ images[0]
 IP-Adapter can also help with image-to-image by guiding the model to generate an image that resembles the original image and the image prompt.
 
 Load a Stable Diffusion XL (SDXL) model and insert an IP-Adapter into the model with the [`~IPAdapterMixin.load_ip_adapter`] method. Use the `subfolder` parameter to load the weights for SDXL.
-
-The [`~IPAdapterMixin.set_ip_adapter_scale`] method controls the amount of text or image conditioning to apply to the model. A value of `1.0` means the model is only conditioned on the image prompt. Lowering this value encourages the model to produce more diverse images, but they may not be as aligned with the image prompt. Typically, a value of `0.5` achieves a good balance between the two prompt types and produces good results.
 
 ```py
 from diffusers import AutoPipelineForImage2Image
@@ -126,8 +124,6 @@ IP-Adapter is also useful for inpainting because the image prompt allows you to 
 
 Load a Stable Diffusion XL (SDXL) model and insert an IP-Adapter into the model with the [`~IPAdapterMixin.load_ip_adapter`] method. Use the `subfolder` parameter to load the weights for SDXL.
 
-The [`~IPAdapterMixin.set_ip_adapter_scale`] method controls the amount of text or image conditioning to apply to the model. A value of `1.0` means the model is only conditioned on the image prompt. Lowering this value encourages the model to produce more diverse images, but they may not be as aligned with the image prompt. Typically, a value of `0.5` achieves a good balance between the two prompt types and produces good results.
-
 ```py
 from diffusers import AutoPipelineForInpainting
 from diffusers.utils import load_image
@@ -176,8 +172,6 @@ images[0]
 <hfoption id="Video">
 
 IP-Adapter can also help you generate videos that are more aligned with your text prompt. For example, let's load [AnimateDiff](../api/pipelines/animatediff) with it's motion adapter, and insert an IP-Adapter into the model with the [`~IPAdapterMixin.load_ip_adapter`] method.
-
-The [`~IPAdapterMixin.set_ip_adapter_scale`] method controls the amount of text or image conditioning to apply to the model. A value of `1.0` means the model is only conditioned on the image prompt. Lowering this value encourages the model to produce more diverse images, but they may not be as aligned with the image prompt. Typically, a value of `0.5` achieves a good balance between the two prompt types and produces good results.
 
 > [!WARNING]
 > If you're planning on offloading the model to the CPU, make sure you run it after you've loaded the IP-Adapter. When you call [`~DiffusionPipeline.enable_model_cpu_offload`] before loading the IP-Adapter, it offloads the image encoder module to the CPU and it'll return an error when you try to run the pipeline.
@@ -289,7 +283,8 @@ image
 
 More than one IP-Adapter can be used at the same time to generate specific images in more diverse styles. For example, you can use IP-Adapter FaceID to generate consistent faces and characters, and IP-Adapter Plus to generate those faces in a specific style. Let's try this out!
 
-IP-Adapter uses an image encoder to generate the image features. The image encoder is automatically loaded if the image encoder model weights exist in an `image_encoder` subfolder in your repository. You don't need to explicitly load the image encoder if this subfolder exists. Otherwise, you'll need to load the image encoder weights into [`~transformers.CLIPVisionModelWithProjection`] and pass that to your pipeline. In this example, you'll manually load the image encoder just to see how it's done.
+> [!TIP]
+> Read the [IP-Adapter Plus](../using-diffusers/loading_adapters#ip-adapter-plus) section to learn why you need to manually load the image encoder.
 
 ```py
 import torch
@@ -306,8 +301,8 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
 
 Next, you'll load a base model, scheduler, and IP-Adapter's. The IP-Adapter's to use are passed as a list to the `weight_name` parameter:
 
-* ip-adapter-plus_sdxl_vit-h uses patch embeddings and a ViT H image encoder
-* ip-adapter-plus-face_sdxl_vit-h has the same architecture but it is conditioned with images of cropped faces
+* [ip-adapter-plus_sdxl_vit-h](https://huggingface.co/h94/IP-Adapter#ip-adapter-for-sdxl-10) uses patch embeddings and a ViT H image encoder
+* [ip-adapter-plus-face_sdxl_vit-h](https://huggingface.co/h94/IP-Adapter#ip-adapter-for-sdxl-10) has the same architecture but it is conditioned with images of cropped faces
 
 ```py
 pipeline = AutoPipelineForText2Image.from_pretrained(

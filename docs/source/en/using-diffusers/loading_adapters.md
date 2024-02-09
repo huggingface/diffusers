@@ -334,22 +334,6 @@ Then load the IP-Adapter weights and add it to the pipeline with the [`~loaders.
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 ```
 
-IP-Adapter relies on an image encoder to generate image features. If the IP-Adapter repository contains a `image_encoder` subfolder, the image encoder is automatically loaded and registed to the pipeline. Otherwise, you'll need to explicitly load the image encoder with a [`~transformers.CLIPVisionModelWithProjection`] model and pass it to the pipeline.
-
-```py
-from diffusers import AutoPipelineForText2Image
-from transformers import CLIPVisionModelWithProjection
-import torch
-
-image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-    "h94/IP-Adapter", 
-    subfolder="models/image_encoder",
-    torch_dtype=torch.float16,
-).to("cuda")
-
-pipeline = AutoPipelineForText2Image.from_pretrained("runwayml/stable-diffusion-v1-5", image_encoder=image_encoder, torch_dtype=torch.float16).to("cuda")
-```
-
 Once loaded, you can use the pipeline with an image and text prompt to guide the image generation process.
 
 ```py
@@ -368,3 +352,22 @@ images
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip-bear.png" />
 </div>
+
+### IP-Adapter Plus
+
+IP-Adapter relies on an image encoder to generate image features. If the IP-Adapter repository contains a `image_encoder` subfolder, the image encoder is automatically loaded and registed to the pipeline. Otherwise, you'll need to explicitly load the image encoder with a [`~transformers.CLIPVisionModelWithProjection`] model and pass it to the pipeline. This is the case for *IP-Adapter Plus* checkpoints which use the ViT-H image encoder.
+
+```py
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter",
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16)
+
+pipeline = AutoPipelineForText2Image.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    image_encoder=image_encoder,
+    torch_dtype=torch.float16
+).to("cuda")
+
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus_sdxl_vit-h.safetensors")
+```
