@@ -1,4 +1,4 @@
-# Stable Diffusion text-to-image fine-tuning
+# Stable Diffusion Inpainting fine-tuning
 
 The `train_inpainting.py` script shows how to fine-tune stable diffusion model on your own dataset.
 
