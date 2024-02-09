@@ -228,13 +228,13 @@ class LeditsGaussianSmoothing:
         return F.conv2d(input, weight=self.weight.to(input.dtype))
 
 
-# Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.CrossAttnProcessor
-class CrossAttnProcessor:
-    def __init__(self, attention_store, place_in_unet, PnP, editing_prompts):
+# Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.LEDITSCrossAttnProcessor
+class LEDITSCrossAttnProcessor:
+    def __init__(self, attention_store, place_in_unet, pnp, editing_prompts):
         self.attnstore = attention_store
         self.place_in_unet = place_in_unet
         self.editing_prompts = editing_prompts
-        self.PnP = PnP
+        self.pnp = pnp
 
     def __call__(
         self,
@@ -269,7 +269,7 @@ class CrossAttnProcessor:
             is_cross=True,
             place_in_unet=self.place_in_unet,
             editing_prompts=self.editing_prompts,
-            PnP=self.PnP,
+            PnP=self.pnp,
         )
 
         hidden_states = torch.bmm(attention_probs, value)
@@ -907,10 +907,10 @@ class LEditsPPPipelineStableDiffusionXL(
                 continue
 
             if "attn2" in name and place_in_unet != "mid":
-                attn_procs[name] = CrossAttnProcessor(
+                attn_procs[name] = LEDITSCrossAttnProcessor(
                     attention_store=attention_store,
                     place_in_unet=place_in_unet,
-                    PnP=PnP,
+                    pnp=PnP,
                     editing_prompts=self.enabled_editing_prompts,
                 )
             else:
