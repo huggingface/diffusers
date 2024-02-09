@@ -1695,7 +1695,7 @@ class LEditsPPPipelineStableDiffusionXL(
         t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
         xts = torch.zeros(size=variance_noise_shape, device=self.device, dtype=negative_prompt_embeds.dtype)
 
-        for t in self.progress_bar(reversed(timesteps)):
+        for t in reversed(timesteps):
             idx = num_inversion_steps - t_to_idx[int(t)] - 1
             noise = randn_tensor(shape=x0.shape, generator=generator, device=self.device, dtype=x0.dtype)
             xts[idx] = self.scheduler.add_noise(x0, noise, t.unsqueeze(0))
