@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -2087,29 +2087,41 @@ class LoRAAttnAddedKVProcessor(nn.Module):
 
 class IPAdapterAttnProcessor(nn.Module):
     r"""
-    Attention processor for IP-Adapater.
+    Attention processor for Multiple IP-Adapater.
 
     Args:
         hidden_size (`int`):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, defaults to 4):
+        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float`, defaults to 1.0):
+        scale (`float` or List[`float`], defaults to 1.0):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=4, scale=1.0):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0):
         super().__init__()
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
+
+        if not isinstance(num_tokens, (tuple, list)):
+            num_tokens = [num_tokens]
         self.num_tokens = num_tokens
+
+        if not isinstance(scale, list):
+            scale = [scale] * len(num_tokens)
+        if len(scale) != len(num_tokens):
+            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
 
-        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_k_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
+        self.to_v_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
 
     def __call__(
         self,
@@ -2120,9 +2132,23 @@ class IPAdapterAttnProcessor(nn.Module):
         temb=None,
         scale=1.0,
     ):
-        if scale != 1.0:
-            logger.warning("`scale` of IPAttnProcessor should be set with `set_ip_adapter_scale`.")
         residual = hidden_states
+
+        # separate ip_hidden_states from encoder_hidden_states
+        if encoder_hidden_states is not None:
+            if isinstance(encoder_hidden_states, tuple):
+                encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+            else:
+                deprecation_message = (
+                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                )
+                deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+                end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
+                encoder_hidden_states, ip_hidden_states = (
+                    encoder_hidden_states[:, :end_pos, :],
+                    [encoder_hidden_states[:, end_pos:, :]],
+                )
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2148,13 +2174,6 @@ class IPAdapterAttnProcessor(nn.Module):
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        # split hidden states
-        end_pos = encoder_hidden_states.shape[1] - self.num_tokens
-        encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, :end_pos, :],
-            encoder_hidden_states[:, end_pos:, :],
-        )
-
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -2167,17 +2186,20 @@ class IPAdapterAttnProcessor(nn.Module):
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # for ip-adapter
-        ip_key = self.to_k_ip(ip_hidden_states)
-        ip_value = self.to_v_ip(ip_hidden_states)
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
+        ):
+            ip_key = to_k_ip(current_ip_hidden_states)
+            ip_value = to_v_ip(current_ip_hidden_states)
 
-        ip_key = attn.head_to_batch_dim(ip_key)
-        ip_value = attn.head_to_batch_dim(ip_value)
+            ip_key = attn.head_to_batch_dim(ip_key)
+            ip_value = attn.head_to_batch_dim(ip_value)
 
-        ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
-        ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
-        ip_hidden_states = attn.batch_to_head_dim(ip_hidden_states)
+            ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
+            current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
+            current_ip_hidden_states = attn.batch_to_head_dim(current_ip_hidden_states)
 
-        hidden_states = hidden_states + self.scale * ip_hidden_states
+            hidden_states = hidden_states + scale * current_ip_hidden_states
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
@@ -2204,13 +2226,13 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, defaults to 4):
+        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float`, defaults to 1.0):
+        scale (`float` or `List[float]`, defaults to 1.0):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=4, scale=1.0):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0):
         super().__init__()
 
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2220,11 +2242,23 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
+
+        if not isinstance(num_tokens, (tuple, list)):
+            num_tokens = [num_tokens]
         self.num_tokens = num_tokens
+
+        if not isinstance(scale, list):
+            scale = [scale] * len(num_tokens)
+        if len(scale) != len(num_tokens):
+            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
 
-        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_k_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
+        self.to_v_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
 
     def __call__(
         self,
@@ -2235,9 +2269,23 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         temb=None,
         scale=1.0,
     ):
-        if scale != 1.0:
-            logger.warning("`scale` of IPAttnProcessor should be set by `set_ip_adapter_scale`.")
         residual = hidden_states
+
+        # separate ip_hidden_states from encoder_hidden_states
+        if encoder_hidden_states is not None:
+            if isinstance(encoder_hidden_states, tuple):
+                encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+            else:
+                deprecation_message = (
+                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                )
+                deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+                end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
+                encoder_hidden_states, ip_hidden_states = (
+                    encoder_hidden_states[:, :end_pos, :],
+                    [encoder_hidden_states[:, end_pos:, :]],
+                )
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2268,13 +2316,6 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        # split hidden states
-        end_pos = encoder_hidden_states.shape[1] - self.num_tokens
-        encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, :end_pos, :],
-            encoder_hidden_states[:, end_pos:, :],
-        )
-
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -2296,22 +2337,27 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         hidden_states = hidden_states.to(query.dtype)
 
         # for ip-adapter
-        ip_key = self.to_k_ip(ip_hidden_states)
-        ip_value = self.to_v_ip(ip_hidden_states)
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
+        ):
+            ip_key = to_k_ip(current_ip_hidden_states)
+            ip_value = to_v_ip(current_ip_hidden_states)
 
-        ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        ip_hidden_states = F.scaled_dot_product_attention(
-            query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
-        )
+            # the output of sdp = (batch, num_heads, seq_len, head_dim)
+            # TODO: add support for attn.scale when we move to Torch 2.1
+            current_ip_hidden_states = F.scaled_dot_product_attention(
+                query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
+            )
 
-        ip_hidden_states = ip_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        ip_hidden_states = ip_hidden_states.to(query.dtype)
+            current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
+                batch_size, -1, attn.heads * head_dim
+            )
+            current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
 
-        hidden_states = hidden_states + self.scale * ip_hidden_states
+            hidden_states = hidden_states + scale * current_ip_hidden_states
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)

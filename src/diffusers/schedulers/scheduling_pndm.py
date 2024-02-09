@@ -1,4 +1,4 @@
-# Copyright 2023 Zhejiang University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Zhejiang University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -455,7 +455,10 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
+        # for the subsequent add_noise calls
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device)
+        alphas_cumprod = self.alphas_cumprod.to(dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5

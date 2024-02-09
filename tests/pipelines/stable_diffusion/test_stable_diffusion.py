@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1262,13 +1262,13 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
     def test_download_ckpt_diff_format_is_same(self):
         ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
 
-        pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
+        sf_pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
+        sf_pipe.scheduler = DDIMScheduler.from_config(sf_pipe.scheduler.config)
+        sf_pipe.unet.set_attn_processor(AttnProcessor())
+        sf_pipe.to("cuda")
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
+        image_single_file = sf_pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
         pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
@@ -1278,7 +1278,7 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
         assert max_diff < 1e-3
 
