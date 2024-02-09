@@ -537,6 +537,90 @@ def load_sub_model(
     return loaded_sub_model
 
 
+def _load_empty_model(
+    library_name: str,
+    class_name: str,
+    importable_classes: List[Any],
+    pipelines: Any,
+    is_pipeline_module: bool,
+    pipeline_class: Any,
+    name: str,
+    cached_folder: Union[str, os.PathLike],
+    **kwargs,
+):
+    # retrieve class candidates
+    class_obj, class_candidates = get_class_obj_and_candidates(
+        library_name,
+        class_name,
+        importable_classes,
+        pipelines,
+        is_pipeline_module,
+        component_name=name,
+        cache_dir=cached_folder,
+    )
+
+    if is_transformers_available():
+        transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+    else:
+        transformers_version = "N/A"
+
+    # Determine library.
+    is_transformers_model = (
+        is_transformers_available()
+        and issubclass(class_obj, PreTrainedModel)
+        and transformers_version >= version.parse("4.20.0")
+    )
+    diffusers_module = importlib.import_module(__name__.split(".")[0])
+    is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
+
+    model = None
+    config_path = cached_folder
+    user_agent = {
+        "diffusers": __version__,
+        "file_type": "model",
+        "framework": "pytorch",
+    }
+
+    if is_diffusers_model or is_transformers_model:
+        if hasattr(class_obj, "load_config"):
+            # Load config and then the model on meta.
+            config, unused_kwargs, commit_hash = class_obj.load_config(
+                os.path.join(config_path, name),
+                cache_dir=cached_folder,
+                return_unused_kwargs=True,
+                return_commit_hash=True,
+                force_download=kwargs.pop("force_download", False),
+                resume_download=kwargs.pop("resume_download", False),
+                proxies=kwargs.pop("proxies", None),
+                local_files_only=kwargs.pop("local_files_only", False),
+                token=kwargs.pop("token", None),
+                revision=kwargs.pop("revision", None),
+                subfolder=kwargs.pop("subfolder", None),
+                user_agent=user_agent,
+            )
+            with accelerate.init_empty_weights():
+                model = class_obj.from_config(config, **unused_kwargs)
+        else:
+            config_class = getattr(class_obj, "config_class", None)
+            if config_class is None:
+                raise ValueError("`config_class` cannot be None. Please double-check the model.")
+
+            config = config_class.from_pretrained(
+                cached_folder,
+                subfolder=name,
+                force_download=kwargs.pop("force_download", False),
+                resume_download=kwargs.pop("resume_download", False),
+                proxies=kwargs.pop("proxies", None),
+                local_files_only=kwargs.pop("local_files_only", False),
+                token=kwargs.pop("token", None),
+                revision=kwargs.pop("revision", None),
+                user_agent=user_agent,
+            )
+            with accelerate.init_empty_weights():
+                model = class_obj(config)
+    return model
+
+
 def _fetch_class_library_tuple(module):
     # import it here to avoid circular import
     diffusers_module = importlib.import_module(__name__.split(".")[0])
@@ -1079,6 +1163,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
+        if device_map is not None and not torch.cuda.is_available():
+            raise ValueError("`device_map` needs CUDA to be present.")
+
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
         if not os.path.isdir(pretrained_model_name_or_path):
@@ -1238,14 +1325,88 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
-        if device_map is not None and device_map not in ["auto", "sequential"]:
-            raise ValueError(f"'{device_map}' is not supported, 'auto' and 'sequential' are only supported as `device_map`.")
+        if device_map is not None and device_map != "auto":
+            raise ValueError(f"'{device_map}' is not supported, 'auto' is only supported as `device_map`.")
 
         # import it here to avoid circular import
         from diffusers import pipelines
 
+        # Load each module in the pipeline on a meta device so that we can derive the device map.
+        init_empty_modules = {}
+        for name, (library_name, class_name) in init_dict.items():
+            if class_name.startswith("Flax"):
+                raise ValueError("Flax pipelines are not supported for `device_map`.")
+
+            # Define all importable classes
+            is_pipeline_module = hasattr(pipelines, library_name)
+            importable_classes = ALL_IMPORTABLE_CLASSES
+            loaded_sub_model = None
+
+            # Use passed sub model or load class_name from library_name
+            if name in passed_class_obj:
+                # if the model is in a pipeline module, then we load it from the pipeline
+                # check that passed_class_obj has correct parent class
+                maybe_raise_or_warn(
+                    library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
+                )
+                with accelerate.init_empty_weights():
+                    loaded_sub_model = passed_class_obj[name]
+
+            else:
+                loaded_sub_model = _load_empty_model(
+                    library_name=library_name,
+                    class_name=class_name,
+                    importable_classes=importable_classes,
+                    pipelines=pipelines,
+                    is_pipeline_module=is_pipeline_module,
+                    pipeline_class=pipeline_class,
+                    name=name,
+                    cached_folder=cached_folder,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
+                    revision=revision,
+                )
+
+            if loaded_sub_model is not None:
+                init_empty_modules[name] = loaded_sub_model
+
+        # 7.1 determine device map
+        # if device_map is not None and device_map == "auto":
+        # Obtain a sorted dictionary for mapping the model-level components
+        # to their sizes.
+        module_sizes = {
+            module_name: sum(compute_module_sizes(module, dtype=torch_dtype).values())
+            for module_name, module in init_empty_modules.items()
+            if isinstance(module, torch.nn.Module)
+        }
+        module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
+        print(module_sizes)
+
+        # Obtain maximum memory available per device (GPUs only).
+        max_memory = get_max_memory(max_memory)
+        max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
+        max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
+        print(max_memory)
+
+        # Obtain a dictionary mapping the model-level components to the available
+        # devices based on the maximum memory and the model sizes.
+        result_mapping = cls._assign_components_to_devices(module_sizes, max_memory)
+        print(result_mapping)
+
+        # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
+        final_device_map = {}
+        for device_id, components in result_mapping.items():
+            for component in components:
+                final_device_map[component] = device_id
+        print(final_device_map)
+
         # 6. Load each module in the pipeline
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
+            # print(name)
+
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
@@ -1293,7 +1454,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
 
-        print(f"pipeline_class._load_connected_pipes: {pipeline_class._load_connected_pipes}")
         if pipeline_class._load_connected_pipes and os.path.isfile(os.path.join(cached_folder, "README.md")):
             modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
             connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
@@ -1356,25 +1516,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             raise ValueError(
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )
-
-        if device_map is not None and device_map == "auto":
-            # 7.1 device_map
-            module_sizes = {
-                module_name: sum(compute_module_sizes(module, dtype=torch_dtype).values())
-                for module_name, module in init_kwargs.items()
-                if isinstance(module, torch.nn.Module)
-            }
-            module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
-            print(module_sizes)
-
-            # 7.2 memory determination
-            max_memory = get_max_memory(max_memory)
-            max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
-            max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
-            print(max_memory)
-
-            result_mapping = cls._assign_components_to_devices(module_sizes, max_memory)
-            print(result_mapping)
 
         # 8. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
