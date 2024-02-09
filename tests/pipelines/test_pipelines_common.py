@@ -82,14 +82,14 @@ class IPAdapterTesterMixin:
             "`ip_adapter_image_embeds` argument must be supported by the `__call__` method",
         )
 
-    def _get_dummy_image_embeds(self, sample_size: int = 32):
-        return torch.zeros((2, 1, sample_size), device=torch_device)
+    def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
+        return torch.zeros((2, 1, cross_attention_dim), device=torch_device)
 
     def test_ip_adapter(self, expected_max_diff: float = 1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
-        sample_size = pipe.unet.config.get("sample_size", 32)
+        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
 
         # forward pass without ip adapter
         inputs = self.get_dummy_inputs(torch_device)
@@ -102,13 +102,13 @@ class IPAdapterTesterMixin:
 
         # forward pass with single ip adapter, but scale=0 which should have no effect
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(sample_size)]
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         pipe.set_ip_adapter_scale(0.0)
         output_without_adapter_scale = pipe(**inputs, return_dict=False)[0]
 
         # forward pass with single ip adapter, but with scale of adapter weights
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(sample_size)]
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         pipe.set_ip_adapter_scale(1.0)
         output_with_adapter_scale = pipe(**inputs, return_dict=False)[0]
 
@@ -116,13 +116,13 @@ class IPAdapterTesterMixin:
 
         # forward pass with multi ip adapter, but scale=0 which should have no effect
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(sample_size)] * 2
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         pipe.set_ip_adapter_scale([0.0, 0.0])
         output_without_multi_adapter_scale = pipe(**inputs, return_dict=False)[0]
 
         # forward pass with multi ip adapter, but with scale of adapter weights
         inputs = self.get_dummy_inputs(torch_device)
-        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(sample_size)] * 2
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
         pipe.set_ip_adapter_scale([0.5, 0.5])
         output_with_multi_adapter_scale = pipe(**inputs, return_dict=False)[0]
 
