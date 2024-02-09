@@ -384,7 +384,7 @@ pipe = StableDiffusionPipeline.from_pretrained(os.environ["MODEL_NAME"]).to("cud
 Next, we can load the adapter layers into the pipeline with the [`load_lora_weights` function](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters#lora).
 
 ```python
-pipe.load_lora_weights(os.environ["OUTPUT_DIR"])
+pipe.load_lora_weights("path-to-the-lora-checkpoint")
 ```
 
 Finally, we can run the model in inference.
