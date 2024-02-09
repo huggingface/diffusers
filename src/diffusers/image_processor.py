@@ -15,6 +15,7 @@
 import warnings
 from typing import List, Optional, Tuple, Union
 
+import math
 import numpy as np
 import PIL.Image
 import torch
@@ -893,42 +894,58 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
     def __init__(self):
         super().__init__(do_normalize=False, do_binarize=True, do_convert_grayscale=True)
 
-    def process(self, images: Union[List[PIL.Image.Image], PIL.Image.Image]) -> torch.FloatTensor:
-        """
-        Convert a PIL.Image.Image or a list of PIL.Image.Image to a torch.FloatTensor
-        """
-        if not isinstance(images, list):
-            images = [images]
-        images = self.preprocess(images)
-        return images
-
     @staticmethod
-    def downsample(mask: torch.FloatTensor, batch_size: int, seq_length: int, value_embed_dim: int):
+    def downsample(mask: torch.FloatTensor, batch_size: int, num_queries: int, value_embed_dim: int):
         """
-        Downsample a mask to target seq_length
+        Downsamples the provided mask tensor to match the expected dimensions for scaled dot-product attention.
+        If the aspect ratio of the mask does not match the aspect ratio of the output image, a warning is issued.
+
+        Args:
+            mask (`torch.FloatTensor`): 
+                The input mask tensor generated with `IPAdapterMaskProcessor.preprocess()`.
+            batch_size (`int`): 
+                The batch size.
+            num_queries (`int`): 
+                The number of queries.
+            value_embed_dim (`int`): 
+                The dimensionality of the value embeddings.
+
+        Returns:
+            `torch.FloatTensor`: 
+                The downsampled mask tensor.
+            
         """
         o_h = mask.shape[1]
         o_w = mask.shape[2]
         ratio = o_w / o_h
-        mask_h = int(torch.sqrt(torch.tensor(seq_length / ratio)))
-        mask_h = int(mask_h) + int((seq_length % int(mask_h)) != 0)
-        mask_w = seq_length // mask_h
+        mask_h = int(math.sqrt(num_queries / ratio))
+        mask_h = int(mask_h) + int((num_queries % int(mask_h)) != 0)
+        mask_w = num_queries // mask_h
 
         mask_downsample = F.interpolate(mask.unsqueeze(0), size=(mask_h, mask_w), mode="bicubic").squeeze(0)
 
-        # Repeat mask until batch_size
+        # Repeat batch_size times
         if mask_downsample.shape[0] < batch_size:
             mask_downsample = mask_downsample.repeat(batch_size, 1, 1)
 
         mask_downsample = mask_downsample.view(mask_downsample.shape[0], -1)
 
+        downsampled_area = mask_h * mask_w
         # If the output image and the mask do not have the same aspect ratio, tensor shapes will not match
-        # Pad tensor if downsampled_mask.shape[1] is smaller than seq_length
-        if mask_h * mask_w < seq_length:
-            mask_downsample = F.pad(mask_downsample, (0, seq_length-mask_downsample.shape[1]), value=0.0)
-        # Discard last embeddings if downsampled_mask.shape[1] is bigger than seq_length
-        if mask_h * mask_w > seq_length:
-            mask_downsample = mask_downsample[:, :seq_length]
+        # Pad tensor if downsampled_mask.shape[1] is smaller than num_queries
+        if downsampled_area < num_queries:
+            warnings.warn(
+                "The aspect ratio of the mask does not match the aspect ratio of the output image. "
+                "Please update your masks or adjust the output size for optimal performance.", UserWarning,
+            )
+            mask_downsample = F.pad(mask_downsample, (0, num_queries-mask_downsample.shape[1]), value=0.0)
+        # Discard last embeddings if downsampled_mask.shape[1] is bigger than num_queries
+        if downsampled_area > num_queries:
+            warnings.warn(
+                "The aspect ratio of the mask does not match the aspect ratio of the output image. "
+                "Please update your masks or adjust the output size for optimal performance.", UserWarning,
+            )
+            mask_downsample = mask_downsample[:, :num_queries]
 
         # Repeat last dimension to match SDPA output shape
         mask_downsample = mask_downsample.view(mask_downsample.shape[0], mask_downsample.shape[1], 1).repeat(
