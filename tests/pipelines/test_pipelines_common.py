@@ -38,7 +38,7 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..models.test_models_vae import (
+from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
     get_autoencoder_kl_config,
     get_autoencoder_tiny_config,
@@ -716,7 +716,7 @@ class PipelineTesterMixin:
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 

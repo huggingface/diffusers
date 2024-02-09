@@ -1,4 +1,4 @@
-# Copyright 2023 Bingxin Ke, ETH Zurich and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Bingxin Ke, ETH Zurich and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -169,10 +169,10 @@ class MarigoldPipeline(DiffusionPipeline):
 
         # Normalize rgb values
         rgb = np.transpose(image, (2, 0, 1))  # [H, W, rgb] -> [rgb, H, W]
-        rgb_norm = rgb / 255.0
+        rgb_norm = rgb / 255.0 * 2.0 - 1.0  #  [0, 255] -> [-1, 1]
         rgb_norm = torch.from_numpy(rgb_norm).to(self.dtype)
         rgb_norm = rgb_norm.to(device)
-        assert rgb_norm.min() >= 0.0 and rgb_norm.max() <= 1.0
+        assert rgb_norm.min() >= -1.0 and rgb_norm.max() <= 1.0
 
         # ----------------- Predicting depth -----------------
         # Batch repeated input image

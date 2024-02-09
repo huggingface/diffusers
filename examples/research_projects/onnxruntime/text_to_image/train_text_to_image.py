@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -411,6 +411,12 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
 
     if args.non_ema_revision is not None:
         deprecate(

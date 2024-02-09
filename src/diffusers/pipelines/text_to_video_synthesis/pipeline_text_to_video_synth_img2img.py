@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -461,18 +461,7 @@ class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         image = self.vae.decode(latents).sample
-        video = (
-            image[None, :]
-            .reshape(
-                (
-                    batch_size,
-                    num_frames,
-                    -1,
-                )
-                + image.shape[2:]
-            )
-            .permute(0, 2, 1, 3, 4)
-        )
+        video = image[None, :].reshape((batch_size, num_frames, -1) + image.shape[2:]).permute(0, 2, 1, 3, 4)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         video = video.float()
         return video
@@ -495,7 +484,6 @@ class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -554,6 +542,8 @@ class VideoToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lor
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 

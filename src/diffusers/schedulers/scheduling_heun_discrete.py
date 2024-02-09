@@ -1,4 +1,4 @@
-# Copyright 2023 Katherine Crowson, The HuggingFace Team and hlky. All rights reserved.
+# Copyright 2024 Katherine Crowson, The HuggingFace Team and hlky. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import math
-from collections import defaultdict
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
@@ -148,8 +147,10 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.use_karras_sigmas = use_karras_sigmas
 
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
@@ -160,11 +161,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # is always the second index (or the last index if there is only 1)
         # This way we can ensure we don't accidentally skip a sigma in
         # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        if len(self._index_counter) == 0:
-            pos = 1 if len(indices) > 1 else 0
-        else:
-            timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
-            pos = self._index_counter[timestep_int]
+        pos = 1 if len(indices) > 1 else 0
 
         return indices[pos].item()
 
@@ -182,6 +179,24 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         The index counter for current timestep. It will increae 1 after each scheduler step.
         """
         return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def scale_model_input(
         self,
@@ -270,12 +285,8 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         self.dt = None
 
         self._step_index = None
+        self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
-
-        # (YiYi Notes: keep this for now since we are keeping add_noise function which use index_for_timestep)
-        # for exp beta schedules, such as the one for `pipeline_shap_e.py`
-        # we need an index counter
-        self._index_counter = defaultdict(int)
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._sigma_to_t
     def _sigma_to_t(self, sigma, log_sigmas):
@@ -333,21 +344,12 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
     # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
-
-        index_candidates = (self.timesteps == timestep).nonzero()
-
-        # The sigma index that is taken for the **very** first `step`
-        # is always the second index (or the last index if there is only 1)
-        # This way we can ensure we don't accidentally skip a sigma in
-        # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        if len(index_candidates) > 1:
-            step_index = index_candidates[1]
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
         else:
-            step_index = index_candidates[0]
-
-        self._step_index = step_index.item()
+            self._step_index = self._begin_index
 
     def step(
         self,
@@ -377,11 +379,6 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
         """
         if self.step_index is None:
             self._init_step_index(timestep)
-
-        # (YiYi notes: keep this for now since we are keeping the add_noise method)
-        # advance index counter by 1
-        timestep_int = timestep.cpu().item() if torch.is_tensor(timestep) else timestep
-        self._index_counter[timestep_int] += 1
 
         if self.state_in_first_order:
             sigma = self.sigmas[self.step_index]
@@ -453,6 +450,7 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         return SchedulerOutput(prev_sample=prev_sample)
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
@@ -469,7 +467,11 @@ class HeunDiscreteScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        # self.begin_index is None when scheduler is used for training, or pipeline does not implement set_begin_index
+        if self.begin_index is None:
+            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        else:
+            step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):
