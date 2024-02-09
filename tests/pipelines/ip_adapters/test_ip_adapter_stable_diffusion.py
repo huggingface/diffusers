@@ -31,6 +31,7 @@ from diffusers import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
+from diffusers.image_processor import IPAdapterMaskProcessor
 from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
@@ -40,7 +41,6 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
-from diffusers.image_processor import IPAdapterMaskProcessor
 
 
 enable_full_determinism()
@@ -102,12 +102,20 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
             input_kwargs.update({"image": image, "mask_image": mask, "ip_adapter_image": ip_image})
 
         elif for_masks:
-            face_image1 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl1.png")
-            face_image2 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl2.png")
+            face_image1 = load_image(
+                "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl1.png"
+            )
+            face_image2 = load_image(
+                "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl2.png"
+            )
             mask1 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask1.png")
             mask2 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask2.png")
-            input_kwargs.update({"ip_adapter_image": [[face_image1], [face_image2]], 
-                                "cross_attention_kwargs": {"ip_adapter_masks": [mask1, mask2]}})
+            input_kwargs.update(
+                {
+                    "ip_adapter_image": [[face_image1], [face_image2]],
+                    "cross_attention_kwargs": {"ip_adapter_masks": [mask1, mask2]},
+                }
+            )
 
         return input_kwargs
 
@@ -476,7 +484,10 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
     def test_masks(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionXLPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", image_encoder=image_encoder, safety_checker=None, torch_dtype=self.dtype
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            image_encoder=image_encoder,
+            safety_checker=None,
+            torch_dtype=self.dtype,
         )
         pipeline.to(torch_device)
         pipeline.load_ip_adapter(

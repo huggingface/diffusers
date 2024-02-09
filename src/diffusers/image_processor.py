@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 import warnings
 from typing import List, Optional, Tuple, Union
 
-import math
 import numpy as np
 import PIL.Image
 import torch
@@ -891,6 +891,7 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
     Image processor for IP Adapter image masks.
 
     """
+
     def __init__(self):
         super().__init__(do_normalize=False, do_binarize=True, do_convert_grayscale=True)
 
@@ -901,19 +902,19 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
         If the aspect ratio of the mask does not match the aspect ratio of the output image, a warning is issued.
 
         Args:
-            mask (`torch.FloatTensor`): 
+            mask (`torch.FloatTensor`):
                 The input mask tensor generated with `IPAdapterMaskProcessor.preprocess()`.
-            batch_size (`int`): 
+            batch_size (`int`):
                 The batch size.
-            num_queries (`int`): 
+            num_queries (`int`):
                 The number of queries.
-            value_embed_dim (`int`): 
+            value_embed_dim (`int`):
                 The dimensionality of the value embeddings.
 
         Returns:
-            `torch.FloatTensor`: 
+            `torch.FloatTensor`:
                 The downsampled mask tensor.
-            
+
         """
         o_h = mask.shape[1]
         o_w = mask.shape[2]
@@ -936,14 +937,16 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
         if downsampled_area < num_queries:
             warnings.warn(
                 "The aspect ratio of the mask does not match the aspect ratio of the output image. "
-                "Please update your masks or adjust the output size for optimal performance.", UserWarning,
+                "Please update your masks or adjust the output size for optimal performance.",
+                UserWarning,
             )
-            mask_downsample = F.pad(mask_downsample, (0, num_queries-mask_downsample.shape[1]), value=0.0)
+            mask_downsample = F.pad(mask_downsample, (0, num_queries - mask_downsample.shape[1]), value=0.0)
         # Discard last embeddings if downsampled_mask.shape[1] is bigger than num_queries
         if downsampled_area > num_queries:
             warnings.warn(
                 "The aspect ratio of the mask does not match the aspect ratio of the output image. "
-                "Please update your masks or adjust the output size for optimal performance.", UserWarning,
+                "Please update your masks or adjust the output size for optimal performance.",
+                UserWarning,
             )
             mask_downsample = mask_downsample[:, :num_queries]
 
