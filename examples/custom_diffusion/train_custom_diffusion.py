@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 Custom Diffusion authors and the HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 Custom Diffusion authors and the HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -92,7 +92,7 @@ These are Custom Diffusion adaption weights for {base_model}. The weights were t
         from_training=True,
         license="creativeml-openrail-m",
         base_model=base_model,
-        instance_prompt=prompt,
+        prompt=prompt,
         model_description=model_description,
         inference=True,
     )

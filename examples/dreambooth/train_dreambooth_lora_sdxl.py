@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -122,7 +122,7 @@ Weights for this model are available in Safetensors format.
         from_training=True,
         license="openrail++",
         base_model=base_model,
-        instance_prompt=instance_prompt,
+        prompt=instance_prompt,
         model_description=model_description,
         widget=widget_dict,
     )
