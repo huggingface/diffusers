@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -157,6 +157,13 @@ class BasicTransformerBlock(nn.Module):
     ):
         super().__init__()
         self.only_cross_attention = only_cross_attention
+
+        # We keep these boolean flags for backward-compatibility.
+        self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
+        self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
+        self.use_ada_layer_norm_single = norm_type == "ada_norm_single"
+        self.use_layer_norm = norm_type == "layer_norm"
+        self.use_ada_layer_norm_continuous = norm_type == "ada_norm_continuous"
 
         if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
             raise ValueError(

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,20 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import random
 import unittest
 
 import torch
 
 from diffusers import IFInpaintingPipeline
+from diffusers.models.attention_processor import AttnAddedKVProcessor
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import floats_tensor, skip_mps, torch_device
+from diffusers.utils.testing_utils import floats_tensor, load_numpy, require_torch_gpu, skip_mps, slow, torch_device
 
 from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
 )
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
 from . import IFPipelineTesterMixin
 
 
@@ -85,3 +87,48 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
         self._test_inference_batch_single_identical(
             expected_max_diff=1e-2,
         )
+
+
+@slow
+@require_torch_gpu
+class IFInpaintingPipelineSlowTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_if_inpainting(self):
+        pipe = IFInpaintingPipeline.from_pretrained(
+            "DeepFloyd/IF-I-XL-v1.0", variant="fp16", torch_dtype=torch.float16
+        )
+        pipe.unet.set_attn_processor(AttnAddedKVProcessor())
+        pipe.enable_model_cpu_offload()
+
+        # Super resolution test
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
+
+        image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)
+        mask_image = floats_tensor((1, 3, 64, 64), rng=random.Random(1)).to(torch_device)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        output = pipe(
+            prompt="anime prompts",
+            image=image,
+            mask_image=mask_image,
+            num_inference_steps=2,
+            generator=generator,
+            output_type="np",
+        )
+        image = output.images[0]
+
+        mem_bytes = torch.cuda.max_memory_allocated()
+        assert mem_bytes < 12 * 10**9
+
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/if/test_if_inpainting.npy"
+        )
+        assert_mean_pixel_difference(image, expected_image)
+        pipe.remove_all_hooks()
