@@ -1,4 +1,4 @@
-# Copyright 2023 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,29 +46,6 @@ from .unet_3d_condition import UNet3DConditionOutput
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
-
-
-def _to_tensor(inputs, device):
-    if not torch.is_tensor(inputs):
-        # TODO: this requires sync between CPU and GPU. So try to pass `inputs` as tensors if you can
-        # This would be a good case for the `match` statement (Python 3.10+)
-        is_mps = device.type == "mps"
-        if isinstance(inputs, float):
-            dtype = torch.float32 if is_mps else torch.float64
-        else:
-            dtype = torch.int32 if is_mps else torch.int64
-        inputs = torch.tensor([inputs], dtype=dtype, device=device)
-    elif len(inputs.shape) == 0:
-        inputs = inputs[None].to(device)
-
-    return inputs
-
-
-def _collapse_frames_into_batch(sample: torch.Tensor) -> torch.Tensor:
-    batch_size, channels, num_frames, height, width = sample.shape
-    sample = sample.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
-
-    return sample
 
 
 class I2VGenXLTransformerTemporalEncoder(nn.Module):
@@ -143,6 +120,7 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         norm_num_groups (`int`, *optional*, defaults to 32): The number of groups to use for the normalization.
             If `None`, normalization and activation layers is skipped in post-processing.
         cross_attention_dim (`int`, *optional*, defaults to 1280): The dimension of the cross attention features.
+        attention_head_dim (`int`, *optional*, defaults to 64): Attention head dim.
         num_attention_heads (`int`, *optional*): The number of attention heads.
     """
 
@@ -170,11 +148,18 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         layers_per_block: int = 2,
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: int = 1024,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = 64,
+        attention_head_dim: Union[int, Tuple[int]] = 64,
+        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
     ):
         super().__init__()
 
-        self.sample_size = sample_size
+        # When we first integrated the UNet into the library, we didn't have `attention_head_dim`. As a consequence
+        # of that, we used `num_attention_heads` for arguments that actually denote attention head dimension. This
+        # is why we ignore `num_attention_heads` and calculate it from `attention_head_dims` below.
+        # This is still an incorrect way of calculating `num_attention_heads` but we need to stick to it
+        # without running proper depcrecation cycles for the {down,mid,up} blocks which are a
+        # part of the public API.
+        num_attention_heads = attention_head_dim
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -543,7 +528,18 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             forward_upsample_size = True
 
         # 1. time
-        timesteps = _to_tensor(timestep, sample.device)
+        timesteps = timestep
+        if not torch.is_tensor(timesteps):
+            # TODO: this requires sync between CPU and GPU. So try to pass `timesteps` as tensors if you can
+            # This would be a good case for the `match` statement (Python 3.10+)
+            is_mps = sample.device.type == "mps"
+            if isinstance(timesteps, float):
+                dtype = torch.float32 if is_mps else torch.float64
+            else:
+                dtype = torch.int32 if is_mps else torch.int64
+            timesteps = torch.tensor([timesteps], dtype=dtype, device=sample.device)
+        elif len(timesteps.shape) == 0:
+            timesteps = timesteps[None].to(sample.device)
 
         # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
         timesteps = timesteps.expand(sample.shape[0])
@@ -572,7 +568,13 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context_emb = sample.new_zeros(batch_size, 0, self.config.cross_attention_dim)
         context_emb = torch.cat([context_emb, encoder_hidden_states], dim=1)
 
-        image_latents_context_embs = _collapse_frames_into_batch(image_latents[:, :, :1, :])
+        image_latents_for_context_embds = image_latents[:, :, :1, :]
+        image_latents_context_embs = image_latents_for_context_embds.permute(0, 2, 1, 3, 4).reshape(
+            image_latents_for_context_embds.shape[0] * image_latents_for_context_embds.shape[2],
+            image_latents_for_context_embds.shape[1],
+            image_latents_for_context_embds.shape[3],
+            image_latents_for_context_embds.shape[4],
+        )
         image_latents_context_embs = self.image_latents_context_embedding(image_latents_context_embs)
 
         _batch_size, _channels, _height, _width = image_latents_context_embs.shape
@@ -586,7 +588,12 @@ class I2VGenXLUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         context_emb = torch.cat([context_emb, image_emb], dim=1)
         context_emb = context_emb.repeat_interleave(repeats=num_frames, dim=0)
 
-        image_latents = _collapse_frames_into_batch(image_latents)
+        image_latents = image_latents.permute(0, 2, 1, 3, 4).reshape(
+            image_latents.shape[0] * image_latents.shape[2],
+            image_latents.shape[1],
+            image_latents.shape[3],
+            image_latents.shape[4],
+        )
         image_latents = self.image_latents_proj_in(image_latents)
         image_latents = (
             image_latents[None, :]
