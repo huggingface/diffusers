@@ -1373,39 +1373,43 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if loaded_sub_model is not None:
                 init_empty_modules[name] = loaded_sub_model
 
-        # 7.1 determine device map
-        # if device_map is not None and device_map == "auto":
-        # Obtain a sorted dictionary for mapping the model-level components
-        # to their sizes.
-        module_sizes = {
-            module_name: sum(compute_module_sizes(module, dtype=torch_dtype).values())
-            for module_name, module in init_empty_modules.items()
-            if isinstance(module, torch.nn.Module)
-        }
-        module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
-        print(module_sizes)
+        # determine device map
+        final_device_map = None
+        if device_map is not None and device_map == "auto":
+            # Obtain a sorted dictionary for mapping the model-level components
+            # to their sizes.
+            module_sizes = {
+                module_name: sum(compute_module_sizes(module, dtype=torch_dtype).values())
+                for module_name, module in init_empty_modules.items()
+                if isinstance(module, torch.nn.Module)
+            }
+            module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
+            print(module_sizes)
 
-        # Obtain maximum memory available per device (GPUs only).
-        max_memory = get_max_memory(max_memory)
-        max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
-        max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
-        print(max_memory)
+            # Obtain maximum memory available per device (GPUs only).
+            max_memory = get_max_memory(max_memory)
+            max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
+            max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
+            print(max_memory)
 
-        # Obtain a dictionary mapping the model-level components to the available
-        # devices based on the maximum memory and the model sizes.
-        result_mapping = cls._assign_components_to_devices(module_sizes, max_memory)
-        print(result_mapping)
+            # Obtain a dictionary mapping the model-level components to the available
+            # devices based on the maximum memory and the model sizes.
+            result_mapping = cls._assign_components_to_devices(module_sizes, max_memory)
+            print(result_mapping)
 
-        # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
-        final_device_map = {}
-        for device_id, components in result_mapping.items():
-            for component in components:
-                final_device_map[component] = device_id
-        print(final_device_map)
+            # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
+            final_device_map = {}
+            for device_id, components in result_mapping.items():
+                for component in components:
+                    final_device_map[component] = device_id
+            print(final_device_map)
 
         # 6. Load each module in the pipeline
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
-            # print(name)
+            if final_device_map is not None and len(final_device_map) > 0:
+                component_device = final_device_map.get(name, None)
+                if component_device is not None:
+                    device_map = {"": component_device}
 
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
