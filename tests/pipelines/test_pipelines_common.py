@@ -93,7 +93,7 @@ class IPAdapterTesterMixin:
 
         # forward pass without ip adapter
         inputs = self.get_dummy_inputs(torch_device)
-        output_without_adapter = pipe(**inputs).images
+        output_without_adapter = pipe(**inputs, return_dict=False)[0]
 
         adapter_state_dict_1 = create_ip_adapter_state_dict(pipe.unet)
         adapter_state_dict_2 = create_ip_adapter_state_dict(pipe.unet)
