@@ -14,21 +14,20 @@ specific language governing permissions and limitations under the License.
 
 Driven by the success of text-to-image diffusion models, generative video models are able to generate short clips of video from a text prompt or an initial image. These models extend a pretrained diffusion model to generate videos by adding some type of temporal and/or spatial convolution layer to the architecture. A mixed dataset of images and videos are used to train the model which learns to output a series of video frames based on the text or image conditioning.
 
-This guide will show you how to generate videos with several types of video diffusion models, how to configure their parameters, and how to control video generation.
+This guide will show you how to generate videos, how to configure the model parameters, and how to control video generation.
 
 ## Popular models
 
-[Stable Video Diffusions](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid), [AnimateDiff](https://huggingface.co/guoyww/animatediff), [Text2Video-Zero](https://huggingface.co/docs/diffusers/main/en/api/pipelines/text_to_video_zero), and [ModelScopeT2V](https://huggingface.co/ali-vilab/text-to-video-ms-1.7b) are all used for video diffusion. Each model is distinct; for example, AnimateDiff inserts a motion modeling module into a frozen text-to-image model to generate personalized animated images whereas Stable Video Diffusion is entirely pretrained from scratch following a three stage training process to generate short high-quality videos.
+[Stable Video Diffusions (SVD)](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid), [I2VGen-XL](https://huggingface.co/ali-vilab/), [AnimateDiff](https://huggingface.co/guoyww/animatediff), and [ModelScopeT2V](https://huggingface.co/ali-vilab/text-to-video-ms-1.7b) are popular models used for video diffusion. Each model is distinct; for example, AnimateDiff inserts a motion modeling module into a frozen text-to-image model to generate personalized animated images whereas SVD is entirely pretrained from scratch following a three-stage training process to generate short high-quality videos.
 
 ### Stable Video Diffusion
 
-Stable Video Diffusion is based on the Stable Diffusion 2.1 model and it is trained on images, then low-resolution videos, and finally a smaller dataset of high-resolution videos. This model generates a short 2-4 second video from an initial image. Learn more details about Stable Video Diffusion such as micro-conditioning in the [Stable Video Diffusion](../using-diffusers/svd) guide!
+SVD is based on the Stable Diffusion 2.1 model and it is trained on images, then low-resolution videos, and finally a smaller dataset of high-resolution videos. This model generates a short 2-4 second video from an initial image. You can learn more details such as micro-conditioning in the [Stable Video Diffusion](../using-diffusers/svd) guide!
 
-You can use it by loading the [`StableVideoDiffusionPipeline`].
+Begin by loading the [`StableVideoDiffusionPipeline`] and passing an initial image to generate a video from.
 
 ```py
 import torch
-
 from diffusers import StableVideoDiffusionPipeline
 from diffusers.utils import load_image, export_to_video
 
@@ -42,7 +41,6 @@ image = image.resize((1024, 576))
 
 generator = torch.manual_seed(42)
 frames = pipeline(image, decode_chunk_size=8, generator=generator).frames[0]
-
 export_to_video(frames, "generated.mp4", fps=7)
 ```
 
@@ -53,6 +51,49 @@ export_to_video(frames, "generated.mp4", fps=7)
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/output_rocket.gif"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">"generated video"</figcaption>
+  </div>
+</div>
+
+### I2VGen-XL
+
+[I2VGen-XL](https://hf.co/papers/2311.04145) is a diffusion model that can generate higher resolution videos than SVD and it is also capable of accepting text prompts in addition to images. The model is trained with two hierarchical encoders (detail and global encoder) to better capture high and low-level details in images. These learned details are used to train a video diffusion model which refines the video resolution and details in the generated video.
+
+You can use I2VGen-XL by loading the [`I2VGenXLPipeline`], and passing a text and image prompt to generate a video.
+
+```py
+import torch
+from diffusers import I2VGenXLPipeline
+from diffusers.utils import export_to_gif, load_image
+
+pipeline = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
+pipeline.enable_model_cpu_offload()
+
+image_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"
+image = load_image(image_url).convert("RGB")
+
+prompt = "Papers were floating in the air on a table in the library"
+negative_prompt = "Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms"
+generator = torch.manual_seed(8888)
+
+frames = pipeline(
+    prompt=prompt,
+    image=image,
+    num_inference_steps=50,
+    negative_prompt=negative_prompt,
+    guidance_scale=9.0,
+    generator=generator
+).frames[0]
+export_to_gif(frames, "i2v.gif")
+```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">"initial image of a library"</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/i2vgen-xl-example.gif"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">"generated video"</figcaption>
   </div>
 </div>
@@ -76,7 +117,7 @@ Then load a finetuned Stable Diffusion model with the [`AnimateDiffPipeline`].
 ```py
 pipeline = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter, torch_dtype=torch.float16)
 scheduler = DDIMScheduler.from_pretrained(
-    "digiplay/Photon_v1",
+    "emilianJR/epiCRealism",
     subfolder="scheduler",
     clip_sample=False,
     timestep_spacing="linspace",
@@ -107,36 +148,9 @@ export_to_gif(frames, "animation.gif")
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff.gif"/>
 </div>
 
-### Text2Video-Zero
-
-Text2Video-Zero is a zero-shot video model that takes advantage of what an existing diffusion model has learned to generate a video. It adds motion to the latents and uses cross-frame attention to maintain the context and appearance of objects in a frame. This allows Text2Video-Zero to create consistent videos. Text2Video-Zero can also be extended to other tasks like instruction-guided video editing and conditioning a video on pose or edge control.
-
-```py
-import torch
-import imageio
-from diffusers import TextToVideoZeroPipeline
-
-pipeline = TextToVideoZeroPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
-).to("cuda")
-
-output = pipeline(
-    prompt="A space rocket with trails of smoke behind it launching into space from the desert, 4k, high resolution",
-    negative_prompt="low resolution, bad quality, worse quality",
-    video_length=16,
-    generator=torch.Generator("cpu").manual_seed(24)
-).images
-output = [(r * 255).astype("uint8") for r in output]
-imageio.mimsave("video.mp4", output)
-```
-
-<div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/t2v-zero.gif"/>
-</div>
-
 ### ModelscopeT2V
 
-ModelscopeT2V adds spatial and temporal convolutions and attention to a UNet, and it is trained on image-text and video-text datasets to enhance what it learns during training. The model takes a prompt, encodes it and creates text embeddings which are denoised by the UNet, and then decoded by a VQGAN into a video. Load a ModelScopeT2V checkpoint into the [`DiffusionPipeline`] along with a prompt to generate a video.
+ModelscopeT2V adds spatial and temporal convolutions and attention to a UNet, and it is trained on image-text and video-text datasets to enhance what it learns during training. The model takes a prompt, encodes it and creates text embeddings which are denoised by the UNet, and then decoded by a VQGAN into a video.
 
 <Tip>
 
@@ -144,8 +158,25 @@ ModelScopeT2V generates watermarked videos due to the datasets it was trained on
 
 </Tip>
 
+Load a ModelScopeT2V checkpoint into the [`DiffusionPipeline`] along with a prompt to generate a video.
+
 ```py
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_video
+
+pipeline = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", torch_dtype=torch.float16, variant="fp16")
+pipeline.enable_model_cpu_offload()
+pipeline.enable_vae_slicing()
+
+prompt = "A cat riding a space rocket"
+video_frames = pipeline(prompt, num_frames=64).frames[0]
+export_to_video(video_frames, "modelscopet2v.mp4")
 ```
+
+<div class="flex justify-center">
+    <img src="" />
+</div>
 
 ## Configure model parameters
 
@@ -155,14 +186,34 @@ There are a few important parameters you can configure in the pipeline that'll a
 
 The `num_frames` parameter determines how many video frames are generated per second. A frame is an image that is played in a sequence of other frames to create motion or a video. This affects video length because the pipeline generates a certain number of frames per second (check a pipeline's API reference for the default value). To increase the video duration, you'll need to increase the `num_frames` parameter.
 
-<Tip>
-
-Instead of `num_frames`, the Text2Video-Zero model uses the `video_length` parameter to control how many video frames are generated.
-
-</Tip>
-
 ```py
+import torch
+from diffusers import StableVideoDiffusionPipeline
+from diffusers.utils import load_image, export_to_video
+
+pipeline = StableVideoDiffusionPipeline.from_pretrained(
+    "stabilityai/stable-video-diffusion-img2vid", torch_dtype=torch.float16, variant="fp16"
+)
+pipeline.enable_model_cpu_offload()
+
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
+image = image.resize((1024, 576))
+
+generator = torch.manual_seed(42)
+frames = pipeline(image, decode_chunk_size=8, generator=generator, num_frames=25).frames[0]
+export_to_video(frames, "generated.mp4", fps=7)
 ```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/num_frames_14.mp4"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">num_frames=14</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/num_frames_25.mp4"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">num_frames=25</figcaption>
+  </div>
+</div>
 
 ### Guidance scale
 
@@ -175,14 +226,88 @@ Stable Video Diffusion uses the `min_guidance_scale` and `max_guidance_scale` pa
 </Tip>
 
 ```py
+import torch
+from diffusers import I2VGenXLPipeline
+from diffusers.utils import export_to_gif, load_image
+
+pipeline = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
+pipeline.enable_model_cpu_offload()
+
+image_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"
+image = load_image(image_url).convert("RGB")
+
+prompt = "Papers were floating in the air on a table in the library"
+negative_prompt = "Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms"
+generator = torch.manual_seed(0)
+
+frames = pipeline(
+    prompt=prompt,
+    image=image,
+    num_inference_steps=50,
+    negative_prompt=negative_prompt,
+    guidance_scale=1.0,
+    generator=generator
+).frames[0]
+export_to_gif(frames, "i2v.gif")
 ```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/i2vgen-xl-example.gif"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">guidance_scale=9.0</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/guidance_scale_1.0.gif"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">guidance_scale=1.0</figcaption>
+  </div>
+</div>
 
 ### Negative prompt
 
 A negative prompt deters the model from generating things you don’t want it to. This parameter is commonly used to improve overall generation quality by removing poor or bad features such as “low resolution” or “bad details”.
 
 ```py
+import torch
+from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
+from diffusers.utils import export_to_gif
+
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
+
+pipeline = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter, torch_dtype=torch.float16)
+scheduler = DDIMScheduler.from_pretrained(
+    "digiplay/Photon_v1",
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    beta_schedule="linear",
+    steps_offset=1,
+)
+pipeline.scheduler = scheduler
+pipeline.enable_vae_slicing()
+pipeline.enable_model_cpu_offload()
+
+output = pipeline(
+    prompt="A cat riding a space rocket",
+    negative_prompt="Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms",
+    num_frames=16,
+    guidance_scale=7.5,
+    num_inference_steps=50,
+    generator=torch.Generator("cpu").manual_seed(0),
+)
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
 ```
+
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff_no_neg.gif"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">no negative prompt</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff_neg.gif"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">negative prompt applied</figcaption>
+  </div>
+</div>
 
 ### Model-specific parameters
 
@@ -205,7 +330,7 @@ Text2Video-Zero computes the amount of motion to apply to each frame from random
 
 Video generation can be controlled similar to how text-to-image, image-to-image, and inpainting can be controlled with a [`ControlNetModel`]. The only difference is you need to use the [`CrossFrameAttnProcessor`] so each frame can attend to the first frame.
 
-### Text2Video-Zero[[control]]
+### Text2Video-Zero
 
 Text2Video-Zero video generation can be conditioned on pose and edge images for even greater control over a subject's motion in the generated video or to preserve the identity of a subject/object in the video. You can also use Text2Video-Zero with [InstructPix2Pix](../api/pipelines/pix2pix) for editing videos with text.
 

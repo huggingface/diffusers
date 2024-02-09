@@ -28,6 +28,10 @@ Check out the [Stability AI](https://huggingface.co/stabilityai) Hub organizatio
 
 </Tip>
 
+## Tips
+
+Video generation is memory-intensive and one way to reduce your memory usage is to set `enable_forward_chunking` on the pipeline's UNet so you don't run the entire feedforward layer at once. Breaking it up into chunks in a loop is more efficient.
+
 ## StableVideoDiffusionPipeline
 
 [[autodoc]] StableVideoDiffusionPipeline
