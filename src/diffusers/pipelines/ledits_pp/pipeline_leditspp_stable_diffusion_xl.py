@@ -1358,47 +1358,42 @@ class LEditsPPPipelineStableDiffusionXL(
                                 noise_guidance_edit_tmp = noise_guidance_edit_tmp * attn_mask
 
                         if use_intersect_mask:
-                            if t <= 800:
-                                noise_guidance_edit_tmp_quantile = torch.abs(noise_guidance_edit_tmp)
-                                noise_guidance_edit_tmp_quantile = torch.sum(
-                                    noise_guidance_edit_tmp_quantile, dim=1, keepdim=True
+                            noise_guidance_edit_tmp_quantile = torch.abs(noise_guidance_edit_tmp)
+                            noise_guidance_edit_tmp_quantile = torch.sum(
+                                noise_guidance_edit_tmp_quantile, dim=1, keepdim=True
+                            )
+                            noise_guidance_edit_tmp_quantile = noise_guidance_edit_tmp_quantile.repeat(
+                                1, self.unet.config.in_channels, 1, 1
+                            )
+
+                            # torch.quantile function expects float32
+                            if noise_guidance_edit_tmp_quantile.dtype == torch.float32:
+                                tmp = torch.quantile(
+                                    noise_guidance_edit_tmp_quantile.flatten(start_dim=2),
+                                    edit_threshold_c,
+                                    dim=2,
+                                    keepdim=False,
                                 )
-                                noise_guidance_edit_tmp_quantile = noise_guidance_edit_tmp_quantile.repeat(
-                                    1, self.unet.config.in_channels, 1, 1
-                                )
-
-                                # torch.quantile function expects float32
-                                if noise_guidance_edit_tmp_quantile.dtype == torch.float32:
-                                    tmp = torch.quantile(
-                                        noise_guidance_edit_tmp_quantile.flatten(start_dim=2),
-                                        edit_threshold_c,
-                                        dim=2,
-                                        keepdim=False,
-                                    )
-                                else:
-                                    tmp = torch.quantile(
-                                        noise_guidance_edit_tmp_quantile.flatten(start_dim=2).to(torch.float32),
-                                        edit_threshold_c,
-                                        dim=2,
-                                        keepdim=False,
-                                    ).to(noise_guidance_edit_tmp_quantile.dtype)
-
-                                intersect_mask = (
-                                    torch.where(
-                                        noise_guidance_edit_tmp_quantile >= tmp[:, :, None, None],
-                                        torch.ones_like(noise_guidance_edit_tmp),
-                                        torch.zeros_like(noise_guidance_edit_tmp),
-                                    )
-                                    * attn_mask
-                                )
-
-                                self.activation_mask[i, c] = intersect_mask.detach().cpu()
-
-                                noise_guidance_edit_tmp = noise_guidance_edit_tmp * intersect_mask
-
                             else:
-                                # print(f"only attention mask for step {i}")
-                                noise_guidance_edit_tmp = noise_guidance_edit_tmp * attn_mask
+                                tmp = torch.quantile(
+                                    noise_guidance_edit_tmp_quantile.flatten(start_dim=2).to(torch.float32),
+                                    edit_threshold_c,
+                                    dim=2,
+                                    keepdim=False,
+                                ).to(noise_guidance_edit_tmp_quantile.dtype)
+
+                            intersect_mask = (
+                                torch.where(
+                                    noise_guidance_edit_tmp_quantile >= tmp[:, :, None, None],
+                                    torch.ones_like(noise_guidance_edit_tmp),
+                                    torch.zeros_like(noise_guidance_edit_tmp),
+                                )
+                                * attn_mask
+                            )
+
+                            self.activation_mask[i, c] = intersect_mask.detach().cpu()
+
+                            noise_guidance_edit_tmp = noise_guidance_edit_tmp * intersect_mask
 
                         elif not use_cross_attn_mask:
                             # calculate quantile
