@@ -384,18 +384,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
         latents = latents.permute(0, 2, 1, 3, 4).reshape(batch_size * num_frames, channels, height, width)
 
         image = self.vae.decode(latents).sample
-        video = (
-            image[None, :]
-            .reshape(
-                (
-                    batch_size,
-                    num_frames,
-                    -1,
-                )
-                + image.shape[2:]
-            )
-            .permute(0, 2, 1, 3, 4)
-        )
+        video = image[None, :].reshape((batch_size, num_frames, -1) + image.shape[2:]).permute(0, 2, 1, 3, 4)
         # we always cast to float32 as this does not cause significant overhead and is compatible with bfloat16
         video = video.float()
         return video
