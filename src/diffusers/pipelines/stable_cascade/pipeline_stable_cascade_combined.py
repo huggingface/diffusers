@@ -20,17 +20,17 @@ from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import deprecate, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
-from .modeling_wuerstchen3_common import WuerstchenV3Unet
-from .pipeline_wuerstchen3 import WuerstchenV3DecoderPipeline
-from .pipeline_wuerstchen3_prior import WuerstchenV3PriorPipeline
+from .modeling_stable_cascade_common import StableCascadeUnet
+from .pipeline_stable_cascade import StableCascadeDecoderPipeline
+from .pipeline_stable_cascade_prior import StableCascadePriorPipeline
 
 
 TEXT2IMAGE_EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusions import WuerstchenV3CombinedPipeline
+        >>> from diffusions import StableCascadeCombinedPipeline
 
-        >>> pipe = WuerstchenV3CombinedPipeline.from_pretrained("warp-ai/Wuerstchen-v3", torch_dtype=torch.float16).to(
+        >>> pipe = StableCascadeCombinedPipeline.from_pretrained("warp-ai/Wuerstchen-v3", torch_dtype=torch.float16).to(
         ...     "cuda"
         ... )
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
@@ -39,7 +39,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
 """
 
 
-class WuerstchenV3CombinedPipeline(DiffusionPipeline):
+class StableCascadeCombinedPipeline(DiffusionPipeline):
     """
     Combined Pipeline for text-to-image generation using Wuerstchen V3.
 
@@ -51,7 +51,7 @@ class WuerstchenV3CombinedPipeline(DiffusionPipeline):
             The decoder tokenizer to be used for text inputs.
         text_encoder (`CLIPTextModel`):
             The decoder text encoder to be used for text inputs.
-        decoder (`WuerstchenV3Unet`):
+        decoder (`StableCascadeUnet`):
             The decoder model to be used for decoder image generation pipeline.
         scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for decoder image generation pipeline.
@@ -61,7 +61,7 @@ class WuerstchenV3CombinedPipeline(DiffusionPipeline):
             The prior tokenizer to be used for text inputs.
         prior_text_encoder (`CLIPTextModel`):
             The prior text encoder to be used for text inputs.
-        prior_prior (`WuerstchenV3Unet`):
+        prior_prior (`StableCascadeUnet`):
             The prior model to be used for prior pipeline.
         prior_scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for prior pipeline.
@@ -73,12 +73,12 @@ class WuerstchenV3CombinedPipeline(DiffusionPipeline):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
-        decoder: WuerstchenV3Unet,
+        decoder: StableCascadeUnet,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: PaellaVQModel,
         prior_tokenizer: CLIPTokenizer,
         prior_text_encoder: CLIPTextModel,
-        prior_prior: WuerstchenV3Unet,
+        prior_prior: StableCascadeUnet,
         prior_scheduler: DDPMWuerstchenScheduler,
     ):
         super().__init__()
@@ -94,13 +94,13 @@ class WuerstchenV3CombinedPipeline(DiffusionPipeline):
             prior_tokenizer=prior_tokenizer,
             prior_scheduler=prior_scheduler,
         )
-        self.prior_pipe = WuerstchenV3PriorPipeline(
+        self.prior_pipe = StableCascadePriorPipeline(
             prior=prior_prior,
             text_encoder=prior_text_encoder,
             tokenizer=prior_tokenizer,
             scheduler=prior_scheduler,
         )
-        self.decoder_pipe = WuerstchenV3DecoderPipeline(
+        self.decoder_pipe = StableCascadeDecoderPipeline(
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             decoder=decoder,

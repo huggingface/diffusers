@@ -19,9 +19,9 @@ import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
-from diffusers import DDPMWuerstchenScheduler, WuerstchenV3CombinedPipeline
+from diffusers import DDPMWuerstchenScheduler, StableCascadeCombinedPipeline
+from diffusers.pipelines.stable_cascade import StableCascadeUnet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
-from diffusers.pipelines.wuerstchen3 import WuerstchenV3Unet
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -30,8 +30,8 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class WuerstchenV3CombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = WuerstchenV3CombinedPipeline
+class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = StableCascadeCombinedPipeline
     params = ["prompt"]
     batch_params = ["prompt", "negative_prompt"]
     required_optional_params = [
@@ -58,8 +58,18 @@ class WuerstchenV3CombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def dummy_prior(self):
         torch.manual_seed(0)
 
-        model_kwargs = {"c_in": 2, "c": 8, "depth": 2, "c_cond": 32, "c_r": 8, "nhead": 2}
-        model = WuerstchenV3Unet(**model_kwargs)
+        model_kwargs = {
+            "c_cond": 128,
+            "c_hidden": [128, 128],
+            "nhead": [2, 2],
+            "blocks": [[1, 1], [1, 1]],
+            "switch_level": [False],
+            "c_clip_img": 768,
+            "c_clip_text": self.text_embedder_hidden_size,
+            "c_clip_text_pooled": self.text_embedder_hidden_size,
+        }
+
+        model = StableCascadeUnet(**model_kwargs)
         return model.eval()
 
     @property
@@ -125,7 +135,7 @@ class WuerstchenV3CombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             "inject_effnet": [False],
         }
 
-        model = WuerstchenV3Unet(**model_kwargs)
+        model = StableCascadeUnet(**model_kwargs)
         return model.eval()
 
     def get_dummy_components(self):

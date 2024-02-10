@@ -23,7 +23,7 @@ from ...utils import deprecate, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
-from .modeling_wuerstchen3_common import WuerstchenV3Unet
+from .modeling_stable_cascade_common import StableCascadeUnet
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -32,12 +32,12 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import WuerstchenV3PriorPipeline, WuerstchenV3DecoderPipeline
+        >>> from diffusers import StableCascadePriorPipeline, StableCascadeDecoderPipeline
 
-        >>> prior_pipe = WuerstchenV3PriorPipeline.from_pretrained(
+        >>> prior_pipe = StableCascadePriorPipeline.from_pretrained(
         ...     "warp-ai/wuerstchen-v3-prior", torch_dtype=torch.float16
         ... ).to("cuda")
-        >>> gen_pipe = WuerstchenV3DecoderPipeline.from_pretrain(
+        >>> gen_pipe = StableCascadeDecoderPipeline.from_pretrain(
         ...     "warp-ai/wuerstchen-v3", torch_dtype=torch.float16
         ... ).to("cuda")
 
@@ -48,7 +48,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class WuerstchenV3DecoderPipeline(DiffusionPipeline):
+class StableCascadeDecoderPipeline(DiffusionPipeline):
     """
     Pipeline for generating images from the Wuerstchen V3 model.
 
@@ -60,8 +60,8 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
             The CLIP tokenizer.
         text_encoder (`CLIPTextModel`):
             The CLIP text encoder.
-        decoder ([`WuerstchenV3DiffNeXt`]):
-            The WuerstchenV3DiffNeXt unet decoder.
+        decoder ([`StableCascadeDiffNeXt`]):
+            The StableCascadeDiffNeXt unet decoder.
         vqgan ([`PaellaVQModel`]):
             The VQGAN model.
         scheduler ([`DDPMWuerstchenScheduler`]):
@@ -75,14 +75,14 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
     model_cpu_offload_seq = "text_encoder->decoder->vqgan"
     _callback_tensor_inputs = [
         "latents",
-        "text_encoder_hidden_states",
+        "prompt_embeds_pooled",
         "negative_prompt_embeds",
         "image_embeddings",
     ]
 
     def __init__(
         self,
-        decoder: WuerstchenV3Unet,
+        decoder: StableCascadeUnet,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
         scheduler: DDPMWuerstchenScheduler,
@@ -405,7 +405,7 @@ class WuerstchenV3DecoderPipeline(DiffusionPipeline):
 
                 latents = callback_outputs.pop("latents", latents)
                 image_embeddings = callback_outputs.pop("image_embeddings", image_embeddings)
-                prompt_embeds_pooled = callback_outputs.pop("text_encoder_hidden_states", prompt_embeds_pooled)
+                prompt_embeds_pooled = callback_outputs.pop("prompt_embeds_pooled", prompt_embeds_pooled)
 
             if callback is not None and i % callback_steps == 0:
                 step_idx = i // getattr(self.scheduler, "order", 1)

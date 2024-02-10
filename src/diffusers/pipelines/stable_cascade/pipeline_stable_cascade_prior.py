@@ -26,7 +26,7 @@ from ...utils import deprecate, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..wuerstchen.pipeline_wuerstchen_prior import WuerstchenPriorPipelineOutput
-from .modeling_wuerstchen3_common import WuerstchenV3Unet
+from .modeling_stable_cascade_common import StableCascadeUnet
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -37,9 +37,9 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> import torch
-        >>> from diffusers import WuerstchenV3PriorPipeline
+        >>> from diffusers import StableCascadePriorPipeline
 
-        >>> prior_pipe = WuerstchenV3PriorPipeline.from_pretrained(
+        >>> prior_pipe = StableCascadePriorPipeline.from_pretrained(
         ...     "warp-ai/wuerstchen-v3-prior", torch_dtype=torch.float16
         ... ).to("cuda")
 
@@ -49,7 +49,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
+class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     """
     Pipeline for generating image prior for Wuerstchen.
 
@@ -84,7 +84,7 @@ class WuerstchenV3PriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModelWithProjection,
-        prior: WuerstchenV3Unet,
+        prior: StableCascadeUnet,
         scheduler: DDPMWuerstchenScheduler,
         resolution_multiple: float = 42.67,
         feature_extractor: Optional[CLIPImageProcessor] = None,

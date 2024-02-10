@@ -21,13 +21,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
-from diffusers import DDPMWuerstchenScheduler, WuerstchenV3PriorPipeline
+from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models.attention_processor import (
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
 )
-from diffusers.pipelines.wuerstchen3 import WuerstchenV3Unet
+from diffusers.pipelines.stable_cascade import StableCascadeUnet
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import enable_full_determinism, require_peft_backend, skip_mps, torch_device
 
@@ -55,8 +55,8 @@ def create_prior_lora_layers(unet: nn.Module):
     return lora_attn_procs, unet_lora_layers
 
 
-class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = WuerstchenV3PriorPipeline
+class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = StableCascadePriorPipeline
     params = ["prompt"]
     batch_params = ["prompt", "negative_prompt"]
     required_optional_params = [
@@ -125,7 +125,7 @@ class WuerstchenV3PriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
             "c_clip_text_pooled": self.text_embedder_hidden_size,
         }
 
-        model = WuerstchenV3Unet(**model_kwargs)
+        model = StableCascadeUnet(**model_kwargs)
         return model.eval()
 
     def get_dummy_components(self):

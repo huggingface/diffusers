@@ -1,5 +1,4 @@
-# Run this script to convert the Wuerstchen V3 model weights to a diffusers pipeline.
-
+# Run this script to convert the Stable Cascade model weights to a diffusers pipeline.
 import torch
 from transformers import (
     AutoTokenizer,
@@ -9,20 +8,19 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-# from vqgan import VQModel
 from diffusers import (
     DDPMWuerstchenScheduler,
-    WuerstchenV3DecoderPipeline,
-    WuerstchenV3PriorPipeline,
+    StableCascadeDecoderPipeline,
+    StableCascadePriorPipeline,
 )
+from diffusers.pipelines.stable_cascade import StableCascadeUnet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
-from diffusers.pipelines.wuerstchen3 import WuerstchenV3Unet
 
 
 device = "cpu"
 
 # set paths to model weights
-model_path = "../Wuerstchen"
+model_path = "../StableCascade"
 prior_checkpoint_path = f"{model_path}/v1.pt"
 decoder_checkpoint_path = f"{model_path}/base_120k.pt"
 
@@ -61,7 +59,7 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
-prior_model = WuerstchenV3Unet(
+prior_model = StableCascadeUnet(
     c_in=16,
     c_out=16,
     c_r=64,
@@ -88,7 +86,7 @@ prior_model.load_state_dict(state_dict)
 scheduler = DDPMWuerstchenScheduler()
 
 # Prior pipeline
-prior_pipeline = WuerstchenV3PriorPipeline(
+prior_pipeline = StableCascadePriorPipeline(
     prior=prior_model,
     tokenizer=tokenizer,
     text_encoder=text_encoder,
@@ -96,7 +94,7 @@ prior_pipeline = WuerstchenV3PriorPipeline(
     scheduler=scheduler,
     feature_extractor=feature_extractor,
 )
-prior_pipeline.save_pretrained("wuerstchenV3-prior")
+prior_pipeline.save_pretrained("StableCascade-prior")
 
 # Decoder
 orig_state_dict = torch.load(decoder_checkpoint_path, map_location=device)
@@ -127,7 +125,7 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
-decoder = WuerstchenV3Unet(
+decoder = StableCascadeUnet(
     c_in=4,
     c_out=4,
     c_r=64,
@@ -149,18 +147,18 @@ decoder = WuerstchenV3Unet(
 ).to(device)
 decoder.load_state_dict(state_dict)
 
-# VQGAN from V2
+# VQGAN from Wuerstchen-V2
 vqmodel = PaellaVQModel.from_pretrained("warp-ai/wuerstchen", subfolder="vqgan")
 
 # Decoder pipeline
-decoder_pipeline = WuerstchenV3DecoderPipeline(
+decoder_pipeline = StableCascadeDecoderPipeline(
     decoder=decoder, text_encoder=text_encoder, tokenizer=tokenizer, vqgan=vqmodel, scheduler=scheduler
 )
-decoder_pipeline.save_pretrained("wuerstchenV3")
+decoder_pipeline.save_pretrained("StableCascade")
 
 # TODO
-# # Wuerstchen pipeline
-# wuerstchen_pipeline = WuerstchenCombinedPipeline(
+# # Stable Cascade combined pipeline
+# stable_cascade_pipeline = StableCascadeCombinedPipeline(
 #     # Decoder
 #     text_encoder=gen_text_encoder,
 #     tokenizer=gen_tokenizer,
@@ -173,4 +171,4 @@ decoder_pipeline.save_pretrained("wuerstchenV3")
 #     prior=prior_model,
 #     prior_scheduler=scheduler,
 # )
-# wuerstchen_pipeline.save_pretrained("warp-ai/WuerstchenCombinedPipeline")
+# stable_cascade_pipeline.save_pretrained("StableCascadeCombinedPipeline")

@@ -43,7 +43,7 @@ class UpDownBlock2d(nn.Module):
         return x
 
 
-class WuerstchenV3Unet(ModelMixin, ConfigMixin):
+class StableCascadeUnet(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,

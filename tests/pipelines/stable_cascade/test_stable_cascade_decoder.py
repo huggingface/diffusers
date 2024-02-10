@@ -19,9 +19,9 @@ import numpy as np
 import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
-from diffusers import DDPMWuerstchenScheduler, WuerstchenV3DecoderPipeline
+from diffusers import DDPMWuerstchenScheduler, StableCascadeDecoderPipeline
+from diffusers.pipelines.stable_cascade import StableCascadeUnet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
-from diffusers.pipelines.wuerstchen3 import WuerstchenV3Unet
 from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -30,8 +30,8 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class WuerstchenV3DecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = WuerstchenV3DecoderPipeline
+class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = StableCascadeDecoderPipeline
     params = ["prompt"]
     batch_params = ["image_embeddings", "prompt", "negative_prompt"]
     required_optional_params = [
@@ -112,7 +112,7 @@ class WuerstchenV3DecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCas
             "c_clip_text_pooled": 32,
         }
 
-        model = WuerstchenV3Unet(**model_kwargs)
+        model = StableCascadeUnet(**model_kwargs)
         return model.eval()
 
     def get_dummy_components(self):
@@ -169,7 +169,7 @@ class WuerstchenV3DecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0., 0., 0., 1., 1., 0., 1., 1., 0.])
+        expected_slice = np.array([0.0, 0.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
