@@ -731,7 +731,6 @@ class AttnProcessor:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
-        ip_adapter_masks: Optional[torch.FloatTensor] = None,
     ) -> torch.Tensor:
         residual = hidden_states
 
@@ -1208,7 +1207,6 @@ class AttnProcessor2_0:
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
-        ip_adapter_masks: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         residual = hidden_states
         if attn.spatial_norm is not None:
