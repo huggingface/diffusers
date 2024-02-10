@@ -60,7 +60,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         prior ([`Prior`]):
             The Stable Cascade prior to approximate the image embedding from the text and/or image embedding.
         text_encoder ([`CLIPTextModelWithProjection`]):
-            Frozen text-encoder.
+            Frozen text-encoder ([laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)).
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `image_encoder`.
         image_encoder ([`CLIPVisionModelWithProjection`]):
