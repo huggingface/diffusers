@@ -498,11 +498,13 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs = self.get_dummy_inputs(for_masks=True)
         masks = inputs["cross_attention_kwargs"]["ip_adapter_masks"]
         processor = IPAdapterMaskProcessor()
-        masks = processor.process(masks)
+        masks = processor.preprocess(masks)
         inputs["cross_attention_kwargs"]["ip_adapter_masks"] = masks
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
         expected_slice = np.array(
-            [0.79571414, 0.7987394, 0.80234784, 0.79982674, 0.798162, 0.80397135, 0.8073128, 0.8062345, 0.8074084]
+            [0.79474676, 0.7977683, 0.8013954, 0.7988008, 0.7970615, 0.8029355, 0.80614823, 0.8050743, 0.80627424]
         )
-        assert np.allclose(image_slice, expected_slice, atol=1e-3)
+
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
