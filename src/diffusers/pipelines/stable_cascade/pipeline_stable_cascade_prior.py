@@ -51,7 +51,7 @@ EXAMPLE_DOC_STRING = """
 
 class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     """
-    Pipeline for generating image prior for Wuerstchen.
+    Pipeline for generating image prior for Stable Cascade.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)

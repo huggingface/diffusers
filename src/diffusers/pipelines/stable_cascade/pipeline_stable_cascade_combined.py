@@ -41,7 +41,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
 
 class StableCascadeCombinedPipeline(DiffusionPipeline):
     """
-    Combined Pipeline for text-to-image generation using Wuerstchen V3.
+    Combined Pipeline for text-to-image generation using Stable Cascade.
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
