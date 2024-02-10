@@ -255,6 +255,9 @@ else:
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
+            "StableCascadeCombinedPipeline",
+            "StableCascadeDecoderPipeline",
+            "StableCascadePriorPipeline",
             "StableDiffusionAdapterPipeline",
             "StableDiffusionAttendAndExcitePipeline",
             "StableDiffusionControlNetImg2ImgPipeline",
@@ -307,9 +310,6 @@ else:
             "WuerstchenCombinedPipeline",
             "WuerstchenDecoderPipeline",
             "WuerstchenPriorPipeline",
-            "WuerstchenV3CombinedPipeline",
-            "WuerstchenV3DecoderPipeline",
-            "WuerstchenV3PriorPipeline",
         ]
     )
 
@@ -621,6 +621,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
+            StableCascadeCombinedPipeline,
+            StableCascadeDecoderPipeline,
+            StableCascadePriorPipeline,
             StableDiffusionAdapterPipeline,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionControlNetImg2ImgPipeline,
@@ -673,9 +676,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-            WuerstchenV3CombinedPipeline,
-            WuerstchenV3DecoderPipeline,
-            WuerstchenV3PriorPipeline,
         )
 
     try:

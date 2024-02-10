@@ -175,6 +175,11 @@ else:
     _import_structure["pixart_alpha"] = ["PixArtAlphaPipeline"]
     _import_structure["semantic_stable_diffusion"] = ["SemanticStableDiffusionPipeline"]
     _import_structure["shap_e"] = ["ShapEImg2ImgPipeline", "ShapEPipeline"]
+    _import_structure["stable_cascade"] = [
+        "StableCascadeCombinedPipeline",
+        "StableCascadeDecoderPipeline",
+        "StableCascadePriorPipeline",
+    ]
     _import_structure["stable_diffusion"].extend(
         [
             "CLIPImageProjection",
@@ -232,11 +237,6 @@ else:
         "WuerstchenCombinedPipeline",
         "WuerstchenDecoderPipeline",
         "WuerstchenPriorPipeline",
-    ]
-    _import_structure["wuerstchen3"] = [
-        "WuerstchenV3CombinedPipeline",
-        "WuerstchenV3DecoderPipeline",
-        "WuerstchenV3PriorPipeline",
     ]
 try:
     if not is_onnx_available():
@@ -427,6 +427,11 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pixart_alpha import PixArtAlphaPipeline
         from .semantic_stable_diffusion import SemanticStableDiffusionPipeline
         from .shap_e import ShapEImg2ImgPipeline, ShapEPipeline
+        from .stable_cascade import (
+            StableCascadeCombinedPipeline,
+            StableCascadeDecoderPipeline,
+            StableCascadePriorPipeline,
+        )
         from .stable_diffusion import (
             CLIPImageProjection,
             StableDiffusionDepth2ImgPipeline,
@@ -475,11 +480,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             WuerstchenCombinedPipeline,
             WuerstchenDecoderPipeline,
             WuerstchenPriorPipeline,
-        )
-        from .wuerstchen3 import (
-            WuerstchenV3CombinedPipeline,
-            WuerstchenV3DecoderPipeline,
-            WuerstchenV3PriorPipeline,
         )
 
         try:
