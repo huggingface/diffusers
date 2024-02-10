@@ -14,15 +14,15 @@ specific language governing permissions and limitations under the License.
 
 Driven by the success of text-to-image diffusion models, generative video models are able to generate short clips of video from a text prompt or an initial image. These models extend a pretrained diffusion model to generate videos by adding some type of temporal and/or spatial convolution layer to the architecture. A mixed dataset of images and videos are used to train the model which learns to output a series of video frames based on the text or image conditioning.
 
-This guide will show you how to generate videos, how to configure the model parameters, and how to control video generation.
+This guide will show you how to generate videos, how to configure video model parameters, and how to control video generation.
 
 ## Popular models
 
-[Stable Video Diffusions (SVD)](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid), [I2VGen-XL](https://huggingface.co/ali-vilab/), [AnimateDiff](https://huggingface.co/guoyww/animatediff), and [ModelScopeT2V](https://huggingface.co/ali-vilab/text-to-video-ms-1.7b) are popular models used for video diffusion. Each model is distinct; for example, AnimateDiff inserts a motion modeling module into a frozen text-to-image model to generate personalized animated images whereas SVD is entirely pretrained from scratch following a three-stage training process to generate short high-quality videos.
+[Stable Video Diffusions (SVD)](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid), [I2VGen-XL](https://huggingface.co/ali-vilab/), [AnimateDiff](https://huggingface.co/guoyww/animatediff), and [ModelScopeT2V](https://huggingface.co/ali-vilab/text-to-video-ms-1.7b) are popular models used for video diffusion. Each model is distinct. For example, AnimateDiff inserts a motion modeling module into a frozen text-to-image model to generate personalized animated images, whereas SVD is entirely pretrained from scratch with a three-stage training process to generate short high-quality videos.
 
 ### Stable Video Diffusion
 
-SVD is based on the Stable Diffusion 2.1 model and it is trained on images, then low-resolution videos, and finally a smaller dataset of high-resolution videos. This model generates a short 2-4 second video from an initial image. You can learn more details such as micro-conditioning in the [Stable Video Diffusion](../using-diffusers/svd) guide!
+[SVD](../api/pipelines/svd) is based on the Stable Diffusion 2.1 model and it is trained on images, then low-resolution videos, and finally a smaller dataset of high-resolution videos. This model generates a short 2-4 second video from an initial image. You can learn more details about model, like micro-conditioning, in the [Stable Video Diffusion](../using-diffusers/svd) guide.
 
 Begin by loading the [`StableVideoDiffusionPipeline`] and passing an initial image to generate a video from.
 
@@ -47,17 +47,17 @@ export_to_video(frames, "generated.mp4", fps=7)
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">"initial image of a rocket"</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">initial image</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/output_rocket.gif"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">"generated video"</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated video</figcaption>
   </div>
 </div>
 
 ### I2VGen-XL
 
-[I2VGen-XL](https://hf.co/papers/2311.04145) is a diffusion model that can generate higher resolution videos than SVD and it is also capable of accepting text prompts in addition to images. The model is trained with two hierarchical encoders (detail and global encoder) to better capture high and low-level details in images. These learned details are used to train a video diffusion model which refines the video resolution and details in the generated video.
+[I2VGen-XL](../api/pipelines/i2vgenxl) is a diffusion model that can generate higher resolution videos than SVD and it is also capable of accepting text prompts in addition to images. The model is trained with two hierarchical encoders (detail and global encoder) to better capture low and high-level details in images. These learned details are used to train a video diffusion model which refines the video resolution and details in the generated video.
 
 You can use I2VGen-XL by loading the [`I2VGenXLPipeline`], and passing a text and image prompt to generate a video.
 
@@ -90,17 +90,17 @@ export_to_gif(frames, "i2v.gif")
 <div class="flex gap-4">
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">"initial image of a library"</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">initial image</figcaption>
   </div>
   <div>
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/i2vgen-xl-example.gif"/>
-    <figcaption class="mt-2 text-center text-sm text-gray-500">"generated video"</figcaption>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">generated video</figcaption>
   </div>
 </div>
 
 ### AnimateDiff
 
-AnimateDiff is an adapter model that inserts a motion module into a pretrained diffusion model to animate an image. The adapter is trained on video clips to learn motion which is used to condition the generation process to create a video. It is faster and easier to only train the adapter and it can be loaded into most diffusion models, effectively turning them into "video models".
+[AnimateDiff](../api/pipelines/animatediff) is an adapter model that inserts a motion module into a pretrained diffusion model to animate an image. The adapter is trained on video clips to learn motion which is used to condition the generation process to create a video. It is faster and easier to only train the adapter and it can be loaded into most diffusion models, effectively turning them into "video models".
 
 Start by loading a [`MotionAdapter`].
 
@@ -150,11 +150,11 @@ export_to_gif(frames, "animation.gif")
 
 ### ModelscopeT2V
 
-ModelscopeT2V adds spatial and temporal convolutions and attention to a UNet, and it is trained on image-text and video-text datasets to enhance what it learns during training. The model takes a prompt, encodes it and creates text embeddings which are denoised by the UNet, and then decoded by a VQGAN into a video.
+[ModelscopeT2V](../api/pipelines/text_to_video) adds spatial and temporal convolutions and attention to a UNet, and it is trained on image-text and video-text datasets to enhance what it learns during training. The model takes a prompt, encodes it and creates text embeddings which are denoised by the UNet, and then decoded by a VQGAN into a video.
 
 <Tip>
 
-ModelScopeT2V generates watermarked videos due to the datasets it was trained on. To use a watermark-free model, try the [cerspense/zeroscope_v2_76w](https://huggingface.co/cerspense/zeroscope_v2_576w) model with the [`TextToVideoSDPipeline`] first, and then upscale it's output with the [cerspense/zeroscope_v2_XL](https://huggingface.co/cerspense/zeroscope_v2_XL) checkpoint using the [`Video2VideoSDPipeline`].
+ModelScopeT2V generates watermarked videos due to the datasets it was trained on. To use a watermark-free model, try the [cerspense/zeroscope_v2_76w](https://huggingface.co/cerspense/zeroscope_v2_576w) model with the [`TextToVideoSDPipeline`] first, and then upscale it's output with the [cerspense/zeroscope_v2_XL](https://huggingface.co/cerspense/zeroscope_v2_XL) checkpoint using the [`VideoToVideoSDPipeline`].
 
 </Tip>
 
@@ -206,11 +206,11 @@ export_to_video(frames, "generated.mp4", fps=7)
 
 <div class="flex gap-4">
   <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/num_frames_14.mp4"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/num_frames_14.gif"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">num_frames=14</figcaption>
   </div>
   <div>
-    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/num_frames_25.mp4"/>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/num_frames_25.gif"/>
     <figcaption class="mt-2 text-center text-sm text-gray-500">num_frames=25</figcaption>
   </div>
 </div>
@@ -221,7 +221,7 @@ The `guidance_scale` parameter controls how closely aligned the generated video 
 
 <Tip>
 
-Stable Video Diffusion uses the `min_guidance_scale` and `max_guidance_scale` parameters for applying guidance to the first and last frames respectively.
+SVD uses the `min_guidance_scale` and `max_guidance_scale` parameters for applying guidance to the first and last frames respectively.
 
 </Tip>
 
@@ -275,7 +275,7 @@ adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-
 
 pipeline = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter, torch_dtype=torch.float16)
 scheduler = DDIMScheduler.from_pretrained(
-    "digiplay/Photon_v1",
+    "emilianJR/epiCRealism",
     subfolder="scheduler",
     clip_sample=False,
     timestep_spacing="linspace",
@@ -316,7 +316,9 @@ There are some pipeline parameters that are unique to each model such as adjusti
 <hfoptions id="special-parameters">
 <hfoption id="Stable Video Diffusion">
 
-Stable Video Diffusion provides additional micro-conditioning for the frame rate with the `fps` parameter and for motion with the `motion_bucket_id` parameter. Together, these parameters allow for adjusting the amount of motion in the generated video. There is also a `noise_aug_strength` parameter that increases the amount of noise added to the initial image. Varying this parameter affects how similar the generated video and initial image are. A higher `noise_aug_strength` also increases the amount of motion. To learn more, read the [Micro-conditioning](../using-diffusers/svd#micro-conditioning) guide.
+Stable Video Diffusion provides additional micro-conditioning for the frame rate with the `fps` parameter and for motion with the `motion_bucket_id` parameter. Together, these parameters allow for adjusting the amount of motion in the generated video.
+
+There is also a `noise_aug_strength` parameter that increases the amount of noise added to the initial image. Varying this parameter affects how similar the generated video and initial image are. A higher `noise_aug_strength` also increases the amount of motion. To learn more, read the [Micro-conditioning](../using-diffusers/svd#micro-conditioning) guide.
 
 </hfoption>
 <hfoption id="Text2Video-Zero">
@@ -328,7 +330,7 @@ Text2Video-Zero computes the amount of motion to apply to each frame from random
 
 ## Control video generation
 
-Video generation can be controlled similar to how text-to-image, image-to-image, and inpainting can be controlled with a [`ControlNetModel`]. The only difference is you need to use the [`CrossFrameAttnProcessor`] so each frame can attend to the first frame.
+Video generation can be controlled similar to how text-to-image, image-to-image, and inpainting can be controlled with a [`ControlNetModel`]. The only difference is you need to use the [`~pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor`] so each frame attends to the first frame.
 
 ### Text2Video-Zero
 
@@ -353,7 +355,7 @@ frame_count = 8
 pose_images = [Image.fromarray(reader.get_data(i)) for i in range(frame_count)]
 ```
 
-Load a [`ControlNetModel`] for pose estimation and a checkpoint into the [`StableDiffusionControlNetPipeline`]. Then you'll use the [`CrossFrameAttnProcessor`] for the UNet and ControlNet.
+Load a [`ControlNetModel`] for pose estimation and a checkpoint into the [`StableDiffusionControlNetPipeline`]. Then you'll use the [`~pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor`] for the UNet and ControlNet.
 
 ```py
 import torch
@@ -399,7 +401,7 @@ frame_count = 8
 pose_images = [Image.fromarray(reader.get_data(i)) for i in range(frame_count)]
 ```
 
-Load a [`ControlNetModel`] for canny edge and a checkpoint into the [`StableDiffusionControlNetPipeline`]. Then you'll use the [`CrossFrameAttnProcessor`] for the UNet and ControlNet.
+Load a [`ControlNetModel`] for canny edge and a checkpoint into the [`StableDiffusionControlNetPipeline`]. Then you'll use the [`~pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor`] for the UNet and ControlNet.
 
 ```py
 import torch
@@ -445,7 +447,7 @@ frame_count = 8
 video = [Image.fromarray(reader.get_data(i)) for i in range(frame_count)]
 ```
 
-Load the [`StableDiffusionInstructPix2PixPipeline`] and set the [`CrossFrameAttnProcessor`] for the UNet.
+Load the [`StableDiffusionInstructPix2PixPipeline`] and set the [`~pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor`] for the UNet.
 
 ```py
 import torch
@@ -471,7 +473,7 @@ imageio.mimsave("edited_video.mp4", result, fps=4)
 
 Video generation requires a lot of memory because you're generating many video frames at once. You can reduce your memory requirements at the expense of some inference speed. Try:
 
-1. model offloading offloads pipeline components that are no longer needed to the CPU
+1. offloading pipeline components that are no longer needed to the CPU
 2. feed-forward chunking runs the feed-forward layer in a loop instead of all at once
 3. break up the number of frames the VAE has to decode into chunks instead of decoding them all at once
 
