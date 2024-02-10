@@ -76,7 +76,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
 
     unet_name = "prior"
     text_encoder_name = "text_encoder"
-    model_cpu_offload_seq = "text_encoder->prior"
+    model_cpu_offload_seq = "image_encoder->text_encoder->prior"
     _optional_components = ["image_encoder", "feature_extractor"]
     _callback_tensor_inputs = ["latents", "text_encoder_hidden_states", "negative_prompt_embeds"]
 

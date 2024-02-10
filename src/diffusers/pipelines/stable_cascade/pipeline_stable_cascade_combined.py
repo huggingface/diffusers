@@ -13,8 +13,9 @@
 # limitations under the License.
 from typing import Callable, Dict, List, Optional, Union
 
+import PIL
 import torch
-from transformers import CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import deprecate, replace_example_docstring
@@ -61,6 +62,10 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             The prior tokenizer to be used for text inputs.
         prior_text_encoder (`CLIPTextModel`):
             The prior text encoder to be used for text inputs.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            Model that extracts features from generated images to be used as inputs for the `image_encoder`.
+        image_encoder ([`CLIPVisionModelWithProjection`]):
+            Frozen CLIP image-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
         prior_prior (`StableCascadeUnet`):
             The prior model to be used for prior pipeline.
         prior_scheduler (`DDPMWuerstchenScheduler`):
@@ -76,10 +81,10 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         decoder: StableCascadeUnet,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: PaellaVQModel,
-        prior_tokenizer: CLIPTokenizer,
-        prior_text_encoder: CLIPTextModel,
         prior_prior: StableCascadeUnet,
         prior_scheduler: DDPMWuerstchenScheduler,
+        feature_extractor: Optional[CLIPImageProcessor] = None,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
     ):
         super().__init__()
 
@@ -90,15 +95,17 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             scheduler=scheduler,
             vqgan=vqgan,
             prior_prior=prior_prior,
-            prior_text_encoder=prior_text_encoder,
-            prior_tokenizer=prior_tokenizer,
             prior_scheduler=prior_scheduler,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
         )
         self.prior_pipe = StableCascadePriorPipeline(
             prior=prior_prior,
-            text_encoder=prior_text_encoder,
-            tokenizer=prior_tokenizer,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
             scheduler=prior_scheduler,
+            image_encoder=image_encoder,
+            feature_extractor=feature_extractor,
         )
         self.decoder_pipe = StableCascadeDecoderPipeline(
             text_encoder=text_encoder,
@@ -144,6 +151,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
     def __call__(
         self,
         prompt: Optional[Union[str, List[str]]] = None,
+        images: Union[torch.Tensor, PIL.Image.Image, List[torch.Tensor], List[PIL.Image.Image]] = None,
         height: int = 512,
         width: int = 512,
         prior_num_inference_steps: int = 60,
@@ -172,6 +180,8 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         Args:
             prompt (`str` or `List[str]`):
                 The prompt or prompts to guide the image generation for the prior and decoder.
+            images (`torch.Tensor`, `PIL.Image.Image`, `List[torch.Tensor]`, `List[PIL.Image.Image]`, *optional*):
+                The images to guide the image generation for the prior.
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `guidance_scale` is less than `1`).
@@ -268,6 +278,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
 
         prior_outputs = self.prior_pipe(
             prompt=prompt if prompt_embeds is None else None,
+            images=images,
             height=height,
             width=width,
             num_inference_steps=prior_num_inference_steps,
