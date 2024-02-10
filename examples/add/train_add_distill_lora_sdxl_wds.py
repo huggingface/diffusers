@@ -1433,8 +1433,13 @@ def main(args):
 
     # DDPMScheduler calculates the alpha and sigma noise schedules (based on the alpha bars) for us
     # Note that the ADD paper parameterizes alpha and sigma as x_t = alpha_t * x_0 + sigma_t * eps
-    alpha_schedule = torch.sqrt(noise_scheduler.alphas_cumprod)
-    sigma_schedule = torch.sqrt(1 - noise_scheduler.alphas_cumprod)
+    scheduler_alphas = noise_scheduler.alphas_cumprod
+    if noise_scheduler.config.rescale_betas_zero_snr:
+        # When rescaling betas to zero terminal SNR, follow EulerDiscreteScheduler in setting the last alpha_cumprod
+        # (corresponding to the last training timestep) to a small positive value rather than 0
+        scheduler_alphas[-1] = 2**-24
+    alpha_schedule = torch.sqrt(scheduler_alphas)
+    sigma_schedule = torch.sqrt(1 - scheduler_alphas)
     # denoiser gets predicted original sample x_0 from prediction_type using alpha and sigma noise schedules
     denoiser = Denoiser(alpha_schedule, sigma_schedule)
 
