@@ -58,7 +58,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
 
     Args:
         prior ([`Prior`]):
-            The canonical unCLIP prior to approximate the image embedding from the text embedding.
+            The Stable Cascade prior to approximate the image embedding from the text and/or image embedding.
         text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen text-encoder.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):

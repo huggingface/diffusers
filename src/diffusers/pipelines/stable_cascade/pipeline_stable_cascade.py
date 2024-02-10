@@ -60,8 +60,8 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             The CLIP tokenizer.
         text_encoder (`CLIPTextModel`):
             The CLIP text encoder.
-        decoder ([`StableCascadeDiffNeXt`]):
-            The StableCascadeDiffNeXt unet decoder.
+        decoder ([`StableCascadeUnet`]):
+            The Stable Cascade decoder unet.
         vqgan ([`PaellaVQModel`]):
             The VQGAN model.
         scheduler ([`DDPMWuerstchenScheduler`]):
