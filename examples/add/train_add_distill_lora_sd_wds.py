@@ -1452,9 +1452,12 @@ def main(args):
     student_distillation_steps = student_timestep_schedule.shape[0]
 
     # 2. Load tokenizers from SD 1.X/2.X checkpoint.
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.pretrained_teacher_model, subfolder="tokenizer", revision=args.teacher_revision, use_fast=False
-    )
+    if args.use_pretrained_projection:
+        tokenizer = AutoTokenizer.from_pretrained(args.text_encoder_with_proj, use_fast=False)
+    else:
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.pretrained_teacher_model, subfolder="tokenizer", revision=args.teacher_revision, use_fast=False
+        )
 
     # 3. Load text encoders from SD 1.X/2.X checkpoint.
     if args.use_pretrained_projection:
@@ -1800,7 +1803,7 @@ def main(args):
     uncond_input_ids = tokenizer(
         [""] * args.train_batch_size, return_tensors="pt", padding="max_length", max_length=MAX_SEQ_LENGTH
     ).input_ids.to(accelerator.device)
-    uncond_prompt_embeds = text_encoder(uncond_input_ids)[0]
+    uncond_prompt_embeds = text_encoder(uncond_input_ids).last_hidden_state
 
     # 17. Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
