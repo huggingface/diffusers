@@ -981,10 +981,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            custom_revision (`str`, *optional*, defaults to `"main"`):
+            custom_revision (`str`, *optional*):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
-                `revision` when loading a custom pipeline from the Hub. It can be a 🤗 Diffusers version when loading a
-                custom pipeline from GitHub, otherwise it defaults to `"main"` when loading from the Hub.
+                `revision` when loading a custom pipeline from the Hub. Defaults to the latest stable 🤗 Diffusers version.
             mirror (`str`, *optional*):
                 Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
