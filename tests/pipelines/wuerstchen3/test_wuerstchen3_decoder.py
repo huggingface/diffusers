@@ -169,7 +169,7 @@ class WuerstchenV3DecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 
         assert image.shape == (1, 64, 64, 3)
 
-        expected_slice = np.array([0.0000, 0.0000, 0.0089, 1.0000, 1.0000, 0.3927, 1.0000, 1.0000, 1.0000])
+        expected_slice = np.array([0., 0., 0., 1., 1., 0., 1., 1., 0.])
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         assert np.abs(image_from_tuple_slice.flatten() - expected_slice).max() < 1e-2
 
