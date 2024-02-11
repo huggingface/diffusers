@@ -2,7 +2,6 @@ import os
 import sys
 
 import torch
-from transformers import CLIPVisionModelWithProjection
 
 from diffusers import (
     AutoPipelineForImage2Image,
@@ -241,16 +240,12 @@ class IPAdapterTextToImageBenchmark(TextToImageBenchmark):
     image = load_image(url)
 
     def __init__(self, args):
-        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+        pipe = self.pipeline_class.from_pretrained(args.ckpt, torch_dtype=torch.float16).to("cuda")
+        pipe.load_ip_adapter(
             args.ip_adapter_id[0],
-            subfolder="models/image_encoder",
-            torch_dtype=torch.float16,
-        ).to("cuda")
-
-        pipe = self.pipeline_class.from_pretrained(
-            args.ckpt, image_encoder=image_encoder, torch_dtype=torch.float16
-        ).to("cuda")
-        pipe.load_ip_adapter(args.ip_adapter_id[0], subfolder="models", weight_name=args.ip_adapter_id[1])
+            subfolder="models" if "sdxl" not in args.ip_adapter_id[1] else "sdxl_models",
+            weight_name=args.ip_adapter_id[1],
+        )
 
         if args.run_compile:
             pipe.unet.to(memory_format=torch.channels_last)
