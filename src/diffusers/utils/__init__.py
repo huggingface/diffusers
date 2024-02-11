@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ from .constants import (
     MIN_PEFT_VERSION,
     ONNX_EXTERNAL_WEIGHTS_NAME,
     ONNX_WEIGHTS_NAME,
+    SAFETENSORS_FILE_EXTENSION,
     SAFETENSORS_WEIGHTS_NAME,
     USE_PEFT_BACKEND,
     WEIGHTS_NAME,
@@ -74,6 +75,7 @@ from .import_utils import (
     is_torch_version,
     is_torch_xla_available,
     is_torchsde_available,
+    is_torchvision_available,
     is_transformers_available,
     is_transformers_version,
     is_unidecode_available,

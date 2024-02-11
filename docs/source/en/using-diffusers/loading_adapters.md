@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -506,22 +506,11 @@ import torch
 from diffusers import StableDiffusionPipeline, DDIMScheduler
 from diffusers.utils import load_image
 
-noise_scheduler = DDIMScheduler(
-    num_train_timesteps=1000,
-    beta_start=0.00085,
-    beta_end=0.012,
-    beta_schedule="scaled_linear",
-    clip_sample=False,
-    set_alpha_to_one=False,
-    steps_offset=1
-)
-
 pipeline = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
     torch_dtype=torch.float16,
-    scheduler=noise_scheduler,
 ).to("cuda")
-
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter-full-face_sd15.bin")
 
 pipeline.set_ip_adapter_scale(0.7)
@@ -549,6 +538,66 @@ image = pipeline(
     <figcaption class="mt-2 text-center text-sm text-gray-500">output image</figcaption>
   </div>
 </div>
+
+
+You can load multiple IP-Adapter models and use multiple reference images at the same time. In this example we use IP-Adapter-Plus face model to create a consistent character and also use IP-Adapter-Plus model along with 10 images to create a coherent style in the image we generate.
+
+```python
+import torch
+from diffusers import AutoPipelineForText2Image, DDIMScheduler
+from transformers import CLIPVisionModelWithProjection
+from diffusers.utils import load_image
+
+image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+    "h94/IP-Adapter", 
+    subfolder="models/image_encoder",
+    torch_dtype=torch.float16,
+)
+
+pipeline = AutoPipelineForText2Image.from_pretrained(
+    "stabilityai/stable-diffusion-xl-base-1.0",
+    torch_dtype=torch.float16,
+    image_encoder=image_encoder,
+)
+pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+pipeline.load_ip_adapter(
+  "h94/IP-Adapter", 
+  subfolder="sdxl_models", 
+  weight_name=["ip-adapter-plus_sdxl_vit-h.safetensors", "ip-adapter-plus-face_sdxl_vit-h.safetensors"]
+)
+pipeline.set_ip_adapter_scale([0.7, 0.3])
+pipeline.enable_model_cpu_offload()
+
+face_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/women_input.png")
+style_folder = "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/style_ziggy"
+style_images =  [load_image(f"{style_folder}/img{i}.png") for i in range(10)]
+
+generator = torch.Generator(device="cpu").manual_seed(0)
+
+image = pipeline(
+    prompt="wonderwoman",
+    ip_adapter_image=[style_images, face_image],
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=50, num_images_per_prompt=1,
+    generator=generator,
+).images[0]
+```
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_style_grid.png" />
+    <figcaption class="mt-2 text-center text-sm text-gray-500">style input image</figcaption>
+</div>
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/women_input.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">face input image</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_multi_out.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">output image</figcaption>
+  </div>
+</div>
+
 
 ### LCM-Lora
 
