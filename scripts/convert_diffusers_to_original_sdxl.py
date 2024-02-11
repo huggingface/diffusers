@@ -167,7 +167,10 @@ vae_conversion_map_attn = [
 
 def reshape_weight_for_sd(w):
     # convert HF linear weights to SD conv2d weights
-    return w.reshape(*w.shape, 1, 1)
+    if not w.ndim == 1:
+        return w.reshape(*w.shape, 1, 1)
+    else:
+        return w
 
 
 def convert_vae_state_dict(vae_state_dict):

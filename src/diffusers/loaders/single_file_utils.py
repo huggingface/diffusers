@@ -178,7 +178,7 @@ LDM_VAE_KEY = "first_stage_model."
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CONTROLNET_KEY = "control_model."
 LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
-LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
+LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1280
 
 SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
     "cond_stage_model.model.transformer.resblocks.23.attn.in_proj_bias",
@@ -1112,7 +1112,6 @@ def create_text_encoder_from_open_clip_checkpoint(
             text_model_dict[diffusers_key + ".q_proj.bias"] = weight_value[:text_proj_dim]
             text_model_dict[diffusers_key + ".k_proj.bias"] = weight_value[text_proj_dim : text_proj_dim * 2]
             text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :]
-
         else:
             text_model_dict[diffusers_key] = checkpoint[key]
 
