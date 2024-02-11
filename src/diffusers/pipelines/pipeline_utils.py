@@ -545,6 +545,7 @@ def _load_empty_model(
     is_pipeline_module: bool,
     pipeline_class: Any,
     name: str,
+    torch_dtype: Union[str, torch.dtype],
     cached_folder: Union[str, os.PathLike],
     **kwargs,
 ):
@@ -618,6 +619,9 @@ def _load_empty_model(
             )
             with accelerate.init_empty_weights():
                 model = class_obj(config)
+
+    if model is not None:
+        model = model.to(dtype=torch_dtype)
     return model
 
 
@@ -1163,8 +1167,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
-        if device_map is not None and not torch.cuda.is_available():
-            raise ValueError("`device_map` needs CUDA to be present.")
+        is_cuda_multi_device = torch.cuda.is_available() and torch.cuda.device_count() > 1
+        if device_map is not None and device_map == "auto" and not is_cuda_multi_device:
+            raise ValueError("`device_map='auto'` needs multiple CUDA devices to be present.")
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
@@ -1325,57 +1330,61 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
             )
 
-        if device_map is not None and device_map != "auto":
-            raise ValueError(f"'{device_map}' is not supported, 'auto' is only supported as `device_map`.")
-
         # import it here to avoid circular import
         from diffusers import pipelines
 
-        # Load each module in the pipeline on a meta device so that we can derive the device map.
-        init_empty_modules = {}
-        for name, (library_name, class_name) in init_dict.items():
-            if class_name.startswith("Flax"):
-                raise ValueError("Flax pipelines are not supported for `device_map`.")
-
-            # Define all importable classes
-            is_pipeline_module = hasattr(pipelines, library_name)
-            importable_classes = ALL_IMPORTABLE_CLASSES
-            loaded_sub_model = None
-
-            # Use passed sub model or load class_name from library_name
-            if name in passed_class_obj:
-                # if the model is in a pipeline module, then we load it from the pipeline
-                # check that passed_class_obj has correct parent class
-                maybe_raise_or_warn(
-                    library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
-                )
-                with accelerate.init_empty_weights():
-                    loaded_sub_model = passed_class_obj[name]
-
-            else:
-                loaded_sub_model = _load_empty_model(
-                    library_name=library_name,
-                    class_name=class_name,
-                    importable_classes=importable_classes,
-                    pipelines=pipelines,
-                    is_pipeline_module=is_pipeline_module,
-                    pipeline_class=pipeline_class,
-                    name=name,
-                    cached_folder=cached_folder,
-                    force_download=force_download,
-                    resume_download=resume_download,
-                    proxies=proxies,
-                    local_files_only=local_files_only,
-                    token=token,
-                    revision=revision,
-                )
-
-            if loaded_sub_model is not None:
-                init_empty_modules[name] = loaded_sub_model
-
-        # determine device map
         final_device_map = None
         if device_map is not None and device_map == "auto":
+            # Load each module in the pipeline on a meta device so that we can derive the device map.
+            init_empty_modules = {}
+            for name, (library_name, class_name) in init_dict.items():
+                if class_name.startswith("Flax"):
+                    raise ValueError("Flax pipelines are not supported for `device_map`.")
+
+                # Define all importable classes
+                is_pipeline_module = hasattr(pipelines, library_name)
+                importable_classes = ALL_IMPORTABLE_CLASSES
+                loaded_sub_model = None
+
+                # Use passed sub model or load class_name from library_name
+                if name in passed_class_obj:
+                    # if the model is in a pipeline module, then we load it from the pipeline
+                    # check that passed_class_obj has correct parent class
+                    maybe_raise_or_warn(
+                        library_name,
+                        library,
+                        class_name,
+                        importable_classes,
+                        passed_class_obj,
+                        name,
+                        is_pipeline_module,
+                    )
+                    with accelerate.init_empty_weights():
+                        loaded_sub_model = passed_class_obj[name]
+
+                else:
+                    loaded_sub_model = _load_empty_model(
+                        library_name=library_name,
+                        class_name=class_name,
+                        importable_classes=importable_classes,
+                        pipelines=pipelines,
+                        is_pipeline_module=is_pipeline_module,
+                        pipeline_class=pipeline_class,
+                        name=name,
+                        torch_dtype=torch_dtype,
+                        cached_folder=cached_folder,
+                        force_download=force_download,
+                        resume_download=resume_download,
+                        proxies=proxies,
+                        local_files_only=local_files_only,
+                        token=token,
+                        revision=revision,
+                    )
+
+                if loaded_sub_model is not None:
+                    init_empty_modules[name] = loaded_sub_model
+
+            # determine device map
             # Obtain a sorted dictionary for mapping the model-level components
             # to their sizes.
             module_sizes = {
@@ -1410,6 +1419,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 component_device = final_device_map.get(name, None)
                 if component_device is not None:
                     device_map = {"": component_device}
+                else:
+                    device_map = None
 
             # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
