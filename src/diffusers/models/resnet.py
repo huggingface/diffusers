@@ -245,6 +245,8 @@ class ResnetBlock2D(nn.Module):
         down: bool = False,
         conv_shortcut_bias: bool = True,
         conv_2d_out_channels: Optional[int] = None,
+        flow_is_same_channel: bool = True,
+        flow_dim_scale: Optional[int] = None,
     ):
         super().__init__()
         if time_embedding_norm == "ada_group":
@@ -266,6 +268,7 @@ class ResnetBlock2D(nn.Module):
         self.output_scale_factor = output_scale_factor
         self.time_embedding_norm = time_embedding_norm
         self.skip_time_act = skip_time_act
+        self.is_dragnuwa = flow_dim_scale is not None
 
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
         conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
@@ -313,6 +316,21 @@ class ResnetBlock2D(nn.Module):
             else:
                 self.downsample = Downsample2D(in_channels, use_conv=False, padding=1, name="op")
 
+        if self.is_dragnuwa:
+            flow_dim = self.out_channels // flow_dim_scale
+            if not flow_is_same_channel:
+                flow_dim //= 2
+
+            self.flow_gamma_spatial = nn.Conv2d(flow_dim, self.out_channels // 4, kernel_size=3, padding=1)
+            self.flow_gamma_temporal = nn.Conv1d(
+                self.out_channels // 4, self.out_channels, kernel_size=3, stride=1, padding=1, padding_mode="replicate"
+            )
+            self.flow_beta_spatial = nn.Conv2d(flow_dim, self.out_channels // 4, kernel_size=3, padding=1)
+            self.flow_beta_temporal = nn.Conv1d(
+                self.out_channels // 4, self.out_channels, kernel_size=3, stride=1, padding=1, padding_mode="replicate"
+            )
+            self.flow_cond_norm = nn.GroupNorm(32, self.out_channels)
+
         self.use_in_shortcut = self.in_channels != conv_2d_out_channels if use_in_shortcut is None else use_in_shortcut
 
         self.conv_shortcut = None
@@ -331,6 +349,8 @@ class ResnetBlock2D(nn.Module):
         input_tensor: torch.FloatTensor,
         temb: torch.FloatTensor,
         scale: float = 1.0,
+        flow: Optional[torch.FloatTensor] = None,
+        num_frames: int = None,
     ) -> torch.FloatTensor:
         hidden_states = input_tensor
 
@@ -365,6 +385,43 @@ class ResnetBlock2D(nn.Module):
             )
 
         hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
+
+        if self.is_dragnuwa:
+            assert flow is not None
+            assert num_frames is not None
+            gamma_flow: torch.Tensor = self.flow_gamma_spatial(flow)
+            beta_flow: torch.Tensor = self.flow_beta_spatial(flow)
+
+            batch_frames, channels, height, width = beta_flow.shape
+            batch_size = batch_frames // num_frames
+            assert batch_size * num_frames == batch_frames
+
+            gamma_flow = (
+                gamma_flow.reshape(batch_size, num_frames, channels, height, width)
+                .permute(0, 3, 4, 2, 1)
+                .reshape(batch_size * height * width, channels, num_frames)
+            )
+            beta_flow = (
+                beta_flow.reshape(batch_size, num_frames, channels, height, width)
+                .permute(0, 3, 4, 2, 1)
+                .reshape(batch_size * height * width, channels, num_frames)
+            )
+
+            gamma_flow = self.flow_gamma_temporal(gamma_flow)
+            beta_flow = self.flow_beta_temporal(beta_flow)
+
+            gamma_flow = (
+                gamma_flow.reshape(batch_size, height, width, channels, num_frames)
+                .permute(0, 4, 3, 1, 2)
+                .reshape(batch_size * num_frames, channels, height, width)
+            )
+            beta_flow = (
+                beta_flow.reshape(batch_size, height, width, channels, num_frames)
+                .permute(0, 4, 3, 1, 2)
+                .reshape(batch_size * num_frames, channels, height, width)
+            )
+
+            hidden_states = hidden_states + self.flow_cond_norm(hidden_states) * gamma_flow + beta_flow
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
@@ -692,6 +749,8 @@ class SpatioTemporalResBlock(nn.Module):
         merge_factor: float = 0.5,
         merge_strategy="learned_with_images",
         switch_spatial_to_temporal_mix: bool = False,
+        flow_is_same_channel: bool = True,
+        flow_dim_scale: Optional[int] = None,
     ):
         super().__init__()
 
@@ -700,6 +759,8 @@ class SpatioTemporalResBlock(nn.Module):
             out_channels=out_channels,
             temb_channels=temb_channels,
             eps=eps,
+            flow_is_same_channel=flow_is_same_channel,
+            flow_dim_scale=flow_dim_scale,
         )
 
         self.temporal_res_block = TemporalResnetBlock(
@@ -720,9 +781,10 @@ class SpatioTemporalResBlock(nn.Module):
         hidden_states: torch.FloatTensor,
         temb: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        flow: Optional[torch.Tensor] = None,
     ):
         num_frames = image_only_indicator.shape[-1]
-        hidden_states = self.spatial_res_block(hidden_states, temb)
+        hidden_states = self.spatial_res_block(hidden_states, temb, flow=flow, num_frames=num_frames)
 
         batch_frames, channels, height, width = hidden_states.shape
         batch_size = batch_frames // num_frames
