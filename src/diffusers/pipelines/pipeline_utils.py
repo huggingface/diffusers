@@ -1423,6 +1423,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
+        self._offload_device = device
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
@@ -1472,7 +1473,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             hook.remove()
 
         # make sure the model is in the same state as before calling it
-        self.enable_model_cpu_offload()
+        self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
     def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
@@ -1508,6 +1509,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
+        self._offload_device = device
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
