@@ -86,8 +86,6 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         clip_sample (`bool`, default `True`):
             option to clip predicted sample between -1 and 1 for numerical stability.
-        clip_sample_range (`float`, default `1.0`):
-            the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         set_alpha_to_one (`bool`, default `True`):
             each diffusion step uses the value of alphas product at that step and at the previous one. For the final
             step there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
@@ -119,8 +117,6 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         beta_end: float = 0.02,
         beta_schedule: str = "linear",
         trained_betas: Optional[jnp.ndarray] = None,
-        clip_sample: bool = True,
-        clip_sample_range: float = 1.0,
         set_alpha_to_one: bool = True,
         steps_offset: int = 0,
         prediction_type: str = "epsilon",
@@ -271,11 +267,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
                 " `v_prediction`"
             )
         
-         # 4. Clip or threshold "predicted x_0"
-        if self.config.clip_sample:
-            pred_original_sample = pred_original_sample.clip(
-                -self.config.clip_sample_range, self.config.clip_sample_range
-            )
+         
 
         # 4. compute variance: "sigma_t(η)" -> see formula (16)
         # σ_t = sqrt((1 − α_t−1)/(1 − α_t)) * sqrt(1 − α_t/α_t−1)
