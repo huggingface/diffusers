@@ -59,6 +59,7 @@ CONFIG_URLS = {
     "xl_refiner": "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml",
     "upscale": "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml",
     "controlnet": "https://raw.githubusercontent.com/lllyasviel/ControlNet/main/models/cldm_v15.yaml",
+    "test_single_file_sd": "https://huggingface.co/datasets/sayakpaul/sample-datasets/raw/main/tiny-sd-single-file-config.yaml",
 }
 
 CHECKPOINT_KEY_NAMES = {
@@ -277,6 +278,12 @@ def infer_original_config_file(class_name, checkpoint):
 
     elif class_name == "ControlNetModel":
         config_url = CONFIG_URLS["controlnet"]
+
+    elif len(checkpoint) == 512:
+        config_url = CONFIG_URLS["test_single_file_sd"]
+    
+    elif len(checkpoint) == 701:
+        config_url = CONFIG_URLS["test_single_file_sdxl"]
 
     else:
         config_url = CONFIG_URLS["v1"]
@@ -1010,9 +1017,12 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     return new_checkpoint
 
 
-def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=False):
+def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=False, subfolder=None):
     try:
-        config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
+        if subfolder is None:
+            config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
+        else:
+            config = CLIPTextConfig.from_pretrained(config_name, subfolder=subfolder)
     except Exception:
         raise ValueError(
             f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: 'openai/clip-vit-large-patch14'."
@@ -1190,6 +1200,7 @@ def create_diffusers_vae_model_from_ldm(
 
     if is_accelerate_available():
         for param_name, param in diffusers_format_vae_checkpoint.items():
+            # print(param_name, param.shape)
             set_module_tensor_to_device(vae, param_name, "cpu", value=param)
     else:
         vae.load_state_dict(diffusers_format_vae_checkpoint)
@@ -1232,7 +1243,17 @@ def create_text_encoders_and_tokenizers_from_ldm(
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
 
         except Exception:
-            raise ValueError(
+            try:
+                if not local_files_only:
+                    config_name = "hf-internal-testing/tiny-sd-pipe"
+                    text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
+                        config_name, checkpoint, local_files_only=False, subfolder="text_encoder"
+                    )
+                    tokenizer = CLIPTokenizer.from_pretrained(config_name, subfolder="tokenizer", local_files_only=False)
+                else:
+                    raise ValueError("This option needs `local_files_only` set to False.")
+            except Exception:
+                raise ValueError(
                 f"With local_files_only set to {local_files_only}, you must first locally save the tokenizer in the following path: '{config_name}'."
             )
         else:

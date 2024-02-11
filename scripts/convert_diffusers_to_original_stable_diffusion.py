@@ -174,6 +174,8 @@ def reshape_weight_for_sd(w):
 
 
 def convert_vae_state_dict(vae_state_dict):
+    # print(vae_state_dict["encoder.mid_block.attentions.0.to_k.bias"].shape)
+
     mapping = {k: k for k in vae_state_dict.keys()}
     for k, v in mapping.items():
         for sd_part, hf_part in vae_conversion_map:
@@ -185,6 +187,7 @@ def convert_vae_state_dict(vae_state_dict):
                 v = v.replace(hf_part, sd_part)
             mapping[k] = v
     new_state_dict = {v: vae_state_dict[k] for k, v in mapping.items()}
+    
     weights_to_convert = ["q", "k", "v", "proj_out"]
     keys_to_rename = {}
     for k, v in new_state_dict.items():
@@ -195,9 +198,13 @@ def convert_vae_state_dict(vae_state_dict):
         for weight_name, real_weight_name in vae_extra_conversion_map:
             if f"mid.attn_1.{weight_name}.weight" in k or f"mid.attn_1.{weight_name}.bias" in k:
                 keys_to_rename[k] = k.replace(weight_name, real_weight_name)
+    
+    # print(keys_to_rename)
     for k, v in keys_to_rename.items():
         if k in new_state_dict:
             print(f"Renaming {k} to {v}")
+            if "encoder.mid.attn_1.k.bias" in v:
+                print(new_state_dict[k].shape, reshape_weight_for_sd(new_state_dict[k]).shape)
             new_state_dict[v] = reshape_weight_for_sd(new_state_dict[k])
             del new_state_dict[k]
     return new_state_dict
