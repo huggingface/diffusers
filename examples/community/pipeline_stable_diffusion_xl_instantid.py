@@ -812,6 +812,9 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         prompt_image_emb = self._encode_prompt_image_emb(
             image_embeds, device, self.unet.dtype, self.do_classifier_free_guidance
         )
+        bs_embed, seq_len, _ = prompt_image_emb.shape
+        prompt_image_emb = prompt_image_emb.repeat(1, num_images_per_prompt, 1)
+        prompt_image_emb = prompt_image_emb.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):

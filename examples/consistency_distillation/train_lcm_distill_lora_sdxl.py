@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The LCM team and the HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The LCM team and the HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
-from peft import LoraConfig, get_peft_model_state_dict
+from peft import LoraConfig, get_peft_model_state_dict, set_peft_model_state_dict
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
@@ -52,7 +52,12 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import cast_training_params, resolve_interpolation_mode
-from diffusers.utils import check_min_version, convert_state_dict_to_diffusers, is_wandb_available
+from diffusers.utils import (
+    check_min_version,
+    convert_state_dict_to_diffusers,
+    convert_unet_state_dict_to_peft,
+    is_wandb_available,
+)
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -60,7 +65,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -695,6 +700,12 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, is_train=True):
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -858,11 +869,6 @@ def main(args):
     )
     unet.add_adapter(lora_config)
 
-    # Make sure the trainable params are in float32.
-    if args.mixed_precision == "fp16":
-        # only upcast trainable parameters (LoRA) into fp32
-        cast_training_params(unet, dtype=torch.float32)
-
     # Also move the alpha and sigma noise schedules to accelerator.device.
     alpha_schedule = alpha_schedule.to(accelerator.device)
     sigma_schedule = sigma_schedule.to(accelerator.device)
@@ -887,12 +893,30 @@ def main(args):
         def load_model_hook(models, input_dir):
             # load the LoRA into the model
             unet_ = accelerator.unwrap_model(unet)
-            lora_state_dict, network_alphas = StableDiffusionXLPipeline.lora_state_dict(input_dir)
-            StableDiffusionXLPipeline.load_lora_into_unet(lora_state_dict, network_alphas=network_alphas, unet=unet_)
+            lora_state_dict, _ = StableDiffusionXLPipeline.lora_state_dict(input_dir)
+            unet_state_dict = {
+                f'{k.replace("unet.", "")}': v for k, v in lora_state_dict.items() if k.startswith("unet.")
+            }
+            unet_state_dict = convert_unet_state_dict_to_peft(unet_state_dict)
+            incompatible_keys = set_peft_model_state_dict(unet_, unet_state_dict, adapter_name="default")
+            if incompatible_keys is not None:
+                # check only for unexpected keys
+                unexpected_keys = getattr(incompatible_keys, "unexpected_keys", None)
+                if unexpected_keys:
+                    logger.warning(
+                        f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
+                        f" {unexpected_keys}. "
+                    )
 
             for _ in range(len(models)):
                 # pop models so that they are not loaded again
                 models.pop()
+
+            # Make sure the trainable params are in float32. This is again needed since the base models
+            # are in `weight_dtype`. More details:
+            # https://github.com/huggingface/diffusers/pull/6514#discussion_r1449796804
+            if args.mixed_precision == "fp16":
+                cast_training_params(unet_, dtype=torch.float32)
 
         accelerator.register_save_state_pre_hook(save_model_hook)
         accelerator.register_load_state_pre_hook(load_model_hook)
@@ -1091,6 +1115,11 @@ def main(args):
         args.learning_rate = (
             args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
         )
+
+    # Make sure the trainable params are in float32.
+    if args.mixed_precision == "fp16":
+        # only upcast trainable parameters (LoRA) into fp32
+        cast_training_params(unet, dtype=torch.float32)
 
     lr_scheduler = get_scheduler(
         args.lr_scheduler,

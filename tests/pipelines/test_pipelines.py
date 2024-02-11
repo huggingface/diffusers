@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1623,7 +1623,7 @@ class PipelineFastTests(unittest.TestCase):
         sd1 = sd.to(torch.float16)
         sd2 = sd.to(None, torch.float16)
         sd3 = sd.to(dtype=torch.float16)
-        sd4 = sd.to(torch_dtype=torch.float16)
+        sd4 = sd.to(dtype=torch.float16)
         sd5 = sd.to(None, dtype=torch.float16)
         sd6 = sd.to(None, torch_dtype=torch.float16)
 
