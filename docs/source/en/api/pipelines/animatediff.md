@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -25,12 +25,15 @@ The abstract of the paper is the following:
 | Pipeline | Tasks | Demo
 |---|---|:---:|
 | [AnimateDiffPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff.py) | *Text-to-Video Generation with AnimateDiff* |
+| [AnimateDiffVideoToVideoPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_video2video.py) | *Video-to-Video Generation with AnimateDiff* |
 
 ## Available checkpoints
 
 Motion Adapter checkpoints can be found under [guoyww](https://huggingface.co/guoyww/). These checkpoints are meant to work with any model based on Stable Diffusion 1.4/1.5.
 
 ## Usage example
+
+### AnimateDiffPipeline
 
 AnimateDiff works with a MotionAdapter checkpoint and a Stable Diffusion model checkpoint. The MotionAdapter is a collection of Motion Modules that are responsible for adding coherent motion across image frames. These modules are applied after the Resnet and Attention blocks in Stable Diffusion UNet.
 
@@ -97,6 +100,114 @@ Here are some sample outputs:
 AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples. Additionally, the AnimateDiff checkpoints can be sensitive to the beta schedule of the scheduler. We recommend setting this to `linear`.
 
 </Tip>
+
+### AnimateDiffVideoToVideoPipeline
+
+AnimateDiff can also be used to generate visually similar videos or enable style/character/background or other edits starting from an initial video, allowing you to seamlessly explore creative possibilities.
+
+```python
+import imageio
+import requests
+import torch
+from diffusers import AnimateDiffVideoToVideoPipeline, DDIMScheduler, MotionAdapter
+from diffusers.utils import export_to_gif
+from io import BytesIO
+from PIL import Image
+
+# Load the motion adapter
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
+# load SD 1.5 based finetuned model
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = AnimateDiffVideoToVideoPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16).to("cuda")
+scheduler = DDIMScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    beta_schedule="linear",
+    steps_offset=1,
+)
+pipe.scheduler = scheduler
+
+# enable memory savings
+pipe.enable_vae_slicing()
+pipe.enable_model_cpu_offload()
+
+# helper function to load videos
+def load_video(file_path: str):
+    images = []
+
+    if file_path.startswith(('http://', 'https://')):
+        # If the file_path is a URL
+        response = requests.get(file_path)
+        response.raise_for_status()
+        content = BytesIO(response.content)
+        vid = imageio.get_reader(content)
+    else:
+        # Assuming it's a local file path
+        vid = imageio.get_reader(file_path)
+
+    for frame in vid:
+        pil_image = Image.fromarray(frame)
+        images.append(pil_image)
+
+    return images
+
+video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
+
+output = pipe(
+    video = video,
+    prompt="panda playing a guitar, on a boat, in the ocean, high quality",
+    negative_prompt="bad quality, worse quality",
+    guidance_scale=7.5,
+    num_inference_steps=25,
+    strength=0.5,
+    generator=torch.Generator("cpu").manual_seed(42),
+)
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
+```
+
+Here are some sample outputs:
+
+<table>
+    <tr>
+      <th align=center>Source Video</th>
+      <th align=center>Output Video</th>
+    </tr>
+    <tr>
+        <td align=center>
+          raccoon playing a guitar
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif"
+              alt="racoon playing a guitar"
+              style="width: 300px;" />
+        </td>
+        <td align=center>
+          panda playing a guitar
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-output-1.gif"
+              alt="panda playing a guitar"
+              style="width: 300px;" />
+        </td>
+    </tr>
+    <tr>
+        <td align=center>
+          closeup of margot robbie, fireworks in the background, high quality
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-2.gif"
+              alt="closeup of margot robbie, fireworks in the background, high quality"
+              style="width: 300px;" />
+        </td>
+        <td align=center>
+          closeup of tony stark, robert downey jr, fireworks
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-output-2.gif"
+              alt="closeup of tony stark, robert downey jr, fireworks"
+              style="width: 300px;" />
+        </td>
+    </tr>
+</table>
 
 ## Using Motion LoRAs
 
@@ -300,16 +411,14 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 ## AnimateDiffPipeline
 
 [[autodoc]] AnimateDiffPipeline
-	- all
-	- __call__
-    - enable_freeu
-    - disable_freeu
-    - enable_free_init
-    - disable_free_init
-    - enable_vae_slicing
-    - disable_vae_slicing
-    - enable_vae_tiling
-    - disable_vae_tiling
+  - all
+  - __call__
+
+## AnimateDiffVideoToVideoPipeline
+
+[[autodoc]] AnimateDiffVideoToVideoPipeline
+  - all
+  - __call__
 
 ## AnimateDiffPipelineOutput
 

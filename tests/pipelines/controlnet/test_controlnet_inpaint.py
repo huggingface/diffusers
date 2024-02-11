@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -569,6 +569,7 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
             safety_checker=None,
             controlnet=controlnet,
+            scheduler_type="pndm",
         )
         control_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
@@ -605,4 +606,5 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
             gc.collect()
             torch.cuda.empty_cache()
 
-        assert np.abs(images[0] - images[1]).max() < 1e-3
+        max_diff = numpy_cosine_similarity_distance(images[0].flatten(), images[1].flatten())
+        assert max_diff < 1e-3

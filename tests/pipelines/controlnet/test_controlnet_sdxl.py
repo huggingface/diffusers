@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,10 +28,17 @@ from diffusers import (
     StableDiffusionXLControlNetPipeline,
     UNet2DConditionModel,
 )
-from diffusers.models.unet_2d_blocks import UNetMidBlock2D
+from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D
 from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetModel
 from diffusers.utils.import_utils import is_xformers_available
-from diffusers.utils.testing_utils import enable_full_determinism, load_image, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_image,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 from diffusers.utils.torch_utils import randn_tensor
 
 from ..pipeline_params import (
@@ -818,6 +825,41 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
         original_image = images[0, -3:, -3:, -1].flatten()
         expected_image = np.array([0.4399, 0.5112, 0.5478, 0.4314, 0.472, 0.4823, 0.4647, 0.4957, 0.4853])
         assert np.allclose(original_image, expected_image, atol=1e-04)
+
+    def test_download_ckpt_diff_format_is_same(self):
+        controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16)
+        single_file_url = (
+            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+        )
+        pipe_single_file = StableDiffusionXLControlNetPipeline.from_single_file(
+            single_file_url, controlnet=controlnet, torch_dtype=torch.float16
+        )
+        pipe_single_file.unet.set_default_attn_processor()
+        pipe_single_file.enable_model_cpu_offload()
+        pipe_single_file.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "Stormtrooper's lecture"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/stormtrooper_depth.png"
+        )
+        single_file_images = pipe_single_file(
+            prompt, image=image, generator=generator, output_type="np", num_inference_steps=2
+        ).images
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, torch_dtype=torch.float16
+        )
+        pipe.unet.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=2).images
+
+        assert images[0].shape == (512, 512, 3)
+        assert single_file_images[0].shape == (512, 512, 3)
+
+        max_diff = numpy_cosine_similarity_distance(images[0].flatten(), single_file_images[0].flatten())
+        assert max_diff < 5e-2
 
 
 class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNetPipelineFastTests):

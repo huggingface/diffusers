@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from torch import nn
 
-from ..utils import USE_PEFT_BACKEND
+from ..utils import USE_PEFT_BACKEND, deprecate
 from .activations import get_activation
 from .attention_processor import Attention
 from .lora import LoRACompatibleLinear
@@ -878,3 +878,38 @@ class IPAdapterPlusImageProjection(nn.Module):
 
         latents = self.proj_out(latents)
         return self.norm_out(latents)
+
+
+class MultiIPAdapterImageProjection(nn.Module):
+    def __init__(self, IPAdapterImageProjectionLayers: Union[List[nn.Module], Tuple[nn.Module]]):
+        super().__init__()
+        self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
+
+    def forward(self, image_embeds: List[torch.FloatTensor]):
+        projected_image_embeds = []
+
+        # currently, we accept `image_embeds` as
+        #  1. a tensor (deprecated) with shape [batch_size, embed_dim] or [batch_size, sequence_length, embed_dim]
+        #  2. list of `n` tensors where `n` is number of ip-adapters, each tensor can hae shape [batch_size, num_images, embed_dim] or [batch_size, num_images, sequence_length, embed_dim]
+        if not isinstance(image_embeds, list):
+            deprecation_message = (
+                "You have passed a tensor as `image_embeds`.This is deprecated and will be removed in a future release."
+                " Please make sure to update your script to pass `image_embeds` as a list of tensors to supress this warning."
+            )
+            deprecate("image_embeds not a list", "1.0.0", deprecation_message, standard_warn=False)
+            image_embeds = [image_embeds.unsqueeze(1)]
+
+        if len(image_embeds) != len(self.image_projection_layers):
+            raise ValueError(
+                f"image_embeds must have the same length as image_projection_layers, got {len(image_embeds)} and {len(self.image_projection_layers)}"
+            )
+
+        for image_embed, image_projection_layer in zip(image_embeds, self.image_projection_layers):
+            batch_size, num_images = image_embed.shape[0], image_embed.shape[1]
+            image_embed = image_embed.reshape((batch_size * num_images,) + image_embed.shape[2:])
+            image_embed = image_projection_layer(image_embed)
+            image_embed = image_embed.reshape((batch_size, num_images) + image_embed.shape[1:])
+
+            projected_image_embeds.append(image_embed)
+
+        return projected_image_embeds

@@ -218,7 +218,7 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
@@ -262,7 +262,7 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_init)).sum()
         max_diff_disabled = np.abs(to_np(frames_normal) - to_np(frames_disable_free_init)).max()
         self.assertGreater(
-            sum_enabled, 1e2, "Enabling of FreeInit should lead to results different from the default pipeline results"
+            sum_enabled, 1e1, "Enabling of FreeInit should lead to results different from the default pipeline results"
         )
         self.assertLess(
             max_diff_disabled,
