@@ -125,7 +125,7 @@ More information on all the CLI arguments and the environment are available on y
         repo_id_or_path=repo_id,
         from_training=True,
         license="creativeml-openrail-m",
-        base_model={args.pretrained_model_name_or_path},
+        base_model=args.pretrained_model_name_or_path,
         model_description=model_description,
         inference=True,
     )
