@@ -49,6 +49,7 @@ class IPAdapterMixin:
         pretrained_model_name_or_path_or_dict: Union[str, List[str], Dict[str, torch.Tensor]],
         subfolder: Union[str, List[str]],
         weight_name: Union[str, List[str]],
+        image_encoder_folder: Optional[str] = "image_encoder", 
         **kwargs,
     ):
         """
@@ -160,11 +161,16 @@ class IPAdapterMixin:
 
             # load CLIP image encoder here if it has not been registered to the pipeline yet
             if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
-                if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+                if not isinstance(pretrained_model_name_or_path_or_dict, dict) and image_encoder_folder is not None:
                     logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
+                    if image_encoder_folder.count("/") == 0:
+                        image_encoder_subfolder = Path(subfolder, image_encoder_folder).as_posix()
+                    else:
+                        image_encoder_subfolder = Path(image_encoder_folder).as_posix()
+        
                     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
                         pretrained_model_name_or_path_or_dict,
-                        subfolder=Path(subfolder, "image_encoder").as_posix(),
+                        subfolder=image_encoder_subfolder,
                     ).to(self.device, dtype=self.dtype)
                     self.image_encoder = image_encoder
                     self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
