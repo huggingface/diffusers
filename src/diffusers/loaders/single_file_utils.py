@@ -175,6 +175,7 @@ DIFFUSERS_TO_LDM_MAPPING = {
 }
 
 LDM_VAE_KEY = "first_stage_model."
+LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CONTROLNET_KEY = "control_model."
 LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
@@ -518,7 +519,9 @@ def create_vae_diffusers_config(original_config, image_size, scaling_factor=None
     Creates a config for the diffusers based on the config of the LDM model.
     """
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
-    scaling_factor = scaling_factor or original_config["model"]["params"]["scale_factor"]
+    scaling_factor = (
+        scaling_factor or original_config["model"]["params"]["scale_factor"] or LDM_VAE_DEFAULT_SCALING_FACTOR
+    )
 
     block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
