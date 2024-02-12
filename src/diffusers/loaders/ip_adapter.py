@@ -21,6 +21,8 @@ from safetensors import safe_open
 
 from ..utils import (
     _get_model_file,
+    is_accelerate_available,
+    is_torch_version,
     is_transformers_available,
     logging,
 )
@@ -116,6 +118,22 @@ class IPAdapterMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -165,6 +183,7 @@ class IPAdapterMixin:
                     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
                         pretrained_model_name_or_path_or_dict,
                         subfolder=Path(subfolder, "image_encoder").as_posix(),
+                        low_cpu_mem_usage=low_cpu_mem_usage,
                     ).to(self.device, dtype=self.dtype)
                     self.register_modules(image_encoder=image_encoder)
                 else:
@@ -175,9 +194,9 @@ class IPAdapterMixin:
                 feature_extractor = CLIPImageProcessor()
                 self.register_modules(feature_extractor=feature_extractor)
 
-            # load ip-adapter into unet
+        # load ip-adapter into unet
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet._load_ip_adapter_weights(state_dicts)
+        unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
     def set_ip_adapter_scale(self, scale):
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
