@@ -26,10 +26,6 @@ TODO
 	- all
 	- __call__
 
-## StableCascadePriorPipelineOutput
-
-[[autodoc]] pipelines.stable_cascade.pipeline_stable_cascade_prior.StableCascadePriorPipelineOutput
-
 ## StableCascadeDecoderPipeline
 
 [[autodoc]] StableCascadeDecoderPipeline
