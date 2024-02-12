@@ -45,7 +45,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..animatediff.freeinit_utils import FreeInitMixin
+from ..free_init_utils import FreeInitMixin
 from ..pipeline_utils import DiffusionPipeline
 
 
