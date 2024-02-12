@@ -121,7 +121,15 @@ class FreeInitMixin:
 
         return x_mixed
 
-    def _apply_free_init(self, latents, free_init_iteration, num_inference_steps, device, dtype, generator):
+    def _apply_free_init(
+        self,
+        latents: torch.Tensor,
+        free_init_iteration: int,
+        num_inference_steps: int,
+        device: torch.device,
+        dtype: torch.dtype,
+        generator: torch.Generator,
+    ):
         if free_init_iteration == 0:
             self._free_init_initial_noise = latents.detach().clone()
             return latents, self.scheduler.timesteps
