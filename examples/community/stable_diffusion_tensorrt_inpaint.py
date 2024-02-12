@@ -1,5 +1,5 @@
 #
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 # SPDX-FileCopyrightText: Copyright (c) 1993-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #

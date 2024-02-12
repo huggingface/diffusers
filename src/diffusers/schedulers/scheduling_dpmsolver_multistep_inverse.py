@@ -1,4 +1,4 @@
-# Copyright 2023 TSAIL Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 TSAIL Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -767,7 +767,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             )
         return x_t
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
@@ -879,7 +878,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,

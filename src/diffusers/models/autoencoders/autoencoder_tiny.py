@@ -1,4 +1,4 @@
-# Copyright 2023 Ollin Boer Bohan and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Ollin Boer Bohan and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -292,7 +292,9 @@ class AutoencoderTiny(ModelMixin, ConfigMixin):
         self, x: torch.FloatTensor, return_dict: bool = True
     ) -> Union[AutoencoderTinyOutput, Tuple[torch.FloatTensor]]:
         if self.use_slicing and x.shape[0] > 1:
-            output = [self._tiled_encode(x_slice) if self.use_tiling else self.encoder(x) for x_slice in x.split(1)]
+            output = [
+                self._tiled_encode(x_slice) if self.use_tiling else self.encoder(x_slice) for x_slice in x.split(1)
+            ]
             output = torch.cat(output)
         else:
             output = self._tiled_encode(x) if self.use_tiling else self.encoder(x)

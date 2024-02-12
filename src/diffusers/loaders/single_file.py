@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,8 +61,9 @@ def build_sub_model_components(
         return unet_components
 
     if component_name == "vae":
+        scaling_factor = kwargs.get("scaling_factor", None)
         vae_components = create_diffusers_vae_model_from_ldm(
-            pipeline_class_name, original_config, checkpoint, image_size
+            pipeline_class_name, original_config, checkpoint, image_size, scaling_factor
         )
         return vae_components
 

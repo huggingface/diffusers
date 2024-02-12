@@ -1,4 +1,4 @@
-# Copyright 2023 UC Berkeley Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 UC Berkeley Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -143,6 +143,8 @@ class DDPMScheduler(SchedulerMixin, ConfigMixin):
         beta_schedule (`str`, defaults to `"linear"`):
             The beta schedule, a mapping from a beta range to a sequence of betas for stepping the model. Choose from
             `linear`, `scaled_linear`, or `squaredcos_cap_v2`.
+        trained_betas (`np.ndarray`, *optional*):
+            An array of betas to pass directly to the constructor without using `beta_start` and `beta_end`.
         variance_type (`str`, defaults to `"fixed_small"`):
             Clip the variance when adding noise to the denoised sample. Choose from `fixed_small`, `fixed_small_log`,
             `fixed_large`, `fixed_large_log`, `learned` or `learned_range`.
