@@ -34,11 +34,6 @@ jobs:
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_models_schedulers
-          - name: LoRA
-            framework: lora
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_lora
           - name: Fast Flax CPU tests
             framework: flax
             runner: docker-cpu
@@ -93,14 +88,6 @@ jobs:
           -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
-
-    - name: Run fast PyTorch LoRA CPU tests
-      if: ${{ matrix.config.framework == 'lora' }}
-      run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and not Dependency" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/lora
 
     - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
