@@ -331,9 +331,11 @@ if __name__ == "__main__":
     # Convert text encoder 2
     text_enc_2_dict = convert_openclip_text_enc_state_dict(text_enc_2_dict)
     text_enc_2_dict = {"conditioner.embedders.1.model." + k: v for k, v in text_enc_2_dict.items()}
+    # We call the `.T.contiguous()` to match what's done in
+    # https://github.com/huggingface/diffusers/blob/84905ca7287876b925b6bf8e9bb92fec21c78764/src/diffusers/loaders/single_file_utils.py#L1085
     text_enc_2_dict["conditioner.embedders.1.model.text_projection"] = text_enc_2_dict.pop(
         "conditioner.embedders.1.model.text_projection.weight"
-    )
+    ).T.contiguous()
 
     # Put together new checkpoint
     state_dict = {**unet_state_dict, **vae_state_dict, **text_enc_dict, **text_enc_2_dict}
