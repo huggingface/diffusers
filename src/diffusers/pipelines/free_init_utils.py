@@ -151,7 +151,7 @@ class FreeInitMixin:
         latent_shape = latents.shape
 
         free_init_filter_shape = (1, *latent_shape[1:])
-        free_init_freq_filter = self._get_freeinit_freq_filter(
+        free_init_freq_filter = self._get_free_init_freq_filter(
             shape=free_init_filter_shape,
             device=device,
             filter_type=self._free_init_method,

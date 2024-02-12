@@ -196,7 +196,7 @@ class AnimateDiffVideoToVideoPipeline(
     """
 
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
-    _optional_components = ["feature_extractor", "image_encoder"]
+    _optional_components = ["feature_extractor", "image_encoder", "motion_adapter"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -218,7 +218,8 @@ class AnimateDiffVideoToVideoPipeline(
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
-        unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
+        if isinstance(unet, UNet2DConditionModel):
+            unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
 
         self.register_modules(
             vae=vae,

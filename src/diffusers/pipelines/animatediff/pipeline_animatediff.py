@@ -140,7 +140,8 @@ class AnimateDiffPipeline(
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
-        unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
+        if isinstance(unet, UNet2DConditionModel):
+            unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
 
         self.register_modules(
             vae=vae,
