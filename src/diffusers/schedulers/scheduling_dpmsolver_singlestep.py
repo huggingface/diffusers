@@ -151,7 +151,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         sample_max_value: float = 1.0,
         algorithm_type: str = "dpmsolver++",
         solver_type: str = "midpoint",
-        lower_order_final: bool = True,
+        lower_order_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
         lambda_min_clipped: float = -float("inf"),
