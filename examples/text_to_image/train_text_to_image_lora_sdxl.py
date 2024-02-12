@@ -71,17 +71,18 @@ logger = get_logger(__name__)
 
 def save_model_card(
     repo_id: str,
-    images=None,
-    base_model=str,
-    dataset_name=str,
-    train_text_encoder=False,
-    repo_folder=None,
-    vae_path=None,
+    images: list = None,
+    base_model: str = None,
+    dataset_name: str = None,
+    train_text_encoder: bool = False,
+    repo_folder: str = None,
+    vae_path: str = None,
 ):
     img_str = ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"![img_{i}](./image_{i}.png)\n"
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
 
     model_description = f"""
 # LoRA text2image fine-tuning - {repo_id}
