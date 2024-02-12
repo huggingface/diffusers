@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -166,8 +166,7 @@ class IPAdapterMixin:
                         pretrained_model_name_or_path_or_dict,
                         subfolder=Path(subfolder, "image_encoder").as_posix(),
                     ).to(self.device, dtype=self.dtype)
-                    self.image_encoder = image_encoder
-                    self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
+                    self.register_modules(image_encoder=image_encoder)
                 else:
                     raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
 
@@ -181,11 +180,16 @@ class IPAdapterMixin:
         unet._load_ip_adapter_weights(state_dicts)
 
     def set_ip_adapter_scale(self, scale):
-        if not isinstance(scale, list):
-            scale = [scale]
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         for attn_processor in unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+                if not isinstance(scale, list):
+                    scale = [scale] * len(attn_processor.scale)
+                if len(attn_processor.scale) != len(scale):
+                    raise ValueError(
+                        f"`scale` should be a list of same length as the number if ip-adapters "
+                        f"Expected {len(attn_processor.scale)} but got {len(scale)}."
+                    )
                 attn_processor.scale = scale
 
     def unload_ip_adapter(self):
@@ -205,10 +209,12 @@ class IPAdapterMixin:
             self.image_encoder = None
             self.register_to_config(image_encoder=[None, None])
 
-        # remove feature extractor
-        if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
-            self.feature_extractor = None
-            self.register_to_config(feature_extractor=[None, None])
+        # remove feature extractor only when safety_checker is None as safety_checker uses
+        # the feature_extractor later
+        if not hasattr(self, "safety_checker"):
+            if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
+                self.feature_extractor = None
+                self.register_to_config(feature_extractor=[None, None])
 
         # remove hidden encoder
         self.unet.encoder_hid_proj = None
