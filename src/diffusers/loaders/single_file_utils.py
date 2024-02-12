@@ -1173,7 +1173,7 @@ def create_diffusers_unet_model_from_ldm(
 
 
 def create_diffusers_vae_model_from_ldm(
-    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=0.18125
+    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=None
 ):
     # import here to avoid circular imports
     from ..models import AutoencoderKL
