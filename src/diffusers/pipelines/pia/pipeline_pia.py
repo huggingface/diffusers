@@ -1045,7 +1045,7 @@ class PIAPipeline(
         num_free_init_iters = self._free_init_num_iters if self.free_init_enabled else 1
         for free_init_iter in range(num_free_init_iters):
             if self.free_init_enabled:
-                latents, timesteps = self._apply_freeinit(
+                latents, timesteps = self._apply_free_init(
                     latents, free_init_iter, num_inference_steps, device, latents.dtype, generator
                 )
 

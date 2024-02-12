@@ -18,7 +18,6 @@ class FreeInitMixin:
         order: int = 4,
         spatial_stop_frequency: float = 0.25,
         temporal_stop_frequency: float = 0.25,
-        generator: torch.Generator = None,
     ):
         """Enables the FreeInit mechanism as in https://arxiv.org/abs/2312.07537.
 
@@ -61,7 +60,7 @@ class FreeInitMixin:
     def free_init_enabled(self):
         return hasattr(self, "_free_init_num_iters") and self._free_init_num_iters is not None
 
-    def _get_freeinit_freq_filter(
+    def _get_free_init_freq_filter(
         self,
         shape: Tuple[int, ...],
         device: Union[str, torch.dtype],
@@ -125,7 +124,7 @@ class FreeInitMixin:
 
         return x_mixed
 
-    def _apply_freeinit(self, latents, free_init_iteration, num_inference_steps, device, dtype, generator):
+    def _apply_free_init(self, latents, free_init_iteration, num_inference_steps, device, dtype, generator):
         if free_init_iteration == 0:
             self._free_init_initial_noise = latents.detach().clone()
             return latents, self.scheduler.timesteps
