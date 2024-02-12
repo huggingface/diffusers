@@ -324,11 +324,16 @@ if __name__ == "__main__":
     vae_state_dict = convert_vae_state_dict(vae_state_dict)
     vae_state_dict = {"first_stage_model." + k: v for k, v in vae_state_dict.items()}
 
+    # Convert text encoder 1
     text_enc_dict = convert_openai_text_enc_state_dict(text_enc_dict)
     text_enc_dict = {"conditioner.embedders.0.transformer." + k: v for k, v in text_enc_dict.items()}
 
+    # Convert text encoder 2
     text_enc_2_dict = convert_openclip_text_enc_state_dict(text_enc_2_dict)
     text_enc_2_dict = {"conditioner.embedders.1.model." + k: v for k, v in text_enc_2_dict.items()}
+    text_enc_2_dict["conditioner.embedders.1.model.text_projection"] = text_enc_2_dict.pop(
+        "conditioner.embedders.1.model.text_projection.weight"
+    )
 
     # Put together new checkpoint
     state_dict = {**unet_state_dict, **vae_state_dict, **text_enc_dict, **text_enc_2_dict}
