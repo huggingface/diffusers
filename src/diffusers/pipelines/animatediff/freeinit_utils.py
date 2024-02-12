@@ -41,9 +41,6 @@ class FreeInitMixin:
             temporal_stop_frequency (`float`, *optional*, defaults to `0.25`):
                 Normalized stop frequency for temporal dimensions. Must be between 0 to 1. Referred to as `d_t` in
                 the original implementation.
-            generator (`torch.Generator`, *optional*, defaults to `0.25`):
-                A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
-                FreeInit generation deterministic.
         """
         self._free_init_num_iters = num_iters
         self._free_init_use_fast_sampling = use_fast_sampling
