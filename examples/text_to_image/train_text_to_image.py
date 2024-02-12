@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,6 +45,7 @@ from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionPipeline, UNe
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -54,7 +55,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -75,21 +76,7 @@ def save_model_card(
         image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
         img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
 
-    yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {args.pretrained_model_name_or_path}
-datasets:
-- {args.dataset_name}
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- text-to-image
-- diffusers
-inference: true
----
-    """
-    model_card = f"""
+    model_description = f"""
 # Text-to-image finetuning - {repo_id}
 
 This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {args.validation_prompts}: \n
@@ -132,10 +119,21 @@ These are the key hyperparameters used during training:
 More information on all the CLI arguments and the environment are available on your [`wandb` run page]({wandb_run_url}).
 """
 
-    model_card += wandb_info
+    model_description += wandb_info
 
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=args.pretrained_model_name_or_path,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = ["stable-diffusion", "stable-diffusion-diffusers", "text-to-image", "diffusers"]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def log_validation(vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, epoch):
@@ -497,6 +495,12 @@ def parse_args():
 
 def main():
     args = parse_args()
+
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
 
     if args.non_ema_revision is not None:
         deprecate(

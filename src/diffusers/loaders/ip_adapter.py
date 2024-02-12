@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -166,8 +166,7 @@ class IPAdapterMixin:
                         pretrained_model_name_or_path_or_dict,
                         subfolder=Path(subfolder, "image_encoder").as_posix(),
                     ).to(self.device, dtype=self.dtype)
-                    self.image_encoder = image_encoder
-                    self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
+                    self.register_modules(image_encoder=image_encoder)
                 else:
                     raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
 
