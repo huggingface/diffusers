@@ -316,15 +316,6 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-def reset_dpm(scheduler):
-    if isinstance(scheduler, DPMSolverMultistepScheduler):
-        scheduler.model_outputs = [
-            None,
-        ] * scheduler.config.solver_order
-        scheduler.lower_order_nums = 0
-        scheduler._step_index = None
-
-
 class LEditsPPPipelineStableDiffusion(
     DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
 ):
@@ -460,6 +451,8 @@ class LEditsPPPipelineStableDiffusion(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
+
+        self.inversion_steps = None
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
@@ -887,12 +880,18 @@ class LEditsPPPipelineStableDiffusion(
             second element is a list of `bool`s denoting whether the corresponding generated image likely represents
             "not-safe-for-work" (nsfw) content, according to the `safety_checker`.
         """
+
+        if self.inversion_steps is None:
+            raise ValueError(
+                "You need to invert an input image first before calling the pipeline. The `invert` method has to be called beforehand. Edits will always be performed for the last inverted image(s)."
+            )
+
         eta = self.eta
         num_images_per_prompt = 1
         latents = self.init_latents
 
         zs = self.zs
-        reset_dpm(self.scheduler)
+        self.scheduler.set_timesteps(len(self.scheduler.timesteps))
 
         if use_intersect_mask:
             use_cross_attn_mask = True
@@ -960,7 +959,7 @@ class LEditsPPPipelineStableDiffusion(
 
         # 4. Prepare timesteps
         # self.scheduler.set_timesteps(num_inference_steps, device=self.device)
-        timesteps = self.scheduler.inversion_steps
+        timesteps = self.inversion_steps
         t_to_idx = {int(v): k for k, v in enumerate(timesteps[-zs.shape[0] :])}
 
         if use_cross_attn_mask:
@@ -1315,8 +1314,8 @@ class LEditsPPPipelineStableDiffusion(
 
         self.scheduler.config.timestep_spacing = "leading"
         self.scheduler.set_timesteps(int(num_inversion_steps * (1 + skip)))
-        self.scheduler.inversion_steps = self.scheduler.timesteps[-num_inversion_steps:]
-        timesteps = self.scheduler.inversion_steps
+        self.inversion_steps = self.scheduler.timesteps[-num_inversion_steps:]
+        timesteps = self.inversion_steps
 
         # 1. encode image
         x0, resized = self.encode_image(image, dtype=self.text_encoder.dtype)
@@ -1354,7 +1353,7 @@ class LEditsPPPipelineStableDiffusion(
             xts[idx] = self.scheduler.add_noise(x0, noise, torch.Tensor([t]))
         xts = torch.cat([x0.unsqueeze(0), xts], dim=0)
 
-        reset_dpm(self.scheduler)
+        self.scheduler.set_timesteps(len(self.scheduler.timesteps))
         # noise maps
         zs = torch.zeros(size=variance_noise_shape, device=self.device, dtype=uncond_embedding.dtype)
 

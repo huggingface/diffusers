@@ -464,6 +464,7 @@ class LEditsPPPipelineStableDiffusionXL(
             self.watermark = StableDiffusionXLWatermarker()
         else:
             self.watermark = None
+        self.inversion_steps = None
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
@@ -1074,13 +1075,17 @@ class LEditsPPPipelineStableDiffusionXL(
             [`~pipelines.ledits_pp.LEditsPPDiffusionPipelineOutput`] if `return_dict` is True,
             otherwise a `tuple. When returning a tuple, the first element is a list with the generated images.
         """
+        if self.inversion_steps is None:
+            raise ValueError(
+                "You need to invert an input image first before calling the pipeline. The `invert` method has to be called beforehand. Edits will always be performed for the last inverted image(s)."
+            )
 
         eta = self.eta
         num_images_per_prompt = 1
         latents = self.init_latents
 
         zs = self.zs
-        reset_dpm(self.scheduler)
+        self.scheduler.set_timesteps(len(self.scheduler.timesteps))
 
         if use_intersect_mask:
             use_cross_attn_mask = True
@@ -1152,7 +1157,7 @@ class LEditsPPPipelineStableDiffusionXL(
         # 4. Prepare timesteps
         # self.scheduler.set_timesteps(num_inference_steps, device=device)
 
-        timesteps = self.scheduler.inversion_steps
+        timesteps = self.inversion_steps
         t_to_idx = {int(v): k for k, v in enumerate(timesteps)}
 
         if use_cross_attn_mask:
@@ -1604,8 +1609,8 @@ class LEditsPPPipelineStableDiffusionXL(
 
         self.scheduler.config.timestep_spacing = "leading"
         self.scheduler.set_timesteps(int(num_inversion_steps * (1 + skip)))
-        self.scheduler.inversion_steps = self.scheduler.timesteps[-num_inversion_steps:]
-        timesteps = self.scheduler.inversion_steps
+        self.inversion_steps = self.scheduler.timesteps[-num_inversion_steps:]
+        timesteps = self.inversion_steps
 
         num_images_per_prompt = 1
 
@@ -1704,7 +1709,7 @@ class LEditsPPPipelineStableDiffusionXL(
         # noise maps
         zs = torch.zeros(size=variance_noise_shape, device=self.device, dtype=negative_prompt_embeds.dtype)
 
-        reset_dpm(self.scheduler)
+        self.scheduler.set_timesteps(len(self.scheduler.timesteps))
 
         for t in self.progress_bar(timesteps):
             idx = num_inversion_steps - t_to_idx[int(t)] - 1
@@ -1745,16 +1750,6 @@ class LEditsPPPipelineStableDiffusionXL(
             zs[-num_zero_noise_steps:] = torch.zeros_like(zs[-num_zero_noise_steps:])
         self.zs = zs
         return LEditsPPInversionPipelineOutput(images=resized, vae_reconstruction_images=image_rec)
-
-
-# Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.reset_dpm
-def reset_dpm(scheduler):
-    if isinstance(scheduler, DPMSolverMultistepScheduler):
-        scheduler.model_outputs = [
-            None,
-        ] * scheduler.config.solver_order
-        scheduler.lower_order_nums = 0
-        scheduler._step_index = None
 
 
 # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.rescale_noise_cfg
