@@ -1287,7 +1287,7 @@ class LEditsPPPipelineStableDiffusion(
         self.batch_size = x0.shape[0]
 
         # autoencoder reconstruction
-        image_rec = self.vae.decode(x0 / self.vae.config.scaling_factor, return_dict=False)[0]
+        image_rec = self.vae.decode(x0 / self.vae.config.scaling_factor, return_dict=False, generator=generator)[0]
         image_rec = self.image_processor.postprocess(image_rec, output_type="pil")
 
         # 2. get embeddings
@@ -1362,10 +1362,7 @@ class LEditsPPPipelineStableDiffusion(
                 "The output images may contain severe artifacts! "
                 "Consider down-sampling the input using the `height` and `width` parameters"
             )
-
-        if self.vae.config.force_upcast:
-            image = image.float()
-            self.vae.to(dtype=torch.float32)
+        image = image.to(dtype)
 
         x0 = self.vae.encode(image.to(self.device)).latent_dist.mode()
         x0 = x0.to(dtype)

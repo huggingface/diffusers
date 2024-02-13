@@ -1472,13 +1472,20 @@ class LEditsPPPipelineStableDiffusionXL(
                 "The output images may contain severe artifacts! "
                 "Consider down-sampling the input using the `height` and `width` parameters"
             )
+        image = image.to(self.device, dtype=dtype)
+        needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
 
-        if self.vae.config.force_upcast:
+        if needs_upcasting:
             image = image.float()
-            self.vae.to(dtype=torch.float32)
+            self.upcast_vae()
+            image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-        x0 = self.vae.encode(image.to(self.device)).latent_dist.mode()
+        x0 = self.vae.encode(image).latent_dist.mode()
         x0 = x0.to(dtype)
+        # cast back to fp16 if needed
+        if needs_upcasting:
+            self.vae.to(dtype=torch.float16)
+
         x0 = self.vae.config.scaling_factor * x0
         return x0, resized
 
@@ -1490,7 +1497,7 @@ class LEditsPPPipelineStableDiffusionXL(
         source_guidance_scale=3.5,
         negative_prompt: str = None,
         negative_prompt_2: str = None,
-        num_inversion_steps: int = 100,
+        num_inversion_steps: int = 50,
         skip: float = 0.15,
         generator: Optional[torch.Generator] = None,
         crops_coords_top_left: Tuple[int, int] = (0, 0),
@@ -1518,7 +1525,7 @@ class LEditsPPPipelineStableDiffusionXL(
             negative_prompt_2 (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation to be sent to `tokenizer_2` and
                 `text_encoder_2`. If not defined, `negative_prompt` is used in both text-encoders
-            num_inversion_steps (`int`, defaults to `30`):
+            num_inversion_steps (`int`, defaults to `50`):
                 Number of total performed inversion steps after discarding the initial `skip` steps.
             skip (`float`, defaults to `0.15`):
                 Portion of initial steps that will be ignored for inversion and subsequent generation. Lower values
@@ -1626,12 +1633,16 @@ class LEditsPPPipelineStableDiffusionXL(
         if self.vae.dtype == torch.float16 and self.vae.config.force_upcast:
             self.upcast_vae()
             x0_tmp = x0.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-            image_rec = self.vae.decode(x0_tmp / self.vae.config.scaling_factor, return_dict=False)[0]
+            image_rec = self.vae.decode(
+                x0_tmp / self.vae.config.scaling_factor, return_dict=False, generator=generator
+            )[0]
         elif self.vae.config.force_upcast:
             x0_tmp = x0.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
-            image_rec = self.vae.decode(x0_tmp / self.vae.config.scaling_factor, return_dict=False)[0]
+            image_rec = self.vae.decode(
+                x0_tmp / self.vae.config.scaling_factor, return_dict=False, generator=generator
+            )[0]
         else:
-            image_rec = self.vae.decode(x0 / self.vae.config.scaling_factor, return_dict=False)[0]
+            image_rec = self.vae.decode(x0 / self.vae.config.scaling_factor, return_dict=False, generator=generator)[0]
 
         image_rec = self.image_processor.postprocess(image_rec, output_type="pil")
 
