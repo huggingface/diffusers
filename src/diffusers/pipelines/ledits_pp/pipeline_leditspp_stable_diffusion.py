@@ -3,11 +3,9 @@ import math
 from itertools import repeat
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import torch
 import torch.nn.functional as F
 from packaging import version
-from PIL import Image
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...configuration_utils import FrozenDict
@@ -241,64 +239,6 @@ class LEDITSCrossAttnProcessor:
 
         hidden_states = hidden_states / attn.rescale_output_factor
         return hidden_states
-
-
-def load_images(
-    images: PipelineImageInput, sizes=(512, 768), left=0, right=0, top=0, bottom=0, device=None, dtype=None
-):
-    def pre_process(im, sizes, left=0, right=0, top=0, bottom=0):
-        if isinstance(im, str):
-            image = np.array(Image.open(im).convert("RGB"))[:, :, :3]
-        elif isinstance(im, Image.Image):
-            image = np.array((im).convert("RGB"))[:, :, :3]
-        else:
-            image = im
-        org_size = image.shape
-
-        h, w, c = image.shape
-        left = min(left, w - 1)
-        right = min(right, w - left - 1)
-        top = min(top, h - left - 1)
-        bottom = min(bottom, h - top - 1)
-        image = image[top : h - bottom, left : w - right]
-
-        ar = max(*image.shape[:2]) / min(*image.shape[:2])
-        if ar > 1.25:
-            h_max = image.shape[0] > image.shape[1]
-            if h_max:
-                resized = Image.fromarray(image).resize((sizes[0], sizes[1]))
-            else:
-                resized = Image.fromarray(image).resize((sizes[1], sizes[0]))
-        else:
-            resized = Image.fromarray(image).resize((sizes[0], sizes[0]))
-        image = np.array(resized)
-        if image.shape != org_size:
-            print(
-                f"Input image has been resized to {image.shape[1]}x{image.shape[0]}px (from {org_size[1]}x{org_size[0]}px)"
-            )
-        image = torch.from_numpy(image).float().permute(2, 0, 1)
-        return image, resized
-
-    tmps = []
-    resized_imgs = []
-    if isinstance(images, list):
-        for item in images:
-            prep, resized = pre_process(item, sizes, left, right, top, bottom)
-            if len(tmps) > 0 and prep.shape != tmps[0].shape:
-                raise ValueError(
-                    f"Mixed image resolution not supported in batch processing. Target resolution set to {tmps[0].shape[2]}x{tmps[0].shape[1]}px,"
-                    f"but found image with resolution {prep.shape[2]}x{prep.shape[1]}px"
-                )
-            tmps.append(prep)
-            resized_imgs.append(resized)
-    else:
-        prep, resized = pre_process(images, sizes, left, right, top, bottom)
-        tmps.append(prep)
-        resized_imgs.append(resized)
-    image = torch.stack(tmps) / 127.5 - 1
-
-    image = image.to(device=device, dtype=dtype)
-    return image, resized_imgs
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.rescale_noise_cfg
@@ -1273,6 +1213,10 @@ class LEditsPPPipelineStableDiffusion(
         generator: Optional[torch.Generator] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         clip_skip: Optional[int] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        resize_mode: Optional[str] = "default",
+        crops_coords: Optional[Tuple[int, int, int, int]] = None,
     ):
         r"""
         The function to the pipeline for image inversion as described by the [LEDITS++ Paper](https://arxiv.org/abs/2301.12247).
@@ -1302,6 +1246,20 @@ class LEditsPPPipelineStableDiffusion(
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
+            height (`int`, *optional*, defaults to `None`):
+                The height in preprocessed image. If `None`, will use the `get_default_height_width()` to get default height.
+            width (`int`, *optional*`, defaults to `None`):
+                The width in preprocessed. If `None`, will use  get_default_height_width()` to get the default width.
+            resize_mode (`str`, *optional*, defaults to `default`):
+                The resize mode, can be one of `default` or `fill`. If `default`, will resize the image to fit
+                within the specified width and height, and it may not maintaining the original aspect ratio.
+                If `fill`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
+                within the dimensions, filling empty with data from image.
+                If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
+                within the dimensions, cropping the excess.
+                Note that resize_mode `fill` and `crop` are only supported for PIL image input.
+            crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
+                The crop coordinates for each image in the batch. If `None`, will not crop the image.
 
         Returns:
             [`~pipelines.ledits_pp.LEditsPPInversionPipelineOutput`]:
@@ -1318,7 +1276,14 @@ class LEditsPPPipelineStableDiffusion(
         timesteps = self.inversion_steps
 
         # 1. encode image
-        x0, resized = self.encode_image(image, dtype=self.text_encoder.dtype)
+        x0, resized = self.encode_image(
+            image,
+            dtype=self.text_encoder.dtype,
+            height=height,
+            width=width,
+            resize_mode=resize_mode,
+            crops_coords=crops_coords,
+        )
         self.batch_size = x0.shape[0]
 
         # autoencoder reconstruction
@@ -1385,17 +1350,25 @@ class LEditsPPPipelineStableDiffusion(
         return LEditsPPInversionPipelineOutput(images=resized, vae_reconstruction_images=image_rec)
 
     @torch.no_grad()
-    def encode_image(self, image, dtype=None):
-        image, resized = load_images(
-            image,
-            sizes=(
-                self.unet.sample_size * self.vae_scale_factor,
-                int(self.unet.sample_size * self.vae_scale_factor * 1.5),
-            ),
-            device=self.device,
-            dtype=dtype,
+    def encode_image(self, image, dtype=None, height=None, width=None, resize_mode="default", crops_coords=None):
+        image = self.image_processor.preprocess(
+            image=image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
         )
-        x0 = self.vae.encode(image).latent_dist.mode()
+        resized = self.image_processor.postprocess(image=image, output_type="pil")
+
+        if max(image.shape[-2:]) > self.vae.config["sample_size"] * 1.5:
+            logger.warning(
+                "Your input images far exceed the default resolution of the underlying diffusion model. "
+                "The output images may contain severe artifacts! "
+                "Consider down-sampling the input using the `height` and `width` parameters"
+            )
+
+        if self.vae.config.force_upcast:
+            image = image.float()
+            self.vae.to(dtype=torch.float32)
+
+        x0 = self.vae.encode(image.to(self.device)).latent_dist.mode()
+        x0 = x0.to(dtype)
         x0 = self.vae.config.scaling_factor * x0
         return x0, resized
 
