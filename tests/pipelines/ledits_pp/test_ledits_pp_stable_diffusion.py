@@ -28,8 +28,6 @@ from diffusers import (
     LEditsPPPipelineStableDiffusion,
     UNet2DConditionModel,
 )
-
-# from diffusers.image_processor import VaeImageProcessor
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
@@ -41,24 +39,12 @@ from diffusers.utils.testing_utils import (
 )
 
 
-# from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
-# from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
-
-
 enable_full_determinism()
 
 
 @skip_mps
-class LEditsPPPipelineStableDiffusionFastTests(
-    #    PipelineLatentTesterMixin, PipelineTesterMixin,
-    unittest.TestCase
-):
+class LEditsPPPipelineStableDiffusionFastTests(unittest.TestCase):
     pipeline_class = LEditsPPPipelineStableDiffusion
-    # params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "cross_attention_kwargs"}
-    # batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS
-    # image_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
-    # image_latents_params = IMAGE_TO_IMAGE_IMAGE_PARAMS
-    # callback_cfg_params = TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS.union({"image_latents"}) - {"negative_prompt_embeds"}
 
     def get_dummy_components(self):
         torch.manual_seed(0)
@@ -152,11 +138,16 @@ class LEditsPPPipelineStableDiffusionFastTests(
         inputs = self.get_dummy_inversion_inputs(device)
         inputs["image"] = inputs["image"][0]
         sd_pipe.invert(**inputs)
-        assert sd_pipe.init_latents.shape == (1, 4, 32, 32)
+        assert sd_pipe.init_latents.shape == (
+            1,
+            4,
+            int(32 / sd_pipe.vae_scale_factor),
+            int(32 / sd_pipe.vae_scale_factor),
+        )
 
         latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].to(device)
         print(latent_slice.flatten())
-        expected_slice = np.array([0.2591, -0.8992, 0.0135, 0.8945, 0.6812, -0.3078, -0.1397, 0.9919, 0.7559])
+        expected_slice = np.array([-0.9084, -0.0367, 0.2940, 0.0839, 0.6890, 0.2651, -0.7104, 2.1090, -0.7822])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_ledits_pp_inversion_batch(self):
@@ -168,16 +159,21 @@ class LEditsPPPipelineStableDiffusionFastTests(
 
         inputs = self.get_dummy_inversion_inputs(device)
         sd_pipe.invert(**inputs)
-        assert sd_pipe.init_latents.shape == (2, 4, 32, 32)
+        assert sd_pipe.init_latents.shape == (
+            2,
+            4,
+            int(32 / sd_pipe.vae_scale_factor),
+            int(32 / sd_pipe.vae_scale_factor),
+        )
 
         latent_slice = sd_pipe.init_latents[0, -1, -3:, -3:].to(device)
         print(latent_slice.flatten())
-        expected_slice = np.array([0.9312, 0.9823, 0.8902, 0.2546, -0.4952, -0.3061, -0.1626, -1.5873, -1.0343])
+        expected_slice = np.array([0.2528, 0.1458, -0.2166, 0.4565, -0.5657, -1.0286, -0.9961, 0.5933, 1.1173])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
 
         latent_slice = sd_pipe.init_latents[1, -1, -3:, -3:].to(device)
         print(latent_slice.flatten())
-        expected_slice = np.array([-1.4121, -1.8028, 1.3368, -0.4232, 0.1431, 0.5343, -0.2898, -0.0392, 0.5292])
+        expected_slice = np.array([-0.0796, 2.0583, 0.5501, 0.5358, 0.0282, -0.2803, -1.0470, 0.7023, -0.0072])
         assert np.abs(latent_slice.flatten() - expected_slice).max() < 1e-3
 
     def test_ledits_pp_warmup_steps(self):
@@ -221,7 +217,7 @@ class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
         raw_image = raw_image.convert("RGB").resize((512, 512))
         cls.raw_image = raw_image
 
-    def test_ledits_pp_perfect_reconstruction(self):
+    def test_ledits_pp_editing(self):
         pipe = LEditsPPPipelineStableDiffusion.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, torch_dtype=torch.float16
         )
@@ -229,9 +225,20 @@ class LEditsPPPipelineStableDiffusionSlowTests(unittest.TestCase):
         pipe.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        inversion_output = pipe.invert(image=self.raw_image, generator=generator)
-        image = pipe.image_processor.pil_to_numpy(inversion_output.vae_reconstruction_images[0])
-        reconstruction = pipe(output_type="np", generator=generator).images[0]
+        _ = pipe.invert(image=self.raw_image, generator=generator)
+        generator = torch.manual_seed(0)
+        inputs = {
+            "generator": generator,
+            "editing_prompt": ["cat", "dog"],
+            "reverse_editing_direction": [True, False],
+            "edit_guidance_scale": [5.0, 5.0],
+            "edit_threshold": [0.8, 0.8],
+        }
+        reconstruction = pipe(**inputs, output_type="np").images[0]
 
-        print(np.abs(image - reconstruction).max())
-        assert np.abs(image - reconstruction).max() < 1e-2
+        output_slice = reconstruction[150:153, 140:143, -1]
+        output_slice = output_slice.flatten()
+        expected_slice = np.array(
+            [0.9453125, 0.93310547, 0.84521484, 0.94628906, 0.9111328, 0.80859375, 0.93847656, 0.9042969, 0.8144531]
+        )
+        assert np.abs(output_slice - expected_slice).max() < 1e-2
