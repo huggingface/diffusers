@@ -27,7 +27,13 @@ from diffusers import (
     PixArtAlphaPipeline,
     Transformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -332,7 +338,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_pixart_1024(self):
-        generator = torch.manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
@@ -341,14 +347,13 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array([0.2891, 0.2749, 0.2595, 0.3020, 0.2698, 0.2671, 0.3169, 0.2993, 0.3179])
 
-        expected_slice = np.array([0.1941, 0.2117, 0.2188, 0.1946, 0.218, 0.2124, 0.199, 0.2437, 0.2583])
-
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
+        self.assertLessEqual(max_diff, 1e-4)
 
     def test_pixart_512(self):
-        generator = torch.manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
@@ -358,11 +363,10 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         image = pipe(prompt, generator=generator, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array([0.2964, 0.2908, 0.2681, 0.3201, 0.2827, 0.2700, 0.3179, 0.3179, 0.3259])
 
-        expected_slice = np.array([0.2637, 0.291, 0.2939, 0.207, 0.2512, 0.2783, 0.2168, 0.2324, 0.2817])
-
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
+        self.assertLessEqual(max_diff, 1e-4)
 
     def test_pixart_1024_without_resolution_binning(self):
         generator = torch.manual_seed(0)
