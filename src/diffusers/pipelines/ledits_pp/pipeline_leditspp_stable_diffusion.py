@@ -306,7 +306,7 @@ class LEditsPPPipelineStableDiffusion(
     ):
         super().__init__()
 
-        if not isinstance(scheduler, DDIMScheduler) or not isinstance(scheduler, DPMSolverMultistepScheduler):
+        if not isinstance(scheduler, DDIMScheduler) and not isinstance(scheduler, DPMSolverMultistepScheduler):
             scheduler = DPMSolverMultistepScheduler.from_config(
                 scheduler.config, algorithm_type="sde-dpmsolver++", solver_order=2
             )
