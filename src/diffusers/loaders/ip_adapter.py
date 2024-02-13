@@ -19,6 +19,7 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..utils import (
     _get_model_file,
     is_accelerate_available,
@@ -118,7 +119,7 @@ class IPAdapterMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", False)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
 
         if low_cpu_mem_usage and not is_accelerate_available():
             low_cpu_mem_usage = False

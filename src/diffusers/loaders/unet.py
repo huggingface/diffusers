@@ -699,7 +699,6 @@ class UNet2DConditionLoadersMixin:
         if low_cpu_mem_usage:
             if is_accelerate_available():
                 from accelerate import init_empty_weights
-                from accelerate.utils import set_module_tensor_to_device
 
             else:
                 low_cpu_mem_usage = False
@@ -793,8 +792,7 @@ class UNet2DConditionLoadersMixin:
         if not low_cpu_mem_usage:
             image_projection.load_state_dict(updated_state_dict)
         else:
-            for param_name, param in updated_state_dict.items():
-                set_module_tensor_to_device(image_projection, param_name, "cpu", value=param)
+            load_model_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
 
         return image_projection
 
@@ -809,7 +807,6 @@ class UNet2DConditionLoadersMixin:
         if low_cpu_mem_usage:
             if is_accelerate_available():
                 from accelerate import init_empty_weights
-                from accelerate.utils import set_module_tensor_to_device
 
             else:
                 low_cpu_mem_usage = False
@@ -829,6 +826,7 @@ class UNet2DConditionLoadersMixin:
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
         key_id = 1
+        init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
         for name in self.attn_processors.keys():
             cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
             if name.startswith("mid_block"):
@@ -861,21 +859,13 @@ class UNet2DConditionLoadersMixin:
                         # IP-Adapter Plus
                         num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
 
-                if low_cpu_mem_usage:
-                    with init_empty_weights():
-                        attn_procs[name] = attn_processor_class(
-                            hidden_size=hidden_size,
-                            cross_attention_dim=cross_attention_dim,
-                            scale=1.0,
-                            num_tokens=num_image_text_embeds,
-                        )
-                else:
+                with init_context():
                     attn_procs[name] = attn_processor_class(
                         hidden_size=hidden_size,
                         cross_attention_dim=cross_attention_dim,
                         scale=1.0,
                         num_tokens=num_image_text_embeds,
-                    ).to(dtype=self.dtype, device=self.device)
+                    )
 
                 value_dict = {}
                 for i, state_dict in enumerate(state_dicts):
@@ -885,9 +875,10 @@ class UNet2DConditionLoadersMixin:
                 if not low_cpu_mem_usage:
                     attn_procs[name].load_state_dict(value_dict)
                 else:
-                    for param_name, param in value_dict.items():
-                        set_module_tensor_to_device(attn_procs[name], param_name, "cpu", value=param)
-                    attn_procs[name] = attn_procs[name].to(dtype=self.dtype, device=self.device)
+                    device = next(iter(value_dict.values())).device
+                    dtype = next(iter(value_dict.values())).dtype
+                    load_model_dict_into_meta(attn_procs[name], value_dict, device=device, dtype=dtype)
+
                 key_id += 2
 
         return attn_procs
@@ -923,8 +914,9 @@ class UNet2DConditionLoadersMixin:
             image_projection_layer = self._convert_ip_adapter_image_proj_to_diffusers(
                 state_dict["image_proj"], low_cpu_mem_usage=low_cpu_mem_usage
             )
-            image_projection_layer.to(device=self.device, dtype=self.dtype)
             image_projection_layers.append(image_projection_layer)
 
         self.encoder_hid_proj = MultiIPAdapterImageProjection(image_projection_layers)
         self.config.encoder_hid_dim_type = "ip_image_proj"
+
+        self.to(dtype=self.dtype, device=self.device)
