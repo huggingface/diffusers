@@ -519,9 +519,10 @@ def create_vae_diffusers_config(original_config, image_size, scaling_factor=None
     Creates a config for the diffusers based on the config of the LDM model.
     """
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
-    scaling_factor = (
-        scaling_factor or original_config["model"]["params"]["scale_factor"] or LDM_VAE_DEFAULT_SCALING_FACTOR
-    )
+    if scaling_factor is None and "scale_factor" in original_config["model"]["params"]:
+        scaling_factor = original_config["model"]["params"]["scale_factor"]
+    elif scaling_factor is None:
+        scaling_factor = LDM_VAE_DEFAULT_SCALING_FACTOR
 
     block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)

@@ -38,6 +38,9 @@ class FromOriginalVAEMixin:
                     - A link to the `.ckpt` file (for example
                       `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
                     - A path to a *file* containing all pipeline weights.
+            config_file (`str`, *optional*):
+                Filepath to the configuration YAML file associated with the model. If not provided it will default to:
+                https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
                 dtype is automatically derived from the model's weights.
@@ -65,6 +68,13 @@ class FromOriginalVAEMixin:
             image_size (`int`, *optional*, defaults to 512):
                 The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
                 Diffusion v2 base model. Use 768 for Stable Diffusion v2.
+            scaling_factor (`float`, *optional*, defaults to 0.18215):
+                The component-wise standard deviation of the trained latent space computed using the first batch of the
+                training set. This is used to scale the latent space to have unit variance when training the diffusion
+                model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
+                diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z
+                = 1 / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution
+                Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
             use_safetensors (`bool`, *optional*, defaults to `None`):
                 If set to `None`, the safetensors weights are downloaded if they're available **and** if the
                 safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
