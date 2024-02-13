@@ -89,6 +89,7 @@ class FromOriginalControlNetMixin:
         ```
         """
         original_config_file = kwargs.pop("original_config_file", None)
+        config_file = kwargs.pop("config_file", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -100,6 +101,10 @@ class FromOriginalControlNetMixin:
         use_safetensors = kwargs.pop("use_safetensors", True)
 
         class_name = cls.__name__
+        if (config_file is not None) and (original_config_file is not None):
+            raise ValueError("Cannot pass both `config_file` and `original_config_file` should be passed.")
+
+        original_config_file = config_file or original_config_file
         original_config, checkpoint = fetch_ldm_config_and_checkpoint(
             pretrained_model_link_or_path=pretrained_model_link_or_path,
             class_name=class_name,
