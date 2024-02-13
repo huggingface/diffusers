@@ -424,9 +424,7 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
             prev_timestep >= 0, prev_timestep, self.alphas_cumprod.size(dim=0) + prev_timestep
         )
         alpha_prod_t_prev = torch.where(
-            prev_timestep >= 0,
-            torch.index_select(self.alphas_cumprod, 0, updated_prev_timestep),
-            self.final_alpha_cumprod,
+            prev_timestep >= 0, self.alphas_cumprod.index_select(0, updated_prev_timestep), self.final_alpha_cumprod
         )
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
