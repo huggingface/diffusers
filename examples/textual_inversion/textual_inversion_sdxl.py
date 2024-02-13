@@ -32,7 +32,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
-# TODO: remove and import from diffusers.utils when the new version of diffusers is released
+
 from packaging import version
 from PIL import Image
 from torch.utils.data import Dataset
@@ -41,6 +41,7 @@ from tqdm.auto import tqdm
 from transformers import (CLIPTextModel, CLIPTextModelWithProjection,
                           CLIPTokenizer)
 
+# TODO: remove and import from diffusers.utils when the new version of diffusers is released
 import diffusers
 from diffusers import (AutoencoderKL, DDPMScheduler, DiffusionPipeline,
                        DPMSolverMultistepScheduler, UNet2DConditionModel)
@@ -103,7 +104,7 @@ These are textual inversion adaption weights for {base_model}. You can find some
         "stable-diffusion-diffusers",
         "text-to-image",
         "diffusers",
-        "controlnet",
+        "textual_inversion",
     ]
 
     model_card = populate_model_card(model_card, tags=tags)
