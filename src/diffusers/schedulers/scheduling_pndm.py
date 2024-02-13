@@ -417,8 +417,17 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         # sample -> x_t
         # model_output -> e_θ(x_t, t)
         # prev_sample -> x_(t−δ)
+        if not isinstance(timestep, torch.Tensor):
+            timestep = torch.tensor(timestep)
         alpha_prod_t = self.alphas_cumprod.index_select(0, timestep)
-        alpha_prod_t_prev = torch.where(prev_timestep >= 0, torch.index_select(self.alphas_cumprod, 0, abs(prev_timestep)), self.final_alpha_cumprod)
+        updated_prev_timestep = torch.where(
+            prev_timestep >= 0, prev_timestep, self.alphas_cumprod.size(dim=0) + prev_timestep
+        )
+        alpha_prod_t_prev = torch.where(
+            prev_timestep >= 0,
+            torch.index_select(self.alphas_cumprod, 0, updated_prev_timestep),
+            self.final_alpha_cumprod,
+        )
         beta_prod_t = 1 - alpha_prod_t
         beta_prod_t_prev = 1 - alpha_prod_t_prev
 
