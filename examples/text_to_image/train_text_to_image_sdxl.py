@@ -66,12 +66,12 @@ DATASET_NAME_MAPPING = {
 
 def save_model_card(
     repo_id: str,
-    images=None,
-    validation_prompt=None,
-    base_model=str,
-    dataset_name=str,
-    repo_folder=None,
-    vae_path=None,
+    images: list = None,
+    validation_prompt: str = None,
+    base_model: str = None,
+    dataset_name: str = None,
+    repo_folder: str = None,
+    vae_path: str = None,
 ):
     img_str = ""
     for i, image in enumerate(images):
