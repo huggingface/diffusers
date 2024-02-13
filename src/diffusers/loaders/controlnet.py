@@ -38,6 +38,9 @@ class FromOriginalControlNetMixin:
                     - A link to the `.ckpt` file (for example
                       `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
                     - A path to a *file* containing all pipeline weights.
+            config_file (`str`, *optional*):
+                Filepath to the configuration YAML file associated with the model. If not provided it will default to:
+                https://raw.githubusercontent.com/lllyasviel/ControlNet/main/models/cldm_v15.yaml
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
                 dtype is automatically derived from the model's weights.
