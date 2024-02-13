@@ -105,7 +105,9 @@ class FromOriginalControlNetMixin:
 
         class_name = cls.__name__
         if (config_file is not None) and (original_config_file is not None):
-            raise ValueError("Cannot pass both `config_file` and `original_config_file` should be passed.")
+            raise ValueError(
+                "You cannot pass both `config_file` and `original_config_file` to `from_single_file`. Please use only one of these arguments."
+            )
 
         original_config_file = config_file or original_config_file
         original_config, checkpoint = fetch_ldm_config_and_checkpoint(
