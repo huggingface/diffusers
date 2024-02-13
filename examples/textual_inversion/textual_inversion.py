@@ -85,10 +85,13 @@ check_min_version("0.27.0.dev0")
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images: dict =None, base_model: str=None, repo_folder: str=None):
+def save_model_card(repo_id: str, image_logs: dict =None, base_model: str=None, repo_folder: str=None):
     img_str = ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
+    for i, log in enumerate(image_logs):
+        images = log["images"]
+        validation_prompt = log["validation_prompt"]
+        validation_image = log["validation_image"]
+        validation_image.save(os.path.join(repo_folder, "image_control.png"))
         img_str += f"![img_{i}](./image_{i}.png)\n"
 
     
