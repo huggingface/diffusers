@@ -1011,7 +1011,6 @@ class DreamBoothDataset(Dataset):
             example["class_original_size"] = self.original_sizes_class_imgs[index % self.num_class_images]
             example["class_crop_top_left"] = self.crop_top_lefts_class_imgs[index % self.num_class_images]
 
-
         return example
 
 
