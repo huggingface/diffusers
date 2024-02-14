@@ -483,6 +483,23 @@ class TextualInversionLoaderMixin:
 
         # Remove just one token
         pipeline.unload_textual_inversion("<moe-bius>")
+
+        # Examples 3 (based on SDXL LoRA Advanced training)
+        pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        embedding_path = hf_hub_download(repo_id="LinoyTsaban/web_y2k_lora", filename="web_y2k_emb.safetensors", repo_type="model")
+
+        # load embeddings to the text encoders
+        state_dict = load_file(embedding_path)
+
+        # load embeddings of text_encoder 1 (CLIP ViT-L/14)
+        pipeline.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
+        # load embeddings of text_encoder 2 (CLIP ViT-G/14)
+        pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
+
+        # Unload explicitly from both text encoders abd tokenizers
+        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
+        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
+
         ```
         """
 
