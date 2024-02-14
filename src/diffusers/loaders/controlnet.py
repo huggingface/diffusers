@@ -133,7 +133,6 @@ class FromOriginalControlNetMixin:
             checkpoint,
             upcast_attention=upcast_attention,
             image_size=image_size,
-            torch_dtype=torch_dtype,
         )
         controlnet = component["controlnet"]
         if torch_dtype is not None:

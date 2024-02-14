@@ -856,7 +856,7 @@ def convert_controlnet_checkpoint(
 
 
 def create_diffusers_controlnet_model_from_ldm(
-    pipeline_class_name, original_config, checkpoint, upcast_attention=False, image_size=None, torch_dtype=None
+    pipeline_class_name, original_config, checkpoint, upcast_attention=False, image_size=None
 ):
     # import here to avoid circular imports
     from ..models import ControlNetModel
@@ -875,9 +875,7 @@ def create_diffusers_controlnet_model_from_ldm(
     if is_accelerate_available():
         from ..models.modeling_utils import load_model_dict_into_meta
 
-        unexpected_keys = load_model_dict_into_meta(
-            controlnet, diffusers_format_controlnet_checkpoint, dtype=torch_dtype
-        )
+        unexpected_keys = load_model_dict_into_meta(controlnet, diffusers_format_controlnet_checkpoint)
         if controlnet._keys_to_ignore_on_load_unexpected is not None:
             for pat in controlnet._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
@@ -1024,7 +1022,7 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     return new_checkpoint
 
 
-def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=False, torch_dtype=None):
+def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=False):
     try:
         config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
     except Exception:
@@ -1050,7 +1048,7 @@ def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_
     if is_accelerate_available():
         from ..models.modeling_utils import load_model_dict_into_meta
 
-        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
+        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict)
         if text_model._keys_to_ignore_on_load_unexpected is not None:
             for pat in text_model._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
@@ -1074,7 +1072,6 @@ def create_text_encoder_from_open_clip_checkpoint(
     prefix="cond_stage_model.model.",
     has_projection=False,
     local_files_only=False,
-    torch_dtype=None,
     **config_kwargs,
 ):
     try:
@@ -1142,7 +1139,7 @@ def create_text_encoder_from_open_clip_checkpoint(
     if is_accelerate_available():
         from ..models.modeling_utils import load_model_dict_into_meta
 
-        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
+        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict)
         if text_model._keys_to_ignore_on_load_unexpected is not None:
             for pat in text_model._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
@@ -1169,7 +1166,6 @@ def create_diffusers_unet_model_from_ldm(
     upcast_attention=False,
     extract_ema=False,
     image_size=None,
-    torch_dtype=None,
 ):
     from ..models import UNet2DConditionModel
 
@@ -1200,7 +1196,7 @@ def create_diffusers_unet_model_from_ldm(
     if is_accelerate_available():
         from ..models.modeling_utils import load_model_dict_into_meta
 
-        unexpected_keys = load_model_dict_into_meta(unet, diffusers_format_unet_checkpoint, dtype=torch_dtype)
+        unexpected_keys = load_model_dict_into_meta(unet, diffusers_format_unet_checkpoint)
         if unet._keys_to_ignore_on_load_unexpected is not None:
             for pat in unet._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
@@ -1216,7 +1212,7 @@ def create_diffusers_unet_model_from_ldm(
 
 
 def create_diffusers_vae_model_from_ldm(
-    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=None, torch_dtype=None
+    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=None
 ):
     # import here to avoid circular imports
     from ..models import AutoencoderKL
@@ -1233,7 +1229,7 @@ def create_diffusers_vae_model_from_ldm(
     if is_accelerate_available():
         from ..models.modeling_utils import load_model_dict_into_meta
 
-        unexpected_keys = load_model_dict_into_meta(vae, diffusers_format_vae_checkpoint, dtype=torch_dtype)
+        unexpected_keys = load_model_dict_into_meta(vae, diffusers_format_vae_checkpoint)
         if vae._keys_to_ignore_on_load_unexpected is not None:
             for pat in vae._keys_to_ignore_on_load_unexpected:
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
@@ -1253,7 +1249,6 @@ def create_text_encoders_and_tokenizers_from_ldm(
     checkpoint,
     model_type=None,
     local_files_only=False,
-    torch_dtype=None,
 ):
     model_type = infer_model_type(original_config, model_type=model_type)
 
@@ -1263,7 +1258,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
 
         try:
             text_encoder = create_text_encoder_from_open_clip_checkpoint(
-                config_name, checkpoint, local_files_only=local_files_only, torch_dtype=torch_dtype, **config_kwargs
+                config_name, checkpoint, local_files_only=local_files_only, **config_kwargs
             )
             tokenizer = CLIPTokenizer.from_pretrained(
                 config_name, subfolder="tokenizer", local_files_only=local_files_only
@@ -1279,7 +1274,9 @@ def create_text_encoders_and_tokenizers_from_ldm(
         try:
             config_name = "openai/clip-vit-large-patch14"
             text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
-                config_name, checkpoint, local_files_only=local_files_only, torch_dtype=torch_dtype
+                config_name,
+                checkpoint,
+                local_files_only=local_files_only,
             )
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
 
@@ -1303,7 +1300,6 @@ def create_text_encoders_and_tokenizers_from_ldm(
                 prefix=prefix,
                 has_projection=True,
                 local_files_only=local_files_only,
-                torch_dtype=torch_dtype,
                 **config_kwargs,
             )
         except Exception:
@@ -1327,7 +1323,6 @@ def create_text_encoders_and_tokenizers_from_ldm(
                 config_name,
                 checkpoint,
                 local_files_only=local_files_only,
-                torch_dtype=torch_dtype,
             )
 
         except Exception:
@@ -1346,7 +1341,6 @@ def create_text_encoders_and_tokenizers_from_ldm(
                 prefix=prefix,
                 has_projection=True,
                 local_files_only=local_files_only,
-                torch_dtype=torch_dtype,
                 **config_kwargs,
             )
         except Exception:

@@ -143,7 +143,6 @@ class FromOriginalVAEMixin:
             checkpoint,
             image_size=image_size,
             scaling_factor=scaling_factor,
-            torch_dtype=torch_dtype,
         )
         vae = component["vae"]
         if torch_dtype is not None:

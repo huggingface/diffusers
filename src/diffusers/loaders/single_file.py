@@ -62,7 +62,6 @@ def build_sub_model_components(
             checkpoint,
             num_in_channels=num_in_channels,
             image_size=image_size,
-            torch_dtype=torch_dtype,
         )
         return unet_components
 
@@ -94,7 +93,6 @@ def build_sub_model_components(
             checkpoint,
             model_type=model_type,
             local_files_only=local_files_only,
-            torch_dtype=torch_dtype,
         )
         return text_encoder_components
 
