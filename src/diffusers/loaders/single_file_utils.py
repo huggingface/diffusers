@@ -48,7 +48,6 @@ if is_transformers_available():
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
-    from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -857,7 +856,7 @@ def convert_controlnet_checkpoint(
 
 
 def create_diffusers_controlnet_model_from_ldm(
-    pipeline_class_name, original_config, checkpoint, upcast_attention=False, image_size=None
+    pipeline_class_name, original_config, checkpoint, upcast_attention=False, image_size=None, torch_dtype=None
 ):
     # import here to avoid circular imports
     from ..models import ControlNetModel
@@ -874,8 +873,19 @@ def create_diffusers_controlnet_model_from_ldm(
         controlnet = ControlNetModel(**diffusers_config)
 
     if is_accelerate_available():
-        for param_name, param in diffusers_format_controlnet_checkpoint.items():
-            set_module_tensor_to_device(controlnet, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(
+            controlnet, diffusers_format_controlnet_checkpoint, dtype=torch_dtype
+        )
+        if controlnet._keys_to_ignore_on_load_unexpected is not None:
+            for pat in controlnet._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {controlnet.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
     else:
         controlnet.load_state_dict(diffusers_format_controlnet_checkpoint)
 
