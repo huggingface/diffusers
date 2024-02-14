@@ -66,6 +66,7 @@ from diffusers.utils import (
     convert_state_dict_to_kohya,
     is_wandb_available,
 )
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -78,24 +79,18 @@ logger = get_logger(__name__)
 def save_model_card(
     repo_id: str,
     images=None,
-    base_model=str,
+    base_model:str=None,
     train_text_encoder=False,
     train_text_encoder_ti=False,
     token_abstraction_dict=None,
     instance_prompt=str,
     validation_prompt=str,
-    repo_folder=None,
+    repo_folder:str=None,
     vae_path=None,
 ):
     img_str = "widget:\n"
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"""
-        - text: '{validation_prompt if validation_prompt else ' ' }'
-          output:
-            url:
-                "image_{i}.png"
-        """
     if not images:
         img_str += f"""
         - text: '{instance_prompt}'
@@ -134,23 +129,7 @@ pipeline.load_textual_inversion(state_dict["clip_l"], token=[{ti_keys}], text_en
                 trigger_str += f"""
 to trigger concept `{key}` → use `{tokens}` in your prompt \n
 """
-
-    yaml = f"""---
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- text-to-image
-- diffusers
-- lora
-- template:sd-lora
-{img_str}
-base_model: {base_model}
-instance_prompt: {instance_prompt}
-license: openrail++
----
-"""
-
-    model_card = f"""
+    model_description = f"""
 # SD1.5 LoRA DreamBooth - {repo_id}
 
 <Gallery />
@@ -198,8 +177,19 @@ Pivotal tuning was enabled: {train_text_encoder_ti}.
 Special VAE used for training: {vae_path}.
 
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=base_model,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = ["stable-diffusion", "stable-diffusion-diffusers", "text-to-image", "diffusers", "lora", "template:sd-lora"]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def import_model_class_from_model_name_or_path(
