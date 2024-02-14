@@ -171,7 +171,7 @@ images[0]
 </hfoption>
 <hfoption id="Video">
 
-IP-Adapter can also help you generate videos that are more aligned with your text prompt. For example, let's load [AnimateDiff](../api/pipelines/animatediff) with it's motion adapter and insert an IP-Adapter into the model with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method.
+IP-Adapter can also help you generate videos that are more aligned with your text prompt. For example, let's load [AnimateDiff](../api/pipelines/animatediff) with its motion adapter and insert an IP-Adapter into the model with the [`~loaders.IPAdapterMixin.load_ip_adapter`] method.
 
 > [!WARNING]
 > If you're planning on offloading the model to the CPU, make sure you run it after you've loaded the IP-Adapter. When you call [`~DiffusionPipeline.enable_model_cpu_offload`] before loading the IP-Adapter, it offloads the image encoder module to the CPU and it'll return an error when you try to run the pipeline.
@@ -233,7 +233,7 @@ export_to_gif(frames, "gummy_bear.gif")
 
 ## Specific use cases
 
-IP-Adapters image prompting and compatibility with other adapters and models makes it a versatile tool for a variety of use cases. This section covers some of the more popular applications of IP-Adapter, and we can't wait to see what you come up with!
+IP-Adapter's image prompting and compatibility with other adapters and models makes it a versatile tool for a variety of use cases. This section covers some of the more popular applications of IP-Adapter, and we can't wait to see what you come up with!
 
 ### Face model
 
@@ -301,7 +301,7 @@ image_encoder = CLIPVisionModelWithProjection.from_pretrained(
 )
 ```
 
-Next, you'll load a base model, scheduler, and the IP-Adapter's. The IP-Adapter's to use are passed as a list to the `weight_name` parameter:
+Next, you'll load a base model, scheduler, and the IP-Adapters. The IP-Adapters to use are passed as a list to the `weight_name` parameter:
 
 * [ip-adapter-plus_sdxl_vit-h](https://huggingface.co/h94/IP-Adapter#ip-adapter-for-sdxl-10) uses patch embeddings and a ViT-H image encoder
 * [ip-adapter-plus-face_sdxl_vit-h](https://huggingface.co/h94/IP-Adapter#ip-adapter-for-sdxl-10) has the same architecture but it is conditioned with images of cropped faces
@@ -361,7 +361,7 @@ image = pipeline(
 
 ### Instant generation
 
-[Latent Consistency Models (LCM)](../using-diffusers/inference_with_lcm_lora) are diffusion models that can generate images in as little as 4 steps compared to other diffusion models like SDXL that typically require way more steps. This is why image generation with a LCM feels "instantaneous". IP-Adapter's can be plugged into a LCM-LoRA model to instantly generate images with an image prompt.
+[Latent Consistency Models (LCM)](../using-diffusers/inference_with_lcm_lora) are diffusion models that can generate images in as little as 4 steps compared to other diffusion models like SDXL that typically require way more steps. This is why image generation with an LCM feels "instantaneous". IP-Adapters can be plugged into an LCM-LoRA model to instantly generate images with an image prompt.
 
 The IP-Adapter weights need to be loaded first, then you can use [`~StableDiffusionPipeline.load_lora_weights`] to load the LoRA style and weight you want to apply to your image.
 
