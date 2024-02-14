@@ -457,6 +457,8 @@ class TextualInversionLoaderMixin:
     def unload_textual_inversion(
         self,
         tokens: Optional[Union[str, List[str]]] = None,
+        tokenizer: Optional["PreTrainedTokenizer"] = None,
+        text_encoder: Optional["PreTrainedModel"] = None,
     ):
         r"""
         Unload Textual Inversion embeddings from the text encoder of [`StableDiffusionPipeline`]
@@ -484,8 +486,8 @@ class TextualInversionLoaderMixin:
         ```
         """
 
-        tokenizer = getattr(self, "tokenizer", None)
-        text_encoder = getattr(self, "text_encoder", None)
+        tokenizer = tokenizer or getattr(self, "tokenizer", None)
+        text_encoder = text_encoder or getattr(self, "text_encoder", None)
 
         # Get textual inversion tokens and ids
         token_ids = []
