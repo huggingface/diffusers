@@ -1387,7 +1387,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # Obtain a sorted dictionary for mapping the model-level components
             # to their sizes.
             module_sizes = {
-                module_name: sum(compute_module_sizes(module, dtype=torch_dtype).values())
+                module_name: compute_module_sizes(module, dtype=torch_dtype)[""])
                 for module_name, module in init_empty_modules.items()
                 if isinstance(module, torch.nn.Module)
             }
