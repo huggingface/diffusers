@@ -1014,7 +1014,7 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     return new_checkpoint
 
 
-def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=False):
+def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=False, torch_dtype=None):
     try:
         config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
     except Exception:
@@ -1038,8 +1038,17 @@ def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_
                 text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
-        for param_name, param in text_model_dict.items():
-            set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
+        if text_model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in text_model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {text_model.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
     else:
         if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
             text_model_dict.pop("text_model.embeddings.position_ids", None)
@@ -1055,6 +1064,7 @@ def create_text_encoder_from_open_clip_checkpoint(
     prefix="cond_stage_model.model.",
     has_projection=False,
     local_files_only=False,
+    torch_dtype=None,
     **config_kwargs,
 ):
     try:
@@ -1120,8 +1130,17 @@ def create_text_encoder_from_open_clip_checkpoint(
             text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
-        for param_name, param in text_model_dict.items():
-            set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
+        if text_model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in text_model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {text_model.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
 
     else:
         if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
@@ -1140,6 +1159,7 @@ def create_diffusers_unet_model_from_ldm(
     upcast_attention=False,
     extract_ema=False,
     image_size=None,
+    torch_dtype=None,
 ):
     from ..models import UNet2DConditionModel
 
@@ -1168,8 +1188,17 @@ def create_diffusers_unet_model_from_ldm(
         unet = UNet2DConditionModel(**unet_config)
 
     if is_accelerate_available():
-        for param_name, param in diffusers_format_unet_checkpoint.items():
-            set_module_tensor_to_device(unet, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(unet, diffusers_format_unet_checkpoint, dtype=torch_dtype)
+        if unet._keys_to_ignore_on_load_unexpected is not None:
+            for pat in unet._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {unet.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
     else:
         unet.load_state_dict(diffusers_format_unet_checkpoint)
 
@@ -1177,7 +1206,7 @@ def create_diffusers_unet_model_from_ldm(
 
 
 def create_diffusers_vae_model_from_ldm(
-    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=None
+    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=None, torch_dtype=None
 ):
     # import here to avoid circular imports
     from ..models import AutoencoderKL
@@ -1192,8 +1221,17 @@ def create_diffusers_vae_model_from_ldm(
         vae = AutoencoderKL(**vae_config)
 
     if is_accelerate_available():
-        for param_name, param in diffusers_format_vae_checkpoint.items():
-            set_module_tensor_to_device(vae, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(vae, diffusers_format_vae_checkpoint, dtype=torch_dtype)
+        if vae._keys_to_ignore_on_load_unexpected is not None:
+            for pat in vae._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {vae.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
     else:
         vae.load_state_dict(diffusers_format_vae_checkpoint)
 
@@ -1205,6 +1243,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
     checkpoint,
     model_type=None,
     local_files_only=False,
+    torch_dtype=None,
 ):
     model_type = infer_model_type(original_config, model_type=model_type)
 
@@ -1214,7 +1253,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
 
         try:
             text_encoder = create_text_encoder_from_open_clip_checkpoint(
-                config_name, checkpoint, local_files_only=local_files_only, **config_kwargs
+                config_name, checkpoint, local_files_only=local_files_only, torch_dtype=torch_dtype, **config_kwargs
             )
             tokenizer = CLIPTokenizer.from_pretrained(
                 config_name, subfolder="tokenizer", local_files_only=local_files_only
@@ -1230,7 +1269,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
         try:
             config_name = "openai/clip-vit-large-patch14"
             text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
-                config_name, checkpoint, local_files_only=local_files_only
+                config_name, checkpoint, local_files_only=local_files_only, torch_dtype=torch_dtype
             )
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
 
@@ -1254,6 +1293,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
                 prefix=prefix,
                 has_projection=True,
                 local_files_only=local_files_only,
+                torch_dtype=torch_dtype,
                 **config_kwargs,
             )
         except Exception:
@@ -1274,7 +1314,10 @@ def create_text_encoders_and_tokenizers_from_ldm(
             config_name = "openai/clip-vit-large-patch14"
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
             text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
-                config_name, checkpoint, local_files_only=local_files_only
+                config_name,
+                checkpoint,
+                local_files_only=local_files_only,
+                torch_dtype=torch_dtype,
             )
 
         except Exception:
@@ -1293,6 +1336,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
                 prefix=prefix,
                 has_projection=True,
                 local_files_only=local_files_only,
+                torch_dtype=torch_dtype,
                 **config_kwargs,
             )
         except Exception:
