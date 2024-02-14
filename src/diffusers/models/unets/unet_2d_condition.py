@@ -55,6 +55,24 @@ from .unet_2d_blocks import (
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
+def correct_incorrect_names(attention_head_dim, down_block_types, mid_block_type, up_block_types):
+    incorrect_attention_head_dim_name = False
+    if (
+        "CrossAttnDownBlock2D" in down_block_types
+        or "CrossAttnUpBlock2D" in up_block_types
+        or mid_block_type == "UNetMidBlock2DCrossAttn"
+    ):
+        incorrect_attention_head_dim_name = True
+
+    if incorrect_attention_head_dim_name:
+        num_attention_heads = attention_head_dim
+        attention_head_dimension = None
+    else:
+        num_attention_heads = None
+        attention_head_dimension = attention_head_dim
+    return num_attention_heads, attention_head_dimension
+
+
 @dataclass
 class UNet2DConditionOutput(BaseOutput):
     """
@@ -196,6 +214,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
         attention_head_dim: Union[int, Tuple[int]] = 8,
+        attention_head_dimension: Optional[Union[int, Tuple[int]]] = None,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
@@ -225,20 +244,22 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
 
         self.sample_size = sample_size
 
-        if num_attention_heads is not None:
-            raise ValueError(
-                "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
+        if attention_head_dim is not None:
+            deprecation_message = " `attention_head_dim` is deprecated and will be removed in a future version. Use `num_attention_heads` and `attention_head_dimension` instead."
+            deprecate("attention_head_dim not None", "1.0.0", deprecation_message, standard_warn=False)
+            num_attention_heads, attention_head_dimension = correct_incorrect_names(
+                attention_head_dim, down_block_types, mid_block_type, up_block_types
+            )
+            logger.warning(
+                f"corrected potentially incorrect arguments, the model will be configured with `num_attention_heads` {num_attention_heads} and `attention_head_dimension` {attention_head_dimension}."
             )
 
-        # If `num_attention_heads` is not defined (which is the case for most models)
-        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
-        # The reason for this behavior is to correct for incorrectly named variables that were introduced
-        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
-        # which is why we correct for the naming here.
-        num_attention_heads = num_attention_heads or attention_head_dim
-
         # Check inputs
+        if attention_head_dimension is not None and num_attention_heads is not None:
+            raise ValueError(
+                "You can only define either `attention_head_dimension` or `num_attention_heads` but not both."
+            )
+
         if len(down_block_types) != len(up_block_types):
             raise ValueError(
                 f"Must provide the same number of `down_block_types` as `up_block_types`. `down_block_types`: {down_block_types}. `up_block_types`: {up_block_types}."
@@ -254,14 +275,22 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 f"Must provide the same number of `only_cross_attention` as `down_block_types`. `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
             )
 
-        if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
+        if (
+            num_attention_heads is not None
+            and not isinstance(num_attention_heads, int)
+            and len(num_attention_heads) != len(down_block_types)
+        ):
             raise ValueError(
                 f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
 
-        if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
+        if (
+            attention_head_dimension is not None
+            and not isinstance(attention_head_dimension, int)
+            and len(attention_head_dimension) != len(down_block_types)
+        ):
             raise ValueError(
-                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
+                f"Must provide the same number of `attention_head_dimension` as `down_block_types`. `attention_head_dimension`: {attention_head_dimension}. `down_block_types`: {down_block_types}."
             )
 
         if isinstance(cross_attention_dim, list) and len(cross_attention_dim) != len(down_block_types):
@@ -278,6 +307,24 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 if isinstance(layer_number_per_block, list):
                     raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
 
+        # we use attention_head_dim to calculate num_attention_heads
+        if attention_head_dimension is not None:
+            if isinstance(attention_head_dimension, int):
+                num_attention_heads = [out_channels // attention_head_dimension for out_channels in block_out_channels]
+            else:
+                num_attention_heads = [
+                    out_channels // attn_dim
+                    for out_channel, attn_dim in zip(block_out_channels, attention_head_dimension)
+                ]
+        # we use num_attention_heads to calculate attention_head_dimension
+        elif num_attention_heads is not None:
+            if isinstance(num_attention_heads, int):
+                attention_head_dimension = [out_channels // num_attention_heads for out_channels in block_out_channels]
+            else:
+                attention_head_dimension = [
+                    out_channels // num_heads
+                    for out_channel, num_heads in zip(block_out_channels, num_attention_heads)
+                ]
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
@@ -422,8 +469,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         if isinstance(num_attention_heads, int):
             num_attention_heads = (num_attention_heads,) * len(down_block_types)
 
-        if isinstance(attention_head_dim, int):
-            attention_head_dim = (attention_head_dim,) * len(down_block_types)
+        if isinstance(attention_head_dimension, int):
+            attention_head_dimension = (attention_head_dimension,) * len(down_block_types)
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
@@ -472,7 +519,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
-                attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                attention_head_dim=attention_head_dimension[i],
                 dropout=dropout,
             )
             self.down_blocks.append(down_block)
@@ -490,6 +537,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 cross_attention_dim=cross_attention_dim[-1],
                 num_attention_heads=num_attention_heads[-1],
+                attention_head_dim=attention_head_dimension[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=dual_cross_attention,
                 use_linear_projection=use_linear_projection,
@@ -505,7 +553,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 resnet_act_fn=act_fn,
                 output_scale_factor=mid_block_scale_factor,
                 cross_attention_dim=cross_attention_dim[-1],
-                attention_head_dim=attention_head_dim[-1],
+                num_attention_heads=num_attention_heads[-1],
+                attention_head_dim=attention_head_dimension[-1],
                 resnet_groups=norm_num_groups,
                 resnet_time_scale_shift=resnet_time_scale_shift,
                 skip_time_act=resnet_skip_time_act,
@@ -536,6 +585,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         # up
         reversed_block_out_channels = list(reversed(block_out_channels))
         reversed_num_attention_heads = list(reversed(num_attention_heads))
+        reversed_attention_head_dimension = list(reversed(attention_head_dimension))
         reversed_layers_per_block = list(reversed(layers_per_block))
         reversed_cross_attention_dim = list(reversed(cross_attention_dim))
         reversed_transformer_layers_per_block = (
@@ -584,7 +634,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 resnet_skip_time_act=resnet_skip_time_act,
                 resnet_out_scale_factor=resnet_out_scale_factor,
                 cross_attention_norm=cross_attention_norm,
-                attention_head_dim=attention_head_dim[i] if attention_head_dim[i] is not None else output_channel,
+                attention_head_dim=reversed_attention_head_dimension[i],
                 dropout=dropout,
             )
             self.up_blocks.append(up_block)

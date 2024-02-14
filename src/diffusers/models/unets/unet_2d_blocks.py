@@ -119,6 +119,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             downsample_type=downsample_type,
@@ -140,6 +141,7 @@ def get_down_block(
             downsample_padding=downsample_padding,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
+            attention_head_dim=attention_head_dim,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
@@ -161,6 +163,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             skip_time_act=resnet_skip_time_act,
@@ -191,6 +194,7 @@ def get_down_block(
             add_downsample=add_downsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
@@ -218,6 +222,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
@@ -243,6 +248,7 @@ def get_down_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             add_self_attention=True if not add_downsample else False,
         )
@@ -335,6 +341,7 @@ def get_up_block(
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
+            attention_head_dim=attention_head_dim,
             dual_cross_attention=dual_cross_attention,
             use_linear_projection=use_linear_projection,
             only_cross_attention=only_cross_attention,
@@ -358,6 +365,7 @@ def get_up_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             cross_attention_dim=cross_attention_dim,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             skip_time_act=resnet_skip_time_act,
@@ -382,6 +390,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             upsample_type=upsample_type,
@@ -412,6 +421,7 @@ def get_up_block(
             add_upsample=add_upsample,
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
         )
@@ -440,6 +450,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             temb_channels=temb_channels,
@@ -468,6 +479,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             cross_attention_dim=cross_attention_dim,
+            num_attention_heads=num_attention_heads,
             attention_head_dim=attention_head_dim,
         )
 
@@ -555,6 +567,7 @@ class UNetMidBlock2D(nn.Module):
         attn_groups: Optional[int] = None,
         resnet_pre_norm: bool = True,
         add_attention: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
     ):
@@ -602,13 +615,15 @@ class UNetMidBlock2D(nn.Module):
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
             )
             attention_head_dim = in_channels
+        if num_attention_heads is None:
+            num_attention_heads = in_channels // attention_head_dim
 
         for _ in range(num_layers):
             if self.add_attention:
                 attentions.append(
                     Attention(
                         in_channels,
-                        heads=in_channels // attention_head_dim,
+                        heads=num_attention_heads,
                         dim_head=attention_head_dim,
                         rescale_output_factor=output_scale_factor,
                         eps=resnet_eps,
@@ -680,6 +695,7 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         num_attention_heads: int = 1,
+        attention_head_dim: Optional[int] = None,
         output_scale_factor: float = 1.0,
         cross_attention_dim: int = 1280,
         dual_cross_attention: bool = False,
@@ -692,6 +708,9 @@ class UNetMidBlock2DCrossAttn(nn.Module):
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
+
+        if attention_head_dim is None:
+            attention_head_dim = in_channels // num_attention_heads
 
         # support for variable transformer layers per block
         if isinstance(transformer_layers_per_block, int):
@@ -718,8 +737,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
-                        num_attention_heads,
-                        in_channels // num_attention_heads,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=attention_head_dim,
                         in_channels=in_channels,
                         num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
@@ -732,8 +751,8 @@ class UNetMidBlock2DCrossAttn(nn.Module):
             else:
                 attentions.append(
                     DualTransformer2DModel(
-                        num_attention_heads,
-                        in_channels // num_attention_heads,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=attention_head_dim,
                         in_channels=in_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -824,6 +843,7 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
         cross_attention_dim: int = 1280,
@@ -838,7 +858,9 @@ class UNetMidBlock2DSimpleCrossAttn(nn.Module):
         self.attention_head_dim = attention_head_dim
         resnet_groups = resnet_groups if resnet_groups is not None else min(in_channels // 4, 32)
 
-        self.num_heads = in_channels // self.attention_head_dim
+        if num_attention_heads is None:
+            num_attention_heads = in_channels // attention_head_dim
+        self.num_heads = num_attention_heads
 
         # there is always at least one resnet
         resnets = [
@@ -949,6 +971,7 @@ class AttnDownBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
         downsample_padding: int = 1,
@@ -964,6 +987,9 @@ class AttnDownBlock2D(nn.Module):
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
+
+        if num_attention_heads is None:
+            num_attention_heads = out_channels // attention_head_dim
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -984,7 +1010,7 @@ class AttnDownBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim,
+                    heads=num_attention_heads,
                     dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
@@ -1074,6 +1100,7 @@ class CrossAttnDownBlock2D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         num_attention_heads: int = 1,
+        attention_head_dim: Optional[int] = None,
         cross_attention_dim: int = 1280,
         output_scale_factor: float = 1.0,
         downsample_padding: int = 1,
@@ -1090,6 +1117,9 @@ class CrossAttnDownBlock2D(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
+        if attention_head_dim is None:
+            attention_head_dim = out_channels // num_attention_heads
+
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
@@ -1112,8 +1142,8 @@ class CrossAttnDownBlock2D(nn.Module):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
-                        num_attention_heads,
-                        out_channels // num_attention_heads,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=attention_head_dim,
                         in_channels=out_channels,
                         num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
@@ -1127,8 +1157,8 @@ class CrossAttnDownBlock2D(nn.Module):
             else:
                 attentions.append(
                     DualTransformer2DModel(
-                        num_attention_heads,
-                        out_channels // num_attention_heads,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=attention_head_dim,
                         in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -1395,6 +1425,7 @@ class AttnDownEncoderBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
         add_downsample: bool = True,
@@ -1409,6 +1440,9 @@ class AttnDownEncoderBlock2D(nn.Module):
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
+
+        if num_attention_heads is None:
+            num_attention_heads = out_channels // attention_head_dim
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1444,7 +1478,7 @@ class AttnDownEncoderBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim,
+                    heads=num_attention_heads,
                     dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
@@ -1495,6 +1529,7 @@ class AttnSkipDownBlock2D(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_pre_norm: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         output_scale_factor: float = np.sqrt(2.0),
         add_downsample: bool = True,
@@ -1508,6 +1543,9 @@ class AttnSkipDownBlock2D(nn.Module):
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
+
+        if num_attention_heads is None:
+            num_attention_heads = out_channels // attention_head_dim
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1529,7 +1567,7 @@ class AttnSkipDownBlock2D(nn.Module):
             self.attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim,
+                    heads=num_attention_heads,
                     dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
@@ -1789,6 +1827,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         cross_attention_dim: int = 1280,
         output_scale_factor: float = 1.0,
@@ -1805,7 +1844,9 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
         attentions = []
 
         self.attention_head_dim = attention_head_dim
-        self.num_heads = out_channels // self.attention_head_dim
+        if num_attention_heads is None:
+            num_attention_heads = out_channels // attention_head_dim
+        self.num_heads = num_attention_heads
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
@@ -1833,7 +1874,7 @@ class SimpleCrossAttnDownBlock2D(nn.Module):
                 Attention(
                     query_dim=out_channels,
                     cross_attention_dim=out_channels,
-                    heads=self.num_heads,
+                    heads=num_attention_heads,
                     dim_head=attention_head_dim,
                     added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
@@ -2027,6 +2068,7 @@ class KCrossAttnDownBlock2D(nn.Module):
         num_layers: int = 4,
         resnet_group_size: int = 32,
         add_downsample: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 64,
         add_self_attention: bool = False,
         resnet_eps: float = 1e-5,
@@ -2035,6 +2077,9 @@ class KCrossAttnDownBlock2D(nn.Module):
         super().__init__()
         resnets = []
         attentions = []
+
+        if num_attention_heads is None:
+            num_attention_heads = out_channels // attention_head_dim
 
         self.has_cross_attention = True
 
@@ -2059,9 +2104,9 @@ class KCrossAttnDownBlock2D(nn.Module):
             )
             attentions.append(
                 KAttentionBlock(
-                    out_channels,
-                    out_channels // attention_head_dim,
-                    attention_head_dim,
+                    dim=out_channels,
+                    num_attention_heads=num_attention_heads,
+                    attention_head_dim=attention_head_dim,
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,
                     attention_bias=True,
@@ -2158,6 +2203,7 @@ class AttnUpBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
         upsample_type: str = "conv",
@@ -2173,6 +2219,9 @@ class AttnUpBlock2D(nn.Module):
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
+
+        if num_attention_heads is None:
+            num_attention_heads = out_channels // attention_head_dim
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -2195,7 +2244,7 @@ class AttnUpBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim,
+                    heads=num_attention_heads,
                     dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
@@ -2280,6 +2329,7 @@ class CrossAttnUpBlock2D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         num_attention_heads: int = 1,
+        attention_head_dim: Optional[int] = None,
         cross_attention_dim: int = 1280,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
@@ -2295,6 +2345,9 @@ class CrossAttnUpBlock2D(nn.Module):
 
         self.has_cross_attention = True
         self.num_attention_heads = num_attention_heads
+
+        if attention_head_dim is None:
+            attention_head_dim = out_channels // num_attention_heads
 
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * num_layers
@@ -2320,8 +2373,8 @@ class CrossAttnUpBlock2D(nn.Module):
             if not dual_cross_attention:
                 attentions.append(
                     Transformer2DModel(
-                        num_attention_heads,
-                        out_channels // num_attention_heads,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=attention_head_dim,
                         in_channels=out_channels,
                         num_layers=transformer_layers_per_block[i],
                         cross_attention_dim=cross_attention_dim,
@@ -2335,8 +2388,8 @@ class CrossAttnUpBlock2D(nn.Module):
             else:
                 attentions.append(
                     DualTransformer2DModel(
-                        num_attention_heads,
-                        out_channels // num_attention_heads,
+                        num_attention_heads=num_attention_heads,
+                        attention_head_dim=attention_head_dim,
                         in_channels=out_channels,
                         num_layers=1,
                         cross_attention_dim=cross_attention_dim,
@@ -2634,6 +2687,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         output_scale_factor: float = 1.0,
         add_upsample: bool = True,
@@ -2648,6 +2702,9 @@ class AttnUpDecoderBlock2D(nn.Module):
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `out_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
+
+        if num_attention_heads is None:
+            num_attention_heads = out_channels // attention_head_dim
 
         for i in range(num_layers):
             input_channels = in_channels if i == 0 else out_channels
@@ -2685,7 +2742,7 @@ class AttnUpDecoderBlock2D(nn.Module):
             attentions.append(
                 Attention(
                     out_channels,
-                    heads=out_channels // attention_head_dim,
+                    heads=num_attention_heads,
                     dim_head=attention_head_dim,
                     rescale_output_factor=output_scale_factor,
                     eps=resnet_eps,
@@ -2737,6 +2794,7 @@ class AttnSkipUpBlock2D(nn.Module):
         resnet_time_scale_shift: str = "default",
         resnet_act_fn: str = "swish",
         resnet_pre_norm: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         output_scale_factor: float = np.sqrt(2.0),
         add_upsample: bool = True,
@@ -2771,10 +2829,13 @@ class AttnSkipUpBlock2D(nn.Module):
             )
             attention_head_dim = out_channels
 
+        if num_attention_heads is None:
+            num_attention_heads = out_channels // attention_head_dim
+
         self.attentions.append(
             Attention(
                 out_channels,
-                heads=out_channels // attention_head_dim,
+                heads=num_attention_heads,
                 dim_head=attention_head_dim,
                 rescale_output_factor=output_scale_factor,
                 eps=resnet_eps,
@@ -3082,6 +3143,7 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,
         cross_attention_dim: int = 1280,
         output_scale_factor: float = 1.0,
@@ -3097,7 +3159,9 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
         self.has_cross_attention = True
         self.attention_head_dim = attention_head_dim
 
-        self.num_heads = out_channels // self.attention_head_dim
+        if num_attention_heads is None:
+            num_attention_heads = out_channels // attention_head_dim
+        self.num_heads = num_attention_heads
 
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
@@ -3127,8 +3191,8 @@ class SimpleCrossAttnUpBlock2D(nn.Module):
                 Attention(
                     query_dim=out_channels,
                     cross_attention_dim=out_channels,
-                    heads=self.num_heads,
-                    dim_head=self.attention_head_dim,
+                    heads=num_attention_heads,
+                    dim_head=attention_head_dim,
                     added_kv_proj_dim=cross_attention_dim,
                     norm_num_groups=resnet_groups,
                     bias=True,
@@ -3334,6 +3398,7 @@ class KCrossAttnUpBlock2D(nn.Module):
         resnet_eps: float = 1e-5,
         resnet_act_fn: str = "gelu",
         resnet_group_size: int = 32,
+        num_attention_heads: Optional[int] = None,
         attention_head_dim: int = 1,  # attention dim_head
         cross_attention_dim: int = 768,
         add_upsample: bool = True,
@@ -3349,6 +3414,11 @@ class KCrossAttnUpBlock2D(nn.Module):
 
         self.has_cross_attention = True
         self.attention_head_dim = attention_head_dim
+
+        if num_attention_heads is not None:
+            logger.warn(
+                "`num_attention_heads` argument is passed but ignored. The number of attention heads is determined by `attention_head_dim`, `in_channels` and `out_channels`."
+            )
 
         # in_channels, and out_channels for the block (k-unet)
         k_in_channels = out_channels if is_first_block else 2 * out_channels
@@ -3383,11 +3453,11 @@ class KCrossAttnUpBlock2D(nn.Module):
             )
             attentions.append(
                 KAttentionBlock(
-                    k_out_channels if (i == num_layers - 1) else out_channels,
-                    k_out_channels // attention_head_dim
+                    dim=k_out_channels if (i == num_layers - 1) else out_channels,
+                    num_attention_heads=k_out_channels // attention_head_dim
                     if (i == num_layers - 1)
                     else out_channels // attention_head_dim,
-                    attention_head_dim,
+                    attention_head_dim=attention_head_dim,
                     cross_attention_dim=cross_attention_dim,
                     temb_channels=temb_channels,
                     attention_bias=True,
