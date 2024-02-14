@@ -58,6 +58,8 @@
   - sections:
     - local: using-diffusers/textual_inversion_inference
       title: Textual inversion
+    - local: using-diffusers/ip_adapter
+      title: IP-Adapter
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
