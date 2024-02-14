@@ -68,7 +68,7 @@ def build_sub_model_components(
     if component_name == "vae":
         scaling_factor = kwargs.get("scaling_factor", None)
         vae_components = create_diffusers_vae_model_from_ldm(
-            pipeline_class_name, original_config, checkpoint, image_size, scaling_factor, torch_dtype=torch_dtype
+            pipeline_class_name, original_config, checkpoint, image_size, scaling_factor
         )
         return vae_components
 
