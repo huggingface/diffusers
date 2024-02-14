@@ -1,0 +1,23 @@
+name: Notify Slack on Library Update
+
+on:
+  schedule:
+    # Runs at 12:00 UTC every day
+    - cron: '0 12 * * *'
+
+jobs:
+  notify-slack:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v3
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+    - name: Install dependencies
+      run: pip install requests
+    - name: Run the Slack notification script
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      run: python scripts/notify_slack.py
