@@ -167,7 +167,22 @@ list_adapters_component_wise
 
 ## Compatibility with `torch.compile`
 
-If you want to compile your model with `torch.compile` make sure to first fuse the LoRA weights into the base model as explained in the section below.
+If you want to compile your model with `torch.compile` make sure to first fuse the LoRA weights into the base model and unload them.
+
+```py
+pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
+
+pipe.set_adapters(["pixel", "toy"], adapter_weights=[0.5, 1.0])
+# Fuses the LoRAs into the Unet
+pipe.fuse_lora()
+pipe.unload_lora_weights()
+
+pipe = torch.compile(pipe)
+
+prompt = "toy_face of a hacker with a hoodie, pixel art"
+image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
+```
 
 ## Fusing adapters into the model
 
