@@ -1387,7 +1387,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # Obtain a sorted dictionary for mapping the model-level components
             # to their sizes.
             module_sizes = {
-                module_name: compute_module_sizes(module, dtype=torch_dtype)[""])
+                module_name: compute_module_sizes(module, dtype=torch_dtype)[""]
                 for module_name, module in init_empty_modules.items()
                 if isinstance(module, torch.nn.Module)
             }
@@ -1538,6 +1538,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         return model
 
+    # TODO (sayakpaul, SunMarc) for later: use the memory req for each module and max_memory of each gpus.
     def _assign_components_to_devices(sorted_components: dict, devices: dict):
         device_ids = list(devices.keys())
         device_cycle = device_ids + device_ids[::-1]
