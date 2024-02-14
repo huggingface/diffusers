@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -175,6 +175,7 @@ DIFFUSERS_TO_LDM_MAPPING = {
 }
 
 LDM_VAE_KEY = "first_stage_model."
+LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CONTROLNET_KEY = "control_model."
 LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
@@ -518,7 +519,10 @@ def create_vae_diffusers_config(original_config, image_size, scaling_factor=None
     Creates a config for the diffusers based on the config of the LDM model.
     """
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
-    scaling_factor = scaling_factor or original_config["model"]["params"]["scale_factor"]
+    if scaling_factor is None and "scale_factor" in original_config["model"]["params"]:
+        scaling_factor = original_config["model"]["params"]["scale_factor"]
+    elif scaling_factor is None:
+        scaling_factor = LDM_VAE_DEFAULT_SCALING_FACTOR
 
     block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
@@ -1112,7 +1116,6 @@ def create_text_encoder_from_open_clip_checkpoint(
             text_model_dict[diffusers_key + ".q_proj.bias"] = weight_value[:text_proj_dim]
             text_model_dict[diffusers_key + ".k_proj.bias"] = weight_value[text_proj_dim : text_proj_dim * 2]
             text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :]
-
         else:
             text_model_dict[diffusers_key] = checkpoint[key]
 
@@ -1174,7 +1177,7 @@ def create_diffusers_unet_model_from_ldm(
 
 
 def create_diffusers_vae_model_from_ldm(
-    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=0.18125
+    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=None
 ):
     # import here to avoid circular imports
     from ..models import AutoencoderKL

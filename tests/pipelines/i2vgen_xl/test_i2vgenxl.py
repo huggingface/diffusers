@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -80,7 +80,8 @@ class I2VGenXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             down_block_types=("CrossAttnDownBlock3D", "DownBlock3D"),
             up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
             cross_attention_dim=4,
-            num_attention_heads=4,
+            attention_head_dim=4,
+            num_attention_heads=None,
             norm_num_groups=2,
         )
 
