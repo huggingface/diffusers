@@ -1166,9 +1166,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
-        is_cuda_multi_device = torch.cuda.is_available() and torch.cuda.device_count() > 1
-        if device_map is not None and device_map == "auto" and not is_cuda_multi_device:
-            raise ValueError("`device_map='auto'` needs multiple CUDA devices to be present.")
+        # is_cuda_multi_device = torch.cuda.is_available() and torch.cuda.device_count() > 1
+        # if device_map is not None and device_map == "auto" and not is_cuda_multi_device:
+        #     raise ValueError("`device_map='auto'` needs multiple CUDA devices to be present.")
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
