@@ -1320,9 +1320,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
             config_name = "openai/clip-vit-large-patch14"
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
             text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
-                config_name,
-                checkpoint,
-                local_files_only=local_files_only,
+                config_name, checkpoint, local_files_only=local_files_only
             )
 
         except Exception:

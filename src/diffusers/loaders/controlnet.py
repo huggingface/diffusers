@@ -128,11 +128,7 @@ class FromOriginalControlNetMixin:
         image_size = kwargs.pop("image_size", None)
 
         component = create_diffusers_controlnet_model_from_ldm(
-            class_name,
-            original_config,
-            checkpoint,
-            upcast_attention=upcast_attention,
-            image_size=image_size,
+            class_name, original_config, checkpoint, upcast_attention=upcast_attention, image_size=image_size
         )
         controlnet = component["controlnet"]
         if torch_dtype is not None:

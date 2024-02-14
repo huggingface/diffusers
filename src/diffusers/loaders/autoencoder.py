@@ -138,11 +138,7 @@ class FromOriginalVAEMixin:
         image_size = kwargs.pop("image_size", None)
         scaling_factor = kwargs.pop("scaling_factor", None)
         component = create_diffusers_vae_model_from_ldm(
-            class_name,
-            original_config,
-            checkpoint,
-            image_size=image_size,
-            scaling_factor=scaling_factor,
+            class_name, original_config, checkpoint, image_size=image_size, scaling_factor=scaling_factor
         )
         vae = component["vae"]
         if torch_dtype is not None:

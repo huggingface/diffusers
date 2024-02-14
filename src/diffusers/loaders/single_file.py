@@ -57,11 +57,7 @@ def build_sub_model_components(
     if component_name == "unet":
         num_in_channels = kwargs.pop("num_in_channels", None)
         unet_components = create_diffusers_unet_model_from_ldm(
-            pipeline_class_name,
-            original_config,
-            checkpoint,
-            num_in_channels=num_in_channels,
-            image_size=image_size,
+            pipeline_class_name, original_config, checkpoint, num_in_channels=num_in_channels, image_size=image_size
         )
         return unet_components
 
