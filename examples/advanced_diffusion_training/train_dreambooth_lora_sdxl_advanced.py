@@ -987,12 +987,9 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = self.pixel_values[index % self.num_instance_images]
-        original_size = self.original_sizes[index % self.num_instance_images]
-        crop_top_left = self.crop_top_lefts[index % self.num_instance_images]
-        example["instance_images"] = instance_image
-        example["original_size"] = original_size
-        example["crop_top_left"] = crop_top_left
+        example["instance_images"] = self.pixel_values[index % self.num_instance_images]
+        example["original_size"] = self.original_sizes[index % self.num_instance_images]
+        example["crop_top_left"] = self.crop_top_lefts[index % self.num_instance_images]
 
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
@@ -1009,13 +1006,10 @@ class DreamBoothDataset(Dataset):
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
-            class_image = self.pixel_values_class_imgs[index % self.num_class_images]
-            original_size = self.original_sizes_class_imgs[index % self.num_class_images]
-            crop_top_left = self.crop_top_lefts_class_imgs[index % self.num_class_images]
             example["class_prompt"] = self.class_prompt
-            example["class_images"] = class_image
-            example["class_original_size"] = original_size
-            example["class_crop_top_left"] = crop_top_left
+            example["class_images"] = self.pixel_values_class_imgs[index % self.num_class_images]
+            example["class_original_size"] = self.original_sizes_class_imgs[index % self.num_class_images]
+            example["class_crop_top_left"] = self.crop_top_lefts_class_imgs[index % self.num_class_images]
 
 
         return example
