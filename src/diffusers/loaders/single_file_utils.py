@@ -1057,7 +1057,7 @@ def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_
 
         if len(unexpected_keys) > 0:
             logger.warn(
-                f"Some weights of the model checkpoint were not used when initializing {text_model.__name__}: \n {[', '.join(unexpected_keys)]}"
+                f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
     else:
         if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
@@ -1149,7 +1149,7 @@ def create_text_encoder_from_open_clip_checkpoint(
 
         if len(unexpected_keys) > 0:
             logger.warn(
-                f"Some weights of the model checkpoint were not used when initializing {text_model.__name__}: \n {[', '.join(unexpected_keys)]}"
+                f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
     else:
