@@ -1172,6 +1172,7 @@ def create_diffusers_unet_model_from_ldm(
     if num_in_channels is None:
         if pipeline_class_name in [
             "StableDiffusionInpaintPipeline",
+            "StableDiffusionControlNetInpaintPipeline",
             "StableDiffusionXLInpaintPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
         ]:
@@ -1190,6 +1191,7 @@ def create_diffusers_unet_model_from_ldm(
 
     diffusers_format_unet_checkpoint = convert_ldm_unet_checkpoint(checkpoint, unet_config, extract_ema=extract_ema)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
+
     with ctx():
         unet = UNet2DConditionModel(**unet_config)
 
