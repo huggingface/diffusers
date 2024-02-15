@@ -231,6 +231,9 @@ export_to_gif(frames, "gummy_bear.gif")
 </hfoption>
 </hfoptions>
 
+> [!TIP]
+> While calling `load_ip_adapter()`, pass `low_cpu_mem_usage=True` to speed up the loading time.
+
 ## Specific use cases
 
 IP-Adapter's image prompting and compatibility with other adapters and models makes it a versatile tool for a variety of use cases. This section covers some of the more popular applications of IP-Adapter, and we can't wait to see what you come up with!
