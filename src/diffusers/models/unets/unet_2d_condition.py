@@ -296,13 +296,14 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 if isinstance(layer_number_per_block, list):
                     raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
 
-        # we use num_attention_heads to calculate attention_head_dim
+        #  make sure num_attention_heads is a tuple
         if isinstance(num_attention_heads, int):
-            attention_head_dim = [out_channels // num_attention_heads for out_channels in block_out_channels]
-        else:
-            attention_head_dim = [
-                out_channels // num_heads for out_channels, num_heads in zip(block_out_channels, num_attention_heads)
-            ]
+            num_attention_heads = (num_attention_heads,) * len(down_block_types)
+
+        # we use num_attention_heads to calculate attention_head_dim
+        attention_head_dim = [
+            out_channels // num_heads for out_channels, num_heads in zip(block_out_channels, num_attention_heads)
+        ]
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
@@ -443,9 +444,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
 
         if mid_block_only_cross_attention is None:
             mid_block_only_cross_attention = False
-
-        if isinstance(num_attention_heads, int):
-            num_attention_heads = (num_attention_heads,) * len(down_block_types)
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,) * len(down_block_types)
