@@ -268,7 +268,6 @@ class GLIGENTextBoundingboxProjection(nn.Module):
         return objs
 
 
-# Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel with UNet2DConditionModel->UNetFlatConditionModel, nn.Conv2d->LinearMultiDim, Block2D->BlockFlat
 class UNetFlatConditionModel(ModelMixin, ConfigMixin):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
@@ -1786,7 +1785,6 @@ class CrossAttnDownBlockFlat(nn.Module):
         return hidden_states, output_states
 
 
-# Copied from diffusers.models.unets.unet_2d_blocks.UpBlock2D with UpBlock2D->UpBlockFlat, ResnetBlock2D->ResnetBlockFlat, Upsample2D->LinearMultiDim
 class UpBlockFlat(nn.Module):
     def __init__(
         self,
@@ -1897,7 +1895,6 @@ class UpBlockFlat(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unets.unet_2d_blocks.CrossAttnUpBlock2D with CrossAttnUpBlock2D->CrossAttnUpBlockFlat, ResnetBlock2D->ResnetBlockFlat, Upsample2D->LinearMultiDim
 class CrossAttnUpBlockFlat(nn.Module):
     def __init__(
         self,
@@ -2071,7 +2068,6 @@ class CrossAttnUpBlockFlat(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unets.unet_2d_blocks.UNetMidBlock2D with UNetMidBlock2D->UNetMidBlockFlat, ResnetBlock2D->ResnetBlockFlat
 class UNetMidBlockFlat(nn.Module):
     """
     A 2D UNet mid-block [`UNetMidBlockFlat`] with multiple residual blocks and optional attention blocks.
@@ -2227,7 +2223,6 @@ class UNetMidBlockFlat(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unets.unet_2d_blocks.UNetMidBlock2DCrossAttn with UNetMidBlock2DCrossAttn->UNetMidBlockFlatCrossAttn, ResnetBlock2D->ResnetBlockFlat
 class UNetMidBlockFlatCrossAttn(nn.Module):
     def __init__(
         self,
@@ -2374,7 +2369,6 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         return hidden_states
 
 
-# Copied from diffusers.models.unets.unet_2d_blocks.UNetMidBlock2DSimpleCrossAttn with UNetMidBlock2DSimpleCrossAttn->UNetMidBlockFlatSimpleCrossAttn, ResnetBlock2D->ResnetBlockFlat
 class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
     def __init__(
         self,
