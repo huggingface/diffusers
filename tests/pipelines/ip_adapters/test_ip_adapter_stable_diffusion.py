@@ -253,7 +253,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.unload_ip_adapter()
 
         assert getattr(pipeline, "image_encoder") is None
-        assert getattr(pipeline, "feature_extractor") is None
+        assert getattr(pipeline, "feature_extractor") is not None
         processors = [
             isinstance(attn_proc, (AttnProcessor, AttnProcessor2_0))
             for name, attn_proc in pipeline.unet.attn_processors.items()
