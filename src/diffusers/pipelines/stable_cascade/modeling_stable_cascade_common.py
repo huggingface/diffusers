@@ -286,14 +286,20 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
             x = upscaler(x)
         return x
 
-    def forward(self, x, r, clip_text_pooled, clip_text=None, clip_img=None, effnet=None, pixels=None, **kwargs):
+    def forward(self, x, r, clip_text_pooled, clip_text=None, clip_img=None, effnet=None, pixels=None, sca=None, crp=None):
         if pixels is None:
             pixels = x.new_zeros(x.size(0), 3, 8, 8)
 
         # Process the conditioning embeddings
         r_embed = self.gen_r_embedding(r)
         for c in self.config.t_conds:
-            t_cond = c or torch.zeros_like(r)
+            if c == "sca":
+                cond = sca
+            elif c == "crp":
+                cond = crp
+            else:
+                cond = None
+            t_cond = cond or torch.zeros_like(r)
             r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
         clip = self.gen_c_embeddings(clip_txt_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
 

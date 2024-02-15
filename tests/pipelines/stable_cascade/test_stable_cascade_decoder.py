@@ -107,7 +107,7 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             "level_config": ["CT", "CT", "CTA", "CTA"],
             "blocks": [[1, 1, 1, 1], [1, 1, 1, 1]],
             "switch_level": None,
-            "c_in": 4,
+            "in_channels": 4,
             "c_out": 4,
             "c_clip_text_pooled": 32,
         }

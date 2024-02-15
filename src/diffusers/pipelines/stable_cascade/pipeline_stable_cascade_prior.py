@@ -537,7 +537,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         latent_width = ceil(width / self.config.resolution_multiple)
         effnet_features_shape = (
             num_images_per_prompt * batch_size,
-            self.prior.config.c_in,
+            self.prior.config.in_channels,
             latent_height,
             latent_width,
         )
