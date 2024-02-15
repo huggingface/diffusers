@@ -169,13 +169,13 @@ pipeline = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b",
 pipeline.enable_model_cpu_offload()
 pipeline.enable_vae_slicing()
 
-prompt = "A cat riding a space rocket"
-video_frames = pipeline(prompt, num_frames=64).frames[0]
-export_to_video(video_frames, "modelscopet2v.mp4")
+prompt = "Confident teddy bear surfer rides the wave in the tropics"
+video_frames = pipeline(prompt).frames[0]
+export_to_video(video_frames, "modelscopet2v.mp4", fps=10)
 ```
 
 <div class="flex justify-center">
-    <img src="" />
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/modelscopet2v.gif" />
 </div>
 
 ## Configure model parameters
@@ -287,8 +287,8 @@ pipeline.enable_vae_slicing()
 pipeline.enable_model_cpu_offload()
 
 output = pipeline(
-    prompt="A cat riding a space rocket",
-    negative_prompt="Distorted, discontinuous, Ugly, blurry, low resolution, motionless, static, disfigured, disconnected limbs, Ugly faces, incomplete arms",
+    prompt="360 camera shot of a sushi roll in a restaurant",
+    negative_prompt="Distorted, discontinuous, ugly, blurry, low resolution, motionless, static",
     num_frames=16,
     guidance_scale=7.5,
     num_inference_steps=50,
