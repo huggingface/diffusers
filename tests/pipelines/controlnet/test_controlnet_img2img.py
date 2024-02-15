@@ -186,7 +186,7 @@ class ControlNetImg2ImgPipelineFastTests(
 
 
 class StableDiffusionMultiControlNetPipelineFastTests(
-    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionControlNetImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width"}

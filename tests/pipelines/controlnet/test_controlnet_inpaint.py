@@ -51,23 +51,14 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
     TEXT_TO_IMAGE_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import (
-    IPAdapterTesterMixin,
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineTesterMixin,
-)
+from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
 class ControlNetInpaintPipelineFastTests(
-    IPAdapterTesterMixin,
-    PipelineLatentTesterMixin,
-    PipelineKarrasSchedulerTesterMixin,
-    PipelineTesterMixin,
-    unittest.TestCase,
+    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionControlNetInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS

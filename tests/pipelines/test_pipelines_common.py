@@ -83,11 +83,13 @@ class IPAdapterTesterMixin:
         )
 
     def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
-        return torch.zeros((2, 1, cross_attention_dim), device=torch_device)
+        return torch.randn((2, 1, cross_attention_dim), device=torch_device)
 
     def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
         inputs["output_type"] = "np"
         inputs["return_dict"] = False
+        if "image" in inputs.keys():
+            inputs["num_inference_steps"] = 4
         return inputs
 
     def test_ip_adapter(self, expected_max_diff: float = 1e-4):
@@ -114,7 +116,7 @@ class IPAdapterTesterMixin:
         # forward pass with single ip adapter, but with scale of adapter weights
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
-        pipe.set_ip_adapter_scale(1.0)
+        pipe.set_ip_adapter_scale(42.0)
         output_with_adapter_scale = pipe(**inputs)[0]
 
         pipe.unet._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
@@ -128,7 +130,7 @@ class IPAdapterTesterMixin:
         # forward pass with multi ip adapter, but with scale of adapter weights
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
-        pipe.set_ip_adapter_scale([0.5, 0.5])
+        pipe.set_ip_adapter_scale([42.0, 42.0])
         output_with_multi_adapter_scale = pipe(**inputs)[0]
 
         max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
