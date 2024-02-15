@@ -27,7 +27,8 @@ from ..wuerstchen.modeling_wuerstchen_diffnext import ResBlockStageB
 class UpDownBlock2d(nn.Module):
     def __init__(self, c_in, c_out, mode, enabled=True):
         super().__init__()
-        assert mode in ["up", "down"]
+        if mode not in ["up", "down]: 
+            raise ValueError(f"{mode} not supported")
         interpolation = (
             nn.Upsample(scale_factor=2 if mode == "up" else 0.5, mode="bilinear", align_corners=True)
             if enabled
