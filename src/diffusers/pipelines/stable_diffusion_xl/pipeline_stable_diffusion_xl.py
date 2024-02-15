@@ -865,6 +865,10 @@ class StableDiffusionXLPipeline(
         return self._guidance_scale
 
     @property
+    def native_guidance_scale(self):
+        return self._native_guidance_scale
+
+    @property
     def guidance_rescale(self):
         return self._guidance_rescale
 
@@ -877,7 +881,9 @@ class StableDiffusionXLPipeline(
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1 and self.unet.config.time_cond_proj_dim is None
+        return self._guidance_scale > 1 and (
+            self.unet.config.time_cond_proj_dim is not None and self._native_guidance_scale > 1
+        )
 
     @property
     def cross_attention_kwargs(self):
@@ -932,6 +938,7 @@ class StableDiffusionXLPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        native_guidance_scale: float = 1.0,
         **kwargs,
     ):
         r"""
@@ -1064,6 +1071,11 @@ class StableDiffusionXLPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            native_guidance_scale (`float`, *optional*, defaults to 1.0):
+                Guidance scale to be applied with distilled LCM models. Note that the regular guidance scale
+                parameter for LCM models is passed to the model as conditioning. This parameter forces
+                to also perform classifier-free guidance as usual with the given native guidance scale.
+                Use 1 or below if you don't want to use native classifier-free guidance.
 
         Examples:
 
@@ -1115,6 +1127,7 @@ class StableDiffusionXLPipeline(
         )
 
         self._guidance_scale = guidance_scale
+        self._native_guidance_scale = native_guidance_scale
         self._guidance_rescale = guidance_rescale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
@@ -1241,6 +1254,8 @@ class StableDiffusionXLPipeline(
             timestep_cond = self.get_guidance_scale_embedding(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
+            if self.do_classifier_free_guidance:
+                timestep_cond = timestep_cond.repeat_interleave(2, dim=0)
 
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -1269,8 +1284,11 @@ class StableDiffusionXLPipeline(
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
+                    final_guidance_scale = self.guidance_scale
+                    if self.unet.config.time_cond_proj_dim is not None:
+                        final_guidance_scale = self.native_guidance_scale
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + final_guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
