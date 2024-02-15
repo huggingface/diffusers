@@ -139,8 +139,6 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 "The following part of your input was truncated because CLIP can only handle sequences up to"
                 f" {self.tokenizer.model_max_length} tokens: {removed_text}"
             )
-            text_input_ids = text_input_ids[:, : self.tokenizer.model_max_length]
-            attention_mask = attention_mask[:, : self.tokenizer.model_max_length]
 
         text_encoder_output = self.text_encoder(text_input_ids.to(device), attention_mask=attention_mask.to(device))
         prompt_embeds_pooled = text_encoder_output.text_embeds.unsqueeze(1)
