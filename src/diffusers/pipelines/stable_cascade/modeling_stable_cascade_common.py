@@ -100,7 +100,7 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
 
         self.embedding = nn.Sequential(
             nn.PixelUnshuffle(patch_size),
-            nn.Conv2d(c_in * (patch_size**2), c_hidden[0], kernel_size=1),
+            nn.Conv2d(in_channels * (patch_size**2), c_hidden[0], kernel_size=1),
             WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
         )
 

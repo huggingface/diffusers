@@ -60,7 +60,7 @@ for key in orig_state_dict.keys():
     else:
         state_dict[key] = orig_state_dict[key]
 prior_model = StableCascadeUnet(
-    c_in=16,
+    in_channels=16,
     c_out=16,
     c_r=64,
     patch_size=1,
@@ -126,7 +126,7 @@ for key in orig_state_dict.keys():
     else:
         state_dict[key] = orig_state_dict[key]
 decoder = StableCascadeUnet(
-    c_in=4,
+    in_channels=4,
     c_out=4,
     c_r=64,
     patch_size=2,
