@@ -322,8 +322,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                 attention_head_dimension = [out_channels // num_attention_heads for out_channels in block_out_channels]
             else:
                 attention_head_dimension = [
-                    out_channels // num_heads
-                    for out_channel, num_heads in zip(block_out_channels, num_attention_heads)
+                    out_channel // num_heads for out_channel, num_heads in zip(block_out_channels, num_attention_heads)
                 ]
         # input
         conv_in_padding = (conv_in_kernel - 1) // 2
