@@ -266,18 +266,17 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
                 f"Must provide the same number of `only_cross_attention` as `down_block_types`. `only_cross_attention`: {only_cross_attention}. `down_block_types`: {down_block_types}."
             )
 
-        if isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
+        if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
             raise ValueError(
                 f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
             )
+        if isinstance(num_attention_heads, int):
+            num_attention_heads = (num_attention_heads,) * len(down_block_types)
 
         # we use num_attention_heads to calculate attention_head_dim
-        if isinstance(num_attention_heads, int):
-            attention_head_dim = [out_channels // num_attention_heads for out_channels in block_out_channels]
-        else:
-            attention_head_dim = [
-                out_channels // num_heads for out_channels, num_heads in zip(block_out_channels, num_attention_heads)
-            ]
+        attention_head_dim = [
+            out_channels // num_heads for out_channels, num_heads in zip(block_out_channels, num_attention_heads)
+        ]
 
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
@@ -386,9 +385,6 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
 
         if isinstance(only_cross_attention, bool):
             only_cross_attention = [only_cross_attention] * len(down_block_types)
-
-        if isinstance(num_attention_heads, int):
-            num_attention_heads = (num_attention_heads,) * len(down_block_types)
 
         # down
         output_channel = block_out_channels[0]
