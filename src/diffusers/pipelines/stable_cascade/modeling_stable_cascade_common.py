@@ -12,11 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+from typing import List, Optional
 
 import numpy as np
 import torch
 import torch.nn as nn
-from typing import List, Optional
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
@@ -27,7 +27,7 @@ from ..wuerstchen.modeling_wuerstchen_diffnext import ResBlockStageB
 class UpDownBlock2d(nn.Module):
     def __init__(self, c_in, c_out, mode, enabled=True):
         super().__init__()
-        if mode not in ["up", "down]: 
+        if mode not in ["up", "down"]:
             raise ValueError(f"{mode} not supported")
         interpolation = (
             nn.Upsample(scale_factor=2 if mode == "up" else 0.5, mode="bilinear", align_corners=True)
@@ -112,7 +112,7 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
             elif block_type == "T":
                 return TimestepBlock(c_hidden, c_r, conds=t_conds)
             else:
-                raise Exception(f"Block type {block_type} not supported")
+                raise ValueError(f"Block type {block_type} not supported")
 
         # BLOCKS
         # -- down blocks
@@ -215,12 +215,12 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
 
     def gen_r_embedding(self, r, max_positions=10000):
         r = r * max_positions
-        half_dim = self.c_r // 2
+        half_dim = self.config.c_r // 2
         emb = math.log(max_positions) / (half_dim - 1)
         emb = torch.arange(half_dim, device=r.device).float().mul(-emb).exp()
         emb = r[:, None] * emb[None, :]
         emb = torch.cat([emb.sin(), emb.cos()], dim=1)
-        if self.c_r % 2 == 1:  # zero pad
+        if self.config.c_r % 2 == 1:  # zero pad
             emb = nn.functional.pad(emb, (0, 1), mode="constant")
         return emb.to(dtype=r.dtype)
 
@@ -228,13 +228,15 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
         if len(clip_txt_pooled.shape) == 2:
             clip_txt_pool = clip_txt_pooled.unsqueeze(1)
         clip_txt_pool = self.clip_txt_pooled_mapper(clip_txt_pooled).view(
-            clip_txt_pooled.size(0), clip_txt_pooled.size(1) * self.c_clip_seq, -1
+            clip_txt_pooled.size(0), clip_txt_pooled.size(1) * self.config.c_clip_seq, -1
         )
         if clip_txt is not None and clip_img is not None:
             clip_txt = self.clip_txt_mapper(clip_txt)
             if len(clip_img.shape) == 2:
                 clip_img = clip_img.unsqueeze(1)
-            clip_img = self.clip_img_mapper(clip_img).view(clip_img.size(0), clip_img.size(1) * self.c_clip_seq, -1)
+            clip_img = self.clip_img_mapper(clip_img).view(
+                clip_img.size(0), clip_img.size(1) * self.config.c_clip_seq, -1
+            )
             clip = torch.cat([clip_txt, clip_txt_pool, clip_img], dim=1)
         else:
             clip = clip_txt_pool
@@ -290,7 +292,7 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
 
         # Process the conditioning embeddings
         r_embed = self.gen_r_embedding(r)
-        for c in self.t_conds:
+        for c in self.config.t_conds:
             t_cond = c or torch.zeros_like(r)
             r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
         clip = self.gen_c_embeddings(clip_txt_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
