@@ -294,7 +294,7 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
         # Process the conditioning embeddings
         r_embed = self.gen_r_embedding(r)
         for c in self.t_conds:
-            t_cond = kwargs.get(c, torch.zeros_like(r))
+            t_cond = c or torch.zeros_like(r)
             r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
         clip = self.gen_c_embeddings(clip_txt_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
 
