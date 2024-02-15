@@ -10,7 +10,8 @@ def convert_lora(original_state_dict):
     for k, v in original_state_dict.items():
         if "pos_encoder" in k:
             continue
-
+        if "alpha" in k:
+            continue
         else:
             diffusers_key = (
                 k.replace(".norms.0", ".norm1")
@@ -21,8 +22,12 @@ def convert_lora(original_state_dict):
                 .replace(".temporal_transformer", "")
                 .replace("lora_unet_", "")
             )
+            diffusers_key = diffusers_key.replace("to_out_0_", "to_out_")
             diffusers_key = diffusers_key.replace("mid_block_", "mid_block.")
-            diffusers_key = re.sub(r"_(\d+)_", r".\1.", diffusers_key)
+            diffusers_key = diffusers_key.replace("attn1_", "attn1.processor.")
+            diffusers_key = diffusers_key.replace("attn2_", "attn2.processor.")
+            diffusers_key = diffusers_key.replace(".lora_", "_lora.")
+            diffusers_key = re.sub(r'_(\d+)_', r'.\1.', diffusers_key)
 
             converted_state_dict[diffusers_key] = v
 
