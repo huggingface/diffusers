@@ -376,18 +376,14 @@ After training, LoRA weights can be loaded very easily into the original pipelin
 load the original pipeline:
 
 ```python
-from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
-import torch
-
-pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
-pipe.to("cuda")
+from diffusers import DiffusionPipeline
+pipe = DiffusionPipeline.from_pretrained("base-model-name").to("cuda")
 ```
 
-Next, we can load the adapter layers into the UNet with the [`load_attn_procs` function](https://huggingface.co/docs/diffusers/api/loaders#diffusers.loaders.UNet2DConditionLoadersMixin.load_attn_procs).
+Next, we can load the adapter layers into the pipeline with the [`load_lora_weights` function](https://huggingface.co/docs/diffusers/main/en/using-diffusers/loading_adapters#lora).
 
 ```python
-pipe.unet.load_attn_procs("patrickvonplaten/lora_dreambooth_dog_example")
+pipe.load_lora_weights("path-to-the-lora-checkpoint")
 ```
 
 Finally, we can run the model in inference.
