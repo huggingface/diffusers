@@ -16,7 +16,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
-from typing_extensions import List, Optional
+from typing import List, Optional
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...models.modeling_utils import ModelMixin
