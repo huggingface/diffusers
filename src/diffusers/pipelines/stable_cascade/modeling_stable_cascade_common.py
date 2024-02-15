@@ -47,7 +47,7 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
     @register_to_config
     def __init__(
         self,
-        c_in=16,
+        in_channels=16,
         c_out=16,
         c_r=64,
         patch_size=1,
