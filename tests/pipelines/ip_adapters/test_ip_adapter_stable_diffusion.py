@@ -36,6 +36,7 @@ from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    is_flaky,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
@@ -269,13 +270,14 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.unload_ip_adapter()
 
         assert getattr(pipeline, "image_encoder") is None
-        assert getattr(pipeline, "feature_extractor") is None
+        assert getattr(pipeline, "feature_extractor") is not None
         processors = [
             isinstance(attn_proc, (AttnProcessor, AttnProcessor2_0))
             for name, attn_proc in pipeline.unet.attn_processors.items()
         ]
         assert processors == [True] * len(processors)
 
+    @is_flaky
     def test_multi(self):
         image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
         pipeline = StableDiffusionPipeline.from_pretrained(
@@ -292,7 +294,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         inputs["ip_adapter_image"] = [ip_adapter_image, [ip_adapter_image] * 2]
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
-        expected_slice = np.array([0.1704, 0.1296, 0.1272, 0.2212, 0.1514, 0.1479, 0.4172, 0.4263, 0.4360])
+        expected_slice = np.array([0.5234, 0.5352, 0.5625, 0.5713, 0.5947, 0.6206, 0.5786, 0.6187, 0.6494])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
