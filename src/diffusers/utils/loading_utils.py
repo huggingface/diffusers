@@ -1,9 +1,26 @@
 import os
 from typing import Callable, Union
+from urllib.parse import urlparse
 
 import PIL.Image
 import PIL.ImageOps
 import requests
+
+from ..utils.constants import _ACCEPTED_SINGLE_FILE_FORMATS
+
+
+def is_single_file_checkpoint(filepath):
+    def is_valid_url(url):
+        result = urlparse(url)
+        if result.scheme and result.netloc:
+            return True
+
+    if filepath.endswith(_ACCEPTED_SINGLE_FILE_FORMATS):
+        if is_valid_url(filepath):
+            return True
+        elif os.path.isfile(filepath):
+            return True
+    return False
 
 
 def load_image(

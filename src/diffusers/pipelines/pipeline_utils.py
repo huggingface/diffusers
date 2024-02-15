@@ -23,7 +23,6 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
-from urllib.parse import urlparse
 
 import numpy as np
 import PIL.Image
@@ -46,7 +45,6 @@ from ..configuration_utils import ConfigMixin
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
-    _ACCEPTED_SINGLE_FILE_FORMATS,
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
     SAFETENSORS_WEIGHTS_NAME,
@@ -57,6 +55,7 @@ from ..utils import (
     is_accelerate_available,
     is_accelerate_version,
     is_peft_available,
+    is_single_file_checkpoint,
     is_torch_version,
     is_transformers_available,
     logging,
@@ -566,21 +565,6 @@ def _fetch_class_library_tuple(module):
     class_name = not_compiled_module.__class__.__name__
 
     return (library, class_name)
-
-
-def is_valid_url(url):
-    result = urlparse(url)
-    if result.scheme and result.netloc:
-        return True
-
-
-def is_single_file_checkpoint(filepath):
-    if filepath.endswith(_ACCEPTED_SINGLE_FILE_FORMATS):
-        if is_valid_url(filepath):
-            return True
-        elif os.path.isfile(filepath):
-            return True
-    return False
 
 
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):

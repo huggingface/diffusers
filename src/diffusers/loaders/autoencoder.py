@@ -144,4 +144,5 @@ class FromOriginalVAEMixin:
         if torch_dtype is not None:
             vae = vae.to(torch_dtype)
 
+        vae.eval()
         return vae
