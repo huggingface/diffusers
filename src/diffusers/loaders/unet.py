@@ -169,15 +169,6 @@ class UNet2DConditionLoadersMixin:
             "framework": "pytorch",
         }
 
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warning(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                " install accelerate\n```\n."
-            )
-
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
             # Let's first try to load .safetensors weights
@@ -884,21 +875,6 @@ class UNet2DConditionLoadersMixin:
         return attn_procs
 
     def _load_ip_adapter_weights(self, state_dicts, low_cpu_mem_usage=False):
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warning(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                " install accelerate\n```\n."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-
         if not isinstance(state_dicts, list):
             state_dicts = [state_dicts]
         # Set encoder_hid_proj after loading ip_adapter weights,
