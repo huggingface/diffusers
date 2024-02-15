@@ -389,9 +389,9 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 image_embeddings = callback_outputs.pop("image_embeddings", image_embeddings)
                 prompt_embeds_pooled = callback_outputs.pop("prompt_embeds_pooled", prompt_embeds_pooled)
 
-            if callback is not None and i % callback_steps == 0:
-                step_idx = i // getattr(self.scheduler, "order", 1)
-                callback(step_idx, t, latents)
+            # if callback is not None and i % callback_steps == 0:
+            #     step_idx = i // getattr(self.scheduler, "order", 1)
+            #     callback(step_idx, t, latents)
 
         if output_type not in ["pt", "np", "pil", "latent"]:
             raise ValueError(

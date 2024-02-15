@@ -417,29 +417,6 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             generated image embeddings.
         """
 
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
-            )
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
-
         # 0. Define commonly used variables
         device = self._execution_device
         dtype = next(self.prior.parameters()).dtype
@@ -613,9 +590,9 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 )
                 negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-            if callback is not None and i % callback_steps == 0:
-                step_idx = i // getattr(self.scheduler, "order", 1)
-                callback(step_idx, t, latents)
+            # if callback is not None and i % callback_steps == 0:
+            #     step_idx = i // getattr(self.scheduler, "order", 1)
+            #     callback(step_idx, t, latents)
 
         # Offload all models
         self.maybe_free_model_hooks()
