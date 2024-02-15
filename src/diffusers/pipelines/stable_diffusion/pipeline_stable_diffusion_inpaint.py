@@ -37,6 +37,41 @@ from .safety_checker import StableDiffusionSafetyChecker
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import requests
+        >>> import torch
+        >>> from PIL import Image
+        >>> from io import BytesIO
+
+        >>> from diffusers import StableDiffusionInpaintPipeline
+
+        >>> device = "cuda"
+        >>> model_id_or_path = "runwayml/stable-diffusion-inpainting"
+        >>> pipe = StableDiffusionInpaintPipeline.from_pretrained(model_id_or_path, torch_dtype=torch.float16)
+        >>> pipe = pipe.to("cuda")
+
+        >>> image_path = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+        
+        >>> response_i = requests.get(image_path)
+        >>> init_image = Image.open(BytesIO(response_i.content)).convert("RGB")
+        >>> init_image = init_image.resize((512, 512))
+        
+        >>> mask_path = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+        
+        >>> response_m = requests.get(mask_path)
+        >>> mask_image = Image.open(BytesIO(response_m.content)).convert("RGB")
+        >>> mask_image = mask_image.resize((512, 512))
+        
+        >>> prompt = "A white cat sitting on a bench"
+        
+        >>> image = pipe(prompt=prompt, image=init_image, mask_image=mask_image).images[0]
+
+        >>> image
+        ```
+"""
+
 
 def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool = False):
     """
