@@ -78,19 +78,25 @@ logger = get_logger(__name__)
 
 def save_model_card(
     repo_id: str,
-    images=None,
+    images:list=None,
     base_model:str=None,
-    train_text_encoder=False,
-    train_text_encoder_ti=False,
-    token_abstraction_dict=None,
+    train_text_encoder:bool=False,
+    train_text_encoder_ti:bool=False,
+    token_abstraction_dict:dict=None,
     instance_prompt=str,
     validation_prompt=str,
     repo_folder:str=None,
-    vae_path=None,
+    vae_path:str=None,
 ):
     img_str = "widget:\n"
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
+        img_str += f"""
+        - text: '{validation_prompt if validation_prompt else ' ' }'
+          output:
+            url:
+                "image_{i}.png"
+        """
     if not images:
         img_str += f"""
         - text: '{instance_prompt}'
