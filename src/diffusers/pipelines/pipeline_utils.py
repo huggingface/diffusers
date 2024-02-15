@@ -625,6 +625,41 @@ def _load_empty_model(
     return model
 
 
+def _assign_components_to_devices(
+    module_sizes: Dict[str, float], device_memory: Dict[str, float], torch_dtype: torch.dtype
+):
+    reverse_module_sizes = {v: k for k, v in module_sizes.items()}
+    max_module_size = max(list(module_sizes.values()))
+    max_device_memory = max(list(device_memory.values()))
+
+    device_ids = list(device_memory.keys())
+    device_cycle = device_ids + device_ids[::-1]
+
+    mapping = {}
+    current_device_index = 0
+    for component in module_sizes:
+        device_id = device_cycle[current_device_index % len(device_cycle)]
+
+        component_memory = module_sizes[component]
+        device_memory = device_memory[device_id]
+        if component_memory > device_memory:
+            # TODO (sayakpaul, SunMarc): explore the possibility of offloading.
+            # https://github.com/huggingface/diffusers/pull/6857#discussion_r1489544130
+            raise ValueError(
+                f"{reverse_module_sizes[component_memory]} cannot fit in {device_id} device."
+                f" Maximum device memory available: {max_device_memory} while the component with"
+                f" the maximum size (with appropriate `torch_dtype` ({torch_dtype})) is {max_module_size}."
+            )
+
+        if device_id not in mapping:
+            mapping[device_id] = [component]
+        else:
+            mapping[device_id].append(component)
+        current_device_index += 1
+
+    return mapping
+
+
 def _fetch_class_library_tuple(module):
     # import it here to avoid circular import
     diffusers_module = importlib.import_module(__name__.split(".")[0])
@@ -1402,7 +1437,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # Obtain a dictionary mapping the model-level components to the available
             # devices based on the maximum memory and the model sizes.
-            result_mapping = cls._assign_components_to_devices(module_sizes, max_memory)
+            result_mapping = _assign_components_to_devices(module_sizes, max_memory, torch_dtype)
             print(result_mapping)
 
             # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
@@ -1537,23 +1572,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 9. Save where the model was instantiated from
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         return model
-
-    # TODO (sayakpaul, SunMarc) for later: use the memory req for each module and max_memory of each gpus.
-    def _assign_components_to_devices(sorted_components: dict, devices: dict):
-        device_ids = list(devices.keys())
-        device_cycle = device_ids + device_ids[::-1]
-
-        mapping = {}
-        current_device_index = 0
-        for component in sorted_components:
-            device_id = device_cycle[current_device_index % len(device_cycle)]
-            if device_id not in mapping:
-                mapping[device_id] = [component]
-            else:
-                mapping[device_id].append(component)
-            current_device_index += 1
-
-        return mapping
 
     @property
     def name_or_path(self) -> str:
