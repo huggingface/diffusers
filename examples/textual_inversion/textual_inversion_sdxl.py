@@ -38,18 +38,21 @@ from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 from tqdm.auto import tqdm
-from transformers import (CLIPTextModel, CLIPTextModelWithProjection,
-                          CLIPTokenizer)
+from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
-# TODO: remove and import from diffusers.utils when the new version of diffusers is released
 import diffusers
-from diffusers import (AutoencoderKL, DDPMScheduler, DiffusionPipeline,
-                       DPMSolverMultistepScheduler, UNet2DConditionModel)
+from diffusers import (
+    AutoencoderKL,
+    DDPMScheduler,
+    DiffusionPipeline,
+    DPMSolverMultistepScheduler,
+    UNet2DConditionModel,
+)
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
-from diffusers.utils.hub_utils import (load_or_create_model_card,
-                                       populate_model_card)
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
+
 
 if is_wandb_available():
     import wandb
@@ -100,8 +103,8 @@ These are textual inversion adaption weights for {base_model}. You can find some
     )
 
     tags = [
-        "stable-diffusion",
-        "stable-diffusion-diffusers",
+        "stable-diffusion-xl",
+        "stable-diffusion-xl-diffusers",
         "text-to-image",
         "diffusers",
         "textual_inversion",
