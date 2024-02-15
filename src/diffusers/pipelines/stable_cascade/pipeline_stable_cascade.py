@@ -220,7 +220,6 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         return_dict: bool = True,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
     ):
         """
         Function invoked when calling the pipeline for generation.
