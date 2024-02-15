@@ -19,6 +19,7 @@ from packaging import version
 
 from .. import __version__
 from .constants import (
+    _ACCEPTED_SINGLE_FILE_FORMATS,
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,

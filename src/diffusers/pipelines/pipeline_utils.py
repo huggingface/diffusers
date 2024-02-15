@@ -23,6 +23,7 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
+from urllib.parse import urlparse
 
 import numpy as np
 import PIL.Image
@@ -45,6 +46,7 @@ from ..configuration_utils import ConfigMixin
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
+    _ACCEPTED_SINGLE_FILE_FORMATS,
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
     SAFETENSORS_WEIGHTS_NAME,
@@ -566,6 +568,21 @@ def _fetch_class_library_tuple(module):
     return (library, class_name)
 
 
+def is_valid_url(url):
+    result = urlparse(url)
+    if result.scheme and result.netloc:
+        return True
+
+
+def is_single_file_checkpoint(filepath):
+    if filepath.endswith(_ACCEPTED_SINGLE_FILE_FORMATS):
+        if is_valid_url(filepath):
+            return True
+        elif os.path.isfile(filepath):
+            return True
+    return False
+
+
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     r"""
     Base class for all pipelines.
@@ -1054,308 +1071,326 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> pipeline.scheduler = scheduler
         ```
         """
-        cache_dir = kwargs.pop("cache_dir", None)
-        resume_download = kwargs.pop("resume_download", False)
-        force_download = kwargs.pop("force_download", False)
-        proxies = kwargs.pop("proxies", None)
-        local_files_only = kwargs.pop("local_files_only", None)
-        token = kwargs.pop("token", None)
-        revision = kwargs.pop("revision", None)
-        from_flax = kwargs.pop("from_flax", False)
-        torch_dtype = kwargs.pop("torch_dtype", None)
-        custom_pipeline = kwargs.pop("custom_pipeline", None)
-        custom_revision = kwargs.pop("custom_revision", None)
-        provider = kwargs.pop("provider", None)
-        sess_options = kwargs.pop("sess_options", None)
-        device_map = kwargs.pop("device_map", None)
-        max_memory = kwargs.pop("max_memory", None)
-        offload_folder = kwargs.pop("offload_folder", None)
-        offload_state_dict = kwargs.pop("offload_state_dict", False)
-        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
-        variant = kwargs.pop("variant", None)
-        use_safetensors = kwargs.pop("use_safetensors", None)
-        use_onnx = kwargs.pop("use_onnx", None)
-        load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
-
-        # 1. Download the checkpoints and configs
-        # use snapshot download here to get it working from from_pretrained
-        if not os.path.isdir(pretrained_model_name_or_path):
-            if pretrained_model_name_or_path.count("/") > 1:
-                raise ValueError(
-                    f'The provided pretrained_model_name_or_path "{pretrained_model_name_or_path}"'
-                    " is neither a valid local path nor a valid repo id. Please check the parameter."
-                )
-            cached_folder = cls.download(
-                pretrained_model_name_or_path,
-                cache_dir=cache_dir,
-                resume_download=resume_download,
-                force_download=force_download,
-                proxies=proxies,
-                local_files_only=local_files_only,
-                token=token,
-                revision=revision,
-                from_flax=from_flax,
-                use_safetensors=use_safetensors,
-                use_onnx=use_onnx,
-                custom_pipeline=custom_pipeline,
-                custom_revision=custom_revision,
-                variant=variant,
-                load_connected_pipeline=load_connected_pipeline,
-                **kwargs,
-            )
+        if is_single_file_checkpoint(pretrained_model_name_or_path):
+            logger.info("Single file checkpoint detected...")
+            model = cls.from_single_file(pretrained_model_name_or_path, **kwargs)
         else:
-            cached_folder = pretrained_model_name_or_path
+            cache_dir = kwargs.pop("cache_dir", None)
+            resume_download = kwargs.pop("resume_download", False)
+            force_download = kwargs.pop("force_download", False)
+            proxies = kwargs.pop("proxies", None)
+            local_files_only = kwargs.pop("local_files_only", None)
+            token = kwargs.pop("token", None)
+            revision = kwargs.pop("revision", None)
+            from_flax = kwargs.pop("from_flax", False)
+            torch_dtype = kwargs.pop("torch_dtype", None)
+            custom_pipeline = kwargs.pop("custom_pipeline", None)
+            custom_revision = kwargs.pop("custom_revision", None)
+            provider = kwargs.pop("provider", None)
+            sess_options = kwargs.pop("sess_options", None)
+            device_map = kwargs.pop("device_map", None)
+            max_memory = kwargs.pop("max_memory", None)
+            offload_folder = kwargs.pop("offload_folder", None)
+            offload_state_dict = kwargs.pop("offload_state_dict", False)
+            low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+            variant = kwargs.pop("variant", None)
+            use_safetensors = kwargs.pop("use_safetensors", None)
+            use_onnx = kwargs.pop("use_onnx", None)
+            load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
 
-        config_dict = cls.load_config(cached_folder)
-
-        # pop out "_ignore_files" as it is only needed for download
-        config_dict.pop("_ignore_files", None)
-
-        # 2. Define which model components should load variants
-        # We retrieve the information by matching whether variant
-        # model checkpoints exist in the subfolders
-        model_variants = {}
-        if variant is not None:
-            for folder in os.listdir(cached_folder):
-                folder_path = os.path.join(cached_folder, folder)
-                is_folder = os.path.isdir(folder_path) and folder in config_dict
-                variant_exists = is_folder and any(
-                    p.split(".")[1].startswith(variant) for p in os.listdir(folder_path)
-                )
-                if variant_exists:
-                    model_variants[folder] = variant
-
-        # 3. Load the pipeline class, if using custom module then load it from the hub
-        # if we load from explicit class, let's use it
-        custom_class_name = None
-        if os.path.isfile(os.path.join(cached_folder, f"{custom_pipeline}.py")):
-            custom_pipeline = os.path.join(cached_folder, f"{custom_pipeline}.py")
-        elif isinstance(config_dict["_class_name"], (list, tuple)) and os.path.isfile(
-            os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
-        ):
-            custom_pipeline = os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
-            custom_class_name = config_dict["_class_name"][1]
-
-        pipeline_class = _get_pipeline_class(
-            cls,
-            config_dict,
-            load_connected_pipeline=load_connected_pipeline,
-            custom_pipeline=custom_pipeline,
-            class_name=custom_class_name,
-            cache_dir=cache_dir,
-            revision=custom_revision,
-        )
-
-        # DEPRECATED: To be removed in 1.0.0
-        if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
-            version.parse(config_dict["_diffusers_version"]).base_version
-        ) <= version.parse("0.5.1"):
-            from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
-
-            pipeline_class = StableDiffusionInpaintPipelineLegacy
-
-            deprecation_message = (
-                "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
-                f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
-                " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
-                " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
-                f" checkpoint {pretrained_model_name_or_path} to the format of"
-                " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
-                " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
-            )
-            deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
-
-        # 4. Define expected modules given pipeline signature
-        # and define non-None initialized modules (=`init_kwargs`)
-
-        # some modules can be passed directly to the init
-        # in this case they are already instantiated in `kwargs`
-        # extract them here
-        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
-        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
-        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
-
-        init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
-
-        # define init kwargs and make sure that optional component modules are filtered out
-        init_kwargs = {
-            k: init_dict.pop(k)
-            for k in optional_kwargs
-            if k in init_dict and k not in pipeline_class._optional_components
-        }
-        init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
-
-        # remove `null` components
-        def load_module(name, value):
-            if value[0] is None:
-                return False
-            if name in passed_class_obj and passed_class_obj[name] is None:
-                return False
-            return True
-
-        init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
-
-        # Special case: safety_checker must be loaded separately when using `from_flax`
-        if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
-            raise NotImplementedError(
-                "The safety checker cannot be automatically loaded when loading weights `from_flax`."
-                " Please, pass `safety_checker=None` to `from_pretrained`, and load the safety checker"
-                " separately if you need it."
-            )
-
-        # 5. Throw nice warnings / errors for fast accelerate loading
-        if len(unused_kwargs) > 0:
-            logger.warning(
-                f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
-            )
-
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warning(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                " install accelerate\n```\n."
-            )
-
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `device_map=None`."
-            )
-
-        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `low_cpu_mem_usage=False`."
-            )
-
-        if low_cpu_mem_usage is False and device_map is not None:
-            raise ValueError(
-                f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
-                " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
-            )
-
-        # import it here to avoid circular import
-        from diffusers import pipelines
-
-        # 6. Load each module in the pipeline
-        for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
-            # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
-            class_name = class_name[4:] if class_name.startswith("Flax") else class_name
-
-            # 6.2 Define all importable classes
-            is_pipeline_module = hasattr(pipelines, library_name)
-            importable_classes = ALL_IMPORTABLE_CLASSES
-            loaded_sub_model = None
-
-            # 6.3 Use passed sub model or load class_name from library_name
-            if name in passed_class_obj:
-                # if the model is in a pipeline module, then we load it from the pipeline
-                # check that passed_class_obj has correct parent class
-                maybe_raise_or_warn(
-                    library_name, library, class_name, importable_classes, passed_class_obj, name, is_pipeline_module
-                )
-
-                loaded_sub_model = passed_class_obj[name]
-            else:
-                # load sub model
-                loaded_sub_model = load_sub_model(
-                    library_name=library_name,
-                    class_name=class_name,
-                    importable_classes=importable_classes,
-                    pipelines=pipelines,
-                    is_pipeline_module=is_pipeline_module,
-                    pipeline_class=pipeline_class,
-                    torch_dtype=torch_dtype,
-                    provider=provider,
-                    sess_options=sess_options,
-                    device_map=device_map,
-                    max_memory=max_memory,
-                    offload_folder=offload_folder,
-                    offload_state_dict=offload_state_dict,
-                    model_variants=model_variants,
-                    name=name,
-                    from_flax=from_flax,
-                    variant=variant,
-                    low_cpu_mem_usage=low_cpu_mem_usage,
-                    cached_folder=cached_folder,
+            # 1. Download the checkpoints and configs
+            # use snapshot download here to get it working from from_pretrained
+            if not os.path.isdir(pretrained_model_name_or_path):
+                if pretrained_model_name_or_path.count("/") > 1:
+                    raise ValueError(
+                        f'The provided pretrained_model_name_or_path "{pretrained_model_name_or_path}"'
+                        " is neither a valid local path nor a valid repo id. Please check the parameter."
+                    )
+                cached_folder = cls.download(
+                    pretrained_model_name_or_path,
+                    cache_dir=cache_dir,
+                    resume_download=resume_download,
+                    force_download=force_download,
+                    proxies=proxies,
+                    local_files_only=local_files_only,
+                    token=token,
                     revision=revision,
+                    from_flax=from_flax,
+                    use_safetensors=use_safetensors,
+                    use_onnx=use_onnx,
+                    custom_pipeline=custom_pipeline,
+                    custom_revision=custom_revision,
+                    variant=variant,
+                    load_connected_pipeline=load_connected_pipeline,
+                    **kwargs,
                 )
-                logger.info(
-                    f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
-                )
+            else:
+                cached_folder = pretrained_model_name_or_path
 
-            init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
+            config_dict = cls.load_config(cached_folder)
 
-        if pipeline_class._load_connected_pipes and os.path.isfile(os.path.join(cached_folder, "README.md")):
-            modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
-            connected_pipes = {prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS}
-            load_kwargs = {
-                "cache_dir": cache_dir,
-                "resume_download": resume_download,
-                "force_download": force_download,
-                "proxies": proxies,
-                "local_files_only": local_files_only,
-                "token": token,
-                "revision": revision,
-                "torch_dtype": torch_dtype,
-                "custom_pipeline": custom_pipeline,
-                "custom_revision": custom_revision,
-                "provider": provider,
-                "sess_options": sess_options,
-                "device_map": device_map,
-                "max_memory": max_memory,
-                "offload_folder": offload_folder,
-                "offload_state_dict": offload_state_dict,
-                "low_cpu_mem_usage": low_cpu_mem_usage,
-                "variant": variant,
-                "use_safetensors": use_safetensors,
-            }
+            # pop out "_ignore_files" as it is only needed for download
+            config_dict.pop("_ignore_files", None)
 
-            def get_connected_passed_kwargs(prefix):
-                connected_passed_class_obj = {
-                    k.replace(f"{prefix}_", ""): w for k, w in passed_class_obj.items() if k.split("_")[0] == prefix
-                }
-                connected_passed_pipe_kwargs = {
-                    k.replace(f"{prefix}_", ""): w for k, w in passed_pipe_kwargs.items() if k.split("_")[0] == prefix
-                }
+            # 2. Define which model components should load variants
+            # We retrieve the information by matching whether variant
+            # model checkpoints exist in the subfolders
+            model_variants = {}
+            if variant is not None:
+                for folder in os.listdir(cached_folder):
+                    folder_path = os.path.join(cached_folder, folder)
+                    is_folder = os.path.isdir(folder_path) and folder in config_dict
+                    variant_exists = is_folder and any(
+                        p.split(".")[1].startswith(variant) for p in os.listdir(folder_path)
+                    )
+                    if variant_exists:
+                        model_variants[folder] = variant
 
-                connected_passed_kwargs = {**connected_passed_class_obj, **connected_passed_pipe_kwargs}
-                return connected_passed_kwargs
+            # 3. Load the pipeline class, if using custom module then load it from the hub
+            # if we load from explicit class, let's use it
+            custom_class_name = None
+            if os.path.isfile(os.path.join(cached_folder, f"{custom_pipeline}.py")):
+                custom_pipeline = os.path.join(cached_folder, f"{custom_pipeline}.py")
+            elif isinstance(config_dict["_class_name"], (list, tuple)) and os.path.isfile(
+                os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
+            ):
+                custom_pipeline = os.path.join(cached_folder, f"{config_dict['_class_name'][0]}.py")
+                custom_class_name = config_dict["_class_name"][1]
 
-            connected_pipes = {
-                prefix: DiffusionPipeline.from_pretrained(
-                    repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix)
-                )
-                for prefix, repo_id in connected_pipes.items()
-                if repo_id is not None
-            }
-
-            for prefix, connected_pipe in connected_pipes.items():
-                # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_text_encoder"
-                init_kwargs.update(
-                    {"_".join([prefix, name]): component for name, component in connected_pipe.components.items()}
-                )
-
-        # 7. Potentially add passed objects if expected
-        missing_modules = set(expected_modules) - set(init_kwargs.keys())
-        passed_modules = list(passed_class_obj.keys())
-        optional_modules = pipeline_class._optional_components
-        if len(missing_modules) > 0 and missing_modules <= set(passed_modules + optional_modules):
-            for module in missing_modules:
-                init_kwargs[module] = passed_class_obj.get(module, None)
-        elif len(missing_modules) > 0:
-            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - optional_kwargs
-            raise ValueError(
-                f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+            pipeline_class = _get_pipeline_class(
+                cls,
+                config_dict,
+                load_connected_pipeline=load_connected_pipeline,
+                custom_pipeline=custom_pipeline,
+                class_name=custom_class_name,
+                cache_dir=cache_dir,
+                revision=custom_revision,
             )
 
-        # 8. Instantiate the pipeline
-        model = pipeline_class(**init_kwargs)
+            # DEPRECATED: To be removed in 1.0.0
+            if pipeline_class.__name__ == "StableDiffusionInpaintPipeline" and version.parse(
+                version.parse(config_dict["_diffusers_version"]).base_version
+            ) <= version.parse("0.5.1"):
+                from diffusers import StableDiffusionInpaintPipeline, StableDiffusionInpaintPipelineLegacy
 
-        # 9. Save where the model was instantiated from
-        model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+                pipeline_class = StableDiffusionInpaintPipelineLegacy
+
+                deprecation_message = (
+                    "You are using a legacy checkpoint for inpainting with Stable Diffusion, therefore we are loading the"
+                    f" {StableDiffusionInpaintPipelineLegacy} class instead of {StableDiffusionInpaintPipeline}. For"
+                    " better inpainting results, we strongly suggest using Stable Diffusion's official inpainting"
+                    " checkpoint: https://huggingface.co/runwayml/stable-diffusion-inpainting instead or adapting your"
+                    f" checkpoint {pretrained_model_name_or_path} to the format of"
+                    " https://huggingface.co/runwayml/stable-diffusion-inpainting. Note that we do not actively maintain"
+                    " the {StableDiffusionInpaintPipelineLegacy} class and will likely remove it in version 1.0.0."
+                )
+                deprecate("StableDiffusionInpaintPipelineLegacy", "1.0.0", deprecation_message, standard_warn=False)
+
+            # 4. Define expected modules given pipeline signature
+            # and define non-None initialized modules (=`init_kwargs`)
+
+            # some modules can be passed directly to the init
+            # in this case they are already instantiated in `kwargs`
+            # extract them here
+            expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
+            passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+            passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
+
+            init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
+
+            # define init kwargs and make sure that optional component modules are filtered out
+            init_kwargs = {
+                k: init_dict.pop(k)
+                for k in optional_kwargs
+                if k in init_dict and k not in pipeline_class._optional_components
+            }
+            init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
+
+            # remove `null` components
+            def load_module(name, value):
+                if value[0] is None:
+                    return False
+                if name in passed_class_obj and passed_class_obj[name] is None:
+                    return False
+                return True
+
+            init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+
+            # Special case: safety_checker must be loaded separately when using `from_flax`
+            if from_flax and "safety_checker" in init_dict and "safety_checker" not in passed_class_obj:
+                raise NotImplementedError(
+                    "The safety checker cannot be automatically loaded when loading weights `from_flax`."
+                    " Please, pass `safety_checker=None` to `from_pretrained`, and load the safety checker"
+                    " separately if you need it."
+                )
+
+            # 5. Throw nice warnings / errors for fast accelerate loading
+            if len(unused_kwargs) > 0:
+                logger.warning(
+                    f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
+                )
+
+            if low_cpu_mem_usage and not is_accelerate_available():
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+            if device_map is not None and not is_torch_version(">=", "1.9.0"):
+                raise NotImplementedError(
+                    "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                    " `device_map=None`."
+                )
+
+            if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+                raise NotImplementedError(
+                    "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                    " `low_cpu_mem_usage=False`."
+                )
+
+            if low_cpu_mem_usage is False and device_map is not None:
+                raise ValueError(
+                    f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                    " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+                )
+
+            # import it here to avoid circular import
+            from diffusers import pipelines
+
+            # 6. Load each module in the pipeline
+            for name, (library_name, class_name) in logging.tqdm(
+                init_dict.items(), desc="Loading pipeline components..."
+            ):
+                # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
+                class_name = class_name[4:] if class_name.startswith("Flax") else class_name
+
+                # 6.2 Define all importable classes
+                is_pipeline_module = hasattr(pipelines, library_name)
+                importable_classes = ALL_IMPORTABLE_CLASSES
+                loaded_sub_model = None
+
+                # 6.3 Use passed sub model or load class_name from library_name
+                if name in passed_class_obj:
+                    # if the model is in a pipeline module, then we load it from the pipeline
+                    # check that passed_class_obj has correct parent class
+                    maybe_raise_or_warn(
+                        library_name,
+                        library,
+                        class_name,
+                        importable_classes,
+                        passed_class_obj,
+                        name,
+                        is_pipeline_module,
+                    )
+
+                    loaded_sub_model = passed_class_obj[name]
+                else:
+                    # load sub model
+                    loaded_sub_model = load_sub_model(
+                        library_name=library_name,
+                        class_name=class_name,
+                        importable_classes=importable_classes,
+                        pipelines=pipelines,
+                        is_pipeline_module=is_pipeline_module,
+                        pipeline_class=pipeline_class,
+                        torch_dtype=torch_dtype,
+                        provider=provider,
+                        sess_options=sess_options,
+                        device_map=device_map,
+                        max_memory=max_memory,
+                        offload_folder=offload_folder,
+                        offload_state_dict=offload_state_dict,
+                        model_variants=model_variants,
+                        name=name,
+                        from_flax=from_flax,
+                        variant=variant,
+                        low_cpu_mem_usage=low_cpu_mem_usage,
+                        cached_folder=cached_folder,
+                        revision=revision,
+                    )
+                    logger.info(
+                        f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
+                    )
+
+                init_kwargs[name] = loaded_sub_model  # UNet(...), # DiffusionSchedule(...)
+
+            if pipeline_class._load_connected_pipes and os.path.isfile(os.path.join(cached_folder, "README.md")):
+                modelcard = ModelCard.load(os.path.join(cached_folder, "README.md"))
+                connected_pipes = {
+                    prefix: getattr(modelcard.data, prefix, [None])[0] for prefix in CONNECTED_PIPES_KEYS
+                }
+                load_kwargs = {
+                    "cache_dir": cache_dir,
+                    "resume_download": resume_download,
+                    "force_download": force_download,
+                    "proxies": proxies,
+                    "local_files_only": local_files_only,
+                    "token": token,
+                    "revision": revision,
+                    "torch_dtype": torch_dtype,
+                    "custom_pipeline": custom_pipeline,
+                    "custom_revision": custom_revision,
+                    "provider": provider,
+                    "sess_options": sess_options,
+                    "device_map": device_map,
+                    "max_memory": max_memory,
+                    "offload_folder": offload_folder,
+                    "offload_state_dict": offload_state_dict,
+                    "low_cpu_mem_usage": low_cpu_mem_usage,
+                    "variant": variant,
+                    "use_safetensors": use_safetensors,
+                }
+
+                def get_connected_passed_kwargs(prefix):
+                    connected_passed_class_obj = {
+                        k.replace(f"{prefix}_", ""): w
+                        for k, w in passed_class_obj.items()
+                        if k.split("_")[0] == prefix
+                    }
+                    connected_passed_pipe_kwargs = {
+                        k.replace(f"{prefix}_", ""): w
+                        for k, w in passed_pipe_kwargs.items()
+                        if k.split("_")[0] == prefix
+                    }
+
+                    connected_passed_kwargs = {**connected_passed_class_obj, **connected_passed_pipe_kwargs}
+                    return connected_passed_kwargs
+
+                connected_pipes = {
+                    prefix: DiffusionPipeline.from_pretrained(
+                        repo_id, **load_kwargs.copy(), **get_connected_passed_kwargs(prefix)
+                    )
+                    for prefix, repo_id in connected_pipes.items()
+                    if repo_id is not None
+                }
+
+                for prefix, connected_pipe in connected_pipes.items():
+                    # add connected pipes to `init_kwargs` with <prefix>_<component_name>, e.g. "prior_text_encoder"
+                    init_kwargs.update(
+                        {"_".join([prefix, name]): component for name, component in connected_pipe.components.items()}
+                    )
+
+            # 7. Potentially add passed objects if expected
+            missing_modules = set(expected_modules) - set(init_kwargs.keys())
+            passed_modules = list(passed_class_obj.keys())
+            optional_modules = pipeline_class._optional_components
+            if len(missing_modules) > 0 and missing_modules <= set(passed_modules + optional_modules):
+                for module in missing_modules:
+                    init_kwargs[module] = passed_class_obj.get(module, None)
+            elif len(missing_modules) > 0:
+                passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - optional_kwargs
+                raise ValueError(
+                    f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+                )
+
+            # 8. Instantiate the pipeline
+            model = pipeline_class(**init_kwargs)
+
+            # 9. Save where the model was instantiated from
+            model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         return model
 
     @property
