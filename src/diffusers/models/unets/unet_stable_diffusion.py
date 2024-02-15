@@ -542,7 +542,8 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
     r"""
     A conditional 2D UNet model that is meant to be used with the Stable Diffusion family of models. This includes:
 
-    - Stable Diffusion
+    - Stable Diffusion 1.4/1.5/2
+    - Stable Diffusion Upscale
     - Stable Diffusion XL
     - Stable UnCLIP
     - Segmind SSD
@@ -624,6 +625,7 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
         time_embedding_dim: Optional[int] = None,
         projection_class_embeddings_input_dim: Optional[int] = None,
         class_embed_type: Optional[str] = None,
+        num_class_embeds: Optional[int] = None,
     ):
         super().__init__()
 
@@ -660,6 +662,7 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
             projection_class_embeddings_input_dim=projection_class_embeddings_input_dim,
             time_embed_dim=time_embed_dim,
             timestep_input_dim=timestep_input_dim,
+            num_class_embeds=num_class_embeds,
         )
 
         self._set_add_embedding(
@@ -845,8 +848,11 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
         projection_class_embeddings_input_dim: Optional[int],
         time_embed_dim: int,
         timestep_input_dim: int,
+        num_class_embeds: Optional[int] = None,
     ):
-        if class_embed_type == "timestep":
+        if class_embed_type is None and num_class_embeds is not None:
+            self.class_embedding = nn.Embedding(num_class_embeds, time_embed_dim)
+        elif class_embed_type == "timestep":
             self.class_embedding = TimestepEmbedding(timestep_input_dim, time_embed_dim, act_fn="silu")
         elif class_embed_type == "identity":
             self.class_embedding = nn.Identity(time_embed_dim, time_embed_dim)
@@ -1047,7 +1053,6 @@ class StableDiffusionUNet(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, 
         sample = self.conv_in(sample)
 
         is_controlnet = mid_block_additional_residual is not None and down_block_additional_residuals is not None
-
         # using new arg down_intrablock_additional_residuals for T2I-Adapters, to distinguish from controlnets
         is_adapter = down_intrablock_additional_residuals is not None
 
