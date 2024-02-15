@@ -314,7 +314,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             else:
                 num_attention_heads = [
                     out_channels // attn_dim
-                    for out_channel, attn_dim in zip(block_out_channels, attention_head_dimension)
+                    for out_channels, attn_dim in zip(block_out_channels, attention_head_dimension)
                 ]
         # we use num_attention_heads to calculate attention_head_dimension
         elif num_attention_heads is not None:
