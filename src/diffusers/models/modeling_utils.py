@@ -49,6 +49,8 @@ from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populat
 logger = logging.get_logger(__name__)
 
 
+SINGLE_FILE_LOADABLE_CLASSES = {"ControlNetModel", "AutoencoderKL"}
+
 if is_torch_version(">=", "1.9.0"):
     _LOW_CPU_MEM_USAGE_DEFAULT = True
 else:
@@ -500,6 +502,10 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         single_file_ckpt = False
         if is_single_file_checkpoint(pretrained_model_name_or_path):
+            if cls.__name__ not in SINGLE_FILE_LOADABLE_CLASSES:
+                raise ValueError(
+                    f"{cls.__name__} is not supported. Supported classes are: {' '.join(list(SINGLE_FILE_LOADABLE_CLASSES))}."
+                )
             logger.info("Single file checkpoint detected...")
             model = cls.from_single_file(pretrained_model_name_or_path, **kwargs)
             single_file_ckpt = True

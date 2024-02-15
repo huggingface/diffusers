@@ -109,6 +109,20 @@ LOADABLE_CLASSES = {
     },
 }
 
+SINGLE_FILE_LOADABLE_CLASSES = {
+    "StableDiffusionPipeline",
+    "StableDiffusionImg2ImgPipeline",
+    "StableDiffusionInpaintPipeline",
+    "StableDiffusionUpscalePipeline",
+    "StableDiffusionControlNetPipeline",
+    "StableDiffusionControlNetImg2ImgPipeline",
+    "StableDiffusionControlNetInpaintPipeline",
+    "StableDiffusionXLPipeline",
+    "StableDiffusionXLImg2ImgPipeline",
+    "StableDiffusionXLInpaintPipeline",
+    "StableDiffusionXLControlNetImg2ImgPipeline",
+}
+
 ALL_IMPORTABLE_CLASSES = {}
 for library in LOADABLE_CLASSES:
     ALL_IMPORTABLE_CLASSES.update(LOADABLE_CLASSES[library])
@@ -1056,6 +1070,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
         if is_single_file_checkpoint(pretrained_model_name_or_path):
+            if cls.__name__ not in SINGLE_FILE_LOADABLE_CLASSES:
+                raise ValueError(
+                    f"{cls.__name__} is not supported. Supported classes are: {' '.join(list(SINGLE_FILE_LOADABLE_CLASSES))}."
+                )
             logger.info("Single file checkpoint detected...")
             model = cls.from_single_file(pretrained_model_name_or_path, **kwargs)
         else:
