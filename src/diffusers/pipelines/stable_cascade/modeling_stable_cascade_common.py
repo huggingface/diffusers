@@ -70,9 +70,6 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
         switch_level: Optional[List[bool]] = None,
     ):
         super().__init__()
-        self.c_r = c_r
-        self.t_conds = t_conds
-        self.c_clip_seq = c_clip_seq
         if not isinstance(dropout, list):
             dropout = [dropout] * len(c_hidden)
         if not isinstance(self_attn, list):
