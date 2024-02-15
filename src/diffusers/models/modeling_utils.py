@@ -780,7 +780,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
         # Set model in evaluation mode to deactivate DropOut modules by default
         model.eval()
-        if output_loading_info and not single_file_ckpt:
+        if not single_file_ckpt and output_loading_info:
             return model, loading_info
 
         return model
