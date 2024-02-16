@@ -88,11 +88,11 @@ class IPAdapterTesterMixin:
     def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
         inputs["output_type"] = "np"
         inputs["return_dict"] = False
-        if "image" in inputs.keys():
+        if "image" in inputs.keys() and "strength" in inputs.keys():
             inputs["num_inference_steps"] = 4
         return inputs
 
-    def test_ip_adapter(self, expected_max_diff: float = 1e-4):
+    def test_ip_adapter_single(self, expected_max_diff: float = 1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -102,10 +102,8 @@ class IPAdapterTesterMixin:
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         output_without_adapter = pipe(**inputs)[0]
 
-        adapter_state_dict_1 = create_ip_adapter_state_dict(pipe.unet)
-        adapter_state_dict_2 = create_ip_adapter_state_dict(pipe.unet)
-
-        pipe.unet._load_ip_adapter_weights(adapter_state_dict_1)
+        adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
+        pipe.unet._load_ip_adapter_weights(adapter_state_dict)
 
         # forward pass with single ip adapter, but scale=0 which should have no effect
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
@@ -119,6 +117,30 @@ class IPAdapterTesterMixin:
         pipe.set_ip_adapter_scale(42.0)
         output_with_adapter_scale = pipe(**inputs)[0]
 
+        max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
+        max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
+
+        self.assertLess(
+            max_diff_without_adapter_scale,
+            expected_max_diff,
+            "Output without ip-adapter must be same as normal inference",
+        )
+        self.assertGreater(
+            max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
+        )
+
+    def test_ip_adapter_multi(self, expected_max_diff: float = 1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
+
+        # forward pass without ip adapter
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        output_without_adapter = pipe(**inputs)[0]
+
+        adapter_state_dict_1 = create_ip_adapter_state_dict(pipe.unet)
+        adapter_state_dict_2 = create_ip_adapter_state_dict(pipe.unet)
         pipe.unet._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
 
         # forward pass with multi ip adapter, but scale=0 which should have no effect
@@ -133,21 +155,10 @@ class IPAdapterTesterMixin:
         pipe.set_ip_adapter_scale([42.0, 42.0])
         output_with_multi_adapter_scale = pipe(**inputs)[0]
 
-        max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
-        max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
         max_diff_without_multi_adapter_scale = np.abs(
             output_without_multi_adapter_scale - output_without_adapter
         ).max()
         max_diff_with_multi_adapter_scale = np.abs(output_with_multi_adapter_scale - output_without_adapter).max()
-
-        self.assertLess(
-            max_diff_without_adapter_scale,
-            expected_max_diff,
-            "Output without ip-adapter must be same as normal inference",
-        )
-        self.assertGreater(
-            max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
-        )
         self.assertLess(
             max_diff_without_multi_adapter_scale,
             expected_max_diff,
