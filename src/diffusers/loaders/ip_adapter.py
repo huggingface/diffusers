@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,11 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..utils import (
     _get_model_file,
+    is_accelerate_available,
+    is_torch_version,
     is_transformers_available,
     logging,
 )
@@ -86,6 +89,11 @@ class IPAdapterMixin:
                 allowed by Git.
             subfolder (`str`, *optional*, defaults to `""`):
                 The subfolder location of a model file within a larger model repository on the Hub or locally.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
         """
 
         # handle the list inputs for multiple IP Adapters
@@ -116,6 +124,22 @@ class IPAdapterMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -165,9 +189,9 @@ class IPAdapterMixin:
                     image_encoder = CLIPVisionModelWithProjection.from_pretrained(
                         pretrained_model_name_or_path_or_dict,
                         subfolder=Path(subfolder, "image_encoder").as_posix(),
+                        low_cpu_mem_usage=low_cpu_mem_usage,
                     ).to(self.device, dtype=self.dtype)
-                    self.image_encoder = image_encoder
-                    self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
+                    self.register_modules(image_encoder=image_encoder)
                 else:
                     raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
 
@@ -176,16 +200,30 @@ class IPAdapterMixin:
                 feature_extractor = CLIPImageProcessor()
                 self.register_modules(feature_extractor=feature_extractor)
 
-            # load ip-adapter into unet
+        # load ip-adapter into unet
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet._load_ip_adapter_weights(state_dicts)
+        unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
     def set_ip_adapter_scale(self, scale):
-        if not isinstance(scale, list):
-            scale = [scale]
+        """
+        Sets the conditioning scale between text and image.
+
+        Example:
+
+        ```py
+        pipeline.set_ip_adapter_scale(0.5)
+        ```
+        """
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         for attn_processor in unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):
+                if not isinstance(scale, list):
+                    scale = [scale] * len(attn_processor.scale)
+                if len(attn_processor.scale) != len(scale):
+                    raise ValueError(
+                        f"`scale` should be a list of same length as the number if ip-adapters "
+                        f"Expected {len(attn_processor.scale)} but got {len(scale)}."
+                    )
                 attn_processor.scale = scale
 
     def unload_ip_adapter(self):
@@ -205,10 +243,12 @@ class IPAdapterMixin:
             self.image_encoder = None
             self.register_to_config(image_encoder=[None, None])
 
-        # remove feature extractor
-        if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
-            self.feature_extractor = None
-            self.register_to_config(feature_extractor=[None, None])
+        # remove feature extractor only when safety_checker is None as safety_checker uses
+        # the feature_extractor later
+        if not hasattr(self, "safety_checker"):
+            if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is not None:
+                self.feature_extractor = None
+                self.register_to_config(feature_extractor=[None, None])
 
         # remove hidden encoder
         self.unet.encoder_hid_proj = None

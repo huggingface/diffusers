@@ -1,4 +1,4 @@
-# Copyright 2023 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Alibaba DAMO-VILAB and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,18 +22,13 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import LoraLoaderMixin
 from ...models import AutoencoderKL
-from ...models.lora import adjust_lora_scale_text_encoder
 from ...models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from ...schedulers import DDIMScheduler
 from ...utils import (
-    USE_PEFT_BACKEND,
     BaseOutput,
     logging,
     replace_example_docstring,
-    scale_lora_layers,
-    unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
@@ -51,7 +46,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipeline = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
         >>> pipeline.enable_model_cpu_offload()
 
-        >>> image_url = "https://github.com/ali-vilab/i2vgen-xl/blob/main/data/test_images/img_0009.png?raw=true"
+        >>> image_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"
         >>> image = load_image(image_url).convert("RGB")
 
         >>> prompt = "Papers were floating in the air on a table in the library"
@@ -207,7 +202,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
         negative_prompt=None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
-        lora_scale: Optional[float] = None,
         clip_skip: Optional[int] = None,
     ):
         r"""
@@ -233,23 +227,10 @@ class I2VGenXLPipeline(DiffusionPipeline):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
-            lora_scale (`float`, *optional*):
-                A LoRA scale that will be applied to all LoRA layers of the text encoder if LoRA layers are loaded.
             clip_skip (`int`, *optional*):
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
         """
-        # set lora scale so that monkey patched LoRA
-        # function of text encoder can correctly access it
-        if lora_scale is not None and isinstance(self, LoraLoaderMixin):
-            self._lora_scale = lora_scale
-
-            # dynamically adjust the LoRA scale
-            if not USE_PEFT_BACKEND:
-                adjust_lora_scale_text_encoder(self.text_encoder, lora_scale)
-            else:
-                scale_lora_layers(self.text_encoder, lora_scale)
-
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
@@ -379,10 +360,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_videos_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_videos_per_prompt, seq_len, -1)
-
-        if isinstance(self, LoraLoaderMixin) and USE_PEFT_BACKEND:
-            # Retrieve the original scale by scaling back the LoRA layers
-            unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
 
@@ -706,9 +683,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
         self._guidance_scale = guidance_scale
 
         # 3.1 Encode input text prompt
-        text_encoder_lora_scale = (
-            cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
-        )
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
             prompt,
             device,
@@ -716,7 +690,6 @@ class I2VGenXLPipeline(DiffusionPipeline):
             negative_prompt,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
-            lora_scale=text_encoder_lora_scale,
             clip_skip=clip_skip,
         )
         # For classifier free guidance, we need to do two forward passes.

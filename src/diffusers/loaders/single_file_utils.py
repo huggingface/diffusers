@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,7 +48,6 @@ if is_transformers_available():
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
-    from accelerate.utils import set_module_tensor_to_device
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -175,6 +174,7 @@ DIFFUSERS_TO_LDM_MAPPING = {
 }
 
 LDM_VAE_KEY = "first_stage_model."
+LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CONTROLNET_KEY = "control_model."
 LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
@@ -518,7 +518,10 @@ def create_vae_diffusers_config(original_config, image_size, scaling_factor=None
     Creates a config for the diffusers based on the config of the LDM model.
     """
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
-    scaling_factor = scaling_factor or original_config["model"]["params"]["scale_factor"]
+    if scaling_factor is None and "scale_factor" in original_config["model"]["params"]:
+        scaling_factor = original_config["model"]["params"]["scale_factor"]
+    elif scaling_factor is None:
+        scaling_factor = LDM_VAE_DEFAULT_SCALING_FACTOR
 
     block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
@@ -870,8 +873,17 @@ def create_diffusers_controlnet_model_from_ldm(
         controlnet = ControlNetModel(**diffusers_config)
 
     if is_accelerate_available():
-        for param_name, param in diffusers_format_controlnet_checkpoint.items():
-            set_module_tensor_to_device(controlnet, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(controlnet, diffusers_format_controlnet_checkpoint)
+        if controlnet._keys_to_ignore_on_load_unexpected is not None:
+            for pat in controlnet._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {controlnet.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
     else:
         controlnet.load_state_dict(diffusers_format_controlnet_checkpoint)
 
@@ -1034,8 +1046,17 @@ def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_
                 text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
-        for param_name, param in text_model_dict.items():
-            set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict)
+        if text_model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in text_model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
     else:
         if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
             text_model_dict.pop("text_model.embeddings.position_ids", None)
@@ -1112,13 +1133,21 @@ def create_text_encoder_from_open_clip_checkpoint(
             text_model_dict[diffusers_key + ".q_proj.bias"] = weight_value[:text_proj_dim]
             text_model_dict[diffusers_key + ".k_proj.bias"] = weight_value[text_proj_dim : text_proj_dim * 2]
             text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :]
-
         else:
             text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
-        for param_name, param in text_model_dict.items():
-            set_module_tensor_to_device(text_model, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict)
+        if text_model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in text_model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
 
     else:
         if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
@@ -1143,6 +1172,7 @@ def create_diffusers_unet_model_from_ldm(
     if num_in_channels is None:
         if pipeline_class_name in [
             "StableDiffusionInpaintPipeline",
+            "StableDiffusionControlNetInpaintPipeline",
             "StableDiffusionXLInpaintPipeline",
             "StableDiffusionXLControlNetInpaintPipeline",
         ]:
@@ -1161,12 +1191,22 @@ def create_diffusers_unet_model_from_ldm(
 
     diffusers_format_unet_checkpoint = convert_ldm_unet_checkpoint(checkpoint, unet_config, extract_ema=extract_ema)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
+
     with ctx():
         unet = UNet2DConditionModel(**unet_config)
 
     if is_accelerate_available():
-        for param_name, param in diffusers_format_unet_checkpoint.items():
-            set_module_tensor_to_device(unet, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(unet, diffusers_format_unet_checkpoint)
+        if unet._keys_to_ignore_on_load_unexpected is not None:
+            for pat in unet._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {unet.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
     else:
         unet.load_state_dict(diffusers_format_unet_checkpoint)
 
@@ -1174,7 +1214,7 @@ def create_diffusers_unet_model_from_ldm(
 
 
 def create_diffusers_vae_model_from_ldm(
-    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=0.18125
+    pipeline_class_name, original_config, checkpoint, image_size=None, scaling_factor=None
 ):
     # import here to avoid circular imports
     from ..models import AutoencoderKL
@@ -1189,8 +1229,17 @@ def create_diffusers_vae_model_from_ldm(
         vae = AutoencoderKL(**vae_config)
 
     if is_accelerate_available():
-        for param_name, param in diffusers_format_vae_checkpoint.items():
-            set_module_tensor_to_device(vae, param_name, "cpu", value=param)
+        from ..models.modeling_utils import load_model_dict_into_meta
+
+        unexpected_keys = load_model_dict_into_meta(vae, diffusers_format_vae_checkpoint)
+        if vae._keys_to_ignore_on_load_unexpected is not None:
+            for pat in vae._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {vae.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
     else:
         vae.load_state_dict(diffusers_format_vae_checkpoint)
 
@@ -1227,7 +1276,9 @@ def create_text_encoders_and_tokenizers_from_ldm(
         try:
             config_name = "openai/clip-vit-large-patch14"
             text_encoder = create_text_encoder_from_ldm_clip_checkpoint(
-                config_name, checkpoint, local_files_only=local_files_only
+                config_name,
+                checkpoint,
+                local_files_only=local_files_only,
             )
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
 
