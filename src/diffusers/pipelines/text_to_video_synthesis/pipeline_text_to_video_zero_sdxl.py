@@ -510,7 +510,6 @@ class TextToVideoZeroSDXLPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.check_inputs
     def check_inputs(
         self,
         prompt,

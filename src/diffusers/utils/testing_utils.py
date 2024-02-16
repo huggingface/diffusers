@@ -137,7 +137,7 @@ def get_tests_dir(append_path=None):
         tests_dir = os.path.dirname(tests_dir)
 
     if append_path:
-        return os.path.join(tests_dir, append_path)
+        return Path(tests_dir, append_path).as_posix()
     else:
         return tests_dir
 
@@ -335,10 +335,9 @@ def require_python39_or_higher(test_case):
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
-        # local_path = "/home/patrick_huggingface_co/"
         if local_path is not None:
             # local_path can be passed to correct images of tests
-            return os.path.join(local_path, "/".join([arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]]))
+            return Path(local_path, arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]).as_posix()
         elif arry.startswith("http://") or arry.startswith("https://"):
             response = requests.get(arry)
             response.raise_for_status()
@@ -520,10 +519,10 @@ def export_to_video(video_frames: List[np.ndarray], output_video_path: str = Non
 
 
 def load_hf_numpy(path) -> np.ndarray:
-    if not path.startswith("http://") or path.startswith("https://"):
-        path = os.path.join(
-            "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main", urllib.parse.quote(path)
-        )
+    base_url = "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main"
+
+    if not path.startswith("http://") and not path.startswith("https://"):
+        path = os.path.join(base_url, urllib.parse.quote(path))
 
     return load_numpy(path)
 
@@ -854,6 +853,8 @@ def _is_torch_fp64_available(device):
         return False
 
     import torch
+
+    device = torch.device(device)
 
     try:
         x = torch.zeros((2, 2), dtype=torch.float64).to(device)
