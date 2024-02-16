@@ -85,12 +85,12 @@ check_min_version("0.27.0.dev0")
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images: list=None, base_model: str=None, repo_folder: str=None):
+def save_model_card(repo_id: str, images: list = None, base_model: str = None, repo_folder: str = None):
     img_str = ""
     if images is not None:
         for i, image in enumerate(images):
             image.save(os.path.join(repo_folder, f"image_{i}.png"))
-            img_str += f"![img_{i}](./image_{i}.png)\n"            
+            img_str += f"![img_{i}](./image_{i}.png)\n"
     model_description = f"""
 # Textual inversion text2image fine-tuning - {repo_id}
 These are textual inversion adaption weights for {base_model}. You can find some example images in the following. \n
