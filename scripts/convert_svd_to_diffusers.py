@@ -187,9 +187,6 @@ def assign_to_checkpoint(
             for replacement in additional_replacements:
                 new_path = new_path.replace(replacement["old"], replacement["new"])
 
-        if new_path == "mid_block.resnets.0.spatial_res_block.norm1.weight":
-            print("yeyy")
-
         # proj_attn.weight has to be converted from conv 1D to linear
         is_attn_weight = "proj_attn.weight" in new_path or ("attentions" in new_path and "to_" in new_path)
         shape = old_checkpoint[path["old"]].shape
