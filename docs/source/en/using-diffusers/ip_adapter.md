@@ -465,3 +465,83 @@ image
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ipa-controlnet-out.png" />
 </div>
+
+### IP-Adapter masking
+
+Binary masks can be used to specify which portion of the output image should be assigned to an IP-Adapter.
+For each input IP-Adapter image, a binary mask and an IP-Adapter must be provided.
+
+Before passing the masks to the pipeline, it's essential to preprocess them using [`IPAdapterMaskProcessor.preprocess()`].
+
+> [!TIP]
+> For optimal results, provide the output height and width to [`IPAdapterMaskProcessor.preprocess()`]. This ensures that masks with differing aspect ratios are appropriately stretched. If the input masks already match the aspect ratio of the generated image, specifying height and width can be omitted.
+
+Here an example with two masks:
+
+```py
+from diffusers.image_processor import IPAdapterMaskProcessor
+
+mask1 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask1.png")
+mask2 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask2.png")
+
+output_height = 1024
+output_width = 1024
+
+processor = IPAdapterMaskProcessor()
+masks = processor.preprocess([mask1, mask2], height=output_height, width=output_width)
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask1.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">mask one</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask2.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">mask two</figcaption>
+  </div>
+</div>
+
+If you have more than one IP-Adapter image, load them into a list, ensuring each image is assigned to a different IP-Adapter.
+
+```py
+face_image1 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl1.png")
+face_image2 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl2.png")
+
+ip_images =[[image1], [image2]]
+
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl1.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">ip adapter image one</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl2.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">ip adapter image two</figcaption>
+  </div>
+</div>
+
+Pass preprocessed masks to the pipeline using `cross_attention_kwargs` as shown below:
+
+```py
+
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2)
+pipeline.set_ip_adapter_scale([0.7] * 2)
+generator = torch.Generator(device="cpu").manual_seed(0)
+num_images=1
+
+image = pipeline(
+    prompt="2 girls",
+    ip_adapter_image=ip_images,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    num_inference_steps=20, num_images_per_prompt=num_images, 
+    generator=generator, cross_attention_kwargs={"ip_adapter_masks": masks}
+).images[0]
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_adapter_masking_output.png" />
+   <figcaption class="mt-2 text-center text-sm text-gray-500">output image</figcaption>
+</div>
