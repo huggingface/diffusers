@@ -132,15 +132,15 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             image = _resize_with_antialiasing(image, (224, 224))
             image = (image + 1.0) / 2.0
 
-            # Normalize the image with for CLIP input
-            image = self.feature_extractor(
-                images=image,
-                do_normalize=True,
-                do_center_crop=False,
-                do_resize=False,
-                do_rescale=False,
-                return_tensors="pt",
-            ).pixel_values
+        # Normalize the image with for CLIP input
+        image = self.feature_extractor(
+            images=image,
+            do_normalize=True,
+            do_center_crop=False,
+            do_resize=False,
+            do_rescale=False,
+            return_tensors="pt",
+        ).pixel_values
 
         image = image.to(device=device, dtype=dtype)
         image_embeddings = self.image_encoder(image).image_embeds
