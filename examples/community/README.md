@@ -2287,9 +2287,9 @@ Here's a full example for `ReplaceEdit``:
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from diffusers.pipelines import Prompt2PromptPipeline
+from diffusers import DiffusionPipeline
 
-pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="pipeline_prompt2prompt").to("cuda")
 
 prompts = ["A turtle playing with a ball",
            "A monkey playing with a ball"]
