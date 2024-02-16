@@ -542,6 +542,6 @@ image = pipeline(
 ```
 
 <div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_adapter_masking_output.png" />
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_attention_mask_result_seed_0.png" />
    <figcaption class="mt-2 text-center text-sm text-gray-500">output image</figcaption>
 </div>
