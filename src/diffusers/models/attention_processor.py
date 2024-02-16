@@ -2208,7 +2208,7 @@ class IPAdapterAttnProcessor(nn.Module):
                     f"Number of ip_adapter_masks ({len(ip_adapter_masks)}) must match number of IP-Adapters ({len(self.scale)})"
                 )
         else:
-            ip_adapter_masks = [None] * len(ip_hidden_states)
+            ip_adapter_masks = [None] * len(self.scale)
 
         # for ip-adapter
         for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
@@ -2382,7 +2382,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                     f"Number of ip_adapter_masks ({len(ip_adapter_masks)}) must match number of IP-Adapters ({len(self.scale)})"
                 )
         else:
-            ip_adapter_masks = [None] * len(ip_hidden_states)
+            ip_adapter_masks = [None] * len(self.scale)
 
         # for ip-adapter
         for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
