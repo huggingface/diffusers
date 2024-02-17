@@ -419,6 +419,8 @@ class PNDMScheduler(SchedulerMixin, ConfigMixin):
         # prev_sample -> x_(t−δ)
         if not isinstance(timestep, torch.Tensor):
             timestep = torch.tensor(timestep)
+        if not isinstance(prev_timestep, torch.Tensor):
+            prev_timestep = torch.tensor(prev_timestep)
         alpha_prod_t = self.alphas_cumprod.index_select(0, timestep)
         updated_prev_timestep = torch.where(
             prev_timestep >= 0, prev_timestep, self.alphas_cumprod.size(dim=0) + prev_timestep

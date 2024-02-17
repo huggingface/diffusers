@@ -294,7 +294,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         if self.step_index is None:
             self._init_step_index(timestep)
 
-        sigma = self.sigmas[self.step_index]
+        sigma = self.sigmas.index_select(0, self.step_index)
         sample = sample / ((sigma**2 + 1) ** 0.5)
 
         self.is_scale_input_called = True
@@ -425,7 +425,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # case we start in the middle of the denoising schedule (e.g. for image-to-image)
         pos = 1 if len(indices) > 1 else 0
 
-        return indices[pos].item()
+        return torch.tensor(indices[pos].item())
 
     def _init_step_index(self, timestep):
         if self.begin_index is None:
@@ -500,9 +500,16 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
 
-        sigma = self.sigmas[self.step_index]
+        #sigma = self.sigmas[self.step_index]
+        sigma = self.sigmas.index_select(0, self.step_index)
 
         gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
+        '''condition = s_tmin <= sigma
+        condition1 = sigma <= s_tmax
+        gamma = torch.where(condition & condition1,
+                    torch.minimum(torch.tensor(s_churn / (len(self.sigmas) - 1)), torch.tensor(2**0.5 - 1)),
+                    torch.tensor(0.0))
+        '''
 
         noise = randn_tensor(
             model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
@@ -513,6 +520,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
 
         if gamma > 0:
             sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
+        #sample = torch.where(gamma > 0, sample + eps * (sigma_hat**2 - sigma**2) ** 0.5, sample)
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         # NOTE: "original_sample" should not be an expected prediction_type but is left in for
@@ -533,6 +541,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         derivative = (sample - pred_original_sample) / sigma_hat
 
         dt = self.sigmas[self.step_index + 1] - sigma_hat
+        #dt = self.sigmas.index_select(0, self.step_index + 1) - sigma_hat
 
         prev_sample = sample + derivative * dt
 
