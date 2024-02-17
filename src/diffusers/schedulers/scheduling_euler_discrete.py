@@ -503,13 +503,12 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         #sigma = self.sigmas[self.step_index]
         sigma = self.sigmas.index_select(0, self.step_index)
 
-        gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
-        '''condition = s_tmin <= sigma
+        #gamma = min(s_churn / (len(self.sigmas) - 1), 2**0.5 - 1) if s_tmin <= sigma <= s_tmax else 0.0
+        condition = s_tmin <= sigma
         condition1 = sigma <= s_tmax
         gamma = torch.where(condition & condition1,
                     torch.minimum(torch.tensor(s_churn / (len(self.sigmas) - 1)), torch.tensor(2**0.5 - 1)),
                     torch.tensor(0.0))
-        '''
 
         noise = randn_tensor(
             model_output.shape, dtype=model_output.dtype, device=model_output.device, generator=generator
@@ -518,9 +517,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         eps = noise * s_noise
         sigma_hat = sigma * (gamma + 1)
 
-        if gamma > 0:
-            sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
-        #sample = torch.where(gamma > 0, sample + eps * (sigma_hat**2 - sigma**2) ** 0.5, sample)
+        #if gamma > 0:
+        #    sample = sample + eps * (sigma_hat**2 - sigma**2) ** 0.5
+        sample = torch.where(gamma > 0, sample + eps * (sigma_hat**2 - sigma**2) ** 0.5, sample)
 
         # 1. compute predicted original sample (x_0) from sigma-scaled predicted noise
         # NOTE: "original_sample" should not be an expected prediction_type but is left in for
@@ -540,8 +539,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         # 2. Convert to an ODE derivative
         derivative = (sample - pred_original_sample) / sigma_hat
 
-        dt = self.sigmas[self.step_index + 1] - sigma_hat
-        #dt = self.sigmas.index_select(0, self.step_index + 1) - sigma_hat
+        #dt = self.sigmas[self.step_index + 1] - sigma_hat
+        dt = self.sigmas.index_select(0, self.step_index + 1) - sigma_hat
 
         prev_sample = sample + derivative * dt
 
