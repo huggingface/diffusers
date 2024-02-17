@@ -22,26 +22,22 @@
 # Adapted to diffusers by [Aryan V S](https://github.com/a-r-r-o-w).
 
 import inspect
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import numpy as np
+import PIL.Image
 import torch
 import torch.nn as nn
-import PIL.Image
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from diffusers.models.attention import TemporalBasicTransformerBlock, _chunked_feed_forward
-from diffusers.models.autoencoders.vae import DiagonalGaussianDistribution
-from diffusers.models.modeling_outputs import AutoencoderKLOutput
-from diffusers.models.unets.unet_3d_blocks import UNetMidBlockSpatioTemporal
-from diffusers.schedulers import EulerDiscreteScheduler
-from diffusers.utils import logging
-from diffusers.utils.accelerate_utils import apply_forward_hook
-from diffusers.utils.torch_utils import is_compiled_module, maybe_allow_in_graph, randn_tensor
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_video_diffusion import StableVideoDiffusionPipelineOutput
+from diffusers.schedulers import EulerDiscreteScheduler
+from diffusers.utils import logging
+from diffusers.utils.torch_utils import is_compiled_module, maybe_allow_in_graph, randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -148,25 +144,26 @@ class UNetSpatioTemporalConditionMotionCtrlModel(UNetSpatioTemporalConditionMode
         super().__init__(*args, **kwargs)
         self.motionctrl_kwargs = motionctrl_kwargs
         self._camera_pose = None
-        
+
         for _, module in self.named_modules():
             if isinstance(module, TemporalBasicTransformerBlock):
                 camera_pose_embed_dim = motionctrl_kwargs.get("camera_pose_embed_dim")
                 camera_pose_dim = motionctrl_kwargs.get("camera_pose_dim")
-                cc_projection = nn.Linear(module.time_mix_inner_dim + camera_pose_embed_dim * camera_pose_dim, module.time_mix_inner_dim)
+                cc_projection = nn.Linear(
+                    module.time_mix_inner_dim + camera_pose_embed_dim * camera_pose_dim, module.time_mix_inner_dim
+                )
                 new_forward = _forward_temporal_basic_transformer_block.__get__(module, module.__class__)
 
                 def forward_wrapper(*args, **kwargs):
                     return new_forward(camera_pose=self._camera_pose, *args, **kwargs)
-                
+
                 module.add_module("cc_projection", cc_projection)
                 setattr(module, "forward", forward_wrapper)
-    
+
     def forward(self, camera_pose: torch.FloatTensor, *args, **kwargs):
         self._camera_pose = camera_pose
         super().forward(*args, **kwargs)
 
-    
     @classmethod
     def _from_unet(cls, unet: UNetSpatioTemporalConditionModel) -> "UNetSpatioTemporalConditionMotionCtrlModel":
         new_unet = cls.from_config(unet.config)
