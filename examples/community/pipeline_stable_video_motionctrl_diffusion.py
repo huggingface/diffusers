@@ -622,7 +622,6 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
         camera_pose = self._to_relative_camera_pose(camera_pose)
         camera_pose = torch.FloatTensor(camera_pose).to(device=device, dtype=image_embeddings.dtype)
         camera_pose = camera_pose.repeat(2, 1, 1)
-        added_cond_kwargs = {"camera_pose": camera_pose}
 
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
@@ -642,7 +641,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
                     t,
                     encoder_hidden_states=image_embeddings,
                     added_time_ids=added_time_ids,
-                    added_cond_kwargs=added_cond_kwargs,
+                    camera_pose=camera_pose,
                     return_dict=False,
                 )[0]
 
