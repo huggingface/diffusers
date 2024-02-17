@@ -147,13 +147,15 @@ class UNetSpatioTemporalConditionMotionCtrlModel(UNetSpatioTemporalConditionMode
         self.motionctrl_kwargs = motionctrl_kwargs
         self._camera_pose = None
 
+        camera_pose_embed_dim = motionctrl_kwargs.get("camera_pose_embed_dim")
+        camera_pose_dim = motionctrl_kwargs.get("camera_pose_dim")
+
         for _, module in self.named_modules():
             if isinstance(module, TemporalBasicTransformerBlock):
-                camera_pose_embed_dim = motionctrl_kwargs.get("camera_pose_embed_dim")
-                camera_pose_dim = motionctrl_kwargs.get("camera_pose_dim")
                 cc_projection = nn.Linear(
                     module.time_mix_inner_dim + camera_pose_embed_dim * camera_pose_dim, module.time_mix_inner_dim
                 )
+                print(_, module.time_mix_inner_dim, cc_projection)
                 new_forward = _forward_temporal_basic_transformer_block.__get__(module, module.__class__)
 
                 def forward_wrapper(
