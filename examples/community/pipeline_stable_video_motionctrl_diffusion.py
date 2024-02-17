@@ -164,14 +164,6 @@ class UNetSpatioTemporalConditionMotionCtrlModel(UNetSpatioTemporalConditionMode
         self._camera_pose = camera_pose
         super().forward(*args, **kwargs)
 
-    @classmethod
-    def _from_unet(cls, unet: UNetSpatioTemporalConditionModel) -> "UNetSpatioTemporalConditionMotionCtrlModel":
-        new_unet = cls.from_config(unet.config)
-        for x in vars(unet):
-            attr = getattr(unet, x)
-            setattr(new_unet, x, attr)
-        return new_unet
-
 
 class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
     r"""
@@ -200,13 +192,11 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
         self,
         vae: AutoencoderKLTemporalDecoder,
         image_encoder: CLIPVisionModelWithProjection,
-        unet: UNetSpatioTemporalConditionModel,
+        unet: UNetSpatioTemporalConditionMotionCtrlModel,
         scheduler: EulerDiscreteScheduler,
         feature_extractor: CLIPImageProcessor,
     ):
         super().__init__()
-
-        unet = UNetSpatioTemporalConditionMotionCtrlModel._from_unet(unet)
 
         self.register_modules(
             vae=vae,
