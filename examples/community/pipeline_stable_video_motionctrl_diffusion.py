@@ -79,21 +79,24 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
 @maybe_allow_in_graph
 def _forward_temporal_basic_transformer_block(
     self,
-    camera_pose: torch.FloatTensor,
+    # camera_pose: torch.FloatTensor,
     hidden_states: torch.FloatTensor,
     num_frames: int,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
 ) -> torch.FloatTensor:
+    print("self", self)
     # Notice that normalization is always applied before the real computation in the following blocks.
     # 0. Self-Attention
     batch_size = hidden_states.shape[0]
 
+    print("shape", hidden_states.shape)
     batch_frames, seq_length, channels = hidden_states.shape
     batch_size = batch_frames // num_frames
 
     hidden_states = hidden_states[None, :].reshape(batch_size, num_frames, seq_length, channels)
     hidden_states = hidden_states.permute(0, 2, 1, 3)
     hidden_states = hidden_states.reshape(batch_size * seq_length, num_frames, channels)
+    print("after", hidden_states.shape)
 
     residual = hidden_states
     hidden_states = self.norm_in(hidden_states)
@@ -111,9 +114,9 @@ def _forward_temporal_basic_transformer_block(
     hidden_states = attn_output + hidden_states
 
     # MotionCtrl specific
-    camera_pose = camera_pose.repeat_interleave(seq_length, dim=0)  # [batch_size * seq_length, num_frames, 12]
-    hidden_states = torch.cat([hidden_states, camera_pose], dim=-1)
-    hidden_states = self.cc_projection(hidden_states)
+    # camera_pose = camera_pose.repeat_interleave(seq_length, dim=0)  # [batch_size * seq_length, num_frames, 12]
+    # hidden_states = torch.cat([hidden_states, camera_pose], dim=-1)
+    # hidden_states = self.cc_projection(hidden_states)
 
     # 3. Cross-Attention
     if self.attn2 is not None:
@@ -145,37 +148,32 @@ class UNetSpatioTemporalConditionMotionCtrlModel(UNetSpatioTemporalConditionMode
     def __init__(self, motionctrl_kwargs: Dict[str, Any], *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.motionctrl_kwargs = motionctrl_kwargs
-        self._camera_pose = None
 
         camera_pose_embed_dim = motionctrl_kwargs.get("camera_pose_embed_dim")
         camera_pose_dim = motionctrl_kwargs.get("camera_pose_dim")
+        self._camera_pose = None
 
         for _, module in self.named_modules():
             if isinstance(module, TemporalBasicTransformerBlock):
                 cc_projection = nn.Linear(
                     module.time_mix_inner_dim + camera_pose_embed_dim * camera_pose_dim, module.time_mix_inner_dim
                 )
-                print(_, module.time_mix_inner_dim, cc_projection)
-                new_forward = _forward_temporal_basic_transformer_block.__get__(module, module.__class__)
-
-                def forward_wrapper(
-                    hidden_states: torch.FloatTensor,
-                    num_frames: int,
-                    encoder_hidden_states: Optional[torch.FloatTensor] = None,
-                ):
-                    return new_forward(
-                        camera_pose=self._camera_pose,
-                        hidden_states=hidden_states,
-                        num_frames=num_frames,
-                        encoder_hidden_states=encoder_hidden_states,
-                    )
-
                 module.add_module("cc_projection", cc_projection)
-                setattr(module, "forward", forward_wrapper)
+                
+                new_forward = _forward_temporal_basic_transformer_block.__get__(module, module.__class__)
+                setattr(module, "forward", new_forward)
+                
+                def pre_hook(module, *args, **kwargs):
+                    print("module", module)
+                    print("args", args)
+                    print("kwargs", kwargs)
+                    print(self._camera_pose)
+                
+                module.register_forward_pre_hook(pre_hook)
 
     def forward(self, camera_pose: torch.FloatTensor, *args, **kwargs):
         self._camera_pose = camera_pose
-        super().forward(*args, **kwargs)
+        return super().forward(*args, **kwargs)
 
 
 class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
