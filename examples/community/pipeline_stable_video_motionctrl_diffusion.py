@@ -80,6 +80,7 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
 def _forward_temporal_basic_transformer_block(
     self,
     camera_pose: torch.FloatTensor,
+    scale: float,
     hidden_states: torch.FloatTensor,
     num_frames: int,
     encoder_hidden_states: Optional[torch.FloatTensor] = None,
@@ -112,8 +113,9 @@ def _forward_temporal_basic_transformer_block(
 
     # MotionCtrl specific
     camera_pose = camera_pose.repeat_interleave(seq_length, dim=0)  # [batch_size * seq_length, num_frames, 12]
+    residual = hidden_states
     hidden_states = torch.cat([hidden_states, camera_pose], dim=-1)
-    hidden_states = self.cc_projection(hidden_states)
+    hidden_states = scale * self.cc_projection(hidden_states) + (1 - scale) * residual
 
     # 3. Cross-Attention
     if self.attn2 is not None:
@@ -144,11 +146,14 @@ def _forward_temporal_basic_transformer_block(
 class UNetSpatioTemporalConditionMotionCtrlModel(UNetSpatioTemporalConditionModel):
     def __init__(self, motionctrl_kwargs: Dict[str, Any], *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.motionctrl_kwargs = motionctrl_kwargs
+        self.motionctrl_scale = 1
+        self._camera_pose = None
 
         camera_pose_embed_dim = motionctrl_kwargs.get("camera_pose_embed_dim")
         camera_pose_dim = motionctrl_kwargs.get("camera_pose_dim")
-        self._camera_pose = None
+
+        def pre_hook(module, args):
+            return (self._camera_pose, self.motionctrl_scale, *args)
 
         for _, module in self.named_modules():
             if isinstance(module, TemporalBasicTransformerBlock):
@@ -159,11 +164,10 @@ class UNetSpatioTemporalConditionMotionCtrlModel(UNetSpatioTemporalConditionMode
 
                 new_forward = _forward_temporal_basic_transformer_block.__get__(module, module.__class__)
                 setattr(module, "forward", new_forward)
-
-                def pre_hook(module, args):
-                    return (self._camera_pose, *args)
-
                 module.register_forward_pre_hook(pre_hook)
+
+    def set_motionctrl_scale(self, scale: float):
+        self.motionctrl_scale = scale
 
     def forward(self, camera_pose: torch.FloatTensor, *args, **kwargs):
         self._camera_pose = camera_pose
