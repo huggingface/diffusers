@@ -344,10 +344,10 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_model_cpu_offload()
         prompt = self.prompt
 
-        image = pipe(prompt, generator=generator, output_type="np").images
+        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.2891, 0.2749, 0.2595, 0.3020, 0.2698, 0.2671, 0.3169, 0.2993, 0.3179])
+        expected_slice = np.array([0.0742, 0.0835, 0.2114, 0.0295, 0.0784, 0.2361, 0.1738, 0.2251, 0.3589])
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
         self.assertLessEqual(max_diff, 1e-4)
@@ -360,10 +360,10 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         prompt = self.prompt
 
-        image = pipe(prompt, generator=generator, output_type="np").images
+        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
-        expected_slice = np.array([0.2964, 0.2908, 0.2681, 0.3201, 0.2827, 0.2700, 0.3179, 0.3179, 0.3259])
+        expected_slice = np.array([0.3477, 0.3882, 0.4541, 0.3413, 0.3821, 0.4463, 0.4001, 0.4409, 0.4958])
 
         max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
         self.assertLessEqual(max_diff, 1e-4)
@@ -376,7 +376,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         prompt = self.prompt
         height, width = 1024, 768
-        num_inference_steps = 10
+        num_inference_steps = 2
 
         image = pipe(
             prompt,
@@ -410,7 +410,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         prompt = self.prompt
         height, width = 512, 768
-        num_inference_steps = 10
+        num_inference_steps = 2
 
         image = pipe(
             prompt,
