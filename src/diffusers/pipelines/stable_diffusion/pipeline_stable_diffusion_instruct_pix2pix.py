@@ -558,10 +558,8 @@ class StableDiffusionInstructPix2PixPipeline(
 
         if self.text_encoder is not None:
             prompt_embeds_dtype = self.text_encoder.dtype
-        elif self.unet is not None:
-            prompt_embeds_dtype = self.unet.dtype
         else:
-            prompt_embeds_dtype = prompt_embeds.dtype
+            prompt_embeds_dtype = self.unet.dtype
 
         prompt_embeds = prompt_embeds.to(dtype=prompt_embeds_dtype, device=device)
 
