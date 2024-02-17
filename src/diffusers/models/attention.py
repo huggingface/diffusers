@@ -434,6 +434,7 @@ class TemporalBasicTransformerBlock(nn.Module):
         cross_attention_dim: Optional[int] = None,
     ):
         super().__init__()
+        self.time_mix_inner_dim = time_mix_inner_dim
         self.is_res = dim == time_mix_inner_dim
 
         self.norm_in = nn.LayerNorm(dim)
