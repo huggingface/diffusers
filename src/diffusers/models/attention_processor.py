@@ -2410,7 +2410,7 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                     mask, batch_size, current_ip_hidden_states.shape[1], current_ip_hidden_states.shape[2]
                 )
 
-                mask_downsample = mask_downsample.to(query.dtype).to(current_ip_hidden_states.device)
+                mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
 
                 current_ip_hidden_states = current_ip_hidden_states * mask_downsample
 
