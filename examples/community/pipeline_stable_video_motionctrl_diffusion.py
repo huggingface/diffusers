@@ -143,30 +143,6 @@ def _forward_temporal_basic_transformer_block(
     return hidden_states
 
 
-class AutoencoderKLTemporalMotionCtrlDecoder(AutoencoderKLTemporalDecoder):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.quant_conv = None
-    
-    @classmethod
-    def _from_vae(cls, vae: AutoencoderKLTemporalDecoder) -> "AutoencoderKLTemporalMotionCtrlDecoder":
-        new_vae = cls.from_config(vae.config)
-        for x in vars(vae):
-            attr = getattr(vae, x)
-            setattr(new_vae, x, attr)
-        return new_vae
-    
-    @apply_forward_hook
-    def encode(self, x: torch.FloatTensor, return_dict: bool = True) -> Union[AutoencoderKLOutput, Tuple[DiagonalGaussianDistribution]]:
-        h = self.encoder(x)
-        posterior = DiagonalGaussianDistribution(h)
-
-        if not return_dict:
-            return (posterior,)
-
-        return AutoencoderKLOutput(latent_dist=posterior)
-
-
 class UNetSpatioTemporalConditionMotionCtrlModel(UNetSpatioTemporalConditionModel):
     def __init__(self, motionctrl_kwargs: Dict[str, Any], *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -233,7 +209,6 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
     ):
         super().__init__()
 
-        vae = AutoencoderKLTemporalMotionCtrlDecoder._from_vae(vae)
         unet = UNetSpatioTemporalConditionMotionCtrlModel._from_unet(unet)
 
         self.register_modules(
