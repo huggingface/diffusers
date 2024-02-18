@@ -86,10 +86,12 @@ class IPAdapterTesterMixin:
         return torch.randn((2, 1, cross_attention_dim), device=torch_device)
 
     def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
+        if "image" in parameters.keys() and "strength" in parameters.keys():
+            inputs["num_inference_steps"] = 4
+
         inputs["output_type"] = "np"
         inputs["return_dict"] = False
-        if "image" in inputs.keys() and "strength" in inputs.keys():
-            inputs["num_inference_steps"] = 4
         return inputs
 
     def test_ip_adapter_single(self, expected_max_diff: float = 1e-4):
