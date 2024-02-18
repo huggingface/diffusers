@@ -1809,24 +1809,7 @@ class SpatialNorm(nn.Module):
         return new_f
 
 
-## Deprecated
 class LoRAAttnProcessor(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism.
-
-    Args:
-        hidden_size (`int`, *optional*):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-        network_alpha (`int`, *optional*):
-            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
-        kwargs (`dict`):
-            Additional keyword arguments to pass to the `LoRALinearLayer` layers.
-    """
-
     def __init__(
         self,
         hidden_size: int,
@@ -1835,6 +1818,9 @@ class LoRAAttnProcessor(nn.Module):
         network_alpha: Optional[int] = None,
         **kwargs,
     ):
+        deprecation_message = "Using LoRAAttnProcessor is deprecated. Please use the PEFT backend for all things LoRA. You can install PEFT by running `pip install peft`."
+        deprecate("LoRAAttnProcessor", "0.30.0", deprecation_message, standard_warn=False)
+
         super().__init__()
 
         self.hidden_size = hidden_size
@@ -1883,23 +1869,6 @@ class LoRAAttnProcessor(nn.Module):
 
 
 class LoRAAttnProcessor2_0(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism using PyTorch 2.0's memory-efficient scaled dot-product
-    attention.
-
-    Args:
-        hidden_size (`int`):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-        network_alpha (`int`, *optional*):
-            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
-        kwargs (`dict`):
-            Additional keyword arguments to pass to the `LoRALinearLayer` layers.
-    """
-
     def __init__(
         self,
         hidden_size: int,
@@ -1908,6 +1877,9 @@ class LoRAAttnProcessor2_0(nn.Module):
         network_alpha: Optional[int] = None,
         **kwargs,
     ):
+        deprecation_message = "Using LoRAAttnProcessor is deprecated. Please use the PEFT backend for all things LoRA. You can install PEFT by running `pip install peft`."
+        deprecate("LoRAAttnProcessor2_0", "0.30.0", deprecation_message, standard_warn=False)
+
         super().__init__()
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
