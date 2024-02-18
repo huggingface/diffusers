@@ -1766,7 +1766,7 @@ class SDXLLongPromptWeightingPipeline(
 
         # 4. Prepare timesteps
         def denoising_value_valid(dnv):
-            return isinstance(self.denoising_end, float) and 0 < dnv < 1
+            return isinstance(dnv, float) and 0 < dnv < 1
 
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         if image is not None:

@@ -645,6 +645,7 @@ class StableDiffusionXLImg2ImgPipeline(
             )
 
     def get_timesteps(self, num_inference_steps, strength, device, denoising_start=None):
+        print("out here", denoising_start)
         # get the original timestep using init_timestep
         if denoising_start is None:
             init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
@@ -676,6 +677,7 @@ class StableDiffusionXLImg2ImgPipeline(
 
             # because t_n+1 >= t_n, we slice the timesteps starting from the end
             timesteps = timesteps[-num_inference_steps:]
+            print("cutoff", discrete_timestep_cutoff, num_inference_steps, timesteps)
             return timesteps, num_inference_steps
 
         return timesteps, num_inference_steps - t_start
@@ -1315,7 +1317,7 @@ class StableDiffusionXLImg2ImgPipeline(
 
         # 5. Prepare timesteps
         def denoising_value_valid(dnv):
-            return isinstance(self.denoising_end, float) and 0 < dnv < 1
+            return isinstance(dnv, float) and 0 < dnv < 1
 
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         timesteps, num_inference_steps = self.get_timesteps(
