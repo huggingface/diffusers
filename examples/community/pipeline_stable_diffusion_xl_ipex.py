@@ -15,6 +15,7 @@
 import inspect
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+import intel_extension_for_pytorch as ipex
 import torch
 from transformers import (
     CLIPImageProcessor,
@@ -24,30 +25,23 @@ from transformers import (
     CLIPVisionModelWithProjection,
 )
 
-import numpy as np
-import PIL.Image
-import torch.nn.functional as F
-import intel_extension_for_pytorch as ipex
-
+from diffusers import StableDiffusionXLPipeline
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
-from diffusers.loaders import(
-    FromSingleFileMixin,
-    IPAdapterMixin,
+from diffusers.loaders import (
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 )
-
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.models.attention_processor import(
+from diffusers.models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-
 from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers
-from diffusers.utils import(
+from diffusers.utils import (
     USE_PEFT_BACKEND,
     deprecate,
     is_invisible_watermark_available,
@@ -57,11 +51,7 @@ from diffusers.utils import(
     scale_lora_layers,
     unscale_lora_layers,
 )
-
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion_xl import StableDiffusionXLPipelineOutput
-from diffusers import StableDiffusionXLPipeline
 
 
 if is_invisible_watermark_available():
@@ -82,10 +72,10 @@ EXAMPLE_DOC_STRING = """
         ```py
         >>> import torch
         >>> from diffusers import StableDiffusionXLPipelineIpex
-        
+
         >>> # SDXL-Turbo, a distilled version of SDXL 1.0, trained for real-time synthesis
         >>> pipe = StableDiffusionXLPipelineIpex.from_pretrained(
-        ...     "stabilityai/sdxl-turbo", use_auth_token=True, 
+        ...     "stabilityai/sdxl-turbo", use_auth_token=True,
         ...     low_cpu_mem_usage=True, use_safetensors=True
         ... )
 
@@ -94,7 +84,7 @@ EXAMPLE_DOC_STRING = """
         >>> use_bf16 = True
         >>> data_type = torch.bfloat16 if use_bf16 else torch.float32
         >>> prompt = "a photo of an astronaut riding a horse on mars"
-        
+
         >>> # For Float32
         >>> pipe.prepare_for_ipex(data_type, prompt, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
         >>> # For BFloat16
@@ -168,9 +158,10 @@ def retrieve_timesteps(
         timesteps = scheduler.timesteps
     return timesteps, num_inference_steps
 
+
 class StableDiffusionXLPipelineIpex(
     StableDiffusionXLPipeline,
-    ):
+):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL on IPEX.
 
@@ -249,7 +240,7 @@ class StableDiffusionXLPipelineIpex(
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
     ):
-        #super().__init__()
+        # super().__init__()
 
         self.register_modules(
             vae=vae,
@@ -663,7 +654,7 @@ class StableDiffusionXLPipelineIpex(
             )
 
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=torch.float32)
         else:
             latents = latents.to(device)
 
@@ -1160,13 +1151,13 @@ class StableDiffusionXLPipelineIpex(
                 #     added_cond_kwargs=added_cond_kwargs,
                 #     return_dict=False,
                 # )[0]
-                
+
                 noise_pred = self.unet(
                     latent_model_input,
                     t,
                     encoder_hidden_states=prompt_embeds,
                     added_cond_kwargs=added_cond_kwargs,
-                )['sample']
+                )["sample"]
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
@@ -1237,11 +1228,10 @@ class StableDiffusionXLPipelineIpex(
 
         return StableDiffusionXLPipelineOutput(images=image)
 
-        
     @torch.no_grad()
     def prepare_for_ipex(
         self,
-        dtype = torch.float32,
+        dtype=torch.float32,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         height: Optional[int] = None,
@@ -1291,7 +1281,7 @@ class StableDiffusionXLPipelineIpex(
                 "1.0.0",
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider use `callback_on_step_end`",
             )
-        
+
         # 0. Default height and width to unet
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor
@@ -1330,7 +1320,7 @@ class StableDiffusionXLPipelineIpex(
             batch_size = prompt_embeds.shape[0]
 
         device = "cpu"
-        do_classifier_free_guidance=self.do_classifier_free_guidance
+        do_classifier_free_guidance = self.do_classifier_free_guidance
 
         # 3. Encode input prompt
         lora_scale = (
@@ -1370,7 +1360,7 @@ class StableDiffusionXLPipelineIpex(
             generator,
             latents,
         )
-        
+
         # 7. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
         if self.text_encoder_2 is None:
@@ -1410,17 +1400,16 @@ class StableDiffusionXLPipelineIpex(
             if self.do_classifier_free_guidance:
                 image_embeds = torch.cat([negative_image_embeds, image_embeds])
                 image_embeds = image_embeds.to(device)
-        
+
         dummy = torch.ones(1, dtype=torch.int32)
         latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
         latent_model_input = self.scheduler.scale_model_input(latent_model_input, dummy)
-        
+
         # predict the noise residual
         added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
         if ip_adapter_image is not None:
             added_cond_kwargs["image_embeds"] = image_embeds
-        
-        
+
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
             needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
@@ -1433,25 +1422,25 @@ class StableDiffusionXLPipelineIpex(
             if needs_upcasting:
                 self.vae.to(dtype=torch.float16)
 
-        self.unet = self.unet.to(memory_format = torch.channels_last)
+        self.unet = self.unet.to(memory_format=torch.channels_last)
         self.vae.decoder = self.vae.decoder.to(memory_format=torch.channels_last)
         self.text_encoder = self.text_encoder.to(memory_format=torch.channels_last)
 
         unet_input_example = {
-            "sample": latent_model_input, 
-            "timestep": dummy, 
-            "encoder_hidden_states": prompt_embeds, 
-            "added_cond_kwargs": added_cond_kwargs
-            }
+            "sample": latent_model_input,
+            "timestep": dummy,
+            "encoder_hidden_states": prompt_embeds,
+            "added_cond_kwargs": added_cond_kwargs,
+        }
 
         vae_decoder_input_example = latents
 
         # optimize with ipex
         if dtype == torch.bfloat16:
             self.unet = ipex.optimize(
-                self.unet.eval(), 
-                dtype=torch.bfloat16, 
-                inplace=True, 
+                self.unet.eval(),
+                dtype=torch.bfloat16,
+                inplace=True,
             )
             self.vae.decoder = ipex.optimize(self.vae.decoder.eval(), dtype=torch.bfloat16, inplace=True)
             self.text_encoder = ipex.optimize(self.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
@@ -1485,7 +1474,9 @@ class StableDiffusionXLPipelineIpex(
 
         # trace unet model to get better performance on IPEX
         with torch.cpu.amp.autocast(enabled=dtype == torch.bfloat16), torch.no_grad():
-            unet_trace_model = torch.jit.trace(self.unet, example_kwarg_inputs=unet_input_example, check_trace=False, strict=False)
+            unet_trace_model = torch.jit.trace(
+                self.unet, example_kwarg_inputs=unet_input_example, check_trace=False, strict=False
+            )
             unet_trace_model = torch.jit.freeze(unet_trace_model)
             self.unet.forward = unet_trace_model.forward
 
