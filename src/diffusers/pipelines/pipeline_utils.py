@@ -641,8 +641,8 @@ def _assign_components_to_devices(
         device_id = device_cycle[current_device_index % len(device_cycle)]
 
         component_memory = module_sizes[component]
-        device_memory = device_memory[device_id]
-        if component_memory > device_memory:
+        curr_device_memory = device_memory[device_id]
+        if component_memory > curr_device_memory:
             # TODO (sayakpaul, SunMarc): explore the possibility of offloading.
             # https://github.com/huggingface/diffusers/pull/6857#discussion_r1489544130
             raise ValueError(
