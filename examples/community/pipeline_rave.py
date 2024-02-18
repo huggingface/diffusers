@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -50,12 +50,6 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
-
-
-try:
-    from controlnet_aux.processor import Processor
-except ModuleNotFoundError:
-    raise Exception("RAVE requires a package that was not found. Please run `pip install controlnet_aux`")
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -152,51 +146,6 @@ def retrieve_latents(
         return encoder_output.latents
     else:
         raise AttributeError("Could not access latents of provided encoder_output")
-
-
-# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
-def retrieve_timesteps(
-    scheduler,
-    num_inference_steps: Optional[int] = None,
-    device: Optional[Union[str, torch.device]] = None,
-    timesteps: Optional[List[int]] = None,
-    **kwargs,
-):
-    """
-    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
-    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
-
-    Args:
-        scheduler (`SchedulerMixin`):
-            The scheduler to get timesteps from.
-        num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used,
-            `timesteps` must be `None`.
-        device (`str` or `torch.device`, *optional*):
-            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
-        timesteps (`List[int]`, *optional*):
-                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
-                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
-                must be `None`.
-
-    Returns:
-        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
-        second element is the number of inference steps.
-    """
-    if timesteps is not None:
-        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
-        if not accepts_timesteps:
-            raise ValueError(
-                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
-                f" timestep schedules. Please check whether you are using the correct scheduler."
-            )
-        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-        num_inference_steps = len(timesteps)
-    else:
-        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
-        timesteps = scheduler.timesteps
-    return timesteps, num_inference_steps
 
 
 @dataclass
@@ -644,10 +593,11 @@ class RAVEPipeline(
             raise ValueError(
                 f"Expected `video` and `control_video` to have type list but got {type(video)=} and {type(control_video)=}"
             )
-        if len(video) != len(control_video):
-            raise ValueError(
-                f"Expected length of `video` and `control_video` to be equal but got {len(video)=} and {len(control_video)=}"
-            )
+        for cv in control_video:
+            if len(video) != len(cv):
+                raise ValueError(
+                    f"Expected length of `video` and `control_video` to be equal but got {len(video)=} and {len(cv)=}"
+                )
 
         if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
             raise ValueError(
@@ -1182,9 +1132,7 @@ class RAVEPipeline(
     def __call__(
         self,
         video: List[Image.Image],
-        control_video: Optional[List[Image.Image]] = None,
-        controlnet_processor_id: str = "depth_zoe",
-        controlnet_processor_kwargs: Dict[str, Any] = {},
+        control_video: Optional[Union[List[Image.Image], List[List[Image.Image]]]] = None,
         prompt: Union[str, List[str]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -1347,6 +1295,9 @@ class RAVEPipeline(
                 mult * [control_guidance_start],
                 mult * [control_guidance_end],
             )
+        
+        if not isinstance(control_video[0], list):
+            control_video = [control_video]
 
         width = width or video[0].size[0]
         height = height or video[0].size[1]
@@ -1357,12 +1308,7 @@ class RAVEPipeline(
         num_videos_per_prompt = 1
 
         video = [frame.resize((width, height)).convert("RGB") for frame in video]
-
-        if control_video is None:
-            controlnet_processor = Processor(controlnet_processor_id, **controlnet_processor_kwargs)
-            control_video = [controlnet_processor(frame) for frame in video]
-        else:
-            control_video = [frame.resize((width, height)).convert("RGB") for frame in video]
+        control_video = [[frame.resize((width, height)).convert("RGB") for frame in cv] for cv in control_video]
 
         # If inversion is not to be applied on grid, we must create a copy before conversion
         # TODO: improve logic flow
@@ -1372,7 +1318,7 @@ class RAVEPipeline(
             inversion_width, inversion_height = width, height
 
         grids = self._convert_frames_to_grids(video, grid_size)
-        control_grids = self._convert_frames_to_grids(control_video, grid_size)
+        control_grids = [self._convert_frames_to_grids(cv, grid_size) for cv in control_video]
         width, height = grids[0].size
         num_grid_frames = len(grids)
 
@@ -1484,7 +1430,7 @@ class RAVEPipeline(
         # 5. Prepare controlnet_conditioning_image
         if isinstance(controlnet, ControlNetModel):
             control_grids = self.prepare_control_image(
-                image=control_grids,
+                image=control_grids[0],
                 width=width,
                 height=height,
                 batch_size=batch_size * num_videos_per_prompt,
@@ -1498,7 +1444,7 @@ class RAVEPipeline(
             # TODO(a-r-r-o-w): refactor
             if is_inversion_mode:
                 inversion_control_video = self.prepare_control_image(
-                    image=inversion_control_video,
+                    image=inversion_control_video[0],
                     width=inversion_width,
                     height=inversion_height,
                     batch_size=batch_size * num_videos_per_prompt,
@@ -1557,9 +1503,8 @@ class RAVEPipeline(
         latent_timestep = timesteps[:1].repeat(batch_size * num_videos_per_prompt)
         self._num_timesteps = len(timesteps)
 
-        inversion_timesteps, num_inversion_steps = retrieve_timesteps(
-            self.inverse_scheduler, num_inversion_steps, device
-        )
+        self.inverse_scheduler.set_timesteps(num_inversion_steps, device=device)
+        inversion_timesteps = self.inverse_scheduler.timesteps
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
