@@ -286,7 +286,9 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
             x = upscaler(x)
         return x
 
-    def forward(self, x, r, clip_text_pooled, clip_text=None, clip_img=None, effnet=None, pixels=None, sca=None, crp=None):
+    def forward(
+        self, x, r, clip_text_pooled, clip_text=None, clip_img=None, effnet=None, pixels=None, sca=None, crp=None
+    ):
         if pixels is None:
             pixels = x.new_zeros(x.size(0), 3, 8, 8)
 

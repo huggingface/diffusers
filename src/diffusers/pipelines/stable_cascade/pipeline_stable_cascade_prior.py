@@ -14,7 +14,7 @@
 
 from dataclasses import dataclass
 from math import ceil
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
 import numpy as np
 import PIL
@@ -26,7 +26,6 @@ from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from ..wuerstchen.pipeline_wuerstchen_prior import WuerstchenPriorPipelineOutput
 from .modeling_stable_cascade_common import StableCascadeUnet
 
 
@@ -49,6 +48,7 @@ EXAMPLE_DOC_STRING = """
         ```
 """
 
+
 @dataclass
 class StableCascadePriorPipelineOutput(BaseOutput):
     """
@@ -64,6 +64,7 @@ class StableCascadePriorPipelineOutput(BaseOutput):
 
     image_embeddings: Union[torch.FloatTensor, np.ndarray]
     prompt_embeds: Union[torch.FloatTensor, np.ndarray]
+    negative_prompt_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
 class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
@@ -263,7 +264,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         prompt_embeds_pooled=None,
         negative_prompt_embeds=None,
         negative_prompt_embeds_pooled=None,
-    ):  
+    ):
         if (callback_steps is None) or (
             callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
         ):
@@ -271,7 +272,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
             )
-        
+
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
@@ -427,7 +428,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         Examples:
 
         Returns:
-            [`~pipelines.WuerstchenPriorPipelineOutput`] or `tuple` [`~pipelines.WuerstchenPriorPipelineOutput`] if
+            [`StableCascadePriorPipelineOutput`] or `tuple` [`StableCascadePriorPipelineOutput`] if
             `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
             generated image embeddings.
         """
@@ -584,9 +585,11 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.maybe_free_model_hooks()
 
         if output_type == "np":
-            latents = latents.cpu().float().numpy()
+            latents = latents.cpu().numpy()
+            prompt_embeds = prompt_embeds.cpu().numpy()
+            negative_prompt_embeds = negative_prompt_embeds.cpu().numpy()
 
         if not return_dict:
-            return (latents,)
+            return (latents, prompt_embeds, negative_prompt_embeds)
 
-        return WuerstchenPriorPipelineOutput(latents)
+        return StableCascadePriorPipelineOutput(latents, prompt_embeds, negative_prompt_embeds)

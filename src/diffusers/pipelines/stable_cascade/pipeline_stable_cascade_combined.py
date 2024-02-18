@@ -18,7 +18,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import deprecate, replace_example_docstring
+from ...utils import replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
 from .modeling_stable_cascade_common import StableCascadeUnet

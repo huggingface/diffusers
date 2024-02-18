@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, List, Optional, Union
 
-import numpy as np
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import deprecate, logging, replace_example_docstring
+from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
@@ -191,6 +190,48 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             # to avoid doing two forward passes
         return prompt_embeds_pooled, negative_prompt_embeds_pooled
 
+    def check_inputs(
+        self,
+        prompt,
+        callback_steps,
+        negative_prompt=None,
+        prompt_embeds=None,
+        negative_prompt_embeds=None,
+    ):
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+
+        if prompt is not None and prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
+        elif prompt is None and prompt_embeds is None:
+            raise ValueError(
+                "Provide either `prompt` or `prompt_embeds`. Cannot leave both `prompt` and `prompt_embeds` undefined."
+            )
+        elif prompt is not None and (not isinstance(prompt, str) and not isinstance(prompt, list)):
+            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+
+        if negative_prompt is not None and negative_prompt_embeds is not None:
+            raise ValueError(
+                f"Cannot forward both `negative_prompt`: {negative_prompt} and `negative_prompt_embeds`:"
+                f" {negative_prompt_embeds}. Please make sure to only forward one of the two."
+            )
+
+        if prompt_embeds is not None and negative_prompt_embeds is not None:
+            if prompt_embeds.shape != negative_prompt_embeds.shape:
+                raise ValueError(
+                    "`prompt_embeds` and `negative_prompt_embeds` must have the same shape when passed directly, but"
+                    f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
+                    f" {negative_prompt_embeds.shape}."
+                )
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -213,13 +254,15 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         timesteps: Optional[List[float]] = None,
         guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -244,6 +287,13 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             negative_prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts not to guide the image generation. Ignored when not using guidance (i.e., ignored
                 if `decoder_guidance_scale` is less than `1`).
+            prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
+                provided, text embeddings will be generated from `prompt` input argument.
+            negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
+                argument.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -258,15 +308,12 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
 
         Examples:
 
@@ -276,58 +323,29 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             embeddings.
         """
 
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
-
         # 0. Define commonly used variables
         device = self._execution_device
         dtype = self.decoder.dtype
         self._guidance_scale = guidance_scale
 
         # 1. Check inputs. Raise error if not correct
-        if not isinstance(prompt, list):
-            if isinstance(prompt, str):
-                prompt = [prompt]
-            else:
-                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
-
-        if self.do_classifier_free_guidance:
-            if negative_prompt is not None and not isinstance(negative_prompt, list):
-                if isinstance(negative_prompt, str):
-                    negative_prompt = [negative_prompt]
-                else:
-                    raise TypeError(
-                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
-                    )
-
-        if isinstance(image_embeddings, list):
-            image_embeddings = torch.cat(image_embeddings, dim=0)
-        if isinstance(image_embeddings, np.ndarray):
-            image_embeddings = torch.Tensor(image_embeddings, device=device).to(dtype=dtype)
-        if not isinstance(image_embeddings, torch.Tensor):
-            raise TypeError(
-                f"'image_embeddings' must be of type 'torch.Tensor' or 'np.array', but got {type(image_embeddings)}."
-            )
-
-        if not isinstance(num_inference_steps, int):
-            raise TypeError(
-                f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
-                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
-            )
+        self.check_inputs(
+            prompt,
+            callback_steps=callback_steps,
+            negative_prompt=negative_prompt,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+        )
 
         # 2. Encode caption
-        prompt_embeds, negative_prompt_embeds = self.encode_prompt(
-            prompt,
-            device,
-            image_embeddings.size(0) * num_images_per_prompt,
-            self.do_classifier_free_guidance,
-            negative_prompt,
-        )
+        if prompt_embeds is None and negative_prompt_embeds is None:
+            prompt_embeds, negative_prompt_embeds = self.encode_prompt(
+                prompt,
+                device,
+                image_embeddings.size(0) * num_images_per_prompt,
+                self.do_classifier_free_guidance,
+                negative_prompt,
+            )
         prompt_embeds_pooled = (
             torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
         )
@@ -379,19 +397,10 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 generator=generator,
             ).prev_sample
 
-            if callback_on_step_end is not None:
-                callback_kwargs = {}
-                for k in callback_on_step_end_tensor_inputs:
-                    callback_kwargs[k] = locals()[k]
-                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                latents = callback_outputs.pop("latents", latents)
-                image_embeddings = callback_outputs.pop("image_embeddings", image_embeddings)
-                prompt_embeds_pooled = callback_outputs.pop("prompt_embeds_pooled", prompt_embeds_pooled)
-
-            # if callback is not None and i % callback_steps == 0:
-            #     step_idx = i // getattr(self.scheduler, "order", 1)
-            #     callback(step_idx, t, latents)
+            # call the callback, if provided
+            if callback is not None and i % callback_steps == 0:
+                step_idx = i // getattr(self.scheduler, "order", 1)
+                callback(step_idx, t, latents)
 
         if output_type not in ["pt", "np", "pil", "latent"]:
             raise ValueError(
