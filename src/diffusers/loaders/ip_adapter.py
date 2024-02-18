@@ -184,9 +184,7 @@ class IPAdapterMixin:
             state_dicts.append(state_dict)
 
             # load CLIP image encoder here if it has not been registered to the pipeline yet
-            if (
-                hasattr(self, "image_encoder")
-                and getattr(self, "image_encoder", None) is None):
+            if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
                 if image_encoder_folder is not None:
                     if not isinstance(pretrained_model_name_or_path_or_dict, dict):
                         logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
@@ -202,7 +200,9 @@ class IPAdapterMixin:
                         ).to(self.device, dtype=self.dtype)
                         self.register_modules(image_encoder=image_encoder)
                     else:
-                        raise ValueError("`image_encoder` cannot be loaded because `pretrained_model_name_or_path_or_dict` is a state dict.")
+                        raise ValueError(
+                            "`image_encoder` cannot be loaded because `pretrained_model_name_or_path_or_dict` is a state dict."
+                        )
                 else:
                     logger.warning(
                         "image_encoder is not loaded since `image_encoder_folder=None` passed. you will not be able to use `ip_adapter_image` for ip-adapter."
