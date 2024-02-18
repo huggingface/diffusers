@@ -186,27 +186,28 @@ class IPAdapterMixin:
             # load CLIP image encoder here if it has not been registered to the pipeline yet
             if (
                 hasattr(self, "image_encoder")
-                and getattr(self, "image_encoder", None) is None
-                and image_encoder_folder is not None
-            ):
-                if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-                    logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
-                    if image_encoder_folder.count("/") == 0:
-                        image_encoder_subfolder = Path(subfolder, image_encoder_folder).as_posix()
-                    else:
-                        image_encoder_subfolder = Path(image_encoder_folder).as_posix()
+                and getattr(self, "image_encoder", None) is None):
+                if image_encoder_folder is not None:
+                    if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+                        logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
+                        if image_encoder_folder.count("/") == 0:
+                            image_encoder_subfolder = Path(subfolder, image_encoder_folder).as_posix()
+                        else:
+                            image_encoder_subfolder = Path(image_encoder_folder).as_posix()
 
-                    image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-                        pretrained_model_name_or_path_or_dict,
-                        subfolder=image_encoder_subfolder,
-                        low_cpu_mem_usage=low_cpu_mem_usage,
-                    ).to(self.device, dtype=self.dtype)
-                    self.register_modules(image_encoder=image_encoder)
-            else:
-                logger.warning(
-                    "image_encoder is not loaded since `image_encoder_folder=None` passed. you will not be able to use `ip_adapter_image` for ip-adapter."
-                    " use `ip_adapter_image_embedding` to pass pre-geneated image embedding instead."
-                )
+                        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+                            pretrained_model_name_or_path_or_dict,
+                            subfolder=image_encoder_subfolder,
+                            low_cpu_mem_usage=low_cpu_mem_usage,
+                        ).to(self.device, dtype=self.dtype)
+                        self.register_modules(image_encoder=image_encoder)
+                    else:
+                        raise ValueError("`image_encoder` cannot be loaded because `pretrained_model_name_or_path_or_dict` is a state dict.")
+                else:
+                    logger.warning(
+                        "image_encoder is not loaded since `image_encoder_folder=None` passed. you will not be able to use `ip_adapter_image` for ip-adapter."
+                        " use `ip_adapter_image_embedding` to pass pre-geneated image embedding instead."
+                    )
 
             # create feature extractor if it has not been registered to the pipeline yet
             if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:

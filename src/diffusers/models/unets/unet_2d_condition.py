@@ -1069,7 +1069,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(image_embeds)
         elif self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
-            if "ip_hidden_states" in cross_attention_kwargs:
+            if cross_attention_kwargs is not None and cross_attention_kwargs.get("ip_hidden_states", None) is not None:
                 ip_hidden_states = cross_attention_kwargs.pop("ip_hidden_states")
             elif "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
