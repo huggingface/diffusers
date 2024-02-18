@@ -169,8 +169,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.width = sample_size
 
             self.patch_size = patch_size
-            interpolation_scale = interpolation_scale \
-                if interpolation_scale is not None else max(self.config.sample_size // 64, 1)
+            interpolation_scale = (
+                interpolation_scale if interpolation_scale is not None else max(self.config.sample_size // 64, 1)
+            )
             self.pos_embed = PatchEmbed(
                 height=sample_size,
                 width=sample_size,

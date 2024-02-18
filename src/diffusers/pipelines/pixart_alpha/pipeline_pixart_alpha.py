@@ -166,7 +166,7 @@ ASPECT_RATIO_256_BIN = {
     "2.4": [384.0, 160.0],
     "2.5": [400.0, 160.0],
     "3.0": [432.0, 144.0],
-    "4.0": [512.0, 128.0]
+    "4.0": [512.0, 128.0],
 }
 
 
@@ -818,7 +818,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             elif self.transformer.config.sample_size == 32:
                 aspect_ratio_bin = ASPECT_RATIO_256_BIN
             else:
-                raise ValueError('Invalid sample size')
+                raise ValueError("Invalid sample size")
             orig_height, orig_width = height, width
             height, width = self.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
 

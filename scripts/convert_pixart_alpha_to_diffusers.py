@@ -180,7 +180,9 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--orig_ckpt_path", default=None, type=str, required=False, help="Path to the checkpoint to convert.")
+    parser.add_argument(
+        "--orig_ckpt_path", default=None, type=str, required=False, help="Path to the checkpoint to convert."
+    )
     parser.add_argument(
         "--image_size",
         default=1024,
