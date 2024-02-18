@@ -264,7 +264,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         vae: AutoencoderKL,
         transformer: Transformer2DModel,
         scheduler: DPMSolverMultistepScheduler,
-        model_token_max_length: int = 120,
     ):
         super().__init__()
 
@@ -726,6 +725,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         clean_caption: bool = True,
         use_resolution_binning: bool = True,
+        model_token_max_length: int = 120,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -809,7 +809,6 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         # 1. Check inputs. Raise error if not correct
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
-        model_token_max_length = self.config.model_token_max_length
         if use_resolution_binning:
             if self.transformer.config.sample_size == 128:
                 aspect_ratio_bin = ASPECT_RATIO_1024_BIN
