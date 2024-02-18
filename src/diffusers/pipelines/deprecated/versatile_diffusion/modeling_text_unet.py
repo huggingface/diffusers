@@ -1275,13 +1275,16 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
             image_embeds = added_cond_kwargs.get("image_embeds")
             encoder_hidden_states = self.encoder_hid_proj(image_embeds)
         elif self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
-            if "image_embeds" not in added_cond_kwargs:
+            if cross_attention_kwargs is not None and cross_attention_kwargs.get("ip_hidden_states", None) is not None:
+                ip_hidden_states = cross_attention_kwargs.pop("ip_hidden_states")
+            elif "image_embeds" not in added_cond_kwargs:
                 raise ValueError(
                     f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
-            image_embeds = added_cond_kwargs.get("image_embeds")
-            image_embeds = self.encoder_hid_proj(image_embeds)
-            encoder_hidden_states = (encoder_hidden_states, image_embeds)
+            else:
+                image_embeds = added_cond_kwargs.get("image_embeds")
+                ip_hidden_states = self.encoder_hid_proj(image_embeds)
+            encoder_hidden_states = (encoder_hidden_states, ip_hidden_states)
 
         # 2. pre-process
         sample = self.conv_in(sample)
