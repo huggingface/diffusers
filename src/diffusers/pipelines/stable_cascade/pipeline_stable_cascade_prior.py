@@ -259,6 +259,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         prompt,
         callback_steps,
         images=None,
+        image_embeds=None,
         negative_prompt=None,
         prompt_embeds=None,
         prompt_embeds_pooled=None,
@@ -306,6 +307,12 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                     f"directly, but got: `prompt_embeds_pooled` {prompt_embeds_pooled.shape} !="
                     f"`negative_prompt_embeds_pooled` {negative_prompt_embeds_pooled.shape}."
                 )
+
+        if image_embeds is not None and images is not None:
+            raise ValueError(
+                f"Cannot forward both `images`: {images} and `image_embeds`: {image_embeds}. Please make sure to"
+                " only forward one of the two."
+            )
 
         if images:
             for i, image in enumerate(images):
@@ -449,6 +456,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             prompt,
             callback_steps=callback_steps,
             images=images,
+            image_embeds=image_embeds,
             negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             prompt_embeds_pooled=prompt_embeds_pooled,
@@ -483,6 +491,9 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 batch_size=batch_size,
                 num_images_per_prompt=num_images_per_prompt,
             )
+        elif image_embeds is not None:
+            image_embeds_pooled = image_embeds.repeat(batch_size * num_images_per_prompt)
+            uncond_image_embeds_pooled = torch.zeros_like(image_embeds_pooled)
         else:
             image_embeds_pooled = torch.zeros(
                 batch_size * num_images_per_prompt, 1, self.prior.config.c_clip_img, device=device, dtype=dtype
@@ -490,6 +501,7 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             uncond_image_embeds_pooled = torch.zeros(
                 batch_size * num_images_per_prompt, 1, self.prior.config.c_clip_img, device=device, dtype=dtype
             )
+
         if self.do_classifier_free_guidance:
             image_embeds = torch.cat([image_embeds_pooled, uncond_image_embeds_pooled], dim=0)
         else:
