@@ -486,7 +486,7 @@ class TextualInversionLoaderMixin:
 
         # Examples 3 (based on SDXL LoRA Advanced training)
         pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
-        embedding_path = hf_hub_download(repo_id="LinoyTsaban/web_y2k_lora", filename="web_y2k_emb.safetensors", repo_type="model")
+        embedding_path = hf_hub_download(repo_id="linoyts/web_y2k", filename="web_y2k_emb.safetensors", repo_type="model")
 
         # load embeddings to the text encoders
         state_dict = load_file(embedding_path)
