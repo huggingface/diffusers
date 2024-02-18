@@ -172,7 +172,6 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         prior_callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -260,21 +259,6 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
-        prior_kwargs = {}
-        if kwargs.get("prior_callback", None) is not None:
-            prior_kwargs["callback"] = kwargs.pop("prior_callback")
-            deprecate(
-                "prior_callback",
-                "1.0.0",
-                "Passing `prior_callback` as an input argument to `__call__` is deprecated, consider use `prior_callback_on_step_end`",
-            )
-        if kwargs.get("prior_callback_steps", None) is not None:
-            deprecate(
-                "prior_callback_steps",
-                "1.0.0",
-                "Passing `prior_callback_steps` as an input argument to `__call__` is deprecated, consider use `prior_callback_on_step_end`",
-            )
-            prior_kwargs["callback_steps"] = kwargs.pop("prior_callback_steps")
 
         prior_outputs = self.prior_pipe(
             prompt=prompt if prompt_embeds is None else None,
@@ -294,7 +278,6 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             return_dict=False,
             callback_on_step_end=prior_callback_on_step_end,
             callback_on_step_end_tensor_inputs=prior_callback_on_step_end_tensor_inputs,
-            **prior_kwargs,
         )
         image_embeddings = prior_outputs[0]
 
@@ -310,7 +293,6 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             return_dict=return_dict,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-            **kwargs,
         )
 
         return outputs

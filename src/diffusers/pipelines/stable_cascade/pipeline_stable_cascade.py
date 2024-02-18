@@ -353,7 +353,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
-            image_embeddings = (
+            effnet = (
                 torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
                 if self.do_classifier_free_guidance
                 else image_embeddings
@@ -363,7 +363,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 x=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
                 clip_text_pooled=prompt_embeds_pooled,
-                effnet=image_embeddings,
+                effnet=effnet,
             )
 
             # 8. Check for classifier free guidance and apply it

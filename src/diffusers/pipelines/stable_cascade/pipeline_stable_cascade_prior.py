@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from dataclasses import dataclass
 from math import ceil
 from typing import Callable, Dict, List, Optional, Union
 
@@ -22,7 +23,7 @@ from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTo
 
 from ...loaders import LoraLoaderMixin
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import deprecate, logging, replace_example_docstring
+from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 from ..wuerstchen.pipeline_wuerstchen_prior import WuerstchenPriorPipelineOutput
@@ -47,6 +48,22 @@ EXAMPLE_DOC_STRING = """
         >>> prior_output = pipe(prompt)
         ```
 """
+
+@dataclass
+class StableCascadePriorPipelineOutput(BaseOutput):
+    """
+    Output class for WuerstchenPriorPipeline.
+
+    Args:
+        image_embeddings (`torch.FloatTensor` or `np.ndarray`)
+            Prior image embeddings for text prompt
+        prompt_embeds (`torch.FloatTensor`):
+            Text embeddings for the prompt.
+
+    """
+
+    image_embeddings: Union[torch.FloatTensor, np.ndarray]
+    prompt_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
 class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
@@ -239,14 +256,22 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     def check_inputs(
         self,
         prompt,
-        images,
-        negative_prompt,
-        num_inference_steps,
+        callback_steps,
+        images=None,
+        negative_prompt=None,
         prompt_embeds=None,
         prompt_embeds_pooled=None,
         negative_prompt_embeds=None,
         negative_prompt_embeds_pooled=None,
-    ):
+    ):  
+        if (callback_steps is None) or (
+            callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0)
+        ):
+            raise ValueError(
+                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
+                f" {type(callback_steps)}."
+            )
+        
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
@@ -280,12 +305,6 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                     f"directly, but got: `prompt_embeds_pooled` {prompt_embeds_pooled.shape} !="
                     f"`negative_prompt_embeds_pooled` {negative_prompt_embeds_pooled.shape}."
                 )
-
-        if not isinstance(num_inference_steps, int):
-            raise TypeError(
-                f"'num_inference_steps' must be of type 'int', but got {type(num_inference_steps)}\
-                           In Case you want to provide explicit timesteps, please use the 'timesteps' argument."
-            )
 
         if images:
             for i, image in enumerate(images):
@@ -339,9 +358,8 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pt",
         return_dict: bool = True,
-        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
-        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
+        callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
+        callback_steps: int = 1,
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -399,15 +417,12 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 (`np.array`) or `"pt"` (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
-            callback_on_step_end (`Callable`, *optional*):
-                A function that calls at the end of each denoising steps during the inference. The function is called
-                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
-                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
-                `callback_on_step_end_tensor_inputs`.
-            callback_on_step_end_tensor_inputs (`List`, *optional*):
-                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
-                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+            callback (`Callable`, *optional*):
+                A function that will be called every `callback_steps` steps during inference. The function will be
+                called with the following arguments: `callback(step: int, timestep: int, latents: torch.FloatTensor)`.
+            callback_steps (`int`, *optional*, defaults to 1):
+                The frequency at which the `callback` function will be called. If not specified, the callback will be
+                called at every step.
 
         Examples:
 
@@ -429,29 +444,11 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
             batch_size = prompt_embeds.shape[0]
 
         # 1. Check inputs. Raise error if not correct
-        if prompt is not None and not isinstance(prompt, list):
-            if isinstance(prompt, str):
-                prompt = [prompt]
-            else:
-                raise TypeError(f"'prompt' must be of type 'list' or 'str', but got {type(prompt)}.")
-
-        if images is not None and not isinstance(images, list):
-            images = [images]
-
-        if self.do_classifier_free_guidance:
-            if negative_prompt is not None and not isinstance(negative_prompt, list):
-                if isinstance(negative_prompt, str):
-                    negative_prompt = [negative_prompt]
-                else:
-                    raise TypeError(
-                        f"'negative_prompt' must be of type 'list' or 'str', but got {type(negative_prompt)}."
-                    )
-
         self.check_inputs(
             prompt,
-            images,
-            negative_prompt,
-            num_inference_steps,
+            callback_steps=callback_steps,
+            images=images,
+            negative_prompt=negative_prompt,
             prompt_embeds=prompt_embeds,
             prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
@@ -578,21 +575,10 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
                 generator=generator,
             ).prev_sample
 
-            if callback_on_step_end is not None:
-                callback_kwargs = {}
-                for k in callback_on_step_end_tensor_inputs:
-                    callback_kwargs[k] = locals()[k]
-                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                latents = callback_outputs.pop("latents", latents)
-                text_encoder_hidden_states = callback_outputs.pop(
-                    "text_encoder_hidden_states", text_encoder_hidden_states
-                )
-                negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-
-            # if callback is not None and i % callback_steps == 0:
-            #     step_idx = i // getattr(self.scheduler, "order", 1)
-            #     callback(step_idx, t, latents)
+            # call the callback, if provided
+            if callback is not None and i % callback_steps == 0:
+                step_idx = i // getattr(self.scheduler, "order", 1)
+                callback(step_idx, t, latents)
 
         # Offload all models
         self.maybe_free_model_hooks()
