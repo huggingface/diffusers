@@ -497,7 +497,7 @@ class TextualInversionLoaderMixin:
         pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
 
         # Unload explicitly from both text encoders abd tokenizers
-        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipe.text_encoder, tokenizer=pipe.tokenizer)
+        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
         pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipe.text_encoder_2, tokenizer=pipe.tokenizer_2)
 
         ```
