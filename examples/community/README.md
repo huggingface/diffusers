@@ -63,6 +63,8 @@ If a community doesn't work as expected, please open an issue and ping the autho
 |   IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
 |   InstantID Pipeline                                                                                               | Stable Diffusion XL Pipeline that supports InstantID                                                                                                                                                                                                                                                                                                                                                 |  [InstantID Pipeline](#instantid-pipeline) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/InstantX/InstantID) | [Haofan Wang](https://github.com/haofanwang) |
 |   UFOGen Scheduler                                                                                               | Scheduler for UFOGen Model (compatible with Stable Diffusion pipelines)                                                                                                                                                                                                                                                                                                                                                 |  [UFOGen Scheduler](#ufogen-scheduler) | - | [dg845](https://github.com/dg845) |
+| MotionCtrl (Stable Video Diffusion) | Implementation of [MotionCtrl](https://arxiv.org/abs/2312.03641) | [MotionCtrl SVD](#motionctrl-svd) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/17xIdW-xWk4hCAIkGq0OfiJYUqwWSPSAz?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
+
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -3634,4 +3636,66 @@ onestep_image = pipe(prompt, num_inference_steps=1).images[0]
 
 # Multistep sampling
 multistep_image = pipe(prompt, num_inference_steps=4).images[0]
+```
+
+### MotionCtrl SVD
+
+[MotionCtrl](https://arxiv.org/abs/2312.03641) is a method that allows flexible control over object and camera movement in video diffusion models. The implementation here is only for [Stable Video Diffusion](https://wzhouxiff.github.io/projects/MotionCtrl/) as presented by the authors. You can find a more implementation-oriented description about it in [this](https://github.com/huggingface/diffusers/issues/6688#issuecomment-1913459070) comment. You can find example results, some useful discussion and MotionCtrl conversion script [here](https://github.com/huggingface/diffusers/pull/6844).
+
+```py
+import torch
+from diffusers import DiffusionPipeline
+from diffusers.utils import export_to_gif, load_image
+from examples.community.pipeline_stable_video_motionctrl_diffusion import UNetSpatioTemporalConditionMotionCtrlModel
+
+# Initialize pipeline
+ckpt = "a-r-r-o-w/motionctrl-svd"
+unet = UNetSpatioTemporalConditionMotionCtrlModel.from_pretrained(ckpt, subfolder="unet", torch_dtype=torch.float16)
+pipe = DiffusionPipeline.from_pretrained(
+    ckpt,
+    unet=unet,
+    torch_dtype=torch.float16,
+    variant="fp16",
+    custom_pipeline="pipeline_stable_video_motionctrl_diffusion"
+).to("cuda")
+
+# Input image and camera pose
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
+camera_pose = [
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.2, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.28750000000000003, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.37500000000000006, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.4625000000000001, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.55, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.6375000000000002, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.7250000000000001, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.8125000000000002, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.9000000000000001, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.9875000000000003, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0750000000000002, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.1625000000000003, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.2500000000000002, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.3375000000000001, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.4250000000000003, 0.0, 0.0, 1.0, 0.0],
+    [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.5125000000000004, 0.0, 0.0, 1.0, 0.0],
+]
+
+# Set MotionCtrl scale
+pipe.unet.set_motionctrl_scale(0.8)
+
+# Generation (make sure num_frames == len(camera_pose))
+num_frames = 16
+frames = pipe(
+    image=image,
+    camera_pose=camera_pose,
+    num_frames=num_frames,
+    num_inference_steps=20,
+    decode_chunk_size=2,
+    motion_bucket_id=255,
+    fps=15,
+    min_guidance_scale=3.5,
+    max_guidance_scale=1,
+    generator=torch.Generator().manual_seed(42)
+).frames[0]
+export_to_gif(frames, f"animation.gif")
 ```
