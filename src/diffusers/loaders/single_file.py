@@ -48,6 +48,7 @@ def build_sub_model_components(
     load_safety_checker=False,
     model_type=None,
     image_size=None,
+    torch_dtype=None,
     **kwargs,
 ):
     if component_name in pipeline_components:
@@ -96,7 +97,7 @@ def build_sub_model_components(
             from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
             safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
+                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only, torch_dtype=torch_dtype
             )
         else:
             safety_checker = None
