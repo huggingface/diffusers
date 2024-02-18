@@ -2,6 +2,7 @@ import argparse
 import re
 
 import torch
+import yaml
 from transformers import (
     CLIPProcessor,
     CLIPTextModel,
@@ -28,8 +29,6 @@ from diffusers.pipelines.stable_diffusion.convert_from_ckpt import (
     textenc_conversion_map,
     textenc_pattern,
 )
-from diffusers.utils import is_omegaconf_available
-from diffusers.utils.import_utils import BACKENDS_MAPPING
 
 
 def convert_open_clip_checkpoint(checkpoint):
@@ -370,52 +369,52 @@ def convert_gligen_unet_checkpoint(checkpoint, config, path=None, extract_ema=Fa
 
 
 def create_vae_config(original_config, image_size: int):
-    vae_params = original_config.autoencoder.params.ddconfig
-    _ = original_config.autoencoder.params.embed_dim
+    vae_params = original_config["autoencoder"]["params"]["ddconfig"]
+    _ = original_config["autoencoder"]["params"]["embed_dim"]
 
-    block_out_channels = [vae_params.ch * mult for mult in vae_params.ch_mult]
+    block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
 
     config = {
         "sample_size": image_size,
-        "in_channels": vae_params.in_channels,
-        "out_channels": vae_params.out_ch,
+        "in_channels": vae_params["in_channels"],
+        "out_channels": vae_params["out_ch"],
         "down_block_types": tuple(down_block_types),
         "up_block_types": tuple(up_block_types),
         "block_out_channels": tuple(block_out_channels),
-        "latent_channels": vae_params.z_channels,
-        "layers_per_block": vae_params.num_res_blocks,
+        "latent_channels": vae_params["z_channels"],
+        "layers_per_block": vae_params["num_res_blocks"],
     }
 
     return config
 
 
 def create_unet_config(original_config, image_size: int, attention_type):
-    unet_params = original_config.model.params
-    vae_params = original_config.autoencoder.params.ddconfig
+    unet_params = original_config["model"]["params"]
+    vae_params = original_config["autoencoder"]["params"]["ddconfig"]
 
-    block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
+    block_out_channels = [unet_params["model_channels"] * mult for mult in unet_params["channel_mult"]]
 
     down_block_types = []
     resolution = 1
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnDownBlock2D" if resolution in unet_params.attention_resolutions else "DownBlock2D"
+        block_type = "CrossAttnDownBlock2D" if resolution in unet_params["attention_resolutions"] else "DownBlock2D"
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
             resolution *= 2
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnUpBlock2D" if resolution in unet_params.attention_resolutions else "UpBlock2D"
+        block_type = "CrossAttnUpBlock2D" if resolution in unet_params["attention_resolutions"] else "UpBlock2D"
         up_block_types.append(block_type)
         resolution //= 2
 
-    vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
+    vae_scale_factor = 2 ** (len(vae_params["ch_mult"]) - 1)
 
-    head_dim = unet_params.num_heads if "num_heads" in unet_params else None
+    head_dim = unet_params["num_heads"] if "num_heads" in unet_params else None
     use_linear_projection = (
-        unet_params.use_linear_in_transformer if "use_linear_in_transformer" in unet_params else False
+        unet_params["use_linear_in_transformer"] if "use_linear_in_transformer" in unet_params else False
     )
     if use_linear_projection:
         if head_dim is None:
@@ -423,11 +422,11 @@ def create_unet_config(original_config, image_size: int, attention_type):
 
     config = {
         "sample_size": image_size // vae_scale_factor,
-        "in_channels": unet_params.in_channels,
+        "in_channels": unet_params["in_channels"],
         "down_block_types": tuple(down_block_types),
         "block_out_channels": tuple(block_out_channels),
-        "layers_per_block": unet_params.num_res_blocks,
-        "cross_attention_dim": unet_params.context_dim,
+        "layers_per_block": unet_params["num_res_blocks"],
+        "cross_attention_dim": unet_params["context_dim"],
         "attention_head_dim": head_dim,
         "use_linear_projection": use_linear_projection,
         "attention_type": attention_type,
@@ -445,11 +444,6 @@ def convert_gligen_to_diffusers(
     num_in_channels: int = None,
     device: str = None,
 ):
-    if not is_omegaconf_available():
-        raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
-
-    from omegaconf import OmegaConf
-
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -461,14 +455,14 @@ def convert_gligen_to_diffusers(
     else:
         print("global_step key not found in model")
 
-    original_config = OmegaConf.load(original_config_file)
+    original_config = yaml.safe_load(original_config_file)
 
     if num_in_channels is not None:
         original_config["model"]["params"]["in_channels"] = num_in_channels
 
-    num_train_timesteps = original_config.diffusion.params.timesteps
-    beta_start = original_config.diffusion.params.linear_start
-    beta_end = original_config.diffusion.params.linear_end
+    num_train_timesteps = original_config["diffusion"]["params"]["timesteps"]
+    beta_start = original_config["diffusion"]["params"]["linear_start"]
+    beta_end = original_config["diffusion"]["params"]["linear_end"]
 
     scheduler = DDIMScheduler(
         beta_end=beta_end,
@@ -582,6 +576,6 @@ if __name__ == "__main__":
     )
 
     if args.half:
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
 
     pipe.save_pretrained(args.dump_path)

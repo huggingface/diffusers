@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import gc
 import importlib
 import os
 import tempfile
@@ -36,8 +37,10 @@ from diffusers import (
     EulerDiscreteScheduler,
     LCMScheduler,
     StableDiffusionPipeline,
+    StableDiffusionXLAdapterPipeline,
     StableDiffusionXLControlNetPipeline,
     StableDiffusionXLPipeline,
+    T2IAdapter,
     UNet2DConditionModel,
 )
 from diffusers.utils.import_utils import is_accelerate_available, is_peft_available
@@ -1205,6 +1208,11 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "latent_channels": 4,
     }
 
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     @slow
     @require_torch_gpu
     def test_integration_move_lora_cpu(self):
@@ -1434,6 +1442,11 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "sample_size": 128,
     }
 
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
 
 @slow
 @require_torch_gpu
@@ -1468,11 +1481,9 @@ class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     }
 
     def tearDown(self):
-        import gc
-
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
     def test_dreambooth_old_format(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -1757,11 +1768,9 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
     }
 
     def tearDown(self):
-        import gc
-
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
     def test_sdxl_0_9_lora_one(self):
         generator = torch.Generator().manual_seed(0)
@@ -2168,7 +2177,7 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipeline)
 
-    def test_canny_lora(self):
+    def test_controlnet_canny_lora(self):
         controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")
 
         pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
@@ -2191,6 +2200,34 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
         expected_image = np.array([0.4574, 0.4461, 0.4435, 0.4462, 0.4396, 0.439, 0.4474, 0.4486, 0.4333])
         assert np.allclose(original_image, expected_image, atol=1e-04)
         release_memory(pipe)
+
+    def test_sdxl_t2i_adapter_canny_lora(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16).to(
+            "cpu"
+        )
+        pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+            variant="fp16",
+        )
+        pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors")
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "toy"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
+        )
+
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+
+        assert images[0].shape == (768, 512, 3)
+
+        image_slice = images[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.4284, 0.4337, 0.4319, 0.4255, 0.4329, 0.4280, 0.4338, 0.4420, 0.4226])
+        assert numpy_cosine_similarity_distance(image_slice, expected_slice) < 1e-4
 
     @nightly
     def test_sequential_fuse_unfuse(self):

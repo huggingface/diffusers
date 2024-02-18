@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -40,10 +40,8 @@ def _append_dims(x, target_dims):
     return x[(...,) + (None,) * dims_to_append]
 
 
-def tensor2vid(video: torch.Tensor, processor, output_type="np"):
-    # Based on:
-    # https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
-
+# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
+def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
     for batch_idx in range(batch_size):
@@ -51,6 +49,15 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         batch_output = processor.postprocess(batch_vid, output_type)
 
         outputs.append(batch_output)
+
+    if output_type == "np":
+        outputs = np.stack(outputs)
+
+    elif output_type == "pt":
+        outputs = torch.stack(outputs)
+
+    elif not output_type == "pil":
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
 
     return outputs
 
@@ -125,15 +132,15 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             image = _resize_with_antialiasing(image, (224, 224))
             image = (image + 1.0) / 2.0
 
-            # Normalize the image with for CLIP input
-            image = self.feature_extractor(
-                images=image,
-                do_normalize=True,
-                do_center_crop=False,
-                do_resize=False,
-                do_rescale=False,
-                return_tensors="pt",
-            ).pixel_values
+        # Normalize the image with for CLIP input
+        image = self.feature_extractor(
+            images=image,
+            do_normalize=True,
+            do_center_crop=False,
+            do_resize=False,
+            do_rescale=False,
+            return_tensors="pt",
+        ).pixel_values
 
         image = image.to(device=device, dtype=dtype)
         image_embeddings = self.image_encoder(image).image_embeds
@@ -326,8 +333,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         Args:
             image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
-                Image or images to guide image generation. If you provide a tensor, it needs to be compatible with
-                [`CLIPImageProcessor`](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json).
+                Image or images to guide image generation. If you provide a tensor, the expected value range is between `[0,1]`.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):

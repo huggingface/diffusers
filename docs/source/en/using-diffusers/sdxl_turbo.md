@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -23,7 +23,7 @@ Before you begin, make sure you have the following libraries installed:
 
 ```py
 # uncomment to install the necessary libraries in Colab
-#!pip install -q diffusers transformers accelerate omegaconf
+#!pip install -q diffusers transformers accelerate
 ```
 
 ## Load model checkpoints

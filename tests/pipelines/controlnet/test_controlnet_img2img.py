@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,6 +39,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
@@ -421,46 +422,53 @@ class ControlNetImg2ImgPipelineSlowTests(unittest.TestCase):
 
     def test_load_local(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
-        pipe_1 = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
+        pipe = StableDiffusionControlNetImg2ImgPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
+        pipe.unet.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
 
         controlnet = ControlNetModel.from_single_file(
             "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
         )
-        pipe_2 = StableDiffusionControlNetImg2ImgPipeline.from_single_file(
+        pipe_sf = StableDiffusionControlNetImg2ImgPipeline.from_single_file(
             "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
             safety_checker=None,
             controlnet=controlnet,
+            scheduler_type="pndm",
         )
+        pipe_sf.unet.set_default_attn_processor()
+        pipe_sf.enable_model_cpu_offload()
+
         control_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
         ).resize((512, 512))
         image = load_image(
             "https://huggingface.co/lllyasviel/sd-controlnet-canny/resolve/main/images/bird.png"
         ).resize((512, 512))
+        prompt = "bird"
 
-        pipes = [pipe_1, pipe_2]
-        images = []
-        for pipe in pipes:
-            pipe.enable_model_cpu_offload()
-            pipe.set_progress_bar_config(disable=None)
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        output = pipe(
+            prompt,
+            image=image,
+            control_image=control_image,
+            strength=0.9,
+            generator=generator,
+            output_type="np",
+            num_inference_steps=3,
+        ).images[0]
 
-            generator = torch.Generator(device="cpu").manual_seed(0)
-            prompt = "bird"
-            output = pipe(
-                prompt,
-                image=image,
-                control_image=control_image,
-                strength=0.9,
-                generator=generator,
-                output_type="np",
-                num_inference_steps=3,
-            )
-            images.append(output.images[0])
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        output_sf = pipe_sf(
+            prompt,
+            image=image,
+            control_image=control_image,
+            strength=0.9,
+            generator=generator,
+            output_type="np",
+            num_inference_steps=3,
+        ).images[0]
 
-            del pipe
-            gc.collect()
-            torch.cuda.empty_cache()
-
-        assert np.abs(images[0] - images[1]).max() < 1e-3
+        max_diff = numpy_cosine_similarity_distance(output_sf.flatten(), output.flatten())
+        assert max_diff < 1e-3

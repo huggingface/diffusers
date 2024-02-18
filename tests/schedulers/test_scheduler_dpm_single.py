@@ -30,6 +30,7 @@ class DPMSolverSinglestepSchedulerTest(SchedulerCommonTest):
             "solver_type": "midpoint",
             "lambda_min_clipped": -float("inf"),
             "variance_type": None,
+            "final_sigmas_type": "sigma_min",
         }
 
         config.update(**kwargs)

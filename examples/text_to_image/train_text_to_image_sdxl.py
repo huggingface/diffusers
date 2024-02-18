@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,20 +44,17 @@ from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
 import diffusers
-from diffusers import (
-    AutoencoderKL,
-    DDPMScheduler,
-    StableDiffusionXLPipeline,
-    UNet2DConditionModel,
-)
+from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionXLPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
+from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -69,41 +66,45 @@ DATASET_NAME_MAPPING = {
 
 def save_model_card(
     repo_id: str,
-    images=None,
-    validation_prompt=None,
-    base_model=str,
-    dataset_name=str,
-    repo_folder=None,
-    vae_path=None,
+    images: list = None,
+    validation_prompt: str = None,
+    base_model: str = None,
+    dataset_name: str = None,
+    repo_folder: str = None,
+    vae_path: str = None,
 ):
     img_str = ""
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"![img_{i}](./image_{i}.png)\n"
 
-    yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {base_model}
-dataset: {dataset_name}
-tags:
-- stable-diffusion-xl
-- stable-diffusion-xl-diffusers
-- text-to-image
-- diffusers
-inference: true
----
-    """
-    model_card = f"""
+    model_description = f"""
 # Text-to-image finetuning - {repo_id}
 
-This pipeline was finetuned from **{base_model}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompt: {validation_prompt}: \n
+This pipeline was finetuned from **{base_model}** on the **{dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompt: {validation_prompt}: \n
 {img_str}
 
 Special VAE used for training: {vae_path}.
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=base_model,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = [
+        "stable-diffusion-xl",
+        "stable-diffusion-xl-diffusers",
+        "text-to-image",
+        "diffusers",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def import_model_class_from_model_name_or_path(
@@ -508,11 +509,12 @@ def encode_prompt(batch, text_encoders, tokenizers, proportion_empty_prompts, ca
             prompt_embeds = text_encoder(
                 text_input_ids.to(text_encoder.device),
                 output_hidden_states=True,
+                return_dict=False,
             )
 
             # We are only ALWAYS interested in the pooled output of the final text encoder
             pooled_prompt_embeds = prompt_embeds[0]
-            prompt_embeds = prompt_embeds.hidden_states[-2]
+            prompt_embeds = prompt_embeds[-1][-2]
             bs_embed, seq_len, _ = prompt_embeds.shape
             prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
             prompt_embeds_list.append(prompt_embeds)
@@ -576,6 +578,12 @@ def generate_timestep_weights(args, num_timesteps):
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -842,6 +850,9 @@ def main(args):
         for image in images:
             original_sizes.append((image.height, image.width))
             image = train_resize(image)
+            if args.random_flip and random.random() < 0.5:
+                # flip
+                image = train_flip(image)
             if args.center_crop:
                 y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
                 x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
@@ -849,10 +860,6 @@ def main(args):
             else:
                 y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
                 image = crop(image, y1, x1, h, w)
-            if args.random_flip and random.random() < 0.5:
-                # flip
-                x1 = image.width - x1
-                image = train_flip(image)
             crop_top_left = (y1, x1)
             crop_top_lefts.append(crop_top_left)
             image = train_transforms(image)
@@ -955,6 +962,12 @@ def main(args):
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune-sdxl", config=vars(args))
 
+    # Function for unwraping if torch.compile() was used in accelerate.
+    def unwrap_model(model):
+        model = accelerator.unwrap_model(model)
+        model = model._orig_mod if is_compiled_module(model) else model
+        return model
+
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1054,8 +1067,12 @@ def main(args):
                 pooled_prompt_embeds = batch["pooled_prompt_embeds"].to(accelerator.device)
                 unet_added_conditions.update({"text_embeds": pooled_prompt_embeds})
                 model_pred = unet(
-                    noisy_model_input, timesteps, prompt_embeds, added_cond_kwargs=unet_added_conditions
-                ).sample
+                    noisy_model_input,
+                    timesteps,
+                    prompt_embeds,
+                    added_cond_kwargs=unet_added_conditions,
+                    return_dict=False,
+                )[0]
 
                 # Get the target for loss depending on the prediction type
                 if args.prediction_type is not None:
@@ -1081,12 +1098,13 @@ def main(args):
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
                     # This is discussed in Section 4.2 of the same paper.
                     snr = compute_snr(noise_scheduler, timesteps)
-                    if noise_scheduler.config.prediction_type == "v_prediction":
-                        # Velocity objective requires that we add one to SNR values before we divide by them.
-                        snr = snr + 1
-                    mse_loss_weights = (
-                        torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(dim=1)[0] / snr
-                    )
+                    mse_loss_weights = torch.stack([snr, args.snr_gamma * torch.ones_like(timesteps)], dim=1).min(
+                        dim=1
+                    )[0]
+                    if noise_scheduler.config.prediction_type == "epsilon":
+                        mse_loss_weights = mse_loss_weights / snr
+                    elif noise_scheduler.config.prediction_type == "v_prediction":
+                        mse_loss_weights = mse_loss_weights / (snr + 1)
 
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
@@ -1206,7 +1224,7 @@ def main(args):
 
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
-        unet = accelerator.unwrap_model(unet)
+        unet = unwrap_model(unet)
         if args.use_ema:
             ema_unet.copy_to(unet.parameters())
 
