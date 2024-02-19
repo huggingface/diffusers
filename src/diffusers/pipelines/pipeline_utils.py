@@ -504,6 +504,7 @@ def load_sub_model(
         loading_kwargs["offload_folder"] = offload_folder
         loading_kwargs["offload_state_dict"] = offload_state_dict
         loading_kwargs["variant"] = model_variants.pop(name, None)
+        loading_kwargs["revision"] = revision
         if from_flax:
             loading_kwargs["from_flax"] = True
 
