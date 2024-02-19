@@ -63,6 +63,7 @@ If a community doesn't work as expected, please open an issue and ping the autho
 |   IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
 |   InstantID Pipeline                                                                                               | Stable Diffusion XL Pipeline that supports InstantID                                                                                                                                                                                                                                                                                                                                                 |  [InstantID Pipeline](#instantid-pipeline) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/InstantX/InstantID) | [Haofan Wang](https://github.com/haofanwang) |
 |   UFOGen Scheduler                                                                                               | Scheduler for UFOGen Model (compatible with Stable Diffusion pipelines)                                                                                                                                                                                                                                                                                                                                                 |  [UFOGen Scheduler](#ufogen-scheduler) | - | [dg845](https://github.com/dg845) |
+| Stable Diffusion XL IPEX Pipeline | Accelerate Stable Diffusion XL inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion XL on IPEX](#stable-diffusion-xl-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -1704,6 +1705,111 @@ latency = elapsed_time(pipe3)
 print("Latency of StableDiffusionIPEXPipeline--fp32", latency)
 latency = elapsed_time(pipe4)
 print("Latency of StableDiffusionPipeline--fp32",latency)
+
+```
+
+### Stable Diffusion XL on IPEX
+
+This diffusion pipeline aims to accelarate the inference of Stable-Diffusion XL on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+
+To use this pipeline, you need to:
+1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
+
+**Note:** For each PyTorch release, there is a corresponding release of IPEX. Here is the mapping relationship. It is recommended to install Pytorch/IPEX2.0 to get the best performance.
+
+|PyTorch Version|IPEX Version|
+|--|--|
+|[v2.0.\*](https://github.com/pytorch/pytorch/tree/v2.0.1 "v2.0.1")|[v2.0.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v2.0.100+cpu)|
+|[v1.13.\*](https://github.com/pytorch/pytorch/tree/v1.13.0 "v1.13.0")|[v1.13.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v1.13.100+cpu)|
+
+You can simply use pip to install IPEX with the latest version.
+```python
+python -m pip install intel_extension_for_pytorch
+```
+**Note:** To install a specific version, run with the following command:
+```
+python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
+```
+
+2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
+
+**Note:** The values of `height` and `width` used during preparation with `prepare_for_ipex()` should be the same when running inference with the prepared pipeline.
+
+```python
+pipe = StableDiffusionXLPipelineIpex.from_pretrained("stabilityai/sdxl-turbo", low_cpu_mem_usage=True, use_safetensors=True)
+# value of image height/width should be consistent with the pipeline inference
+# For Float32
+pipe.prepare_for_ipex(torch.float32, prompt, height=512, width=512)
+# For BFloat16
+pipe.prepare_for_ipex(torch.bfloat16, prompt, height=512, width=512)
+```
+
+Then you can use the ipex pipeline in a similar way to the default stable diffusion xl pipeline.
+```python
+# value of image height/width should be consistent with 'prepare_for_ipex()'
+# For Float32
+image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0]
+# For BFloat16
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0]
+```
+
+The following code compares the performance of the original stable diffusion xl pipeline with the ipex-optimized pipeline.
+By using this optimized pipeline, we can get about 1.4-2 times performance boost with BFloat16 on fourth generation of Intel Xeon CPUs, 
+code-named Sapphire Rapids.
+
+```python
+import torch
+from diffusers import StableDiffusionXLPipeline
+from pipeline_stable_diffusion_xl_ipex import StableDiffusionXLPipelineIpex
+import time
+
+prompt = "sailing ship in storm by Rembrandt"
+model_id = "stabilityai/sdxl-turbo"
+steps = 4
+
+# Helper function for time evaluation
+def elapsed_time(pipeline, nb_pass=3, num_inference_steps=1):
+    # warmup
+    for _ in range(2):
+        images = pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=0.0).images
+    #time evaluation
+    start = time.time()
+    for _ in range(nb_pass):
+        pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=0.0)
+    end = time.time()
+    return (end - start) / nb_pass
+
+##############     bf16 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe = StableDiffusionXLPipelineIpex.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
+pipe.prepare_for_ipex(torch.bfloat16, prompt, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe2 = StableDiffusionXLPipeline.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    latency = elapsed_time(pipe, num_inference_steps=steps)
+    print("Latency of StableDiffusionXLPipelineIpex--bf16", latency, "s for total", steps, "steps")
+    latency = elapsed_time(pipe2, num_inference_steps=steps)
+    print("Latency of StableDiffusionXLPipeline--bf16", latency, "s for total", steps, "steps")
+
+##############     fp32 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe3 = StableDiffusionXLPipelineIpex.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
+pipe3.prepare_for_ipex(torch.float32, prompt, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe4 = StableDiffusionXLPipeline.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+latency = elapsed_time(pipe3, num_inference_steps=steps)
+print("Latency of StableDiffusionXLPipelineIpex--fp32", latency, "s for total", steps, "steps")
+latency = elapsed_time(pipe4, num_inference_steps=steps)
+print("Latency of StableDiffusionXLPipeline--fp32",latency, "s for total", steps, "steps")
 
 ```
 
