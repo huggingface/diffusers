@@ -927,7 +927,7 @@ class RAVEPipeline(
     @property
     def num_timesteps(self):
         return self._num_timesteps
-    
+
     def _shuffle_helper(
         self,
         values: torch.FloatTensor,
@@ -940,7 +940,7 @@ class RAVEPipeline(
         num_frames_per_grid = grid_size**2
         grid_frames = []
         shuffled = []
-        
+
         for grid in values:
             grid = grid.unsqueeze(0)
             # Flatten across width dimension
@@ -948,13 +948,13 @@ class RAVEPipeline(
             # Flatten across height dimension
             grid = torch.cat(grid.chunk(grid_size, dim=2), dim=0)
             grid_frames.append(grid)
-        
+
         grid_frames = torch.cat(grid_frames)
         grid_frames_ = grid_frames.clone()
-        
+
         for i in range(original_num_frames):
             grid_frames[rand_indices[i]] = grid_frames_[indices[i]]
-        
+
         for i in range(0, total_frames, num_frames_per_grid):
             current = grid_frames[i : i + num_frames_per_grid]
             result = []
@@ -966,10 +966,10 @@ class RAVEPipeline(
                     intermediate_result.append(current[index])
                 intermediate_result = torch.cat(intermediate_result, dim=2)
                 result.append(intermediate_result)
-            
+
             result = torch.cat(result, dim=1)
             shuffled.append(result.unsqueeze(0))
-        
+
         shuffled = torch.cat(shuffled, dim=0)
         return shuffled
 
@@ -987,17 +987,24 @@ class RAVEPipeline(
         num_frames_per_grid = grid_size**2
         total_frames = num_frames_per_grid * latents.size(0)
         rand_indices = torch.randperm(original_num_frames, generator=generator)
-        shuffled_latents = self._shuffle_helper(latents, grid_size, original_num_frames, total_frames, indices, rand_indices)
+        shuffled_latents = self._shuffle_helper(
+            latents, grid_size, original_num_frames, total_frames, indices, rand_indices
+        )
 
         if isinstance(control_video, list):
-            shuffled_control_video = [self._shuffle_helper(cv, grid_size, original_num_frames, total_frames, indices, rand_indices) for cv in control_video]
+            shuffled_control_video = [
+                self._shuffle_helper(cv, grid_size, original_num_frames, total_frames, indices, rand_indices)
+                for cv in control_video
+            ]
             if do_classifier_free_guidance and not guess_mode:
                 shuffled_control_video = [torch.cat([cv] * 2) for cv in shuffled_control_video]
         else:
-            shuffled_control_video = self._shuffle_helper(control_video, grid_size, original_num_frames, total_frames, indices, rand_indices)
+            shuffled_control_video = self._shuffle_helper(
+                control_video, grid_size, original_num_frames, total_frames, indices, rand_indices
+            )
             if do_classifier_free_guidance and not guess_mode:
                 shuffled_control_video = torch.cat([shuffled_control_video] * 2)
-        
+
         return shuffled_latents, shuffled_control_video, rand_indices
 
         # num_frames_per_grid = grid_size**2
@@ -1356,7 +1363,7 @@ class RAVEPipeline(
                 mult * [control_guidance_start],
                 mult * [control_guidance_end],
             )
-        
+
         if not isinstance(control_video[0], list):
             control_video = [control_video]
 
