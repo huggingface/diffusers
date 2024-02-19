@@ -199,9 +199,7 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
     @skip_mps
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(
-            expected_max_diff=2e-1,
-        )
+        self._test_inference_batch_single_identical(expected_max_diff=2e-1)
 
     @skip_mps
     def test_attention_slicing_forward_pass(self):
@@ -213,9 +211,9 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
 
-    @unittest.skip(reason="flaky for now")
+    @unittest.skip(reason="fp16 not supported")
     def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=2e-1)
+        super().test_float16_inference()
 
     def check_if_lora_correctly_set(self, model) -> bool:
         """

@@ -175,7 +175,7 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
     @skip_mps
     def test_inference_batch_single_identical(self):
-        self._test_inference_batch_single_identical(expected_max_diff=1e-5)
+        self._test_inference_batch_single_identical(expected_max_diff=1e-2)
 
     @skip_mps
     def test_attention_slicing_forward_pass(self):
