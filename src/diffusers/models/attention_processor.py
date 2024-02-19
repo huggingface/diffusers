@@ -19,6 +19,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..image_processor import IPAdapterMaskProcessor
 from ..utils import USE_PEFT_BACKEND, deprecate, logging
 from ..utils.import_utils import is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
@@ -2107,12 +2108,13 @@ class IPAdapterAttnProcessor(nn.Module):
 
     def __call__(
         self,
-        attn,
-        hidden_states,
-        encoder_hidden_states=None,
-        attention_mask=None,
-        temb=None,
-        scale=1.0,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        temb: Optional[torch.FloatTensor] = None,
+        scale: float = 1.0,
+        ip_adapter_masks: Optional[torch.FloatTensor] = None,
     ):
         residual = hidden_states
 
@@ -2167,9 +2169,22 @@ class IPAdapterAttnProcessor(nn.Module):
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
+        if ip_adapter_masks is not None:
+            if not isinstance(ip_adapter_masks, torch.Tensor) or ip_adapter_masks.ndim != 4:
+                raise ValueError(
+                    " ip_adapter_mask should be a tensor with shape [num_ip_adapter, 1, height, width]."
+                    " Please use `IPAdapterMaskProcessor` to preprocess your mask"
+                )
+            if len(ip_adapter_masks) != len(self.scale):
+                raise ValueError(
+                    f"Number of ip_adapter_masks ({len(ip_adapter_masks)}) must match number of IP-Adapters ({len(self.scale)})"
+                )
+        else:
+            ip_adapter_masks = [None] * len(self.scale)
+
         # for ip-adapter
-        for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
-            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
         ):
             ip_key = to_k_ip(current_ip_hidden_states)
             ip_value = to_v_ip(current_ip_hidden_states)
@@ -2180,6 +2195,15 @@ class IPAdapterAttnProcessor(nn.Module):
             ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
             current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
             current_ip_hidden_states = attn.batch_to_head_dim(current_ip_hidden_states)
+
+            if mask is not None:
+                mask_downsample = IPAdapterMaskProcessor.downsample(
+                    mask, batch_size, current_ip_hidden_states.shape[1], current_ip_hidden_states.shape[2]
+                )
+
+                mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
+
+                current_ip_hidden_states = current_ip_hidden_states * mask_downsample
 
             hidden_states = hidden_states + scale * current_ip_hidden_states
 
@@ -2244,12 +2268,13 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
     def __call__(
         self,
-        attn,
-        hidden_states,
-        encoder_hidden_states=None,
-        attention_mask=None,
-        temb=None,
-        scale=1.0,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        temb: Optional[torch.FloatTensor] = None,
+        scale: float = 1.0,
+        ip_adapter_masks: Optional[torch.FloatTensor] = None,
     ):
         residual = hidden_states
 
@@ -2318,9 +2343,22 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
+        if ip_adapter_masks is not None:
+            if not isinstance(ip_adapter_masks, torch.Tensor) or ip_adapter_masks.ndim != 4:
+                raise ValueError(
+                    " ip_adapter_mask should be a tensor with shape [num_ip_adapter, 1, height, width]."
+                    " Please use `IPAdapterMaskProcessor` to preprocess your mask"
+                )
+            if len(ip_adapter_masks) != len(self.scale):
+                raise ValueError(
+                    f"Number of ip_adapter_masks ({len(ip_adapter_masks)}) must match number of IP-Adapters ({len(self.scale)})"
+                )
+        else:
+            ip_adapter_masks = [None] * len(self.scale)
+
         # for ip-adapter
-        for current_ip_hidden_states, scale, to_k_ip, to_v_ip in zip(
-            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
         ):
             ip_key = to_k_ip(current_ip_hidden_states)
             ip_value = to_v_ip(current_ip_hidden_states)
@@ -2338,6 +2376,15 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                 batch_size, -1, attn.heads * head_dim
             )
             current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
+
+            if mask is not None:
+                mask_downsample = IPAdapterMaskProcessor.downsample(
+                    mask, batch_size, current_ip_hidden_states.shape[1], current_ip_hidden_states.shape[2]
+                )
+
+                mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
+
+                current_ip_hidden_states = current_ip_hidden_states * mask_downsample
 
             hidden_states = hidden_states + scale * current_ip_hidden_states
 
