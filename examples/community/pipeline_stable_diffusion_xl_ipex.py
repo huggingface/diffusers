@@ -75,8 +75,7 @@ EXAMPLE_DOC_STRING = """
 
         >>> # SDXL-Turbo, a distilled version of SDXL 1.0, trained for real-time synthesis
         >>> pipe = StableDiffusionXLPipelineIpex.from_pretrained(
-        ...     "stabilityai/sdxl-turbo", use_auth_token=True,
-        ...     low_cpu_mem_usage=True, use_safetensors=True
+        ...     "stabilityai/sdxl-turbo", low_cpu_mem_usage=True, use_safetensors=True
         ... )
 
         >>> num_inference_steps = 1
@@ -85,16 +84,18 @@ EXAMPLE_DOC_STRING = """
         >>> data_type = torch.bfloat16 if use_bf16 else torch.float32
         >>> prompt = "a photo of an astronaut riding a horse on mars"
 
+        >>> # value of image height/width should be consistent with the pipeline inference
         >>> # For Float32
-        >>> pipe.prepare_for_ipex(data_type, prompt, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+        >>> pipe.prepare_for_ipex(torch.float32, prompt, height=512, width=512)
         >>> # For BFloat16
-        >>> pipe.prepare_for_ipex(data_type, prompt, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+        >>> pipe.prepare_for_ipex(torch.bfloat16, prompt, height=512, width=512)
 
+        >>> # value of image height/width should be consistent with 'prepare_for_ipex()'
         >>> # For Float32
-        >>> image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+        >>> image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0]
         >>> # For BFloat16
         >>> with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
-        >>>     image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+        >>>     image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0]
         ```
 """
 

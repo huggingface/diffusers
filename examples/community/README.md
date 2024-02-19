@@ -1715,7 +1715,7 @@ This diffusion pipeline aims to accelarate the inference of Stable-Diffusion XL 
 To use this pipeline, you need to:
 1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
 
-**Note:** For each PyTorch release, there is a corresponding release of the IPEX. Here is the mapping relationship. It is recommended to install Pytorch/IPEX2.0 to get the best performance.
+**Note:** For each PyTorch release, there is a corresponding release of IPEX. Here is the mapping relationship. It is recommended to install Pytorch/IPEX2.0 to get the best performance.
 
 |PyTorch Version|IPEX Version|
 |--|--|
@@ -1733,25 +1733,30 @@ python -m pip install intel_extension_for_pytorch==<version_name> -f https://dev
 
 2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
 
-**Note:** The setting of generated image height/width for `prepare_for_ipex()` should be same as the setting of pipeline inference.
+**Note:** The values of `height` and `width` used during preparation with `prepare_for_ipex()` should be the same when running inference with the prepared pipeline.
+
 ```python
-pipe = StableDiffusionXLPipelineIpex.from_pretrained("stabilityai/sdxl-turbo", use_auth_token=True, low_cpu_mem_usage=True, use_safetensors=True)
+pipe = StableDiffusionXLPipelineIpex.from_pretrained("stabilityai/sdxl-turbo", low_cpu_mem_usage=True, use_safetensors=True)
+# value of image height/width should be consistent with the pipeline inference
 # For Float32
-pipe.prepare_for_ipex(data_type, prompt, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+pipe.prepare_for_ipex(torch.float32, prompt, height=512, width=512)
 # For BFloat16
-pipe.prepare_for_ipex(data_type, prompt, height=512, width=512) #value of image height/width should be consistent with the pipeline inference
+pipe.prepare_for_ipex(torch.bfloat16, prompt, height=512, width=512)
 ```
 
 Then you can use the ipex pipeline in a similar way to the default stable diffusion xl pipeline.
 ```python
+# value of image height/width should be consistent with 'prepare_for_ipex()'
 # For Float32
-image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0]
 # For BFloat16
 with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
-    image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0] #value of image height/width should be consistent with 'prepare_for_ipex()'
+    image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0]
 ```
 
 The following code compares the performance of the original stable diffusion xl pipeline with the ipex-optimized pipeline.
+By using this optimized pipeline, we can get about 1.4-2 times performance boost with BFloat16 on fourth generation of Intel Xeon CPUs, 
+code-named Sapphire Rapids.
 
 ```python
 import torch
@@ -1778,11 +1783,11 @@ def elapsed_time(pipeline, nb_pass=3, num_inference_steps=1):
 ##############     bf16 inference performance    ###############
 
 # 1. IPEX Pipeline initialization
-pipe = StableDiffusionXLPipelineIpex.from_pretrained(model_id, use_auth_token=True, low_cpu_mem_usage=True, use_safetensors=True)
+pipe = StableDiffusionXLPipelineIpex.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
 pipe.prepare_for_ipex(torch.bfloat16, prompt, height=512, width=512)
 
 # 2. Original Pipeline initialization
-pipe2 = StableDiffusionXLPipeline.from_pretrained(model_id, use_auth_token=True, low_cpu_mem_usage=True, use_safetensors=True)
+pipe2 = StableDiffusionXLPipeline.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
 
 # 3. Compare performance between Original Pipeline and IPEX Pipeline
 with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
@@ -1794,11 +1799,11 @@ with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
 ##############     fp32 inference performance    ###############
 
 # 1. IPEX Pipeline initialization
-pipe3 = StableDiffusionXLPipelineIpex.from_pretrained(model_id, use_auth_token=True, low_cpu_mem_usage=True, use_safetensors=True)
+pipe3 = StableDiffusionXLPipelineIpex.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
 pipe3.prepare_for_ipex(torch.float32, prompt, height=512, width=512)
 
 # 2. Original Pipeline initialization
-pipe4 = StableDiffusionXLPipeline.from_pretrained(model_id, use_auth_token=True, low_cpu_mem_usage=True, use_safetensors=True)
+pipe4 = StableDiffusionXLPipeline.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
 
 # 3. Compare performance between Original Pipeline and IPEX Pipeline
 latency = elapsed_time(pipe3, num_inference_steps=steps)
