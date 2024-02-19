@@ -57,14 +57,19 @@ def build_sub_model_components(
     if component_name == "unet":
         num_in_channels = kwargs.pop("num_in_channels", None)
         unet_components = create_diffusers_unet_model_from_ldm(
-            pipeline_class_name, original_config, checkpoint, num_in_channels=num_in_channels, image_size=image_size
+            pipeline_class_name,
+            original_config,
+            checkpoint,
+            num_in_channels=num_in_channels,
+            image_size=image_size,
+            torch_dtype=torch_dtype,
         )
         return unet_components
 
     if component_name == "vae":
         scaling_factor = kwargs.get("scaling_factor", None)
         vae_components = create_diffusers_vae_model_from_ldm(
-            pipeline_class_name, original_config, checkpoint, image_size, scaling_factor
+            pipeline_class_name, original_config, checkpoint, image_size, scaling_factor, torch_dtype
         )
         return vae_components
 
@@ -89,6 +94,7 @@ def build_sub_model_components(
             checkpoint,
             model_type=model_type,
             local_files_only=local_files_only,
+            torch_dtype=torch_dtype,
         )
         return text_encoder_components
 
@@ -261,6 +267,7 @@ class FromSingleFileMixin:
                     image_size=image_size,
                     load_safety_checker=load_safety_checker,
                     local_files_only=local_files_only,
+                    torch_dtype=torch_dtype,
                     **kwargs,
                 )
                 if not components:
