@@ -87,9 +87,7 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
 
 
 class AnimateDiffPipeline(
-    
     DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin, FreeInitMixin
-
 ):
     r"""
     Pipeline for text-to-video generation.
