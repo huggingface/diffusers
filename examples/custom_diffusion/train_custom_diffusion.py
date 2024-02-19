@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 Custom Diffusion authors and the HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 Custom Diffusion authors and the HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -58,11 +58,12 @@ from diffusers.models.attention_processor import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.24.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -78,21 +79,7 @@ def save_model_card(repo_id: str, images=None, base_model=str, prompt=str, repo_
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"![img_{i}](./image_{i}.png)\n"
 
-    yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {base_model}
-instance_prompt: {prompt}
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- text-to-image
-- diffusers
-- custom-diffusion
-inference: true
----
-    """
-    model_card = f"""
+    model_description = f"""
 # Custom Diffusion - {repo_id}
 
 These are Custom Diffusion adaption weights for {base_model}. The weights were trained on {prompt} using [Custom Diffusion](https://www.cs.cmu.edu/~custom-diffusion). You can find some example images in the following. \n
@@ -100,8 +87,20 @@ These are Custom Diffusion adaption weights for {base_model}. The weights were t
 
 \nFor more details on the training, please follow [this link](https://github.com/huggingface/diffusers/blob/main/examples/custom_diffusion).
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=base_model,
+        prompt=prompt,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = ["text-to-image", "diffusers", "stable-diffusion", "stable-diffusion-diffusers", "custom-diffusion"]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
@@ -331,6 +330,12 @@ def parse_args(input_args=None):
         default=None,
         required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -647,6 +652,12 @@ def parse_args(input_args=None):
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -740,13 +751,14 @@ def main(args):
                         torch_dtype=torch_dtype,
                         safety_checker=None,
                         revision=args.revision,
+                        variant=args.variant,
                     )
                     pipeline.set_progress_bar_config(disable=True)
 
                     num_new_images = args.num_class_images - cur_class_images
                     logger.info(f"Number of class images to sample: {num_new_images}.")
 
-                    sample_dataset = PromptDataset(args.class_prompt, num_new_images)
+                    sample_dataset = PromptDataset(concept["class_prompt"], num_new_images)
                     sample_dataloader = torch.utils.data.DataLoader(sample_dataset, batch_size=args.sample_batch_size)
 
                     sample_dataloader = accelerator.prepare(sample_dataloader)
@@ -801,11 +813,13 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder = text_encoder_cls.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+    )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
     # Adding a modifier token which is optimized ####
@@ -1229,6 +1243,7 @@ def main(args):
                         text_encoder=accelerator.unwrap_model(text_encoder),
                         tokenizer=tokenizer,
                         revision=args.revision,
+                        variant=args.variant,
                         torch_dtype=weight_dtype,
                     )
                     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
@@ -1278,7 +1293,7 @@ def main(args):
         # Final inference
         # Load previous pipeline
         pipeline = DiffusionPipeline.from_pretrained(
-            args.pretrained_model_name_or_path, revision=args.revision, torch_dtype=weight_dtype
+            args.pretrained_model_name_or_path, revision=args.revision, variant=args.variant, torch_dtype=weight_dtype
         )
         pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
         pipeline = pipeline.to(accelerator.device)

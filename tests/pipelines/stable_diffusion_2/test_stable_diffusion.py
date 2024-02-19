@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,11 +34,14 @@ from diffusers import (
 )
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    backend_empty_cache,
     enable_full_determinism,
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
+    require_torch_accelerator,
     require_torch_gpu,
+    skip_mps,
     slow,
     torch_device,
 )
@@ -128,10 +131,12 @@ class StableDiffusion2PipelineFastTests(
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        if str(device).startswith("mps"):
-            generator = torch.manual_seed(seed)
+        generator_device = "cpu" if not device.startswith("cuda") else "cuda"
+        if not str(device).startswith("mps"):
+            generator = torch.Generator(device=generator_device).manual_seed(seed)
         else:
-            generator = torch.Generator(device=device).manual_seed(seed)
+            generator = torch.manual_seed(seed)
+
         inputs = {
             "prompt": "A painting of a squirrel eating a burger",
             "generator": generator,
@@ -299,15 +304,21 @@ class StableDiffusion2PipelineFastTests(
 
 
 @slow
-@require_torch_gpu
+@require_torch_accelerator
+@skip_mps
 class StableDiffusion2PipelineSlowTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        _generator_device = "cpu" if not generator_device.startswith("cuda") else "cuda"
+        if not str(device).startswith("mps"):
+            generator = torch.Generator(device=_generator_device).manual_seed(seed)
+        else:
+            generator = torch.manual_seed(seed)
+
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
@@ -361,6 +372,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         expected_slice = np.array([0.10440, 0.13115, 0.11100, 0.10141, 0.11440, 0.07215, 0.11332, 0.09693, 0.10006])
         assert np.abs(image_slice - expected_slice).max() < 3e-3
 
+    @require_torch_gpu
     def test_stable_diffusion_attention_slicing(self):
         torch.cuda.reset_peak_memory_stats()
         pipe = StableDiffusionPipeline.from_pretrained(
@@ -432,6 +444,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         assert callback_fn.has_been_called
         assert number_of_steps == inputs["num_inference_steps"]
 
+    @require_torch_gpu
     def test_stable_diffusion_pipeline_with_sequential_cpu_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -452,6 +465,7 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
         # make sure that less than 2.8 GB is allocated
         assert mem_bytes < 2.8 * 10**9
 
+    @require_torch_gpu
     def test_stable_diffusion_pipeline_with_model_offloading(self):
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
@@ -511,15 +525,21 @@ class StableDiffusion2PipelineSlowTests(unittest.TestCase):
 
 
 @nightly
-@require_torch_gpu
+@require_torch_accelerator
+@skip_mps
 class StableDiffusion2PipelineNightlyTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
-        torch.cuda.empty_cache()
+        backend_empty_cache(torch_device)
 
     def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
-        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        _generator_device = "cpu" if not generator_device.startswith("cuda") else "cuda"
+        if not str(device).startswith("mps"):
+            generator = torch.Generator(device=_generator_device).manual_seed(seed)
+        else:
+            generator = torch.manual_seed(seed)
+
         latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
         latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
@@ -607,7 +627,9 @@ class StableDiffusion2PipelineNightlyTests(unittest.TestCase):
 
     def test_stable_diffusion_dpm(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1-base").to(torch_device)
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+            sd_pipe.scheduler.config, final_sigmas_type="sigma_min"
+        )
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_inputs(torch_device)

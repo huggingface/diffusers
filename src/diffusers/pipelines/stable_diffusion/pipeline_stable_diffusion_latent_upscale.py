@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -66,6 +66,9 @@ class StableDiffusionLatentUpscalePipeline(DiffusionPipeline, FromSingleFileMixi
 
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
+
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
 
     Args:
         vae ([`AutoencoderKL`]):

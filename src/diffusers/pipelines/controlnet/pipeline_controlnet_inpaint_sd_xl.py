@@ -1,4 +1,4 @@
-# Copyright 2023 Harutatsu Akiyama, Jinbin Bai, and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Harutatsu Akiyama, Jinbin Bai, and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,6 +52,20 @@ if is_invisible_watermark_available():
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
 
 
 EXAMPLE_DOC_STRING = """
@@ -134,12 +148,10 @@ class StableDiffusionXLControlNetInpaintPipeline(
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
-    In addition the pipeline inherits the following loading methods:
-        - *LoRA*: [`loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`]
-        - *Ckpt*: [`loaders.FromSingleFileMixin.from_single_file`]
-
-    as well as the following saving methods:
-        - *LoRA*: [`loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`]
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -346,7 +358,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
             prompt_2 = prompt_2 or prompt
             prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
             for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
@@ -545,9 +557,11 @@ class StableDiffusionXLControlNetInpaintPipeline(
         prompt,
         prompt_2,
         image,
+        mask_image,
         strength,
         num_inference_steps,
         callback_steps,
+        output_type,
         negative_prompt=None,
         negative_prompt_2=None,
         prompt_embeds=None,
@@ -558,6 +572,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
         control_guidance_start=0.0,
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
+        padding_mask_crop=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -619,6 +634,19 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        if padding_mask_crop is not None:
+            if not isinstance(image, PIL.Image.Image):
+                raise ValueError(
+                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                )
+            if not isinstance(mask_image, PIL.Image.Image):
+                raise ValueError(
+                    f"The mask image should be a PIL image when inpainting mask crop, but is of type"
+                    f" {type(mask_image)}."
+                )
+            if output_type != "pil":
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
 
         if prompt_embeds is not None and pooled_prompt_embeds is None:
             raise ValueError(
@@ -733,10 +761,14 @@ class StableDiffusionXLControlNetInpaintPipeline(
         num_images_per_prompt,
         device,
         dtype,
+        crops_coords,
+        resize_mode,
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        image = self.control_image_processor.preprocess(
+            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
+        ).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
@@ -824,12 +856,12 @@ class StableDiffusionXLControlNetInpaintPipeline(
 
         if isinstance(generator, list):
             image_latents = [
-                self.vae.encode(image[i : i + 1]).latent_dist.sample(generator=generator[i])
+                retrieve_latents(self.vae.encode(image[i : i + 1]), generator=generator[i])
                 for i in range(image.shape[0])
             ]
             image_latents = torch.cat(image_latents, dim=0)
         else:
-            image_latents = self.vae.encode(image).latent_dist.sample(generator=generator)
+            image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
         if self.vae.config.force_upcast:
             self.vae.to(dtype)
@@ -1054,6 +1086,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
         ] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        padding_mask_crop: Optional[int] = None,
         strength: float = 0.9999,
         num_inference_steps: int = 50,
         denoising_start: Optional[float] = None,
@@ -1109,6 +1142,12 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to self.unet.config.sample_size * self.vae_scale_factor):
                 The width in pixels of the generated image.
+            padding_mask_crop (`int`, *optional*, defaults to `None`):
+                The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to image and mask_image. If
+                `padding_mask_crop` is not `None`, it will first find a rectangular region with the same aspect ration of the image and
+                contains all masked area, and then expand that area based on `padding_mask_crop`. The image and mask_image will then be cropped based on
+                the expanded area before resizing to the original image size for inpainting. This is useful when the masked area is small while the image is large
+                and contain information inreleant for inpainging, such as background.
             strength (`float`, *optional*, defaults to 0.9999):
                 Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
                 between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
@@ -1278,9 +1317,11 @@ class StableDiffusionXLControlNetInpaintPipeline(
             prompt,
             prompt_2,
             control_image,
+            mask_image,
             strength,
             num_inference_steps,
             callback_steps,
+            output_type,
             negative_prompt,
             negative_prompt_2,
             prompt_embeds,
@@ -1291,6 +1332,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
             control_guidance_start,
             control_guidance_end,
             callback_on_step_end_tensor_inputs,
+            padding_mask_crop,
         )
 
         self._guidance_scale = guidance_scale
@@ -1358,7 +1400,18 @@ class StableDiffusionXLControlNetInpaintPipeline(
 
         # 5. Preprocess mask and image - resizes image and mask w.r.t height and width
         # 5.1 Prepare init image
-        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        if padding_mask_crop is not None:
+            height, width = self.image_processor.get_default_height_width(image, height, width)
+            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
+            resize_mode = "fill"
+        else:
+            crops_coords = None
+            resize_mode = "default"
+
+        original_image = image
+        init_image = self.image_processor.preprocess(
+            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
+        )
         init_image = init_image.to(dtype=torch.float32)
 
         # 5.2 Prepare control images
@@ -1371,6 +1424,8 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
+                crops_coords=crops_coords,
+                resize_mode=resize_mode,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
@@ -1386,6 +1441,8 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
+                    crops_coords=crops_coords,
+                    resize_mode=resize_mode,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
@@ -1397,7 +1454,9 @@ class StableDiffusionXLControlNetInpaintPipeline(
             raise ValueError(f"{controlnet.__class__} is not supported.")
 
         # 5.3 Prepare mask
-        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+        mask = self.mask_processor.preprocess(
+            mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+        )
 
         masked_image = init_image * (mask < 0.5)
         _, _, height, width = init_image.shape
@@ -1671,6 +1730,9 @@ class StableDiffusionXLControlNetInpaintPipeline(
             image = self.watermark.apply_watermark(image)
 
         image = self.image_processor.postprocess(image, output_type=output_type)
+
+        if padding_mask_crop is not None:
+            image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
 
         # Offload all models
         self.maybe_free_model_hooks()

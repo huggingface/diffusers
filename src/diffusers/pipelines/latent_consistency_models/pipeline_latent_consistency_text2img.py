@@ -1,4 +1,4 @@
-# Copyright 2023 Stanford University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Stanford University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,11 +19,11 @@ import inspect
 from typing import Any, Callable, Dict, List, Optional, Union
 
 import torch
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from ...image_processor import VaeImageProcessor
-from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, UNet2DConditionModel
+from ...image_processor import PipelineImageInput, VaeImageProcessor
+from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import LCMScheduler
 from ...utils import (
@@ -61,8 +61,53 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
+def retrieve_timesteps(
+    scheduler,
+    num_inference_steps: Optional[int] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    timesteps: Optional[List[int]] = None,
+    **kwargs,
+):
+    """
+    Calls the scheduler's `set_timesteps` method and retrieves timesteps from the scheduler after the call. Handles
+    custom timesteps. Any kwargs will be supplied to `scheduler.set_timesteps`.
+
+    Args:
+        scheduler (`SchedulerMixin`):
+            The scheduler to get timesteps from.
+        num_inference_steps (`int`):
+            The number of diffusion steps used when generating samples with a pre-trained model. If used,
+            `timesteps` must be `None`.
+        device (`str` or `torch.device`, *optional*):
+            The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
+        timesteps (`List[int]`, *optional*):
+                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
+                timestep spacing strategy of the scheduler is used. If `timesteps` is passed, `num_inference_steps`
+                must be `None`.
+
+    Returns:
+        `Tuple[torch.Tensor, int]`: A tuple where the first element is the timestep schedule from the scheduler and the
+        second element is the number of inference steps.
+    """
+    if timesteps is not None:
+        accepts_timesteps = "timesteps" in set(inspect.signature(scheduler.set_timesteps).parameters.keys())
+        if not accepts_timesteps:
+            raise ValueError(
+                f"The current scheduler class {scheduler.__class__}'s `set_timesteps` does not support custom"
+                f" timestep schedules. Please check whether you are using the correct scheduler."
+            )
+        scheduler.set_timesteps(timesteps=timesteps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+        num_inference_steps = len(timesteps)
+    else:
+        scheduler.set_timesteps(num_inference_steps, device=device, **kwargs)
+        timesteps = scheduler.timesteps
+    return timesteps, num_inference_steps
+
+
 class LatentConsistencyModelPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for text-to-image generation using a latent consistency model.
@@ -75,6 +120,7 @@ class LatentConsistencyModelPipeline(
         - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
         - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
         - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
+        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -99,7 +145,7 @@ class LatentConsistencyModelPipeline(
     """
 
     model_cpu_offload_seq = "text_encoder->unet->vae"
-    _optional_components = ["safety_checker", "feature_extractor"]
+    _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = ["latents", "denoised", "prompt_embeds", "w_embedding"]
 
@@ -112,6 +158,7 @@ class LatentConsistencyModelPipeline(
         scheduler: LCMScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
+        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -140,6 +187,7 @@ class LatentConsistencyModelPipeline(
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -267,7 +315,7 @@ class LatentConsistencyModelPipeline(
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
@@ -349,7 +397,7 @@ class LatentConsistencyModelPipeline(
             else:
                 uncond_tokens = negative_prompt
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
@@ -387,6 +435,31 @@ class LatentConsistencyModelPipeline(
             unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        dtype = next(self.image_encoder.parameters()).dtype
+
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_enc_hidden_states = self.image_encoder(
+                torch.zeros_like(image), output_hidden_states=True
+            ).hidden_states[-2]
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+            return image_enc_hidden_states, uncond_image_enc_hidden_states
+        else:
+            image_embeds = self.image_encoder(image).image_embeds
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_embeds = torch.zeros_like(image_embeds)
+
+            return image_embeds, uncond_image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
@@ -530,11 +603,13 @@ class LatentConsistencyModelPipeline(
         width: Optional[int] = None,
         num_inference_steps: int = 4,
         original_inference_steps: int = None,
+        timesteps: List[int] = None,
         guidance_scale: float = 8.5,
         num_images_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -561,6 +636,10 @@ class LatentConsistencyModelPipeline(
                 we will draw `num_inference_steps` evenly spaced timesteps from as our final timestep schedule,
                 following the Skipping-Step method in the paper (see Section 4.3). If not set this will default to the
                 scheduler's `original_inference_steps` attribute.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
+                timesteps on the original LCM training/distillation timestep schedule are used. Must be in descending
+                order.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
@@ -579,6 +658,8 @@ class LatentConsistencyModelPipeline(
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs (prompt weighting). If not
                 provided, text embeddings are generated from the `prompt` input argument.
+            ip_adapter_image: (`PipelineImageInput`, *optional*):
+                Optional image input to work with IP Adapters.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -647,6 +728,12 @@ class LatentConsistencyModelPipeline(
         device = self._execution_device
         # do_classifier_free_guidance = guidance_scale > 1.0
 
+        if ip_adapter_image is not None:
+            output_hidden_state = False if isinstance(self.unet.encoder_hid_proj, ImageProjection) else True
+            image_embeds, negative_image_embeds = self.encode_image(
+                ip_adapter_image, device, num_images_per_prompt, output_hidden_state
+            )
+
         # 3. Encode input prompt
         lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
@@ -668,8 +755,9 @@ class LatentConsistencyModelPipeline(
         )
 
         # 4. Prepare timesteps
-        self.scheduler.set_timesteps(num_inference_steps, device, original_inference_steps=original_inference_steps)
-        timesteps = self.scheduler.timesteps
+        timesteps, num_inference_steps = retrieve_timesteps(
+            self.scheduler, num_inference_steps, device, timesteps, original_inference_steps=original_inference_steps
+        )
 
         # 5. Prepare latent variable
         num_channels_latents = self.unet.config.in_channels
@@ -697,6 +785,9 @@ class LatentConsistencyModelPipeline(
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, None)
 
+        # 7.1 Add image embeds for IP-Adapter
+        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+
         # 8. LCM MultiStep Sampling Loop:
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
@@ -711,6 +802,7 @@ class LatentConsistencyModelPipeline(
                     timestep_cond=w_embedding,
                     encoder_hidden_states=prompt_embeds,
                     cross_attention_kwargs=self.cross_attention_kwargs,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
 

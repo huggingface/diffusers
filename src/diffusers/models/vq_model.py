@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput
 from ..utils.accelerate_utils import apply_forward_hook
+from .autoencoders.vae import Decoder, DecoderOutput, Encoder, VectorQuantizer
 from .modeling_utils import ModelMixin
-from .vae import Decoder, DecoderOutput, Encoder, VectorQuantizer
 
 
 @dataclass
@@ -88,6 +88,9 @@ class VQModel(ModelMixin, ConfigMixin):
         vq_embed_dim: Optional[int] = None,
         scaling_factor: float = 0.18215,
         norm_type: str = "group",  # group, spatial
+        mid_block_add_attention=True,
+        lookup_from_codebook=False,
+        force_upcast=False,
     ):
         super().__init__()
 
@@ -101,6 +104,7 @@ class VQModel(ModelMixin, ConfigMixin):
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
             double_z=False,
+            mid_block_add_attention=mid_block_add_attention,
         )
 
         vq_embed_dim = vq_embed_dim if vq_embed_dim is not None else latent_channels
@@ -119,6 +123,7 @@ class VQModel(ModelMixin, ConfigMixin):
             act_fn=act_fn,
             norm_num_groups=norm_num_groups,
             norm_type=norm_type,
+            mid_block_add_attention=mid_block_add_attention,
         )
 
     @apply_forward_hook
@@ -133,11 +138,13 @@ class VQModel(ModelMixin, ConfigMixin):
 
     @apply_forward_hook
     def decode(
-        self, h: torch.FloatTensor, force_not_quantize: bool = False, return_dict: bool = True
+        self, h: torch.FloatTensor, force_not_quantize: bool = False, return_dict: bool = True, shape=None
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         # also go through quantization layer
         if not force_not_quantize:
             quant, _, _ = self.quantize(h)
+        elif self.config.lookup_from_codebook:
+            quant = self.quantize.get_codebook_entry(h, shape)
         else:
             quant = h
         quant2 = self.post_quant_conv(quant)

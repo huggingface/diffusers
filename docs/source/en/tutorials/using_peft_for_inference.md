@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -165,6 +165,25 @@ list_adapters_component_wise
 {"text_encoder": ["toy", "pixel"], "unet": ["toy", "pixel"], "text_encoder_2": ["toy", "pixel"]}
 ```
 
+## Compatibility with `torch.compile`
+
+If you want to compile your model with `torch.compile` make sure to first fuse the LoRA weights into the base model and unload them.
+
+```py
+pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
+
+pipe.set_adapters(["pixel", "toy"], adapter_weights=[0.5, 1.0])
+# Fuses the LoRAs into the Unet
+pipe.fuse_lora()
+pipe.unload_lora_weights()
+
+pipe = torch.compile(pipe)
+
+prompt = "toy_face of a hacker with a hoodie, pixel art"
+image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
+```
+
 ## Fusing adapters into the model
 
 You can use PEFT to easily fuse/unfuse multiple adapters directly into the model weights (both UNet and text encoder) using the [`~diffusers.loaders.LoraLoaderMixin.fuse_lora`] method, which can lead to a speed-up in inference and lower VRAM usage.
@@ -182,4 +201,37 @@ image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).ima
 
 # Gets the Unet back to the original state
 pipe.unfuse_lora()
+```
+
+You can also fuse some adapters using `adapter_names` for faster generation:
+
+```py
+pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
+pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
+
+pipe.set_adapters(["pixel"], adapter_weights=[0.5, 1.0])
+# Fuses the LoRAs into the Unet
+pipe.fuse_lora(adapter_names=["pixel"])
+
+prompt = "a hacker with a hoodie, pixel art"
+image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
+
+# Gets the Unet back to the original state
+pipe.unfuse_lora()
+
+# Fuse all adapters
+pipe.fuse_lora(adapter_names=["pixel", "toy"])
+
+prompt = "toy_face of a hacker with a hoodie, pixel art"
+image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
+```
+
+## Saving a pipeline after fusing the adapters
+
+To properly save a pipeline after it's been loaded with the adapters, it should be serialized like so:
+
+```python
+pipe.fuse_lora(lora_scale=1.0)
+pipe.unload_lora_weights()
+pipe.save_pretrained("path-to-pipeline")
 ```

@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -203,7 +203,7 @@ def make_inpaint_condition(image, image_mask):
     image_mask = np.array(image_mask.convert("L")).astype(np.float32) / 255.0
 
     assert image.shape[0:1] == image_mask.shape[0:1]
-    image[image_mask > 0.5] = 1.0  # set as masked pixel
+    image[image_mask > 0.5] = -1.0  # set as masked pixel
     image = np.expand_dims(image, 0).transpose(0, 3, 1, 2)
     image = torch.from_numpy(image)
     return image
@@ -429,7 +429,7 @@ image = pipe(
 make_image_grid([original_image, canny_image, image], rows=1, cols=3)
 ```
 
-### MultiControlNet
+## MultiControlNet
 
 <Tip>
 

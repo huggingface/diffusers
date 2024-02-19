@@ -1,4 +1,4 @@
-# Copyright 2023 TSAIL Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 TSAIL Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -175,6 +175,7 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.alpha_t = torch.sqrt(self.alphas_cumprod)
         self.sigma_t = torch.sqrt(1 - self.alphas_cumprod)
         self.lambda_t = torch.log(self.alpha_t) - torch.log(self.sigma_t)
+        self.sigmas = ((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5
 
         # standard deviation of the initial noise distribution
         self.init_noise_sigma = 1.0
@@ -197,6 +198,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         self.solver_p = solver_p
         self.last_sample = None
         self._step_index = None
+        self._begin_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     @property
     def step_index(self):
@@ -204,6 +207,24 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         The index counter for current timestep. It will increae 1 after each scheduler step.
         """
         return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def set_timesteps(self, num_inference_steps: int, device: Union[str, torch.device] = None):
         """
@@ -267,6 +288,8 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
+        self._begin_index = None
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -337,8 +360,20 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
     def _convert_to_karras(self, in_sigmas: torch.FloatTensor, num_inference_steps) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
-        sigma_min: float = in_sigmas[-1].item()
-        sigma_max: float = in_sigmas[0].item()
+        # Hack to make sure that other schedulers which copy this function don't break
+        # TODO: Add this logic to the other schedulers
+        if hasattr(self.config, "sigma_min"):
+            sigma_min = self.config.sigma_min
+        else:
+            sigma_min = None
+
+        if hasattr(self.config, "sigma_max"):
+            sigma_max = self.config.sigma_max
+        else:
+            sigma_max = None
+
+        sigma_min = sigma_min if sigma_min is not None else in_sigmas[-1].item()
+        sigma_max = sigma_max if sigma_max is not None else in_sigmas[0].item()
 
         rho = 7.0  # 7.0 is the value used in the paper
         ramp = np.linspace(0, 1, num_inference_steps)
@@ -683,11 +718,12 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         x_t = x_t.to(x.dtype)
         return x_t
 
-    def _init_step_index(self, timestep):
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
 
-        index_candidates = (self.timesteps == timestep).nonzero()
+        index_candidates = (schedule_timesteps == timestep).nonzero()
 
         if len(index_candidates) == 0:
             step_index = len(self.timesteps) - 1
@@ -700,7 +736,20 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
         else:
             step_index = index_candidates[0].item()
 
-        self._step_index = step_index
+        return step_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        """
+        Initialize the step_index counter for the scheduler.
+        """
+
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
+        else:
+            self._step_index = self._begin_index
 
     def step(
         self,
@@ -815,7 +864,11 @@ class UniPCMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+        # begin_index is None when the scheduler is used for training
+        if self.begin_index is None:
+            step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        else:
+            step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
         while len(sigma.shape) < len(original_samples.shape):

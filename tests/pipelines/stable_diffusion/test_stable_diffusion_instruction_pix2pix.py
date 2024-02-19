@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -108,6 +108,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
             "tokenizer": tokenizer,
             "safety_checker": None,
             "feature_extractor": None,
+            "image_encoder": None,
         }
         return components
 

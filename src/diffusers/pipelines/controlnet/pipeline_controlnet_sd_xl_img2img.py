@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,13 +20,23 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
-from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
+from transformers import (
+    CLIPImageProcessor,
+    CLIPTextModel,
+    CLIPTextModelWithProjection,
+    CLIPTokenizer,
+    CLIPVisionModelWithProjection,
+)
 
 from diffusers.utils.import_utils import is_invisible_watermark_available
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from ...loaders import (
+    IPAdapterMixin,
+    StableDiffusionXLLoraLoaderMixin,
+    TextualInversionLoaderMixin,
+)
+from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
@@ -133,9 +143,13 @@ EXAMPLE_DOC_STRING = """
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(encoder_output, generator):
-    if hasattr(encoder_output, "latent_dist"):
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
     elif hasattr(encoder_output, "latents"):
         return encoder_output.latents
     else:
@@ -143,7 +157,7 @@ def retrieve_latents(encoder_output, generator):
 
 
 class StableDiffusionXLControlNetImg2ImgPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionXLLoraLoaderMixin
+    DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin
 ):
     r"""
     Pipeline for image-to-image generation using Stable Diffusion XL with ControlNet guidance.
@@ -151,9 +165,11 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
-    In addition the pipeline inherits the following loading methods:
-        - *Textual-Inversion*: [`loaders.TextualInversionLoaderMixin.load_textual_inversion`]
-        - *LoRA*: [`loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`]
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
+        - [`~loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -192,10 +208,19 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             Whether to use the [invisible_watermark library](https://github.com/ShieldMnt/invisible-watermark/) to
             watermark output images. If not defined, it will default to True if the package is installed, otherwise no
             watermarker will be used.
+        feature_extractor ([`~transformers.CLIPImageProcessor`]):
+            A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
-    _optional_components = ["tokenizer", "tokenizer_2", "text_encoder", "text_encoder_2"]
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->image_encoder->unet->vae"
+    _optional_components = [
+        "tokenizer",
+        "tokenizer_2",
+        "text_encoder",
+        "text_encoder_2",
+        "feature_extractor",
+        "image_encoder",
+    ]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
@@ -211,6 +236,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         requires_aesthetics_score: bool = False,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
+        feature_extractor: CLIPImageProcessor = None,
+        image_encoder: CLIPVisionModelWithProjection = None,
     ):
         super().__init__()
 
@@ -226,6 +253,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             unet=unet,
             controlnet=controlnet,
             scheduler=scheduler,
+            feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True)
@@ -371,7 +400,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             prompt_2 = prompt_2 or prompt
             prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
             for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
@@ -510,6 +539,66 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
         return prompt_embeds, negative_prompt_embeds, pooled_prompt_embeds, negative_pooled_prompt_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        dtype = next(self.image_encoder.parameters()).dtype
+
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_enc_hidden_states = self.image_encoder(
+                torch.zeros_like(image), output_hidden_states=True
+            ).hidden_states[-2]
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+            return image_enc_hidden_states, uncond_image_enc_hidden_states
+        else:
+            image_embeds = self.image_encoder(image).image_embeds
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_embeds = torch.zeros_like(image_embeds)
+
+            return image_embeds, uncond_image_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
+    ):
+        if ip_adapter_image_embeds is None:
+            if not isinstance(ip_adapter_image, list):
+                ip_adapter_image = [ip_adapter_image]
+
+            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+                raise ValueError(
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                )
+
+            image_embeds = []
+            for single_ip_adapter_image, image_proj_layer in zip(
+                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+            ):
+                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+                single_image_embeds, single_negative_image_embeds = self.encode_image(
+                    single_ip_adapter_image, device, 1, output_hidden_state
+                )
+                single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
+                single_negative_image_embeds = torch.stack(
+                    [single_negative_image_embeds] * num_images_per_prompt, dim=0
+                )
+
+                if self.do_classifier_free_guidance:
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                    single_image_embeds = single_image_embeds.to(device)
+
+                image_embeds.append(single_image_embeds)
+        else:
+            image_embeds = ip_adapter_image_embeds
+        return image_embeds
+
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -542,6 +631,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         negative_prompt_embeds=None,
         pooled_prompt_embeds=None,
         negative_pooled_prompt_embeds=None,
+        ip_adapter_image=None,
+        ip_adapter_image_embeds=None,
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
@@ -712,6 +803,11 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             if end > 1.0:
                 raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
 
+        if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
+            raise ValueError(
+                "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
+            )
+
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet_sd_xl.StableDiffusionXLControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
         image_is_pil = isinstance(image, PIL.Image.Image)
@@ -788,6 +884,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 
@@ -1006,6 +1104,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
         pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
+        ip_adapter_image_embeds: Optional[List[torch.FloatTensor]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -1104,6 +1204,10 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
+            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
+                Pre-generated image embeddings for IP-Adapter. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generate image. Choose between
                 [PIL](https://pillow.readthedocs.io/en/stable/): `PIL.Image.Image` or `np.array`.
@@ -1227,6 +1331,8 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             negative_prompt_embeds,
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
+            ip_adapter_image,
+            ip_adapter_image_embeds,
             controlnet_conditioning_scale,
             control_guidance_start,
             control_guidance_end,
@@ -1257,7 +1363,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
         )
         guess_mode = guess_mode or global_pool_conditions
 
-        # 3. Encode input prompt
+        # 3.1. Encode input prompt
         text_encoder_lora_scale = (
             self.cross_attention_kwargs.get("scale", None) if self.cross_attention_kwargs is not None else None
         )
@@ -1281,6 +1387,12 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             lora_scale=text_encoder_lora_scale,
             clip_skip=self.clip_skip,
         )
+
+        # 3.2 Encode ip_adapter_image
+        if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_images_per_prompt
+            )
 
         # 4. Prepare image and controlnet_conditioning_image
         image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
@@ -1443,6 +1555,9 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
                     # add 0 to the unconditional batch to keep it unchanged.
                     down_block_res_samples = [torch.cat([torch.zeros_like(d), d]) for d in down_block_res_samples]
                     mid_block_res_sample = torch.cat([torch.zeros_like(mid_block_res_sample), mid_block_res_sample])
+
+                if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+                    added_cond_kwargs["image_embeds"] = image_embeds
 
                 # predict the noise residual
                 noise_pred = self.unet(

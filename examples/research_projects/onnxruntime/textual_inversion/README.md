@@ -3,9 +3,9 @@
 [Textual inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
 The `textual_inversion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
-## Running on Colab 
+## Running on Colab
 
-Colab for training 
+Colab for training
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb)
 
 Colab for inference
@@ -39,7 +39,7 @@ accelerate config
 
 ### Cat toy example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-5`, so you'll need to visit [its card](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license and tick the checkbox if you agree. 
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `v1-5`, so you'll need to visit [its card](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license and tick the checkbox if you agree.
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
@@ -49,7 +49,7 @@ Run the following command to authenticate your token
 huggingface-cli login
 ```
 
-If you have already cloned the repo, then you won't need to go through these steps. 
+If you have already cloned the repo, then you won't need to go through these steps.
 
 <br>
 

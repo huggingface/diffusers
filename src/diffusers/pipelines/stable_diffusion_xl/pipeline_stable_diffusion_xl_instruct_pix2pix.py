@@ -1,4 +1,4 @@
-# Copyright 2023 Harutatsu Akiyama and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Harutatsu Akiyama and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, Te
 from ...models import AutoencoderKL, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
+    FusedAttnProcessor2_0,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
@@ -88,6 +89,20 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
+        return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
+    elif hasattr(encoder_output, "latents"):
+        return encoder_output.latents
+    else:
+        raise AttributeError("Could not access latents of provided encoder_output")
+
+
 def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     """
     Rescale `noise_cfg` according to `guidance_rescale`. Based on findings of [Common Diffusion Noise Schedules and
@@ -111,11 +126,11 @@ class StableDiffusionXLInstructPix2PixPipeline(
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
-    In addition the pipeline inherits the following loading methods:
-        - *LoRA*: [`loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`]
-
-    as well as the following saving methods:
-        - *LoRA*: [`loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`]
+    The pipeline also inherits the following loading methods:
+        - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
+        - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
+        - [`~loaders.StableDiffusionXLLoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.StableDiffusionXLLoraLoaderMixin.save_lora_weights`] for saving LoRA weights
 
     Args:
         vae ([`AutoencoderKL`]):
@@ -311,7 +326,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
 
         if prompt_embeds is None:
             prompt_2 = prompt_2 or prompt
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
             for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
@@ -533,17 +548,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
                 self.upcast_vae()
                 image = image.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-            if isinstance(generator, list) and len(generator) != batch_size:
-                raise ValueError(
-                    f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
-                    f" size of {batch_size}. Make sure the batch size matches the length of the generators."
-                )
-
-            if isinstance(generator, list):
-                image_latents = [self.vae.encode(image[i : i + 1]).latent_dist.mode() for i in range(batch_size)]
-                image_latents = torch.cat(image_latents, dim=0)
-            else:
-                image_latents = self.vae.encode(image).latent_dist.mode()
+            image_latents = retrieve_latents(self.vae.encode(image), sample_mode="argmax")
 
             # cast back to fp16 if needed
             if needs_upcasting:
@@ -606,6 +611,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
                 XFormersAttnProcessor,
                 LoRAXFormersAttnProcessor,
                 LoRAAttnProcessor2_0,
+                FusedAttnProcessor2_0,
             ),
         )
         # if xformers or torch_2_0 is used attention block does not need
@@ -852,7 +858,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
         )
 
         # 4. Preprocess image
-        image = self.image_processor.preprocess(image).to(device)
+        image = self.image_processor.preprocess(image, height=height, width=width).to(device)
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -866,7 +872,6 @@ class StableDiffusionXLInstructPix2PixPipeline(
             prompt_embeds.dtype,
             device,
             do_classifier_free_guidance,
-            generator,
         )
 
         # 7. Prepare latent variables

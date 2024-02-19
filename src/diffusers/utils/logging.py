@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 Optuna, Hugging Face
+# Copyright 2024 Optuna, Hugging Face
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -213,7 +213,7 @@ def remove_handler(handler: logging.Handler) -> None:
 
     _configure_library_root_logger()
 
-    assert handler is not None and handler not in _get_library_root_logger().handlers
+    assert handler is not None and handler in _get_library_root_logger().handlers
     _get_library_root_logger().removeHandler(handler)
 
 

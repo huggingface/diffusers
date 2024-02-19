@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import copy
+import gc
+import importlib
 import os
 import tempfile
 import time
@@ -21,9 +23,9 @@ import unittest
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from huggingface_hub import hf_hub_download
 from huggingface_hub.repocard import RepoCard
+from packaging import version
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
@@ -35,18 +37,20 @@ from diffusers import (
     EulerDiscreteScheduler,
     LCMScheduler,
     StableDiffusionPipeline,
+    StableDiffusionXLAdapterPipeline,
     StableDiffusionXLControlNetPipeline,
     StableDiffusionXLPipeline,
+    T2IAdapter,
     UNet2DConditionModel,
 )
-from diffusers.loaders import AttnProcsLayers
-from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProcessor2_0
 from diffusers.utils.import_utils import is_accelerate_available, is_peft_available
 from diffusers.utils.testing_utils import (
     floats_tensor,
     load_image,
     nightly,
+    numpy_cosine_similarity_distance,
     require_peft_backend,
+    require_peft_version_greater,
     require_torch_gpu,
     slow,
     torch_device,
@@ -74,28 +78,6 @@ def state_dicts_almost_equal(sd1, sd2):
     return models_are_equal
 
 
-def create_unet_lora_layers(unet: nn.Module):
-    lora_attn_procs = {}
-    for name in unet.attn_processors.keys():
-        cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
-        if name.startswith("mid_block"):
-            hidden_size = unet.config.block_out_channels[-1]
-        elif name.startswith("up_blocks"):
-            block_id = int(name[len("up_blocks.")])
-            hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
-        elif name.startswith("down_blocks"):
-            block_id = int(name[len("down_blocks.")])
-            hidden_size = unet.config.block_out_channels[block_id]
-        lora_attn_processor_class = (
-            LoRAAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else LoRAAttnProcessor
-        )
-        lora_attn_procs[name] = lora_attn_processor_class(
-            hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
-        )
-    unet_lora_layers = AttnProcsLayers(lora_attn_procs)
-    return lora_attn_procs, unet_lora_layers
-
-
 @require_peft_backend
 class PeftLoraLoaderMixinTests:
     torch_device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -108,12 +90,16 @@ class PeftLoraLoaderMixinTests:
 
     def get_dummy_components(self, scheduler_cls=None):
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
+        rank = 4
 
         torch.manual_seed(0)
         unet = UNet2DConditionModel(**self.unet_kwargs)
+
         scheduler = scheduler_cls(**self.scheduler_kwargs)
+
         torch.manual_seed(0)
         vae = AutoencoderKL(**self.vae_kwargs)
+
         text_encoder = CLIPTextModel.from_pretrained("peft-internal-testing/tiny-clip-text-2")
         tokenizer = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
@@ -122,14 +108,15 @@ class PeftLoraLoaderMixinTests:
             tokenizer_2 = CLIPTokenizer.from_pretrained("peft-internal-testing/tiny-clip-text-2")
 
         text_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["q_proj", "k_proj", "v_proj", "out_proj"], init_lora_weights=False
+            r=rank,
+            lora_alpha=rank,
+            target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+            init_lora_weights=False,
         )
 
         unet_lora_config = LoraConfig(
-            r=4, lora_alpha=4, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+            r=rank, lora_alpha=rank, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
         )
-
-        unet_lora_attn_procs, unet_lora_layers = create_unet_lora_layers(unet)
 
         if self.has_two_text_encoders:
             pipeline_components = {
@@ -154,11 +141,8 @@ class PeftLoraLoaderMixinTests:
                 "feature_extractor": None,
                 "image_encoder": None,
             }
-        lora_components = {
-            "unet_lora_layers": unet_lora_layers,
-            "unet_lora_attn_procs": unet_lora_attn_procs,
-        }
-        return pipeline_components, lora_components, text_lora_config, unet_lora_config
+
+        return pipeline_components, text_lora_config, unet_lora_config
 
     def get_dummy_inputs(self, with_generator=True):
         batch_size = 1
@@ -205,7 +189,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple inference and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -220,7 +204,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -251,7 +235,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -298,7 +282,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -340,7 +324,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -383,7 +367,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple usecase where users could use saving utilities for LoRA.
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -448,7 +432,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple usecase where users could use saving utilities for LoRA through save_pretrained
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -499,7 +483,7 @@ class PeftLoraLoaderMixinTests:
         Tests a simple usecase where users could use saving utilities for LoRA for Unet + text encoder
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -572,7 +556,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -626,7 +610,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected - with unet
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -672,7 +656,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -719,7 +703,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -769,7 +753,7 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set them
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -837,7 +821,7 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set/delete them
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -927,7 +911,7 @@ class PeftLoraLoaderMixinTests:
         multiple adapters and set them
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -999,7 +983,7 @@ class PeftLoraLoaderMixinTests:
 
     def test_lora_fuse_nan(self):
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -1037,7 +1021,7 @@ class PeftLoraLoaderMixinTests:
         are the expected results
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -1064,7 +1048,7 @@ class PeftLoraLoaderMixinTests:
         are the expected results
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -1095,6 +1079,68 @@ class PeftLoraLoaderMixinTests:
                 {"unet": ["adapter-1", "adapter-2", "adapter-3"], "text_encoder": ["adapter-1", "adapter-2"]},
             )
 
+    @require_peft_version_greater(peft_version="0.6.2")
+    def test_simple_inference_with_text_lora_unet_fused_multi(self):
+        """
+        Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
+        and makes sure it works as expected - with unet and multi-adapter case
+        """
+        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(self.torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(output_no_lora.shape == (1, 64, 64, 3))
+
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+
+            # Attach a second adapter
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
+            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+            if self.has_two_text_encoders:
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
+                self.assertTrue(
+                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+
+            # set them to multi-adapter inference mode
+            pipe.set_adapters(["adapter-1", "adapter-2"])
+            ouputs_all_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            pipe.set_adapters(["adapter-1"])
+            ouputs_lora_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            pipe.fuse_lora(adapter_names=["adapter-1"])
+
+            # Fusing should still keep the LoRA layers so outpout should remain the same
+            outputs_lora_1_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            self.assertTrue(
+                np.allclose(ouputs_lora_1, outputs_lora_1_fused, atol=1e-3, rtol=1e-3),
+                "Fused lora should not change the output",
+            )
+
+            pipe.unfuse_lora()
+            pipe.fuse_lora(adapter_names=["adapter-2", "adapter-1"])
+
+            # Fusing should still keep the LoRA layers
+            output_all_lora_fused = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(
+                np.allclose(output_all_lora_fused, ouputs_all_lora, atol=1e-3, rtol=1e-3),
+                "Fused lora should not change the output",
+            )
+
     @unittest.skip("This is failing for now - need to investigate")
     def test_simple_inference_with_text_unet_lora_unfused_torch_compile(self):
         """
@@ -1102,7 +1148,7 @@ class PeftLoraLoaderMixinTests:
         and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
-            components, _, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
             pipe = pipe.to(self.torch_device)
             pipe.set_progress_bar_config(disable=None)
@@ -1161,6 +1207,11 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
         "latent_channels": 4,
     }
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     @slow
     @require_torch_gpu
@@ -1391,16 +1442,48 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         "sample_size": 128,
     }
 
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
 
 @slow
 @require_torch_gpu
-class LoraIntegrationTests(unittest.TestCase):
-    def tearDown(self):
-        import gc
+class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
+    pipeline_class = StableDiffusionPipeline
+    scheduler_cls = DDIMScheduler
+    scheduler_kwargs = {
+        "beta_start": 0.00085,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "clip_sample": False,
+        "set_alpha_to_one": False,
+        "steps_offset": 1,
+    }
+    unet_kwargs = {
+        "block_out_channels": (32, 64),
+        "layers_per_block": 2,
+        "sample_size": 32,
+        "in_channels": 4,
+        "out_channels": 4,
+        "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
+        "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
+        "cross_attention_dim": 32,
+    }
+    vae_kwargs = {
+        "block_out_channels": [32, 64],
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+        "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
+        "latent_channels": 4,
+    }
 
+    def tearDown(self):
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
     def test_dreambooth_old_format(self):
         generator = torch.Generator("cpu").manual_seed(0)
@@ -1647,13 +1730,47 @@ class LoraIntegrationTests(unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraSDXLIntegrationTests(unittest.TestCase):
-    def tearDown(self):
-        import gc
+class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
+    has_two_text_encoders = True
+    pipeline_class = StableDiffusionXLPipeline
+    scheduler_cls = EulerDiscreteScheduler
+    scheduler_kwargs = {
+        "beta_start": 0.00085,
+        "beta_end": 0.012,
+        "beta_schedule": "scaled_linear",
+        "timestep_spacing": "leading",
+        "steps_offset": 1,
+    }
+    unet_kwargs = {
+        "block_out_channels": (32, 64),
+        "layers_per_block": 2,
+        "sample_size": 32,
+        "in_channels": 4,
+        "out_channels": 4,
+        "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
+        "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
+        "attention_head_dim": (2, 4),
+        "use_linear_projection": True,
+        "addition_embed_type": "text_time",
+        "addition_time_embed_dim": 8,
+        "transformer_layers_per_block": (1, 2),
+        "projection_class_embeddings_input_dim": 80,  # 6 * 8 + 32
+        "cross_attention_dim": 64,
+    }
+    vae_kwargs = {
+        "block_out_channels": [32, 64],
+        "in_channels": 3,
+        "out_channels": 3,
+        "down_block_types": ["DownEncoderBlock2D", "DownEncoderBlock2D"],
+        "up_block_types": ["UpDecoderBlock2D", "UpDecoderBlock2D"],
+        "latent_channels": 4,
+        "sample_size": 128,
+    }
 
+    def tearDown(self):
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        gc.collect()
 
     def test_sdxl_0_9_lora_one(self):
         generator = torch.Generator().manual_seed(0)
@@ -1713,7 +1830,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdxl_1_0_lora(self):
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         pipe.enable_model_cpu_offload()
@@ -1736,7 +1853,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
         pipe.enable_model_cpu_offload()
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdxl"
 
@@ -1753,7 +1870,8 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         image_np = pipe.image_processor.pil_to_numpy(image)
         expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
 
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+        max_diff = numpy_cosine_similarity_distance(image_np.flatten(), expected_image_np.flatten())
+        assert max_diff < 1e-4
 
         pipe.unload_lora_weights()
 
@@ -1764,7 +1882,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.to("cuda")
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
         pipe.load_lora_weights(lora_model_id)
@@ -1780,7 +1898,8 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         image_np = pipe.image_processor.pil_to_numpy(image)
         expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
 
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+        max_diff = numpy_cosine_similarity_distance(image_np.flatten(), expected_image_np.flatten())
+        assert max_diff < 1e-4
 
         pipe.unload_lora_weights()
 
@@ -1795,7 +1914,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/img2img/fantasy_landscape.png"
         )
 
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         lora_model_id = "latent-consistency/lcm-lora-sdv1-5"
         pipe.load_lora_weights(lora_model_id)
@@ -1816,7 +1935,8 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         image_np = pipe.image_processor.pil_to_numpy(image)
         expected_image_np = pipe.image_processor.pil_to_numpy(expected_image)
 
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=1e-2))
+        max_diff = numpy_cosine_similarity_distance(image_np.flatten(), expected_image_np.flatten())
+        assert max_diff < 1e-4
 
         pipe.unload_lora_weights()
 
@@ -1849,7 +1969,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion(self):
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
@@ -1860,18 +1980,20 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.enable_model_cpu_offload()
 
         images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=3
         ).images
-        images_with_fusion = images[0, -3:, -3:, -1].flatten()
+        images_with_fusion = images.flatten()
 
         pipe.unfuse_lora()
-        generator = torch.Generator().manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
         images = pipe(
-            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
+            "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=3
         ).images
-        images_without_fusion = images[0, -3:, -3:, -1].flatten()
+        images_without_fusion = images.flatten()
 
-        self.assertTrue(np.allclose(images_with_fusion, images_without_fusion, atol=1e-3))
+        max_diff = numpy_cosine_similarity_distance(images_with_fusion, images_without_fusion)
+        assert max_diff < 1e-4
+
         release_memory(pipe)
 
     def test_sdxl_1_0_lora_unfusion_effectivity(self):
@@ -1913,10 +2035,8 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         lora_model_id = "hf-internal-testing/sdxl-1.0-lora"
         lora_filename = "sd_xl_offset_example-lora_1.0.safetensors"
 
-        pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16
-        )
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.bfloat16)
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
         start_time = time.time()
@@ -1929,19 +2049,17 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
 
         del pipe
 
-        pipe = DiffusionPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.bfloat16
-        )
-        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.bfloat16)
+        pipe = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16)
+        pipe.load_lora_weights(lora_model_id, weight_name=lora_filename, torch_dtype=torch.float16)
         pipe.fuse_lora()
+
         # We need to unload the lora weights since in the previous API `fuse_lora` led to lora weights being
         # silently deleted - otherwise this will CPU OOM
         pipe.unload_lora_weights()
-
         pipe.enable_model_cpu_offload()
 
-        start_time = time.time()
         generator = torch.Generator().manual_seed(0)
+        start_time = time.time()
         for _ in range(3):
             pipe(
                 "masterpiece, best quality, mountain", output_type="np", generator=generator, num_inference_steps=2
@@ -1983,10 +2101,26 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         fused_te_2_state_dict = pipe.text_encoder_2.state_dict()
         unet_state_dict = pipe.unet.state_dict()
 
+        peft_ge_070 = version.parse(importlib.metadata.version("peft")) >= version.parse("0.7.0")
+
+        def remap_key(key, sd):
+            # some keys have moved around for PEFT >= 0.7.0, but they should still be loaded correctly
+            if (key in sd) or (not peft_ge_070):
+                return key
+
+            # instead of linear.weight, we now have linear.base_layer.weight, etc.
+            if key.endswith(".weight"):
+                key = key[:-7] + ".base_layer.weight"
+            elif key.endswith(".bias"):
+                key = key[:-5] + ".base_layer.bias"
+            return key
+
         for key, value in text_encoder_1_sd.items():
+            key = remap_key(key, fused_te_state_dict)
             self.assertTrue(torch.allclose(fused_te_state_dict[key], value))
 
         for key, value in text_encoder_2_sd.items():
+            key = remap_key(key, fused_te_2_state_dict)
             self.assertTrue(torch.allclose(fused_te_2_state_dict[key], value))
 
         for key, value in unet_state_dict.items():
@@ -2043,7 +2177,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipeline)
 
-    def test_canny_lora(self):
+    def test_controlnet_canny_lora(self):
         controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")
 
         pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
@@ -2066,6 +2200,34 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         expected_image = np.array([0.4574, 0.4461, 0.4435, 0.4462, 0.4396, 0.439, 0.4474, 0.4486, 0.4333])
         assert np.allclose(original_image, expected_image, atol=1e-04)
         release_memory(pipe)
+
+    def test_sdxl_t2i_adapter_canny_lora(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16).to(
+            "cpu"
+        )
+        pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+            variant="fp16",
+        )
+        pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors")
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "toy"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
+        )
+
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+
+        assert images[0].shape == (768, 512, 3)
+
+        image_slice = images[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.4284, 0.4337, 0.4319, 0.4255, 0.4329, 0.4280, 0.4338, 0.4420, 0.4226])
+        assert numpy_cosine_similarity_distance(image_slice, expected_slice) < 1e-4
 
     @nightly
     def test_sequential_fuse_unfuse(self):

@@ -1,4 +1,4 @@
-# Copyright 2023 Stanford University Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Stanford University Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -247,30 +247,56 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         # setable values
         self.num_inference_steps = None
         self.timesteps = torch.from_numpy(np.arange(0, num_train_timesteps)[::-1].copy().astype(np.int64))
+        self.custom_timesteps = False
 
         self._step_index = None
+        self._begin_index = None
 
-    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
-    def _init_step_index(self, timestep):
-        if isinstance(timestep, torch.Tensor):
-            timestep = timestep.to(self.timesteps.device)
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
+    def index_for_timestep(self, timestep, schedule_timesteps=None):
+        if schedule_timesteps is None:
+            schedule_timesteps = self.timesteps
 
-        index_candidates = (self.timesteps == timestep).nonzero()
+        indices = (schedule_timesteps == timestep).nonzero()
 
         # The sigma index that is taken for the **very** first `step`
         # is always the second index (or the last index if there is only 1)
         # This way we can ensure we don't accidentally skip a sigma in
         # case we start in the middle of the denoising schedule (e.g. for image-to-image)
-        if len(index_candidates) > 1:
-            step_index = index_candidates[1]
-        else:
-            step_index = index_candidates[0]
+        pos = 1 if len(indices) > 1 else 0
 
-        self._step_index = step_index.item()
+        return indices[pos].item()
+
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
+    def _init_step_index(self, timestep):
+        if self.begin_index is None:
+            if isinstance(timestep, torch.Tensor):
+                timestep = timestep.to(self.timesteps.device)
+            self._step_index = self.index_for_timestep(timestep)
+        else:
+            self._step_index = self._begin_index
 
     @property
     def step_index(self):
         return self._step_index
+
+    @property
+    def begin_index(self):
+        """
+        The index for the first timestep. It should be set from pipeline with `set_begin_index` method.
+        """
+        return self._begin_index
+
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
+    def set_begin_index(self, begin_index: int = 0):
+        """
+        Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
+
+        Args:
+            begin_index (`int`):
+                The begin index for the scheduler.
+        """
+        self._begin_index = begin_index
 
     def scale_model_input(self, sample: torch.FloatTensor, timestep: Optional[int] = None) -> torch.FloatTensor:
         """
@@ -324,17 +350,19 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
     def set_timesteps(
         self,
-        num_inference_steps: int,
+        num_inference_steps: Optional[int] = None,
         device: Union[str, torch.device] = None,
         original_inference_steps: Optional[int] = None,
+        timesteps: Optional[List[int]] = None,
         strength: int = 1.0,
     ):
         """
         Sets the discrete timesteps used for the diffusion chain (to be run before inference).
 
         Args:
-            num_inference_steps (`int`):
-                The number of diffusion steps used when generating samples with a pre-trained model.
+            num_inference_steps (`int`, *optional*):
+                The number of diffusion steps used when generating samples with a pre-trained model. If used,
+                `timesteps` must be `None`.
             device (`str` or `torch.device`, *optional*):
                 The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
             original_inference_steps (`int`, *optional*):
@@ -342,16 +370,19 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 schedule (which is different from the standard `diffusers` implementation). We will then take
                 `num_inference_steps` timesteps from this schedule, evenly spaced in terms of indices, and use that as
                 our final timestep schedule. If not set, this will default to the `original_inference_steps` attribute.
+            timesteps (`List[int]`, *optional*):
+                Custom timesteps used to support arbitrary spacing between timesteps. If `None`, then the default
+                timestep spacing strategy of equal spacing between timesteps on the training/distillation timestep
+                schedule is used. If `timesteps` is passed, `num_inference_steps` must be `None`.
         """
+        # 0. Check inputs
+        if num_inference_steps is None and timesteps is None:
+            raise ValueError("Must pass exactly one of `num_inference_steps` or `custom_timesteps`.")
 
-        if num_inference_steps > self.config.num_train_timesteps:
-            raise ValueError(
-                f"`num_inference_steps`: {num_inference_steps} cannot be larger than `self.config.train_timesteps`:"
-                f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
-                f" maximal {self.config.num_train_timesteps} timesteps."
-            )
+        if num_inference_steps is not None and timesteps is not None:
+            raise ValueError("Can only pass one of `num_inference_steps` or `custom_timesteps`.")
 
-        self.num_inference_steps = num_inference_steps
+        # 1. Calculate the LCM original training/distillation timestep schedule.
         original_steps = (
             original_inference_steps if original_inference_steps is not None else self.config.original_inference_steps
         )
@@ -363,36 +394,100 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
                 f" maximal {self.config.num_train_timesteps} timesteps."
             )
 
-        if num_inference_steps > original_steps:
-            raise ValueError(
-                f"`num_inference_steps`: {num_inference_steps} cannot be larger than `original_inference_steps`:"
-                f" {original_steps} because the final timestep schedule will be a subset of the"
-                f" `original_inference_steps`-sized initial timestep schedule."
-            )
-
         # LCM Timesteps Setting
         # The skipping step parameter k from the paper.
         k = self.config.num_train_timesteps // original_steps
         # LCM Training/Distillation Steps Schedule
         # Currently, only a linearly-spaced schedule is supported (same as in the LCM distillation scripts).
         lcm_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * k - 1
-        skipping_step = len(lcm_origin_timesteps) // num_inference_steps
 
-        if skipping_step < 1:
-            raise ValueError(
-                f"The combination of `original_steps x strength`: {original_steps} x {strength} is smaller than `num_inference_steps`: {num_inference_steps}. Make sure to either reduce `num_inference_steps` to a value smaller than {int(original_steps * strength)} or increase `strength` to a value higher than {float(num_inference_steps / original_steps)}."
-            )
+        # 2. Calculate the LCM inference timestep schedule.
+        if timesteps is not None:
+            # 2.1 Handle custom timestep schedules.
+            train_timesteps = set(lcm_origin_timesteps)
+            non_train_timesteps = []
+            for i in range(1, len(timesteps)):
+                if timesteps[i] >= timesteps[i - 1]:
+                    raise ValueError("`custom_timesteps` must be in descending order.")
 
-        # LCM Inference Steps Schedule
-        lcm_origin_timesteps = lcm_origin_timesteps[::-1].copy()
-        # Select (approximately) evenly spaced indices from lcm_origin_timesteps.
-        inference_indices = np.linspace(0, len(lcm_origin_timesteps), num=num_inference_steps, endpoint=False)
-        inference_indices = np.floor(inference_indices).astype(np.int64)
-        timesteps = lcm_origin_timesteps[inference_indices]
+                if timesteps[i] not in train_timesteps:
+                    non_train_timesteps.append(timesteps[i])
+
+            if timesteps[0] >= self.config.num_train_timesteps:
+                raise ValueError(
+                    f"`timesteps` must start before `self.config.train_timesteps`:"
+                    f" {self.config.num_train_timesteps}."
+                )
+
+            # Raise warning if timestep schedule does not start with self.config.num_train_timesteps - 1
+            if strength == 1.0 and timesteps[0] != self.config.num_train_timesteps - 1:
+                logger.warning(
+                    f"The first timestep on the custom timestep schedule is {timesteps[0]}, not"
+                    f" `self.config.num_train_timesteps - 1`: {self.config.num_train_timesteps - 1}. You may get"
+                    f" unexpected results when using this timestep schedule."
+                )
+
+            # Raise warning if custom timestep schedule contains timesteps not on original timestep schedule
+            if non_train_timesteps:
+                logger.warning(
+                    f"The custom timestep schedule contains the following timesteps which are not on the original"
+                    f" training/distillation timestep schedule: {non_train_timesteps}. You may get unexpected results"
+                    f" when using this timestep schedule."
+                )
+
+            # Raise warning if custom timestep schedule is longer than original_steps
+            if len(timesteps) > original_steps:
+                logger.warning(
+                    f"The number of timesteps in the custom timestep schedule is {len(timesteps)}, which exceeds the"
+                    f" the length of the timestep schedule used for training: {original_steps}. You may get some"
+                    f" unexpected results when using this timestep schedule."
+                )
+
+            timesteps = np.array(timesteps, dtype=np.int64)
+            self.num_inference_steps = len(timesteps)
+            self.custom_timesteps = True
+
+            # Apply strength (e.g. for img2img pipelines) (see StableDiffusionImg2ImgPipeline.get_timesteps)
+            init_timestep = min(int(self.num_inference_steps * strength), self.num_inference_steps)
+            t_start = max(self.num_inference_steps - init_timestep, 0)
+            timesteps = timesteps[t_start * self.order :]
+            # TODO: also reset self.num_inference_steps?
+        else:
+            # 2.2 Create the "standard" LCM inference timestep schedule.
+            if num_inference_steps > self.config.num_train_timesteps:
+                raise ValueError(
+                    f"`num_inference_steps`: {num_inference_steps} cannot be larger than `self.config.train_timesteps`:"
+                    f" {self.config.num_train_timesteps} as the unet model trained with this scheduler can only handle"
+                    f" maximal {self.config.num_train_timesteps} timesteps."
+                )
+
+            skipping_step = len(lcm_origin_timesteps) // num_inference_steps
+
+            if skipping_step < 1:
+                raise ValueError(
+                    f"The combination of `original_steps x strength`: {original_steps} x {strength} is smaller than `num_inference_steps`: {num_inference_steps}. Make sure to either reduce `num_inference_steps` to a value smaller than {int(original_steps * strength)} or increase `strength` to a value higher than {float(num_inference_steps / original_steps)}."
+                )
+
+            self.num_inference_steps = num_inference_steps
+
+            if num_inference_steps > original_steps:
+                raise ValueError(
+                    f"`num_inference_steps`: {num_inference_steps} cannot be larger than `original_inference_steps`:"
+                    f" {original_steps} because the final timestep schedule will be a subset of the"
+                    f" `original_inference_steps`-sized initial timestep schedule."
+                )
+
+            # LCM Inference Steps Schedule
+            lcm_origin_timesteps = lcm_origin_timesteps[::-1].copy()
+            # Select (approximately) evenly spaced indices from lcm_origin_timesteps.
+            inference_indices = np.linspace(0, len(lcm_origin_timesteps), num=num_inference_steps, endpoint=False)
+            inference_indices = np.floor(inference_indices).astype(np.int64)
+            timesteps = lcm_origin_timesteps[inference_indices]
 
         self.timesteps = torch.from_numpy(timesteps).to(device=device, dtype=torch.long)
 
         self._step_index = None
+        self._begin_index = None
 
     def get_scalings_for_boundary_condition_discrete(self, timestep):
         self.sigma_data = 0.5  # Default: 0.5
@@ -506,7 +601,10 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
+        # for the subsequent add_noise calls
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device)
+        alphas_cumprod = self.alphas_cumprod.to(dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
@@ -527,7 +625,8 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
         self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
-        alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
+        self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
+        alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)
         timesteps = timesteps.to(sample.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
@@ -545,3 +644,19 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
 
     def __len__(self):
         return self.config.num_train_timesteps
+
+    # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.previous_timestep
+    def previous_timestep(self, timestep):
+        if self.custom_timesteps:
+            index = (self.timesteps == timestep).nonzero(as_tuple=True)[0][0]
+            if index == self.timesteps.shape[0] - 1:
+                prev_t = torch.tensor(-1)
+            else:
+                prev_t = self.timesteps[index + 1]
+        else:
+            num_inference_steps = (
+                self.num_inference_steps if self.num_inference_steps else self.config.num_train_timesteps
+            )
+            prev_t = timestep - self.config.num_train_timesteps // num_inference_steps
+
+        return prev_t

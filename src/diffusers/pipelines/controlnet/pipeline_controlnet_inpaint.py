@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,11 +21,11 @@ import numpy as np
 import PIL.Image
 import torch
 import torch.nn.functional as F
-from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
-from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetModel, UNet2DConditionModel
+from ...loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -104,9 +104,13 @@ EXAMPLE_DOC_STRING = """
 
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.retrieve_latents
-def retrieve_latents(encoder_output, generator):
-    if hasattr(encoder_output, "latent_dist"):
+def retrieve_latents(
+    encoder_output: torch.Tensor, generator: Optional[torch.Generator] = None, sample_mode: str = "sample"
+):
+    if hasattr(encoder_output, "latent_dist") and sample_mode == "sample":
         return encoder_output.latent_dist.sample(generator)
+    elif hasattr(encoder_output, "latent_dist") and sample_mode == "argmax":
+        return encoder_output.latent_dist.mode()
     elif hasattr(encoder_output, "latents"):
         return encoder_output.latents
     else:
@@ -237,7 +241,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image=False
 
 
 class StableDiffusionControlNetInpaintPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for image inpainting using Stable Diffusion with ControlNet guidance.
@@ -247,6 +251,10 @@ class StableDiffusionControlNetInpaintPipeline(
 
     The pipeline also inherits the following loading methods:
         - [`~loaders.TextualInversionLoaderMixin.load_textual_inversion`] for loading textual inversion embeddings
+        - [`~loaders.LoraLoaderMixin.load_lora_weights`] for loading LoRA weights
+        - [`~loaders.LoraLoaderMixin.save_lora_weights`] for saving LoRA weights
+        - [`~loaders.FromSingleFileMixin.from_single_file`] for loading `.ckpt` files
+        - [`~loaders.IPAdapterMixin.load_ip_adapter`] for loading IP Adapters
 
     <Tip>
 
@@ -283,8 +291,8 @@ class StableDiffusionControlNetInpaintPipeline(
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
-    model_cpu_offload_seq = "text_encoder->unet->vae"
-    _optional_components = ["safety_checker", "feature_extractor"]
+    model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
+    _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
@@ -298,6 +306,7 @@ class StableDiffusionControlNetInpaintPipeline(
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
+        image_encoder: CLIPVisionModelWithProjection = None,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
@@ -330,6 +339,7 @@ class StableDiffusionControlNetInpaintPipeline(
             scheduler=scheduler,
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
+            image_encoder=image_encoder,
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
@@ -468,7 +478,7 @@ class StableDiffusionControlNetInpaintPipeline(
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
@@ -550,7 +560,7 @@ class StableDiffusionControlNetInpaintPipeline(
             else:
                 uncond_tokens = negative_prompt
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
@@ -588,6 +598,66 @@ class StableDiffusionControlNetInpaintPipeline(
             unscale_lora_layers(self.text_encoder, lora_scale)
 
         return prompt_embeds, negative_prompt_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
+    def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
+        dtype = next(self.image_encoder.parameters()).dtype
+
+        if not isinstance(image, torch.Tensor):
+            image = self.feature_extractor(image, return_tensors="pt").pixel_values
+
+        image = image.to(device=device, dtype=dtype)
+        if output_hidden_states:
+            image_enc_hidden_states = self.image_encoder(image, output_hidden_states=True).hidden_states[-2]
+            image_enc_hidden_states = image_enc_hidden_states.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_enc_hidden_states = self.image_encoder(
+                torch.zeros_like(image), output_hidden_states=True
+            ).hidden_states[-2]
+            uncond_image_enc_hidden_states = uncond_image_enc_hidden_states.repeat_interleave(
+                num_images_per_prompt, dim=0
+            )
+            return image_enc_hidden_states, uncond_image_enc_hidden_states
+        else:
+            image_embeds = self.image_encoder(image).image_embeds
+            image_embeds = image_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+            uncond_image_embeds = torch.zeros_like(image_embeds)
+
+            return image_embeds, uncond_image_embeds
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
+    def prepare_ip_adapter_image_embeds(
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
+    ):
+        if ip_adapter_image_embeds is None:
+            if not isinstance(ip_adapter_image, list):
+                ip_adapter_image = [ip_adapter_image]
+
+            if len(ip_adapter_image) != len(self.unet.encoder_hid_proj.image_projection_layers):
+                raise ValueError(
+                    f"`ip_adapter_image` must have same length as the number of IP Adapters. Got {len(ip_adapter_image)} images and {len(self.unet.encoder_hid_proj.image_projection_layers)} IP Adapters."
+                )
+
+            image_embeds = []
+            for single_ip_adapter_image, image_proj_layer in zip(
+                ip_adapter_image, self.unet.encoder_hid_proj.image_projection_layers
+            ):
+                output_hidden_state = not isinstance(image_proj_layer, ImageProjection)
+                single_image_embeds, single_negative_image_embeds = self.encode_image(
+                    single_ip_adapter_image, device, 1, output_hidden_state
+                )
+                single_image_embeds = torch.stack([single_image_embeds] * num_images_per_prompt, dim=0)
+                single_negative_image_embeds = torch.stack(
+                    [single_negative_image_embeds] * num_images_per_prompt, dim=0
+                )
+
+                if self.do_classifier_free_guidance:
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                    single_image_embeds = single_image_embeds.to(device)
+
+                image_embeds.append(single_image_embeds)
+        else:
+            image_embeds = ip_adapter_image_embeds
+        return image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
     def run_safety_checker(self, image, device, dtype):
@@ -641,6 +711,8 @@ class StableDiffusionControlNetInpaintPipeline(
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
+        if hasattr(self.scheduler, "set_begin_index"):
+            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 
@@ -648,16 +720,21 @@ class StableDiffusionControlNetInpaintPipeline(
         self,
         prompt,
         image,
+        mask_image,
         height,
         width,
         callback_steps,
+        output_type,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        ip_adapter_image=None,
+        ip_adapter_image_embeds=None,
         controlnet_conditioning_scale=1.0,
         control_guidance_start=0.0,
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
+        padding_mask_crop=None,
     ):
         if height is not None and height % 8 != 0 or width is not None and width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -700,6 +777,19 @@ class StableDiffusionControlNetInpaintPipeline(
                     f" got: `prompt_embeds` {prompt_embeds.shape} != `negative_prompt_embeds`"
                     f" {negative_prompt_embeds.shape}."
                 )
+
+        if padding_mask_crop is not None:
+            if not isinstance(image, PIL.Image.Image):
+                raise ValueError(
+                    f"The image should be a PIL image when inpainting mask crop, but is of type" f" {type(image)}."
+                )
+            if not isinstance(mask_image, PIL.Image.Image):
+                raise ValueError(
+                    f"The mask image should be a PIL image when inpainting mask crop, but is of type"
+                    f" {type(mask_image)}."
+                )
+            if output_type != "pil":
+                raise ValueError(f"The output type should be PIL when inpainting mask crop, but is" f" {output_type}.")
 
         # `prompt` needs more sophisticated handling when there are multiple
         # conditionings.
@@ -789,6 +879,11 @@ class StableDiffusionControlNetInpaintPipeline(
             if end > 1.0:
                 raise ValueError(f"control guidance end: {end} can't be larger than 1.0.")
 
+        if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
+            raise ValueError(
+                "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
+            )
+
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
     def check_image(self, image, prompt, prompt_embeds):
         image_is_pil = isinstance(image, PIL.Image.Image)
@@ -827,7 +922,6 @@ class StableDiffusionControlNetInpaintPipeline(
                 f"If image batch size is not 1, image batch size must be same as prompt batch size. image batch size: {image_batch_size}, prompt batch size: {prompt_batch_size}"
             )
 
-    # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.prepare_image
     def prepare_control_image(
         self,
         image,
@@ -837,10 +931,14 @@ class StableDiffusionControlNetInpaintPipeline(
         num_images_per_prompt,
         device,
         dtype,
+        crops_coords,
+        resize_mode,
         do_classifier_free_guidance=False,
         guess_mode=False,
     ):
-        image = self.control_image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+        image = self.control_image_processor.preprocess(
+            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
+        ).to(dtype=torch.float32)
         image_batch_size = image.shape[0]
 
         if image_batch_size == 1:
@@ -1039,6 +1137,7 @@ class StableDiffusionControlNetInpaintPipeline(
         control_image: PipelineImageInput = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
+        padding_mask_crop: Optional[int] = None,
         strength: float = 1.0,
         num_inference_steps: int = 50,
         guidance_scale: float = 7.5,
@@ -1049,6 +1148,8 @@ class StableDiffusionControlNetInpaintPipeline(
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        ip_adapter_image: Optional[PipelineImageInput] = None,
+        ip_adapter_image_embeds: Optional[List[torch.FloatTensor]] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
@@ -1094,6 +1195,12 @@ class StableDiffusionControlNetInpaintPipeline(
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
+            padding_mask_crop (`int`, *optional*, defaults to `None`):
+                The size of margin in the crop to be applied to the image and masking. If `None`, no crop is applied to image and mask_image. If
+                `padding_mask_crop` is not `None`, it will first find a rectangular region with the same aspect ration of the image and
+                contains all masked area, and then expand that area based on `padding_mask_crop`. The image and mask_image will then be cropped based on
+                the expanded area before resizing to the original image size for inpainting. This is useful when the masked area is small while the image is large
+                and contain information inreleant for inpainging, such as background.
             strength (`float`, *optional*, defaults to 1.0):
                 Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
                 starting point and more noise is added the higher the `strength`. The number of denoising steps depends
@@ -1127,6 +1234,10 @@ class StableDiffusionControlNetInpaintPipeline(
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs (prompt weighting). If
                 not provided, `negative_prompt_embeds` are generated from the `negative_prompt` input argument.
+            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
+                Pre-generated image embeddings for IP-Adapter. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):
@@ -1203,16 +1314,21 @@ class StableDiffusionControlNetInpaintPipeline(
         self.check_inputs(
             prompt,
             control_image,
+            mask_image,
             height,
             width,
             callback_steps,
+            output_type,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
+            ip_adapter_image,
+            ip_adapter_image_embeds,
             controlnet_conditioning_scale,
             control_guidance_start,
             control_guidance_end,
             callback_on_step_end_tensor_inputs,
+            padding_mask_crop,
         )
 
         self._guidance_scale = guidance_scale
@@ -1226,6 +1342,14 @@ class StableDiffusionControlNetInpaintPipeline(
             batch_size = len(prompt)
         else:
             batch_size = prompt_embeds.shape[0]
+
+        if padding_mask_crop is not None:
+            height, width = self.image_processor.get_default_height_width(image, height, width)
+            crops_coords = self.mask_processor.get_crop_region(mask_image, width, height, pad=padding_mask_crop)
+            resize_mode = "fill"
+        else:
+            crops_coords = None
+            resize_mode = "default"
 
         device = self._execution_device
 
@@ -1260,6 +1384,11 @@ class StableDiffusionControlNetInpaintPipeline(
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
+        if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
+            image_embeds = self.prepare_ip_adapter_image_embeds(
+                ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_images_per_prompt
+            )
+
         # 4. Prepare image
         if isinstance(controlnet, ControlNetModel):
             control_image = self.prepare_control_image(
@@ -1270,6 +1399,8 @@ class StableDiffusionControlNetInpaintPipeline(
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
                 dtype=controlnet.dtype,
+                crops_coords=crops_coords,
+                resize_mode=resize_mode,
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
@@ -1285,6 +1416,8 @@ class StableDiffusionControlNetInpaintPipeline(
                     num_images_per_prompt=num_images_per_prompt,
                     device=device,
                     dtype=controlnet.dtype,
+                    crops_coords=crops_coords,
+                    resize_mode=resize_mode,
                     do_classifier_free_guidance=self.do_classifier_free_guidance,
                     guess_mode=guess_mode,
                 )
@@ -1295,11 +1428,16 @@ class StableDiffusionControlNetInpaintPipeline(
         else:
             assert False
 
-        # 4. Preprocess mask and image - resizes image and mask w.r.t height and width
-        init_image = self.image_processor.preprocess(image, height=height, width=width)
+        # 4.1 Preprocess mask and image - resizes image and mask w.r.t height and width
+        original_image = image
+        init_image = self.image_processor.preprocess(
+            image, height=height, width=width, crops_coords=crops_coords, resize_mode=resize_mode
+        )
         init_image = init_image.to(dtype=torch.float32)
 
-        mask = self.mask_processor.preprocess(mask_image, height=height, width=width)
+        mask = self.mask_processor.preprocess(
+            mask_image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
+        )
 
         masked_image = init_image * (mask < 0.5)
         _, _, height, width = init_image.shape
@@ -1356,7 +1494,10 @@ class StableDiffusionControlNetInpaintPipeline(
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7.1 Create tensor stating which controlnets to keep
+        # 7.1 Add image embeds for IP-Adapter
+        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+
+        # 7.2 Create tensor stating which controlnets to keep
         controlnet_keep = []
         for i in range(len(timesteps)):
             keeps = [
@@ -1419,6 +1560,7 @@ class StableDiffusionControlNetInpaintPipeline(
                     cross_attention_kwargs=self.cross_attention_kwargs,
                     down_block_additional_residuals=down_block_res_samples,
                     mid_block_additional_residual=mid_block_res_sample,
+                    added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
 
@@ -1484,6 +1626,9 @@ class StableDiffusionControlNetInpaintPipeline(
             do_denormalize = [not has_nsfw for has_nsfw in has_nsfw_concept]
 
         image = self.image_processor.postprocess(image, output_type=output_type, do_denormalize=do_denormalize)
+
+        if padding_mask_crop is not None:
+            image = [self.image_processor.apply_overlay(mask_image, original_image, i, crops_coords) for i in image]
 
         # Offload all models
         self.maybe_free_model_hooks()

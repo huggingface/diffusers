@@ -3,9 +3,9 @@
 [Textual inversion](https://arxiv.org/abs/2208.01618) is a method to personalize text2image models like stable diffusion on your own images using just 3-5 examples.
 The `textual_inversion.py` script shows how to implement the training procedure and adapt it for stable diffusion.
 
-## Running on Colab 
+## Running on Colab
 
-Colab for training 
+Colab for training
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/sd_textual_inversion_training.ipynb)
 
 Colab for inference
@@ -60,6 +60,8 @@ Now we can launch the training using:
 
 **___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 
+**___Note: Please follow the [README_sdxl.md](./README_sdxl.md) if you are using the [stable-diffusion-xl](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0).___**
+
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-v1-5"
 export DATA_DIR="./cat"
@@ -84,11 +86,11 @@ accelerate launch textual_inversion.py \
 
 A full training run takes ~1 hour on one V100 GPU.
 
-**Note**: As described in [the official paper](https://arxiv.org/abs/2208.01618) 
+**Note**: As described in [the official paper](https://arxiv.org/abs/2208.01618)
 only one embedding vector is used for the placeholder token, *e.g.* `"<cat-toy>"`.
-However, one can also add multiple embedding vectors for the placeholder token 
-to increase the number of fine-tuneable parameters. This can help the model to learn 
-more complex details. To use multiple embedding vectors, you should define `--num_vectors` 
+However, one can also add multiple embedding vectors for the placeholder token
+to increase the number of fine-tuneable parameters. This can help the model to learn
+more complex details. To use multiple embedding vectors, you should define `--num_vectors`
 to a number larger than one, *e.g.*:
 ```bash
 --num_vectors 5

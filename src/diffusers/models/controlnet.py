@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ from torch import nn
 from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..loaders import FromOriginalControlnetMixin
+from ..loaders import FromOriginalControlNetMixin
 from ..utils import BaseOutput, logging
 from .attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
@@ -30,13 +30,14 @@ from .attention_processor import (
 )
 from .embeddings import TextImageProjection, TextImageTimeEmbedding, TextTimeEmbedding, TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
-from .unet_2d_blocks import (
+from .unets.unet_2d_blocks import (
     CrossAttnDownBlock2D,
     DownBlock2D,
+    UNetMidBlock2D,
     UNetMidBlock2DCrossAttn,
     get_down_block,
 )
-from .unet_2d_condition import UNet2DConditionModel
+from .unets.unet_2d_condition import UNet2DConditionModel
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -107,7 +108,7 @@ class ControlNetConditioningEmbedding(nn.Module):
         return embedding
 
 
-class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
+class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
     """
     A ControlNet model.
 
@@ -191,6 +192,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             "CrossAttnDownBlock2D",
             "DownBlock2D",
         ),
+        mid_block_type: Optional[str] = "UNetMidBlock2DCrossAttn",
         only_cross_attention: Union[bool, Tuple[bool]] = False,
         block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
         layers_per_block: int = 2,
@@ -409,20 +411,35 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         controlnet_block = zero_module(controlnet_block)
         self.controlnet_mid_block = controlnet_block
 
-        self.mid_block = UNetMidBlock2DCrossAttn(
-            transformer_layers_per_block=transformer_layers_per_block[-1],
-            in_channels=mid_block_channel,
-            temb_channels=time_embed_dim,
-            resnet_eps=norm_eps,
-            resnet_act_fn=act_fn,
-            output_scale_factor=mid_block_scale_factor,
-            resnet_time_scale_shift=resnet_time_scale_shift,
-            cross_attention_dim=cross_attention_dim,
-            num_attention_heads=num_attention_heads[-1],
-            resnet_groups=norm_num_groups,
-            use_linear_projection=use_linear_projection,
-            upcast_attention=upcast_attention,
-        )
+        if mid_block_type == "UNetMidBlock2DCrossAttn":
+            self.mid_block = UNetMidBlock2DCrossAttn(
+                transformer_layers_per_block=transformer_layers_per_block[-1],
+                in_channels=mid_block_channel,
+                temb_channels=time_embed_dim,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+                cross_attention_dim=cross_attention_dim,
+                num_attention_heads=num_attention_heads[-1],
+                resnet_groups=norm_num_groups,
+                use_linear_projection=use_linear_projection,
+                upcast_attention=upcast_attention,
+            )
+        elif mid_block_type == "UNetMidBlock2D":
+            self.mid_block = UNetMidBlock2D(
+                in_channels=block_out_channels[-1],
+                temb_channels=time_embed_dim,
+                num_layers=0,
+                resnet_eps=norm_eps,
+                resnet_act_fn=act_fn,
+                output_scale_factor=mid_block_scale_factor,
+                resnet_groups=norm_num_groups,
+                resnet_time_scale_shift=resnet_time_scale_shift,
+                add_attention=False,
+            )
+        else:
+            raise ValueError(f"unknown mid_block_type : {mid_block_type}")
 
     @classmethod
     def from_unet(
@@ -431,6 +448,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
         load_weights_from_unet: bool = True,
+        conditioning_channels: int = 3,
     ):
         r"""
         Instantiate a [`ControlNetModel`] from [`UNet2DConditionModel`].
@@ -477,8 +495,10 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
             upcast_attention=unet.config.upcast_attention,
             resnet_time_scale_shift=unet.config.resnet_time_scale_shift,
             projection_class_embeddings_input_dim=unet.config.projection_class_embeddings_input_dim,
+            mid_block_type=unet.config.mid_block_type,
             controlnet_conditioning_channel_order=controlnet_conditioning_channel_order,
             conditioning_embedding_out_channels=conditioning_embedding_out_channels,
+            conditioning_channels=conditioning_channels,
         )
 
         if load_weights_from_unet:
@@ -495,7 +515,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         return controlnet
 
     @property
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
@@ -519,10 +539,8 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
 
         return processors
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
-    ):
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -546,9 +564,9 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
-                    module.set_processor(processor, _remove_lora=_remove_lora)
+                    module.set_processor(processor)
                 else:
-                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
+                    module.set_processor(processor.pop(f"{name}.processor"))
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -556,7 +574,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
@@ -570,9 +588,9 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
                 f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
             )
 
-        self.set_attn_processor(processor, _remove_lora=True)
+        self.set_attn_processor(processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attention_slice
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attention_slice
     def set_attention_slice(self, slice_size: Union[str, int, List[int]]) -> None:
         r"""
         Enable sliced attention computation.
@@ -797,13 +815,16 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlnetMixin):
 
         # 4. mid
         if self.mid_block is not None:
-            sample = self.mid_block(
-                sample,
-                emb,
-                encoder_hidden_states=encoder_hidden_states,
-                attention_mask=attention_mask,
-                cross_attention_kwargs=cross_attention_kwargs,
-            )
+            if hasattr(self.mid_block, "has_cross_attention") and self.mid_block.has_cross_attention:
+                sample = self.mid_block(
+                    sample,
+                    emb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    attention_mask=attention_mask,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                )
+            else:
+                sample = self.mid_block(sample, emb)
 
         # 5. Control net blocks
 

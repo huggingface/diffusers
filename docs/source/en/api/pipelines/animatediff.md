@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -25,6 +25,7 @@ The abstract of the paper is the following:
 | Pipeline | Tasks | Demo
 |---|---|:---:|
 | [AnimateDiffPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff.py) | *Text-to-Video Generation with AnimateDiff* |
+| [AnimateDiffVideoToVideoPipeline](https://github.com/huggingface/diffusers/blob/main/src/diffusers/pipelines/animatediff/pipeline_animatediff_video2video.py) | *Video-to-Video Generation with AnimateDiff* |
 
 ## Available checkpoints
 
@@ -32,22 +33,29 @@ Motion Adapter checkpoints can be found under [guoyww](https://huggingface.co/gu
 
 ## Usage example
 
+### AnimateDiffPipeline
+
 AnimateDiff works with a MotionAdapter checkpoint and a Stable Diffusion model checkpoint. The MotionAdapter is a collection of Motion Modules that are responsible for adding coherent motion across image frames. These modules are applied after the Resnet and Attention blocks in Stable Diffusion UNet.
 
 The following example demonstrates how to use a *MotionAdapter* checkpoint with Diffusers for inference based on StableDiffusion-1.4/1.5.
 
 ```python
 import torch
-from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
 from diffusers.utils import export_to_gif
 
 # Load the motion adapter
-adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
 # load SD 1.5 based finetuned model
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter)
+pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
 scheduler = DDIMScheduler.from_pretrained(
-    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    beta_schedule="linear",
+    steps_offset=1,
 )
 pipe.scheduler = scheduler
 
@@ -70,6 +78,7 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
+
 ```
 
 Here are some sample outputs:
@@ -88,9 +97,117 @@ Here are some sample outputs:
 
 <Tip>
 
-AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples.
+AnimateDiff tends to work better with finetuned Stable Diffusion models. If you plan on using a scheduler that can clip samples, make sure to disable it by setting `clip_sample=False` in the scheduler as this can also have an adverse effect on generated samples. Additionally, the AnimateDiff checkpoints can be sensitive to the beta schedule of the scheduler. We recommend setting this to `linear`.
 
 </Tip>
+
+### AnimateDiffVideoToVideoPipeline
+
+AnimateDiff can also be used to generate visually similar videos or enable style/character/background or other edits starting from an initial video, allowing you to seamlessly explore creative possibilities.
+
+```python
+import imageio
+import requests
+import torch
+from diffusers import AnimateDiffVideoToVideoPipeline, DDIMScheduler, MotionAdapter
+from diffusers.utils import export_to_gif
+from io import BytesIO
+from PIL import Image
+
+# Load the motion adapter
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
+# load SD 1.5 based finetuned model
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = AnimateDiffVideoToVideoPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16).to("cuda")
+scheduler = DDIMScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    beta_schedule="linear",
+    steps_offset=1,
+)
+pipe.scheduler = scheduler
+
+# enable memory savings
+pipe.enable_vae_slicing()
+pipe.enable_model_cpu_offload()
+
+# helper function to load videos
+def load_video(file_path: str):
+    images = []
+
+    if file_path.startswith(('http://', 'https://')):
+        # If the file_path is a URL
+        response = requests.get(file_path)
+        response.raise_for_status()
+        content = BytesIO(response.content)
+        vid = imageio.get_reader(content)
+    else:
+        # Assuming it's a local file path
+        vid = imageio.get_reader(file_path)
+
+    for frame in vid:
+        pil_image = Image.fromarray(frame)
+        images.append(pil_image)
+
+    return images
+
+video = load_video("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif")
+
+output = pipe(
+    video = video,
+    prompt="panda playing a guitar, on a boat, in the ocean, high quality",
+    negative_prompt="bad quality, worse quality",
+    guidance_scale=7.5,
+    num_inference_steps=25,
+    strength=0.5,
+    generator=torch.Generator("cpu").manual_seed(42),
+)
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
+```
+
+Here are some sample outputs:
+
+<table>
+    <tr>
+      <th align=center>Source Video</th>
+      <th align=center>Output Video</th>
+    </tr>
+    <tr>
+        <td align=center>
+          raccoon playing a guitar
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-1.gif"
+              alt="racoon playing a guitar"
+              style="width: 300px;" />
+        </td>
+        <td align=center>
+          panda playing a guitar
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-output-1.gif"
+              alt="panda playing a guitar"
+              style="width: 300px;" />
+        </td>
+    </tr>
+    <tr>
+        <td align=center>
+          closeup of margot robbie, fireworks in the background, high quality
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-input-2.gif"
+              alt="closeup of margot robbie, fireworks in the background, high quality"
+              style="width: 300px;" />
+        </td>
+        <td align=center>
+          closeup of tony stark, robert downey jr, fireworks
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-vid2vid-output-2.gif"
+              alt="closeup of tony stark, robert downey jr, fireworks"
+              style="width: 300px;" />
+        </td>
+    </tr>
+</table>
 
 ## Using Motion LoRAs
 
@@ -98,18 +215,25 @@ Motion LoRAs are a collection of LoRAs that work with the `guoyww/animatediff-mo
 
 ```python
 import torch
-from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
 from diffusers.utils import export_to_gif
 
 # Load the motion adapter
-adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
 # load SD 1.5 based finetuned model
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter)
-pipe.load_lora_weights("guoyww/animatediff-motion-lora-zoom-out", adapter_name="zoom-out")
+pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
+pipe.load_lora_weights(
+    "guoyww/animatediff-motion-lora-zoom-out", adapter_name="zoom-out"
+)
 
 scheduler = DDIMScheduler.from_pretrained(
-    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    beta_schedule="linear",
+    timestep_spacing="linspace",
+    steps_offset=1,
 )
 pipe.scheduler = scheduler
 
@@ -132,6 +256,7 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
+
 ```
 
 <table>
@@ -160,21 +285,30 @@ Then you can use the following code to combine Motion LoRAs.
 
 ```python
 import torch
-from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers import AnimateDiffPipeline, DDIMScheduler, MotionAdapter
 from diffusers.utils import export_to_gif
 
 # Load the motion adapter
-adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2", torch_dtype=torch.float16)
 # load SD 1.5 based finetuned model
 model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
-pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter)
+pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16)
 
-pipe.load_lora_weights("diffusers/animatediff-motion-lora-zoom-out", adapter_name="zoom-out")
-pipe.load_lora_weights("diffusers/animatediff-motion-lora-pan-left", adapter_name="pan-left")
+pipe.load_lora_weights(
+    "diffusers/animatediff-motion-lora-zoom-out", adapter_name="zoom-out",
+)
+pipe.load_lora_weights(
+    "diffusers/animatediff-motion-lora-pan-left", adapter_name="pan-left",
+)
 pipe.set_adapters(["zoom-out", "pan-left"], adapter_weights=[1.0, 1.0])
 
 scheduler = DDIMScheduler.from_pretrained(
-    model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", steps_offset=1
+    model_id,
+    subfolder="scheduler",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    beta_schedule="linear",
+    steps_offset=1,
 )
 pipe.scheduler = scheduler
 
@@ -197,6 +331,7 @@ output = pipe(
 )
 frames = output.frames[0]
 export_to_gif(frames, "animation.gif")
+
 ```
 
 <table>
@@ -211,6 +346,62 @@ export_to_gif(frames, "animation.gif")
     </tr>
 </table>
 
+## Using FreeInit
+
+[FreeInit: Bridging Initialization Gap in Video Diffusion Models](https://arxiv.org/abs/2312.07537) by Tianxing Wu, Chenyang Si, Yuming Jiang, Ziqi Huang, Ziwei Liu.
+
+FreeInit is an effective method that improves temporal consistency and overall quality of videos generated using video-diffusion-models without any addition training. It can be applied to AnimateDiff, ModelScope, VideoCrafter and various other video generation models seamlessly at inference time, and works by iteratively refining the latent-initialization noise. More details can be found it the paper.
+
+The following example demonstrates the usage of FreeInit.
+
+```python
+import torch
+from diffusers import MotionAdapter, AnimateDiffPipeline, DDIMScheduler
+from diffusers.utils import export_to_gif
+
+adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
+pipe = AnimateDiffPipeline.from_pretrained(model_id, motion_adapter=adapter, torch_dtype=torch.float16).to("cuda")
+pipe.scheduler = DDIMScheduler.from_pretrained(
+    model_id,
+    subfolder="scheduler",
+    beta_schedule="linear",
+    clip_sample=False,
+    timestep_spacing="linspace",
+    steps_offset=1
+)
+
+# enable memory savings
+pipe.enable_vae_slicing()
+pipe.enable_vae_tiling()
+
+# enable FreeInit
+# Refer to the enable_free_init documentation for a full list of configurable parameters
+pipe.enable_free_init(method="butterworth", use_fast_sampling=True)
+
+# run inference
+output = pipe(
+    prompt="a panda playing a guitar, on a boat, in the ocean, high quality",
+    negative_prompt="bad quality, worse quality",
+    num_frames=16,
+    guidance_scale=7.5,
+    num_inference_steps=20,
+    generator=torch.Generator("cpu").manual_seed(666),
+)
+
+# disable FreeInit
+pipe.disable_free_init()
+
+frames = output.frames[0]
+export_to_gif(frames, "animation.gif")
+```
+
+<Tip warning={true}>
+
+FreeInit is not really free - the improved quality comes at the cost of extra computation. It requires sampling a few extra times depending on the `num_iters` parameter that is set when enabling it. Setting the `use_fast_sampling` parameter to `True` can improve the overall performance (at the cost of lower quality compared to when `use_fast_sampling=False` but still better results than vanilla video generation models).
+
+</Tip>
+
 <Tip>
 
 Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
@@ -220,14 +411,14 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 ## AnimateDiffPipeline
 
 [[autodoc]] AnimateDiffPipeline
-	- all
-	- __call__
-    - enable_freeu
-    - disable_freeu
-    - enable_vae_slicing
-    - disable_vae_slicing
-    - enable_vae_tiling
-    - disable_vae_tiling
+  - all
+  - __call__
+
+## AnimateDiffVideoToVideoPipeline
+
+[[autodoc]] AnimateDiffVideoToVideoPipeline
+  - all
+  - __call__
 
 ## AnimateDiffPipelineOutput
 

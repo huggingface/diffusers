@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -104,7 +104,7 @@ accelerate launch train_text_to_image_lora.py \
 
 Many of the basic and important parameters are described in the [Text-to-image](text2image#script-parameters) training guide, so this guide just focuses on the LoRA relevant parameters:
 
-- `--rank`: the number of low-rank matrices to train
+- `--rank`: the inner dimension of the low-rank matrices to train; a higher rank means more trainable parameters
 - `--learning_rate`: the default learning rate is 1e-4, but with LoRA, you can use a higher learning rate
 
 ## Training script
@@ -179,7 +179,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_lora.py \
   --pretrained_model_name_or_path=$MODEL_NAME \
   --dataset_name=$DATASET_NAME \
   --dataloader_num_workers=8 \
-  --resolution=512 
+  --resolution=512 \
   --center_crop \
   --random_flip \
   --train_batch_size=1 \

@@ -13,11 +13,21 @@ from typing import Callable, Union
 import numpy as np
 import PIL.Image
 import torch
-from huggingface_hub import delete_repo
+from huggingface_hub import ModelCard, delete_repo
+from huggingface_hub.utils import is_jinja_available
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 import diffusers
-from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import (
+    AsymmetricAutoencoderKL,
+    AutoencoderKL,
+    AutoencoderTiny,
+    ConsistencyDecoderVAE,
+    DDIMScheduler,
+    DiffusionPipeline,
+    StableDiffusionPipeline,
+    UNet2DConditionModel,
+)
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
@@ -28,6 +38,12 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
+from ..models.autoencoders.test_models_vae import (
+    get_asym_autoencoder_kl_config,
+    get_autoencoder_kl_config,
+    get_autoencoder_tiny_config,
+    get_consistency_vae_config,
+)
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
@@ -170,6 +186,34 @@ class PipelineLatentTesterMixin:
 
         max_diff = np.abs(out - out_latents_inputs).max()
         self.assertLess(max_diff, 1e-4, "passing latents as image input generate different result from passing image")
+
+    def test_multi_vae(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        block_out_channels = pipe.vae.config.block_out_channels
+        norm_num_groups = pipe.vae.config.norm_num_groups
+
+        vae_classes = [AutoencoderKL, AsymmetricAutoencoderKL, ConsistencyDecoderVAE, AutoencoderTiny]
+        configs = [
+            get_autoencoder_kl_config(block_out_channels, norm_num_groups),
+            get_asym_autoencoder_kl_config(block_out_channels, norm_num_groups),
+            get_consistency_vae_config(block_out_channels, norm_num_groups),
+            get_autoencoder_tiny_config(block_out_channels),
+        ]
+
+        out_np = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
+
+        for vae_cls, config in zip(vae_classes, configs):
+            vae = vae_cls(**config)
+            vae = vae.to(torch_device)
+            components["vae"] = vae
+            vae_pipe = self.pipeline_class(**components)
+            out_vae_np = vae_pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
+
+            assert out_vae_np.shape == out_np.shape
 
 
 @require_torch
@@ -334,6 +378,10 @@ class PipelineTesterMixin:
             with CaptureLogger(logger) as cap_logger:
                 pipe_loaded = self.pipeline_class.from_pretrained(tmpdir)
 
+            for component in pipe_loaded.components.values():
+                if hasattr(component, "set_default_attn_processor"):
+                    component.set_default_attn_processor()
+
             for name in pipe_loaded.components.keys():
                 if name not in pipe_loaded._optional_components:
                     assert name in str(cap_logger)
@@ -390,7 +438,7 @@ class PipelineTesterMixin:
         self._test_inference_batch_consistent(batch_sizes=batch_sizes)
 
     def _test_inference_batch_consistent(
-        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"]
+        self, batch_sizes=[2], additional_params_copy_to_batched_inputs=["num_inference_steps"], batch_generator=True
     ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -425,7 +473,7 @@ class PipelineTesterMixin:
                 else:
                     batched_input[name] = batch_size * [value]
 
-            if "generator" in inputs:
+            if batch_generator and "generator" in inputs:
                 batched_input["generator"] = [self.get_generator(i) for i in range(batch_size)]
 
             if "batch_size" in inputs:
@@ -668,7 +716,7 @@ class PipelineTesterMixin:
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
@@ -1094,6 +1142,21 @@ class PipelinePushToHubTester(unittest.TestCase):
 
         # Reset repo
         delete_repo(self.org_repo_id, token=TOKEN)
+
+    @unittest.skipIf(
+        not is_jinja_available(),
+        reason="Model card tests cannot be performed without Jinja installed.",
+    )
+    def test_push_to_hub_library_name(self):
+        components = self.get_pipeline_components()
+        pipeline = StableDiffusionPipeline(**components)
+        pipeline.push_to_hub(self.repo_id, token=TOKEN)
+
+        model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
+        assert model_card.library_name == "diffusers"
+
+        # Reset repo
+        delete_repo(self.repo_id, token=TOKEN)
 
 
 # For SDXL and its derivative pipelines (such as ControlNet), we have the text encoders

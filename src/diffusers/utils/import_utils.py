@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -223,12 +223,6 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _wandb_available = False
 
-_omegaconf_available = importlib.util.find_spec("omegaconf") is not None
-try:
-    _omegaconf_version = importlib_metadata.version("omegaconf")
-    logger.debug(f"Successfully imported omegaconf version {_omegaconf_version}")
-except importlib_metadata.PackageNotFoundError:
-    _omegaconf_available = False
 
 _tensorboard_available = importlib.util.find_spec("tensorboard")
 try:
@@ -291,6 +285,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _pytest_available = False
 
+_torchvision_available = importlib.util.find_spec("torchvision") is not None
+try:
+    _torchvision_version = importlib_metadata.version("torchvision")
+    logger.debug(f"Successfully imported torchvision version {_torchvision_version}")
+except importlib_metadata.PackageNotFoundError:
+    _torchvision_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -352,10 +353,6 @@ def is_wandb_available():
     return _wandb_available
 
 
-def is_omegaconf_available():
-    return _omegaconf_available
-
-
 def is_tensorboard_available():
     return _tensorboard_available
 
@@ -386,6 +383,10 @@ def is_peft_available():
 
 def is_pytest_available():
     return _pytest_available
+
+
+def is_torchvision_available():
+    return _torchvision_available
 
 
 # docstyle-ignore
@@ -461,12 +462,6 @@ install wandb`
 """
 
 # docstyle-ignore
-OMEGACONF_IMPORT_ERROR = """
-{0} requires the omegaconf library but it was not found in your environment. You can install it with pip: `pip
-install omegaconf`
-"""
-
-# docstyle-ignore
 TENSORBOARD_IMPORT_ERROR = """
 {0} requires the tensorboard library but it was not found in your environment. You can install it with pip: `pip
 install tensorboard`
@@ -517,7 +512,6 @@ BACKENDS_MAPPING = OrderedDict(
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
-        ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
         ("tensorboard", (is_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
         ("compel", (is_compel_available, COMPEL_IMPORT_ERROR)),
         ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),

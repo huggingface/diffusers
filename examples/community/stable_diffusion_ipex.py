@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
-from diffusers.loaders import TextualInversionLoaderMixin
+from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
@@ -62,7 +62,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin):
+class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion on IPEX.
 
@@ -449,7 +449,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
@@ -513,7 +513,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline, TextualInversionLoaderMixin
             else:
                 uncond_tokens = negative_prompt
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 

@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -33,14 +33,17 @@ model = AutoencoderKL.from_single_file(url)
 ## AutoencoderKL
 
 [[autodoc]] AutoencoderKL
+    - decode
+    - encode
+    - all
 
 ## AutoencoderKLOutput
 
-[[autodoc]] models.autoencoder_kl.AutoencoderKLOutput
+[[autodoc]] models.autoencoders.autoencoder_kl.AutoencoderKLOutput
 
 ## DecoderOutput
 
-[[autodoc]] models.vae.DecoderOutput
+[[autodoc]] models.autoencoders.vae.DecoderOutput
 
 ## FlaxAutoencoderKL
 

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,13 +24,17 @@ from flax.core.frozen_dict import FrozenDict, unfreeze
 from flax.serialization import from_bytes, to_bytes
 from flax.traverse_util import flatten_dict, unflatten_dict
 from huggingface_hub import create_repo, hf_hub_download
-from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
+from huggingface_hub.utils import (
+    EntryNotFoundError,
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+    validate_hf_hub_args,
+)
 from requests import HTTPError
 
 from .. import __version__, is_torch_available
 from ..utils import (
     CONFIG_NAME,
-    DIFFUSERS_CACHE,
     FLAX_WEIGHTS_NAME,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     WEIGHTS_NAME,
@@ -197,6 +201,7 @@ class FlaxModelMixin(PushToHubMixin):
         raise NotImplementedError(f"init_weights method has to be implemented for {self}")
 
     @classmethod
+    @validate_hf_hub_args
     def from_pretrained(
         cls,
         pretrained_model_name_or_path: Union[str, os.PathLike],
@@ -288,13 +293,13 @@ class FlaxModelMixin(PushToHubMixin):
         ```
         """
         config = kwargs.pop("config", None)
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         from_pt = kwargs.pop("from_pt", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         local_files_only = kwargs.pop("local_files_only", False)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         subfolder = kwargs.pop("subfolder", None)
 
@@ -314,7 +319,7 @@ class FlaxModelMixin(PushToHubMixin):
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 subfolder=subfolder,
                 **kwargs,
@@ -359,7 +364,7 @@ class FlaxModelMixin(PushToHubMixin):
                     proxies=proxies,
                     resume_download=resume_download,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     user_agent=user_agent,
                     subfolder=subfolder,
                     revision=revision,
@@ -369,7 +374,7 @@ class FlaxModelMixin(PushToHubMixin):
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                     "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                    "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
+                    "token having permission to this repo with `token` or log in with `huggingface-cli "
                     "login`."
                 )
             except RevisionNotFoundError:
