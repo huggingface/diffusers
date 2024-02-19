@@ -927,11 +927,56 @@ class RAVEPipeline(
     @property
     def num_timesteps(self):
         return self._num_timesteps
+    
+    def _shuffle_helper(
+        self,
+        values: torch.FloatTensor,
+        grid_size: int,
+        original_num_frames: int,
+        total_frames: int,
+        indices: List[int],
+        rand_indices: torch.LongTensor,
+    ):
+        num_frames_per_grid = grid_size**2
+        grid_frames = []
+        shuffled = []
+        
+        for grid in values:
+            grid = grid.unsqueeze(0)
+            # Flatten across width dimension
+            grid = torch.cat(grid.chunk(grid_size, dim=3), dim=0)
+            # Flatten across height dimension
+            grid = torch.cat(grid.chunk(grid_size, dim=2), dim=0)
+            grid_frames.append(grid)
+        
+        grid_frames = torch.cat(grid_frames)
+        grid_frames_ = grid_frames.clone()
+        
+        for i in range(original_num_frames):
+            grid_frames[rand_indices[i]] = grid_frames_[indices[i]]
+        
+        for i in range(0, total_frames, num_frames_per_grid):
+            current = grid_frames[i : i + num_frames_per_grid]
+            result = []
 
-    def _shuffle_latents(
+            for j in range(grid_size):
+                intermediate_result = []
+                for k in range(grid_size):
+                    index = j * grid_size + k
+                    intermediate_result.append(current[index])
+                intermediate_result = torch.cat(intermediate_result, dim=2)
+                result.append(intermediate_result)
+            
+            result = torch.cat(result, dim=1)
+            shuffled.append(result.unsqueeze(0))
+        
+        shuffled = torch.cat(shuffled, dim=0)
+        return shuffled
+
+    def _shuffle(
         self,
         latents: torch.FloatTensor,
-        control_video: torch.FloatTensor,
+        control_video: Union[torch.FloatTensor, List[torch.FloatTensor]],
         grid_size: int,
         original_num_frames: int,
         indices: List[int],
@@ -941,72 +986,88 @@ class RAVEPipeline(
     ):
         num_frames_per_grid = grid_size**2
         total_frames = num_frames_per_grid * latents.size(0)
-        grid_frames = []
-        control_grid_frames = []
-
-        for grid, control_grid in zip(latents, control_video):
-            grid = grid.unsqueeze(0)
-            control_grid = control_grid.unsqueeze(0)
-
-            # Flatten across width dimension
-            grid = torch.cat(grid.chunk(grid_size, dim=3), dim=0)
-            control_grid = torch.cat(control_grid.chunk(grid_size, dim=3), dim=0)
-
-            # Flatten across height dimension
-            grid = torch.cat(grid.chunk(grid_size, dim=2), dim=0)
-            control_grid = torch.cat(control_grid.chunk(grid_size, dim=2), dim=0)
-
-            grid_frames.append(grid)
-            control_grid_frames.append(control_grid)
-
-        grid_frames = torch.cat(grid_frames)
-        control_grid_frames = torch.cat(control_grid_frames)
-        grid_frames_ = grid_frames.clone()
-        control_grid_frames_ = control_grid_frames.clone()
         rand_indices = torch.randperm(original_num_frames, generator=generator)
+        shuffled_latents = self._shuffle_helper(latents, grid_size, original_num_frames, total_frames, indices, rand_indices)
 
-        for i in range(original_num_frames):
-            grid_frames[rand_indices[i]] = grid_frames_[indices[i]]
-            control_grid_frames[rand_indices[i]] = control_grid_frames_[indices[i]]
-
-        shuffled_latents = []
-        shuffled_control_video = []
-
-        for i in range(0, total_frames, num_frames_per_grid):
-            current_l = grid_frames[i : i + num_frames_per_grid]
-            result_l = []
-
-            for j in range(grid_size):
-                intermediate_result = []
-                for k in range(grid_size):
-                    index = j * grid_size + k
-                    intermediate_result.append(current_l[index])
-                intermediate_result = torch.cat(intermediate_result, dim=2)
-                result_l.append(intermediate_result)
-            result_l = torch.cat(result_l, dim=1)
-
-            current_c = control_grid_frames[i : i + num_frames_per_grid]
-            result_c = []
-
-            for j in range(grid_size):
-                intermediate_result = []
-                for k in range(grid_size):
-                    index = j * grid_size + k
-                    intermediate_result.append(current_c[index])
-                intermediate_result = torch.cat(intermediate_result, dim=2)
-                result_c.append(intermediate_result)
-            result_c = torch.cat(result_c, dim=1)
-
-            shuffled_latents.append(result_l.unsqueeze(0))
-            shuffled_control_video.append(result_c.unsqueeze(0))
-
-        shuffled_latents = torch.cat(shuffled_latents, dim=0)
-        shuffled_control_video = torch.cat(shuffled_control_video, dim=0)
-
-        if do_classifier_free_guidance and not guess_mode:
-            shuffled_control_video = torch.cat([shuffled_control_video] * 2)
-
+        if isinstance(control_video, list):
+            shuffled_control_video = [self._shuffle_helper(cv, grid_size, original_num_frames, total_frames, indices, rand_indices) for cv in control_video]
+            if do_classifier_free_guidance and not guess_mode:
+                shuffled_control_video = [torch.cat([cv] * 2) for cv in shuffled_control_video]
+        else:
+            shuffled_control_video = self._shuffle_helper(control_video, grid_size, original_num_frames, total_frames, indices, rand_indices)
+            if do_classifier_free_guidance and not guess_mode:
+                shuffled_control_video = torch.cat([shuffled_control_video] * 2)
+        
         return shuffled_latents, shuffled_control_video, rand_indices
+
+        # num_frames_per_grid = grid_size**2
+        # total_frames = num_frames_per_grid * latents.size(0)
+        # grid_frames = []
+        # control_grid_frames = []
+
+        # for grid, control_grid in zip(latents, control_video):
+        #     grid = grid.unsqueeze(0)
+        #     control_grid = control_grid.unsqueeze(0)
+
+        #     # Flatten across width dimension
+        #     grid = torch.cat(grid.chunk(grid_size, dim=3), dim=0)
+        #     control_grid = torch.cat(control_grid.chunk(grid_size, dim=3), dim=0)
+
+        #     # Flatten across height dimension
+        #     grid = torch.cat(grid.chunk(grid_size, dim=2), dim=0)
+        #     control_grid = torch.cat(control_grid.chunk(grid_size, dim=2), dim=0)
+
+        #     grid_frames.append(grid)
+        #     control_grid_frames.append(control_grid)
+
+        # grid_frames = torch.cat(grid_frames)
+        # control_grid_frames = torch.cat(control_grid_frames)
+        # grid_frames_ = grid_frames.clone()
+        # control_grid_frames_ = control_grid_frames.clone()
+        # rand_indices = torch.randperm(original_num_frames, generator=generator)
+
+        # for i in range(original_num_frames):
+        #     grid_frames[rand_indices[i]] = grid_frames_[indices[i]]
+        #     control_grid_frames[rand_indices[i]] = control_grid_frames_[indices[i]]
+
+        # shuffled_latents = []
+        # shuffled_control_video = []
+
+        # for i in range(0, total_frames, num_frames_per_grid):
+        #     current_l = grid_frames[i : i + num_frames_per_grid]
+        #     result_l = []
+
+        #     for j in range(grid_size):
+        #         intermediate_result = []
+        #         for k in range(grid_size):
+        #             index = j * grid_size + k
+        #             intermediate_result.append(current_l[index])
+        #         intermediate_result = torch.cat(intermediate_result, dim=2)
+        #         result_l.append(intermediate_result)
+        #     result_l = torch.cat(result_l, dim=1)
+
+        #     current_c = control_grid_frames[i : i + num_frames_per_grid]
+        #     result_c = []
+
+        #     for j in range(grid_size):
+        #         intermediate_result = []
+        #         for k in range(grid_size):
+        #             index = j * grid_size + k
+        #             intermediate_result.append(current_c[index])
+        #         intermediate_result = torch.cat(intermediate_result, dim=2)
+        #         result_c.append(intermediate_result)
+        #     result_c = torch.cat(result_c, dim=1)
+
+        #     shuffled_latents.append(result_l.unsqueeze(0))
+        #     shuffled_control_video.append(result_c.unsqueeze(0))
+
+        # shuffled_latents = torch.cat(shuffled_latents, dim=0)
+        # shuffled_control_video = torch.cat(shuffled_control_video, dim=0)
+
+        # if do_classifier_free_guidance and not guess_mode:
+        #     shuffled_control_video = torch.cat([shuffled_control_video] * 2)
+
+        # return shuffled_latents, shuffled_control_video, rand_indices
 
     def _denoise_loop(
         self,
@@ -1038,7 +1099,7 @@ class RAVEPipeline(
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if use_shuffling:
-                    latents, control_video, indices = self._shuffle_latents(
+                    latents, control_video, indices = self._shuffle(
                         latents=latents,
                         control_video=control_video,
                         grid_size=grid_size,
