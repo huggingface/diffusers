@@ -443,8 +443,8 @@ export_to_gif(frames, "animatelcm.gif")
         <td><center>
         A space rocket, 4K.
         <br>
-        <img src="https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/animatelcm-output.gif"
-            alt="masterpiece, bestquality, sunset"
+        <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatelcm-output.gif"
+            alt="A space rocket, 4K"
             style="width: 300px;" />
         </center></td>
     </tr>
@@ -485,8 +485,8 @@ export_to_gif(frames, "animatelcm-motion-lora.gif")
         <td><center>
         A space rocket, 4K.
         <br>
-        <img src="https://huggingface.co/datasets/huggingface/documentation-images/blob/main/diffusers/animatelcm-motion-lora.gif"
-            alt="masterpiece, bestquality, sunset"
+        <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatelcm-motion-lora.gif"
+            alt="A space rocket, 4K"
             style="width: 300px;" />
         </center></td>
     </tr>
