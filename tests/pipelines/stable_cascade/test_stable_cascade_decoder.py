@@ -143,7 +143,7 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             "image_embeddings": torch.ones((1, 4, 4, 4), device=device),
             "prompt": "horse",
             "generator": generator,
-            "guidance_scale": 1.0,
+            "guidance_scale": 2.0,
             "num_inference_steps": 2,
             "output_type": "np",
         }

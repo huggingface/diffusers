@@ -241,8 +241,6 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
     def encode_image(self, images, device, dtype, batch_size, num_images_per_prompt):
         image_embeds = []
         for image in images:
-            if isinstance(image, torch.FloatTensor):
-                image = (image * 255).type(torch.uint8)
             image = self.feature_extractor(image, return_tensors="pt").pixel_values
             image = image.to(device=device, dtype=dtype)
             image_embed = self.image_encoder(image).image_embeds.unsqueeze(1)
@@ -599,7 +597,9 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         if output_type == "np":
             latents = latents.cpu().numpy()
             prompt_embeds = prompt_embeds.cpu().numpy()
-            negative_prompt_embeds = negative_prompt_embeds.cpu().numpy()
+            negative_prompt_embeds = (
+                negative_prompt_embeds.cpu().numpy() if negative_prompt_embeds is not None else None
+            )
 
         if not return_dict:
             return (latents, prompt_embeds, negative_prompt_embeds)
