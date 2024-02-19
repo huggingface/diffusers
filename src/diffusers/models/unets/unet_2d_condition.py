@@ -122,9 +122,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         encoder_hid_dim_type (`str`, *optional*, defaults to `None`):
             If given, the `encoder_hidden_states` and potentially other embeddings are down-projected to text
             embeddings of dimension `cross_attention` according to `encoder_hid_dim_type`.
-        attention_head_dim (`int`, *optional*, defaults to 8): The dimension of the attention heads.
-        num_attention_heads (`int`, *optional*):
-            The number of attention heads. If not defined, defaults to `attention_head_dim`
+        attention_head_dim (`int`, *optional*):
+            The dimension of the attention heads. Note that this configuration parameter was previously incorrectly 
+            named as stated in (https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
+) and therefore will be automatically renamed to `num_attention_heads` if `num_attention_heads`
+            is not provided. If `num_attention_heads` is provided this configuration parameter will be ignored for now.
+        num_attention_heads (`int`, *optional*, defaults to 8):
+            The number of attention heads.
         resnet_time_scale_shift (`str`, *optional*, defaults to `"default"`): Time scale shift config
             for ResNet blocks (see [`~models.resnet.ResnetBlock2D`]). Choose from `default` or `scale_shift`.
         class_embed_type (`str`, *optional*, defaults to `None`):
@@ -195,8 +199,8 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         reverse_transformer_layers_per_block: Optional[Tuple[Tuple[int]]] = None,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
-        attention_head_dim: Union[int, Tuple[int]] = 8,
-        num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
+        num_attention_heads: Union[int, Tuple[int]] = 8,
+        attention_head_dim: Optional[Union[int, Tuple[int]]] = None,
         dual_cross_attention: bool = False,
         use_linear_projection: bool = False,
         class_embed_type: Optional[str] = None,
@@ -225,18 +229,15 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
 
         self.sample_size = sample_size
 
-        if num_attention_heads is not None:
-            raise ValueError(
-                "At the moment it is not possible to define the number of attention heads via `num_attention_heads` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `num_attention_heads` will only be supported in diffusers v0.19."
-            )
-
-        # If `num_attention_heads` is not defined (which is the case for most models)
-        # it will default to `attention_head_dim`. This looks weird upon first reading it and it is.
+        # If `num_attention_heads` is not defined (which is the case for most models) we will rename `attention_head_dim` to `num_attention_heads`
         # The reason for this behavior is to correct for incorrectly named variables that were introduced
         # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
-        # which is why we correct for the naming here.
-        num_attention_heads = num_attention_heads or attention_head_dim
+        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too quite difficult so the naming is corrected inside the `register_to_config`
+        # function for now.
+        if attention_head_dim is not None:
+            raise ValueError(
+                "It is not yet possible to define the attention head dim via `attention_head_dim` because of a naming issue as described in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131. Passing `attention_head_dim` alongside will only be supported in diffusers v2.0.0"
+            )
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -257,11 +258,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         if not isinstance(num_attention_heads, int) and len(num_attention_heads) != len(down_block_types):
             raise ValueError(
                 f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
-            )
-
-        if not isinstance(attention_head_dim, int) and len(attention_head_dim) != len(down_block_types):
-            raise ValueError(
-                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
             )
 
         if isinstance(cross_attention_dim, list) and len(cross_attention_dim) != len(down_block_types):
@@ -410,6 +406,13 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         self.down_blocks = nn.ModuleList([])
         self.up_blocks = nn.ModuleList([])
 
+        if isinstance(num_attention_heads, int):
+            num_attention_heads = (num_attention_heads,) * len(down_block_types)
+
+        attention_head_dim = [
+            out_channels // num_heads for out_channels, num_heads in zip(block_out_channels, num_attention_heads)
+        ]
+
         if isinstance(only_cross_attention, bool):
             if mid_block_only_cross_attention is None:
                 mid_block_only_cross_attention = only_cross_attention
@@ -418,12 +421,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
 
         if mid_block_only_cross_attention is None:
             mid_block_only_cross_attention = False
-
-        if isinstance(num_attention_heads, int):
-            num_attention_heads = (num_attention_heads,) * len(down_block_types)
-
-        if isinstance(attention_head_dim, int):
-            attention_head_dim = (attention_head_dim,) * len(down_block_types)
 
         if isinstance(cross_attention_dim, int):
             cross_attention_dim = (cross_attention_dim,) * len(down_block_types)

@@ -646,6 +646,20 @@ def register_to_config(init):
 
         new_kwargs = {**config_init_kwargs, **new_kwargs}
         getattr(self, "register_to_config")(**new_kwargs)
+
+        # deprecate `attention_head_dim`
+        if self.__class__.__name__ == "UNet2DConditionModel":
+            # As of now it is not possible to define a UNet2DConditionModel via `attention_head_dim`
+            # If `attention_head_dim` is defined we simply transfer the value to the "correct"
+            # `num_attention_heads` config name (see: https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131)
+            attention_head_dim = init_kwargs.pop("attention_head_dim", None)
+            if "num_attention_heads" not in init_kwargs and attention_head_dim is not None:
+                logger.info("Renaming `attention_head_dim` to `num_attention_heads`...")
+                init_kwargs["num_attention_heads"] = attention_head_dim
+                # TODO(Yiyi, Dhruv): Eventually we should throw a deprecation warning here
+            elif "num_attention_heads" in init_kwargs and attention_head_dim is not None:
+                logger.warn(f"The config parameter `attention_head_dim` {attention_head_dim} is not yet supported and will be ignored.")
+
         init(self, *args, **init_kwargs)
 
     return inner_init
