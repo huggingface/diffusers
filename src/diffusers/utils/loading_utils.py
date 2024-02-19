@@ -15,6 +15,7 @@ def is_single_file_checkpoint(filepath):
         if result.scheme and result.netloc:
             return True
 
+    filepath = str(filepath)
     if filepath.endswith(_ACCEPTED_SINGLE_FILE_FORMATS):
         if is_valid_url(filepath):
             return True
