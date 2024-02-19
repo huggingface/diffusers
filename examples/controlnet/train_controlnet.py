@@ -138,7 +138,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
 
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
-            for log in image_logs:
+            for i,log in enumerate(image_logs):
                 images = log["images"]
                 validation_prompt = log["validation_prompt"]
                 validation_image = log["validation_image"]
@@ -152,7 +152,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
 
                 formatted_images = np.stack(formatted_images)
 
-                tracker.writer.add_images(validation_prompt, formatted_images, step, dataformats="NHWC")
+                tracker.writer.add_images(str(i), formatted_images, step, dataformats="NHWC")
         elif tracker.name == "wandb":
             formatted_images = []
 
@@ -486,6 +486,12 @@ def parse_args(input_args=None):
         help="The column of the dataset containing a caption or a list of captions.",
     )
     parser.add_argument(
+        "--load_dataset_num_proc", 
+        type=int, 
+        default=None,
+        help="Number of processes used to calculate the cache when loading the dataset. Multiple processes can greatly increase the calculation speed of the cache."
+    )
+    parser.add_argument(
         "--max_train_samples",
         type=int,
         default=None,
@@ -557,9 +563,6 @@ def parse_args(input_args=None):
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Specify either `--dataset_name` or `--train_data_dir`")
 
-    if args.dataset_name is not None and args.train_data_dir is not None:
-        raise ValueError("Specify only one of `--dataset_name` or `--train_data_dir`")
-
     if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
         raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
 
@@ -601,6 +604,8 @@ def make_train_dataset(args, tokenizer, accelerator):
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
+            data_dir=args.train_data_dir,
+            num_proc=args.load_dataset_num_proc
         )
     else:
         if args.train_data_dir is not None:
