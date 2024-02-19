@@ -49,14 +49,23 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin
+from ..test_pipelines_common import (
+    PipelineEfficiencyFunctionTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    SDXLOptionalComponentsTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
 class StableDiffusionXLPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
+    PipelineEfficiencyFunctionTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    SDXLOptionalComponentsTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -938,37 +947,6 @@ class StableDiffusionXLPipelineFastTests(
             image_slices.append(image[0, -3:, -3:, -1].flatten())
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
-
-    def test_stable_diffusion_xl_with_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
-
-        sd_pipe.fuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
-
-        sd_pipe.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
-
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
 
     def test_pipeline_interrupt(self):
         components = self.get_dummy_components()

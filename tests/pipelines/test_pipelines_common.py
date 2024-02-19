@@ -59,6 +59,135 @@ def check_same_shape(tensor_list):
     return all(shape == shapes[0] for shape in shapes[1:])
 
 
+class PipelineEfficiencyFunctionTesterMixin:
+    """
+    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
+    It provides a set of common tests for PyTorch pipeline that inherit from EfficiencyMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
+    """
+
+    def test_vae_slicing(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        # components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        image_count = 4
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * image_count
+        output_1 = pipe(**inputs)
+
+        # make sure sliced vae decode yields the same result
+        pipe.enable_vae_slicing()
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * image_count
+        output_2 = pipe(**inputs)
+
+        # there is a small discrepancy at image borders vs. full batch decode
+        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
+
+    def test_vae_tiling(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+
+        # make sure here that pndm scheduler skips prk
+        components["safety_checker"] = None
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A painting of a squirrel eating a burger"
+
+        # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
+        generator = torch.Generator(device=device).manual_seed(0)
+        output_1 = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+
+        # make sure tiled vae decode yields the same result
+        pipe.enable_vae_tiling()
+        generator = torch.Generator(device=device).manual_seed(0)
+        output_2 = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+
+        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 5e-1
+
+        # test that tiled decode works with various shapes
+        shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
+        for shape in shapes:
+            zeros = torch.zeros(shape).to(device)
+            pipe.vae.decode(zeros)
+
+    def test_freeu_enabled(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "hey"
+        output = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+
+        pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        output_freeu = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+
+        assert not np.allclose(
+            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
+        ), "Enabling of FreeU should lead to different results."
+
+    def test_freeu_disabled(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "hey"
+        output = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+
+        pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        pipe.disable_freeu()
+
+        freeu_keys = {"s1", "s2", "b1", "b2"}
+        for upsample_block in pipe.unet.up_blocks:
+            for key in freeu_keys:
+                assert getattr(upsample_block, key) is None, f"Disabling of FreeU should have set {key} to None."
+
+        output_no_freeu = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+
+        assert np.allclose(
+            output[0, -3:, -3:, -1], output_no_freeu[0, -3:, -3:, -1]
+        ), "Disabling of FreeU should lead to results similar to the default pipeline results."
+
+    def test_fused_qkv_projections(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        original_image_slice = image[0, -3:, -3:, -1]
+
+        pipe.fuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_fused = image[0, -3:, -3:, -1]
+
+        pipe.unfuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        image = pipe(**inputs).images
+        image_slice_disabled = image[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
+        ), "Fusion of QKV projections shouldn't affect the outputs."
+        assert np.allclose(
+            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert np.allclose(
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Original outputs should match when fused QKV projections are disabled."
+
+
 class PipelineLatentTesterMixin:
     """
     This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
