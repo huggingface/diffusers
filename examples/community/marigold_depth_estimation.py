@@ -40,7 +40,7 @@ from diffusers.utils import BaseOutput, check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 
 class MarigoldDepthOutput(BaseOutput):
@@ -170,10 +170,10 @@ class MarigoldPipeline(DiffusionPipeline):
 
         # Normalize rgb values
         rgb = np.transpose(image, (2, 0, 1))  # [H, W, rgb] -> [rgb, H, W]
-        rgb_norm = rgb / 255.0
+        rgb_norm = rgb / 255.0 * 2.0 - 1.0  #  [0, 255] -> [-1, 1]
         rgb_norm = torch.from_numpy(rgb_norm).to(self.dtype)
         rgb_norm = rgb_norm.to(device)
-        assert rgb_norm.min() >= 0.0 and rgb_norm.max() <= 1.0
+        assert rgb_norm.min() >= -1.0 and rgb_norm.max() <= 1.0
 
         # ----------------- Predicting depth -----------------
         # Batch repeated input image
