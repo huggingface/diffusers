@@ -876,7 +876,7 @@ def create_diffusers_controlnet_model_from_ldm(
         from ..models.modeling_utils import load_model_dict_into_meta
 
         unexpected_keys = load_model_dict_into_meta(
-            controlnet, diffusers_format_controlnet_checkpoint, torch_dtype=torch_dtype
+            controlnet, diffusers_format_controlnet_checkpoint, dtype=torch_dtype
         )
         if controlnet._keys_to_ignore_on_load_unexpected is not None:
             for pat in controlnet._keys_to_ignore_on_load_unexpected:
