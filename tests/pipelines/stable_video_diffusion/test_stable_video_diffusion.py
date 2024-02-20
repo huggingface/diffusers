@@ -22,6 +22,7 @@ from diffusers.utils import is_accelerate_available, is_accelerate_version, load
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
@@ -30,6 +31,9 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
+
+
+enable_full_determinism()
 
 
 def to_np(tensor):
