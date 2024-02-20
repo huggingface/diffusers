@@ -40,7 +40,6 @@ RUN python3.9 -m pip install --no-cache-dir --upgrade pip && \
     numpy \
     scipy \
     tensorboard \
-    transformers \
-    omegaconf
+    transformers
 
 CMD ["/bin/bash"]

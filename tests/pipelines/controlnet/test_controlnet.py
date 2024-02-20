@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -37,6 +37,7 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_image,
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
@@ -459,6 +460,33 @@ class StableDiffusionMultiControlNetPipelineFastTests(
                 pipe.save_pretrained(tmpdir)
             except NotImplementedError:
                 pass
+
+    def test_inference_multiple_prompt_input(self):
+        device = "cpu"
+
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionControlNetPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"]]
+        inputs["image"] = [inputs["image"], inputs["image"]]
+        output = sd_pipe(**inputs)
+        image = output.images
+
+        assert image.shape == (2, 64, 64, 3)
+
+        image_1, image_2 = image
+        # make sure that the outputs are different
+        assert np.sum(np.abs(image_1 - image_2)) > 1e-3
+
+        # multiple prompts, single image conditioning
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"]]
+        output_1 = sd_pipe(**inputs)
+
+        assert np.abs(image - output_1.images).max() < 1e-3
 
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
@@ -995,39 +1023,49 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
     def test_load_local(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
-        pipe_1 = StableDiffusionControlNetPipeline.from_pretrained(
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
         )
+        pipe.unet.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
 
         controlnet = ControlNetModel.from_single_file(
             "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
         )
-        pipe_2 = StableDiffusionControlNetPipeline.from_single_file(
+        pipe_sf = StableDiffusionControlNetPipeline.from_single_file(
             "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
             safety_checker=None,
             controlnet=controlnet,
+            scheduler_type="pndm",
         )
-        pipes = [pipe_1, pipe_2]
-        images = []
+        pipe_sf.unet.set_default_attn_processor()
+        pipe_sf.enable_model_cpu_offload()
 
-        for pipe in pipes:
-            pipe.enable_model_cpu_offload()
-            pipe.set_progress_bar_config(disable=None)
+        control_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
+        ).resize((512, 512))
+        prompt = "bird"
 
-            generator = torch.Generator(device="cpu").manual_seed(0)
-            prompt = "bird"
-            image = load_image(
-                "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
-            )
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        output = pipe(
+            prompt,
+            image=control_image,
+            generator=generator,
+            output_type="np",
+            num_inference_steps=3,
+        ).images[0]
 
-            output = pipe(prompt, image, generator=generator, output_type="np", num_inference_steps=3)
-            images.append(output.images[0])
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        output_sf = pipe_sf(
+            prompt,
+            image=control_image,
+            generator=generator,
+            output_type="np",
+            num_inference_steps=3,
+        ).images[0]
 
-            del pipe
-            gc.collect()
-            torch.cuda.empty_cache()
-
-        assert np.abs(images[0] - images[1]).max() < 1e-3
+        max_diff = numpy_cosine_similarity_distance(output_sf.flatten(), output.flatten())
+        assert max_diff < 1e-3
 
 
 @slow

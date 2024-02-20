@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 import torch
+from transformers import CLIPVisionConfig, CLIPVisionModelWithProjection
 
 from diffusers import (
     AutoPipelineForImage2Image,
@@ -48,6 +49,20 @@ PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
 
 
 class AutoPipelineFastTest(unittest.TestCase):
+    @property
+    def dummy_image_encoder(self):
+        torch.manual_seed(0)
+        config = CLIPVisionConfig(
+            hidden_size=1,
+            projection_dim=1,
+            num_hidden_layers=1,
+            num_attention_heads=1,
+            image_size=1,
+            intermediate_size=1,
+            patch_size=1,
+        )
+        return CLIPVisionModelWithProjection(config)
+
     def test_from_pipe_consistent(self):
         pipe = AutoPipelineForText2Image.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-pipe", requires_safety_checker=False
@@ -203,6 +218,20 @@ class AutoPipelineFastTest(unittest.TestCase):
         pipe_control_img2img = AutoPipelineForImage2Image.from_pipe(pipe_control_img2img, controlnet=controlnet)
         assert pipe_control_img2img.__class__.__name__ == "StableDiffusionControlNetImg2ImgPipeline"
         assert "controlnet" in pipe_control_img2img.components
+
+    def test_from_pipe_optional_components(self):
+        image_encoder = self.dummy_image_encoder
+
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-pipe",
+            image_encoder=image_encoder,
+        )
+
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe)
+        assert pipe.image_encoder is not None
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, image_encoder=None)
+        assert pipe.image_encoder is None
 
 
 @slow

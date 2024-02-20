@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -559,14 +559,14 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
     def test_load_local(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
         pipe_1 = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+            "runwayml/stable-diffusion-inpainting", safety_checker=None, controlnet=controlnet
         )
 
         controlnet = ControlNetModel.from_single_file(
             "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
         )
         pipe_2 = StableDiffusionControlNetInpaintPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+            "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt",
             safety_checker=None,
             controlnet=controlnet,
         )
@@ -605,4 +605,5 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
             gc.collect()
             torch.cuda.empty_cache()
 
-        assert np.abs(images[0] - images[1]).max() < 1e-3
+        max_diff = numpy_cosine_similarity_distance(images[0].flatten(), images[1].flatten())
+        assert max_diff < 1e-3

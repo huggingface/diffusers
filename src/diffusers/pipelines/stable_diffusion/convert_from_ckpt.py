@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1317,6 +1317,12 @@ def download_from_original_stable_diffusion_ckpt(
 
         if config_url is not None:
             original_config_file = BytesIO(requests.get(config_url).content)
+        else:
+            with open(original_config_file, "r") as f:
+                original_config_file = f.read()
+    else:
+        with open(original_config_file, "r") as f:
+            original_config_file = f.read()
 
     original_config = yaml.safe_load(original_config_file)
 
