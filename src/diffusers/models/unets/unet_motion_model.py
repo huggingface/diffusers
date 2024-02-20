@@ -306,6 +306,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 num_attention_heads=num_attention_heads[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=False,
+                use_linear_projection=use_linear_projection,
                 temporal_num_attention_heads=motion_num_attention_heads,
                 temporal_max_seq_length=motion_max_seq_length,
             )
@@ -321,6 +322,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 num_attention_heads=num_attention_heads[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=False,
+                use_linear_projection=use_linear_projection,
             )
 
         # count how many layers upsample the images
