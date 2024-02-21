@@ -22,7 +22,6 @@ from diffusers.utils import is_accelerate_available, is_accelerate_version, load
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
-    disable_full_determinism,
     enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
@@ -32,6 +31,9 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
+
+
+enable_full_determinism()
 
 
 def to_np(tensor):
@@ -465,8 +467,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
     def test_xformers_attention_forwardGenerator_pass(self):
-        disable_full_determinism()
-
         expected_max_diff = 9e-4
 
         if not self.test_xformers_attention:
@@ -495,8 +495,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
-
-        enable_full_determinism()
 
 
 @slow
