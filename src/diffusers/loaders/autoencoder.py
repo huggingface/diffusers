@@ -111,7 +111,6 @@ class FromOriginalVAEMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        use_safetensors = kwargs.pop("use_safetensors", True)
 
         class_name = cls.__name__
 
@@ -131,7 +130,6 @@ class FromOriginalVAEMixin:
             token=token,
             revision=revision,
             local_files_only=local_files_only,
-            use_safetensors=use_safetensors,
             cache_dir=cache_dir,
         )
 
