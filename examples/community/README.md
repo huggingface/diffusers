@@ -57,12 +57,13 @@ If a community doesn't work as expected, please open an issue and ping the autho
 |   DemoFusion Pipeline                                                                                                    | Implementation of [DemoFusion: Democratising High-Resolution Image Generation With No $$$](https://arxiv.org/abs/2311.16973)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [DemoFusion Pipeline](#DemoFusion)      | - |              [Ruoyi Du](https://github.com/RuoyiDu) |
 |   Instaflow Pipeline                                                                                                    | Implementation of [InstaFlow! One-Step Stable Diffusion with Rectified Flow](https://arxiv.org/abs/2309.06380)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Instaflow Pipeline](#instaflow-pipeline)      | - |              [Ayush Mangal](https://github.com/ayushtues) |
 |   Null-Text Inversion Pipeline  | Implement [Null-text Inversion for Editing Real Images using Guided Diffusion Models](https://arxiv.org/abs/2211.09794) as a pipeline.                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Null-Text Inversion](https://github.com/google/prompt-to-prompt/)      | - |              [Junsheng Luan](https://github.com/Junsheng121) |
-|   Rerender A Video Pipeline                                                                                                    | Implementation of [[SIGGRAPH Asia 2023] Rerender A Video: Zero-Shot Text-Guided Video-to-Video Translation](https://arxiv.org/abs/2306.07954)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Rerender A Video Pipeline](#Rerender_A_Video)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
+|   Rerender A Video Pipeline                                                                                                    | Implementation of [[SIGGRAPH Asia 2023] Rerender A Video: Zero-Shot Text-Guided Video-to-Video Translation](https://arxiv.org/abs/2306.07954)                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Rerender A Video Pipeline](#Rerender-A-Video)      | - |              [Yifan Zhou](https://github.com/SingleZombie) |
 | StyleAligned Pipeline                                                                                                    | Implementation of [Style Aligned Image Generation via Shared Attention](https://arxiv.org/abs/2312.02133)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [StyleAligned Pipeline](#stylealigned-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/15X2E0jFPTajUIjS0FzX50OaHsCbP2lQ0/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 | AnimateDiff Image-To-Video Pipeline | Experimental Image-To-Video support for AnimateDiff (open to improvements) | [AnimateDiff Image To Video Pipeline](#animatediff-image-to-video-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1TvzCDPHhfFtdcJZe4RLloAwyoLKuttWK/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 |   IP Adapter FaceID Stable Diffusion                                                                                               | Stable Diffusion Pipeline that supports IP Adapter Face ID                                                                                                                                                                                                                                                                                                                                                  |  [IP Adapter Face ID](#ip-adapter-face-id) | - | [Fabio Rigano](https://github.com/fabiorigano) |
 |   InstantID Pipeline                                                                                               | Stable Diffusion XL Pipeline that supports InstantID                                                                                                                                                                                                                                                                                                                                                 |  [InstantID Pipeline](#instantid-pipeline) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/InstantX/InstantID) | [Haofan Wang](https://github.com/haofanwang) |
 |   UFOGen Scheduler                                                                                               | Scheduler for UFOGen Model (compatible with Stable Diffusion pipelines)                                                                                                                                                                                                                                                                                                                                                 |  [UFOGen Scheduler](#ufogen-scheduler) | - | [dg845](https://github.com/dg845) |
+| Stable Diffusion XL IPEX Pipeline | Accelerate Stable Diffusion XL inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion XL on IPEX](#stable-diffusion-xl-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -1707,6 +1708,111 @@ print("Latency of StableDiffusionPipeline--fp32",latency)
 
 ```
 
+### Stable Diffusion XL on IPEX
+
+This diffusion pipeline aims to accelarate the inference of Stable-Diffusion XL on Intel Xeon CPUs with BF16/FP32 precision using [IPEX](https://github.com/intel/intel-extension-for-pytorch).
+
+To use this pipeline, you need to:
+1. Install [IPEX](https://github.com/intel/intel-extension-for-pytorch)
+
+**Note:** For each PyTorch release, there is a corresponding release of IPEX. Here is the mapping relationship. It is recommended to install Pytorch/IPEX2.0 to get the best performance.
+
+|PyTorch Version|IPEX Version|
+|--|--|
+|[v2.0.\*](https://github.com/pytorch/pytorch/tree/v2.0.1 "v2.0.1")|[v2.0.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v2.0.100+cpu)|
+|[v1.13.\*](https://github.com/pytorch/pytorch/tree/v1.13.0 "v1.13.0")|[v1.13.\*](https://github.com/intel/intel-extension-for-pytorch/tree/v1.13.100+cpu)|
+
+You can simply use pip to install IPEX with the latest version.
+```python
+python -m pip install intel_extension_for_pytorch
+```
+**Note:** To install a specific version, run with the following command:
+```
+python -m pip install intel_extension_for_pytorch==<version_name> -f https://developer.intel.com/ipex-whl-stable-cpu
+```
+
+2. After pipeline initialization, `prepare_for_ipex()` should be called to enable IPEX accelaration. Supported inference datatypes are Float32 and BFloat16.
+
+**Note:** The values of `height` and `width` used during preparation with `prepare_for_ipex()` should be the same when running inference with the prepared pipeline.
+
+```python
+pipe = StableDiffusionXLPipelineIpex.from_pretrained("stabilityai/sdxl-turbo", low_cpu_mem_usage=True, use_safetensors=True)
+# value of image height/width should be consistent with the pipeline inference
+# For Float32
+pipe.prepare_for_ipex(torch.float32, prompt, height=512, width=512)
+# For BFloat16
+pipe.prepare_for_ipex(torch.bfloat16, prompt, height=512, width=512)
+```
+
+Then you can use the ipex pipeline in a similar way to the default stable diffusion xl pipeline.
+```python
+# value of image height/width should be consistent with 'prepare_for_ipex()'
+# For Float32
+image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0]
+# For BFloat16
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    image = pipe(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=guidance_scale).images[0]
+```
+
+The following code compares the performance of the original stable diffusion xl pipeline with the ipex-optimized pipeline.
+By using this optimized pipeline, we can get about 1.4-2 times performance boost with BFloat16 on fourth generation of Intel Xeon CPUs, 
+code-named Sapphire Rapids.
+
+```python
+import torch
+from diffusers import StableDiffusionXLPipeline
+from pipeline_stable_diffusion_xl_ipex import StableDiffusionXLPipelineIpex
+import time
+
+prompt = "sailing ship in storm by Rembrandt"
+model_id = "stabilityai/sdxl-turbo"
+steps = 4
+
+# Helper function for time evaluation
+def elapsed_time(pipeline, nb_pass=3, num_inference_steps=1):
+    # warmup
+    for _ in range(2):
+        images = pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=0.0).images
+    #time evaluation
+    start = time.time()
+    for _ in range(nb_pass):
+        pipeline(prompt, num_inference_steps=num_inference_steps, height=512, width=512, guidance_scale=0.0)
+    end = time.time()
+    return (end - start) / nb_pass
+
+##############     bf16 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe = StableDiffusionXLPipelineIpex.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
+pipe.prepare_for_ipex(torch.bfloat16, prompt, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe2 = StableDiffusionXLPipeline.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+    latency = elapsed_time(pipe, num_inference_steps=steps)
+    print("Latency of StableDiffusionXLPipelineIpex--bf16", latency, "s for total", steps, "steps")
+    latency = elapsed_time(pipe2, num_inference_steps=steps)
+    print("Latency of StableDiffusionXLPipeline--bf16", latency, "s for total", steps, "steps")
+
+##############     fp32 inference performance    ###############
+
+# 1. IPEX Pipeline initialization
+pipe3 = StableDiffusionXLPipelineIpex.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
+pipe3.prepare_for_ipex(torch.float32, prompt, height=512, width=512)
+
+# 2. Original Pipeline initialization
+pipe4 = StableDiffusionXLPipeline.from_pretrained(model_id, low_cpu_mem_usage=True, use_safetensors=True)
+
+# 3. Compare performance between Original Pipeline and IPEX Pipeline
+latency = elapsed_time(pipe3, num_inference_steps=steps)
+print("Latency of StableDiffusionXLPipelineIpex--fp32", latency, "s for total", steps, "steps")
+latency = elapsed_time(pipe4, num_inference_steps=steps)
+print("Latency of StableDiffusionXLPipeline--fp32",latency, "s for total", steps, "steps")
+
+```
+
 ### CLIP Guided Images Mixing With Stable Diffusion
 
 ![clip_guided_images_mixing_examples](https://huggingface.co/datasets/TheDenk/images_mixing/resolve/main/main.png)
@@ -2287,9 +2393,9 @@ Here's a full example for `ReplaceEdit``:
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
-from diffusers.pipelines import Prompt2PromptPipeline
+from diffusers import DiffusionPipeline
 
-pipe = Prompt2PromptPipeline.from_pretrained("CompVis/stable-diffusion-v1-4").to("cuda")
+pipe = DiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", custom_pipeline="pipeline_prompt2prompt").to("cuda")
 
 prompts = ["A turtle playing with a ball",
            "A monkey playing with a ball"]
@@ -3306,10 +3412,9 @@ inverted_latent, uncond = pipeline.invert(input_image, invert_prompt, num_inner_
 pipeline(prompt, uncond, inverted_latent, guidance_scale=7.5, num_inference_steps=steps).images[0].save(input_image+".output.jpg")
 ```
 
-### Rerender_A_Video
+### Rerender A Video
 
-```
-This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender_A_Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `examples/community/rerender_a_video.py`:
+This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender A Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `examples/community/rerender_a_video.py`:
 
 ```py
 gmflow_dir = "/path/to/gmflow"

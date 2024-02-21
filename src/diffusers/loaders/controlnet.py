@@ -38,6 +38,9 @@ class FromOriginalControlNetMixin:
                     - A link to the `.ckpt` file (for example
                       `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
                     - A path to a *file* containing all pipeline weights.
+            config_file (`str`, *optional*):
+                Filepath to the configuration YAML file associated with the model. If not provided it will default to:
+                https://raw.githubusercontent.com/lllyasviel/ControlNet/main/models/cldm_v15.yaml
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
                 dtype is automatically derived from the model's weights.
@@ -89,6 +92,7 @@ class FromOriginalControlNetMixin:
         ```
         """
         original_config_file = kwargs.pop("original_config_file", None)
+        config_file = kwargs.pop("config_file", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -100,6 +104,12 @@ class FromOriginalControlNetMixin:
         use_safetensors = kwargs.pop("use_safetensors", True)
 
         class_name = cls.__name__
+        if (config_file is not None) and (original_config_file is not None):
+            raise ValueError(
+                "You cannot pass both `config_file` and `original_config_file` to `from_single_file`. Please use only one of these arguments."
+            )
+
+        original_config_file = config_file or original_config_file
         original_config, checkpoint = fetch_ldm_config_and_checkpoint(
             pretrained_model_link_or_path=pretrained_model_link_or_path,
             class_name=class_name,
@@ -118,7 +128,12 @@ class FromOriginalControlNetMixin:
         image_size = kwargs.pop("image_size", None)
 
         component = create_diffusers_controlnet_model_from_ldm(
-            class_name, original_config, checkpoint, upcast_attention=upcast_attention, image_size=image_size
+            class_name,
+            original_config,
+            checkpoint,
+            upcast_attention=upcast_attention,
+            image_size=image_size,
+            torch_dtype=torch_dtype,
         )
         controlnet = component["controlnet"]
         if torch_dtype is not None:
