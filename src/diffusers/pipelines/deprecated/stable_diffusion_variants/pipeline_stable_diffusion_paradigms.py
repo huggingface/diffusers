@@ -32,7 +32,7 @@ from ....utils import (
     unscale_lora_layers,
 )
 from ....utils.torch_utils import randn_tensor
-from ...pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ...pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from ...stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
@@ -63,7 +63,7 @@ EXAMPLE_DOC_STRING = """
 
 
 class StableDiffusionParadigmsPipeline(
-    DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline, LatentDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for text-to-image generation using a parallelized version of Stable Diffusion.

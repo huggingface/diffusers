@@ -42,7 +42,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..free_init_utils import FreeInitMixin
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
 
 
@@ -87,7 +87,12 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
 
 
 class AnimateDiffPipeline(
-    DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin, FreeInitMixin
+    DiffusionPipeline,
+    LatentDiffusionMixin,
+    TextualInversionLoaderMixin,
+    IPAdapterMixin,
+    LoraLoaderMixin,
+    FreeInitMixin,
 ):
     r"""
     Pipeline for text-to-video generation.

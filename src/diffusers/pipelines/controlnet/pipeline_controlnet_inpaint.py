@@ -37,7 +37,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .multicontrolnet import MultiControlNetModel
@@ -242,7 +242,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image=False
 
 class StableDiffusionControlNetInpaintPipeline(
     DiffusionPipeline,
-    EfficiencyMixin,
+    LatentDiffusionMixin,
     TextualInversionLoaderMixin,
     LoraLoaderMixin,
     IPAdapterMixin,

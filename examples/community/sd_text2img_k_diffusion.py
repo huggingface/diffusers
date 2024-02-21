@@ -19,7 +19,7 @@ from typing import Callable, List, Optional, Union
 import torch
 from k_diffusion.external import CompVisDenoiser, CompVisVDenoiser
 
-from diffusers import DiffusionPipeline, EfficiencyMixin, LMSDiscreteScheduler
+from diffusers import DiffusionPipeline, LatentDiffusionMixin, LMSDiscreteScheduler
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import logging
 
@@ -41,7 +41,7 @@ class ModelWrapper:
         return self.model(*args, encoder_hidden_states=encoder_hidden_states, **kwargs).sample
 
 
-class StableDiffusionPipeline(DiffusionPipeline, EfficiencyMixin):
+class StableDiffusionPipeline(DiffusionPipeline, LatentDiffusionMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 

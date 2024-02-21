@@ -46,7 +46,7 @@ from ...utils import (
 )
 from ...utils.torch_utils import randn_tensor
 from ..free_init_utils import FreeInitMixin
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -212,7 +212,7 @@ class PIAPipelineOutput(BaseOutput):
 
 class PIAPipeline(
     DiffusionPipeline,
-    EfficiencyMixin,
+    LatentDiffusionMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
     LoraLoaderMixin,

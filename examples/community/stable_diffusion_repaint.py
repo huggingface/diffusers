@@ -24,7 +24,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from diffusers import AutoencoderKL, DiffusionPipeline, UNet2DConditionModel
 from diffusers.configuration_utils import FrozenDict, deprecate
 from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.pipelines.pipeline_utils import EfficiencyMixin
+from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import (
     StableDiffusionSafetyChecker,
@@ -139,7 +139,9 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
-class StableDiffusionRepaintPipeline(DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin):
+class StableDiffusionRepaintPipeline(
+    DiffusionPipeline, LatentDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+):
     r"""
     Pipeline for text-guided image inpainting using Stable Diffusion. *This is an experimental feature*.
     This model inherits from [`DiffusionPipeline`]. Check the superclass documentation for the generic methods the

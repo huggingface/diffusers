@@ -18,7 +18,7 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.pipeline_utils import EfficiencyMixin
+from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.utils import logging
@@ -27,7 +27,7 @@ from diffusers.utils import logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class SpeechToImagePipeline(DiffusionPipeline, EfficiencyMixin):
+class SpeechToImagePipeline(DiffusionPipeline, LatentDiffusionMixin):
     def __init__(
         self,
         speech_model: WhisperForConditionalGeneration,

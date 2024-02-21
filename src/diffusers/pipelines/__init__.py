@@ -48,7 +48,7 @@ else:
     _import_structure["pipeline_utils"] = [
         "AudioPipelineOutput",
         "DiffusionPipeline",
-        "EfficiencyMixin",
+        "LatentDiffusionMixin",
         "ImagePipelineOutput",
     ]
     _import_structure["deprecated"].extend(
@@ -329,8 +329,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .pipeline_utils import (
             AudioPipelineOutput,
             DiffusionPipeline,
-            EfficiencyMixin,
             ImagePipelineOutput,
+            LatentDiffusionMixin,
         )
 
     try:

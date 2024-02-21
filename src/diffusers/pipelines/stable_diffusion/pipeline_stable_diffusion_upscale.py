@@ -34,7 +34,7 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from . import StableDiffusionPipelineOutput
 
 
@@ -68,7 +68,7 @@ def preprocess(image):
 
 
 class StableDiffusionUpscalePipeline(
-    DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline, LatentDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for text-guided image super-resolution using Stable Diffusion 2.

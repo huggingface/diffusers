@@ -52,7 +52,7 @@ from diffusers.models.attention_processor import (
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
-from diffusers.pipelines.pipeline_utils import EfficiencyMixin
+from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
@@ -305,7 +305,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 
 class StableDiffusionXLControlNetAdapterInpaintPipeline(
-    DiffusionPipeline, EfficiencyMixin, FromSingleFileMixin, LoraLoaderMixin
+    DiffusionPipeline, LatentDiffusionMixin, FromSingleFileMixin, LoraLoaderMixin
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion augmented with T2I-Adapter

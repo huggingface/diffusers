@@ -37,7 +37,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 
 
 if is_invisible_watermark_available():
@@ -327,7 +327,7 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 class TextToVideoZeroSDXLPipeline(
     DiffusionPipeline,
-    EfficiencyMixin,
+    LatentDiffusionMixin,
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
 ):

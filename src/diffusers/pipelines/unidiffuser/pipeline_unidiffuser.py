@@ -21,7 +21,7 @@ from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.outputs import BaseOutput
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from .modeling_text_decoder import UniDiffuserTextDecoder
 from .modeling_uvit import UniDiffuserModel
 
@@ -48,7 +48,7 @@ class ImageTextPipelineOutput(BaseOutput):
     text: Optional[Union[List[str], List[List[str]]]]
 
 
-class UniDiffuserPipeline(DiffusionPipeline, EfficiencyMixin):
+class UniDiffuserPipeline(DiffusionPipeline, LatentDiffusionMixin):
     r"""
     Pipeline for a bimodal image-text model which supports unconditional text and image generation, text-conditioned
     image generation, image-conditioned text generation, and joint image-text generation.

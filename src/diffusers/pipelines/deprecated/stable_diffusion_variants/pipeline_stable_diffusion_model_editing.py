@@ -26,7 +26,7 @@ from ....schedulers import PNDMScheduler
 from ....schedulers.scheduling_utils import SchedulerMixin
 from ....utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ....utils.torch_utils import randn_tensor
-from ...pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ...pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from ...stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
@@ -37,7 +37,7 @@ AUGS_CONST = ["A photo of ", "An image of ", "A picture of "]
 
 
 class StableDiffusionModelEditingPipeline(
-    DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+    DiffusionPipeline, LatentDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin
 ):
     r"""
     Pipeline for text-to-image model editing.

@@ -36,7 +36,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
@@ -170,7 +170,7 @@ class AttendExciteAttnProcessor:
         return hidden_states
 
 
-class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin):
+class StableDiffusionAttendAndExcitePipeline(DiffusionPipeline, LatentDiffusionMixin, TextualInversionLoaderMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion and Attend-and-Excite.
 

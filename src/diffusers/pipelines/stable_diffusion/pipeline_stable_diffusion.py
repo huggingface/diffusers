@@ -34,7 +34,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from .pipeline_output import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -116,7 +116,7 @@ def retrieve_timesteps(
 
 class StableDiffusionPipeline(
     DiffusionPipeline,
-    EfficiencyMixin,
+    LatentDiffusionMixin,
     TextualInversionLoaderMixin,
     LoraLoaderMixin,
     IPAdapterMixin,

@@ -59,10 +59,10 @@ def check_same_shape(tensor_list):
     return all(shape == shapes[0] for shape in shapes[1:])
 
 
-class PipelineEfficiencyFunctionTesterMixin:
+class LDMFunctionTesterMixin:
     """
     This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
-    It provides a set of common tests for PyTorch pipeline that inherit from EfficiencyMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
+    It provides a set of common tests for PyTorch pipeline that inherit from LatentDiffusionMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
     """
 
     def test_vae_slicing(self):

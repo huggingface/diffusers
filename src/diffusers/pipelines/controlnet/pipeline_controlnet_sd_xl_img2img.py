@@ -54,7 +54,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import is_compiled_module, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -157,7 +157,11 @@ def retrieve_latents(
 
 
 class StableDiffusionXLControlNetImg2ImgPipeline(
-    DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, StableDiffusionXLLoraLoaderMixin, IPAdapterMixin
+    DiffusionPipeline,
+    LatentDiffusionMixin,
+    TextualInversionLoaderMixin,
+    StableDiffusionXLLoraLoaderMixin,
+    IPAdapterMixin,
 ):
     r"""
     Pipeline for image-to-image generation using Stable Diffusion XL with ControlNet guidance.

@@ -25,7 +25,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
 from ...utils import deprecate, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .image_encoder import PaintByExampleImageEncoder
@@ -148,7 +148,7 @@ def prepare_mask_and_masked_image(image, mask):
     return mask, masked_image
 
 
-class PaintByExamplePipeline(DiffusionPipeline, EfficiencyMixin):
+class PaintByExamplePipeline(DiffusionPipeline, LatentDiffusionMixin):
     r"""
     <Tip warning={true}>
 

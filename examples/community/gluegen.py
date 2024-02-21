@@ -10,7 +10,7 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.pipelines.pipeline_utils import EfficiencyMixin
+from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
@@ -194,7 +194,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class GlueGenStableDiffusionPipeline(DiffusionPipeline, EfficiencyMixin, LoraLoaderMixin):
+class GlueGenStableDiffusionPipeline(DiffusionPipeline, LatentDiffusionMixin, LoraLoaderMixin):
     def __init__(
         self,
         vae: AutoencoderKL,

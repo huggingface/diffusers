@@ -36,7 +36,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 
 
@@ -130,7 +130,7 @@ EXAMPLE_DOC_STRING = """
 
 class LatentConsistencyModelImg2ImgPipeline(
     DiffusionPipeline,
-    EfficiencyMixin,
+    LatentDiffusionMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
     LoraLoaderMixin,

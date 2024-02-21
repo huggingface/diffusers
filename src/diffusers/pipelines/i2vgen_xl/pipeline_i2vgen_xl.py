@@ -31,7 +31,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -105,7 +105,7 @@ class I2VGenXLPipelineOutput(BaseOutput):
 
 class I2VGenXLPipeline(
     DiffusionPipeline,
-    EfficiencyMixin,
+    LatentDiffusionMixin,
 ):
     r"""
     Pipeline for image-to-video generation as proposed in [I2VGenXL](https://i2vgen-xl.github.io/).

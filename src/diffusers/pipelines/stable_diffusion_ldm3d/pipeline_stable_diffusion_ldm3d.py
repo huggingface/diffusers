@@ -36,7 +36,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
 
@@ -83,7 +83,7 @@ class LDM3DPipelineOutput(BaseOutput):
 
 class StableDiffusionLDM3DPipeline(
     DiffusionPipeline,
-    EfficiencyMixin,
+    LatentDiffusionMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
     LoraLoaderMixin,

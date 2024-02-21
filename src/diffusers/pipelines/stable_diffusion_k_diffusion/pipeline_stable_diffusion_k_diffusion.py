@@ -26,7 +26,7 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import LMSDiscreteScheduler
 from ...utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from ..stable_diffusion import StableDiffusionPipelineOutput
 
 
@@ -48,7 +48,7 @@ class ModelWrapper:
 
 
 class StableDiffusionKDiffusionPipeline(
-    DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+    DiffusionPipeline, LatentDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.

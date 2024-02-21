@@ -12,7 +12,7 @@ from diffusers import (
     StableDiffusionPipeline,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.pipeline_utils import EfficiencyMixin
+from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
@@ -23,7 +23,7 @@ pipe3_model_id = "CompVis/stable-diffusion-v1-3"
 pipe4_model_id = "CompVis/stable-diffusion-v1-4"
 
 
-class StableDiffusionComparisonPipeline(DiffusionPipeline, EfficiencyMixin):
+class StableDiffusionComparisonPipeline(DiffusionPipeline, LatentDiffusionMixin):
     r"""
     Pipeline for parallel comparison of Stable Diffusion v1-v4
     This pipeline inherits from DiffusionPipeline and depends on the use of an Auth Token for

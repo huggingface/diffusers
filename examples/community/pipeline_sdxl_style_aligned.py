@@ -51,7 +51,7 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
@@ -85,7 +85,7 @@ EXAMPLE_DOC_STRING = """
         >>> from typing import List
 
         >>> import torch
-        >>> from diffusers.pipelines.pipeline_utils import DiffusionPipeline,EfficiencyMixin
+        >>> from diffusers.pipelines.pipeline_utils import DiffusionPipeline,LatentDiffusionMixin
         >>> from PIL import Image
 
         >>> model_id = "a-r-r-o-w/dreamshaper-xl-turbo"
@@ -389,7 +389,7 @@ def retrieve_latents(
 
 class StyleAlignedSDXLPipeline(
     DiffusionPipeline,
-    EfficiencyMixin,
+    LatentDiffusionMixin,
     FromSingleFileMixin,
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,

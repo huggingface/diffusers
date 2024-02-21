@@ -34,7 +34,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from . import TextToVideoSDPipelineOutput
 
 
@@ -157,7 +157,7 @@ def preprocess_video(video):
     return video
 
 
-class VideoToVideoSDPipeline(DiffusionPipeline, EfficiencyMixin, TextualInversionLoaderMixin, LoraLoaderMixin):
+class VideoToVideoSDPipeline(DiffusionPipeline, LatentDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for text-guided video-to-video generation.
 

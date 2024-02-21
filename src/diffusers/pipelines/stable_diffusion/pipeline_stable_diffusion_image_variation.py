@@ -26,7 +26,7 @@ from ...models import AutoencoderKL, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, EfficiencyMixin
+from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
 from . import StableDiffusionPipelineOutput
 from .safety_checker import StableDiffusionSafetyChecker
 
@@ -34,7 +34,7 @@ from .safety_checker import StableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class StableDiffusionImageVariationPipeline(DiffusionPipeline, EfficiencyMixin):
+class StableDiffusionImageVariationPipeline(DiffusionPipeline, LatentDiffusionMixin):
     r"""
     Pipeline to generate image variations from an input image using Stable Diffusion.
 

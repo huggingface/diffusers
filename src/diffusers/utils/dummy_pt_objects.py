@@ -570,7 +570,7 @@ class DiTPipeline(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 
 
-class EfficiencyMixin(metaclass=DummyObject):
+class LatentDiffusionMixin(metaclass=DummyObject):
     _backends = ["torch"]
 
     def __init__(self, *args, **kwargs):
