@@ -75,10 +75,6 @@ class FromOriginalVAEMixin:
                 diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z
                 = 1 / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution
                 Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
-            use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
-                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
-                weights. If set to `False`, safetensors weights are not loaded.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
