@@ -61,9 +61,10 @@ def save_model_card(
     repo_id: str, images: list = None, base_model: str = None, dataset_name: str = None, repo_folder: str = None
 ):
     img_str = ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"![img_{i}](./image_{i}.png)\n"
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
 
     model_description = f"""
 # LoRA text2image fine-tuning - {repo_id}
