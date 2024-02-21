@@ -70,13 +70,14 @@ def save_model_card(
     validation_prompt: str = None,
     base_model: str = None,
     dataset_name: str = None,
-    repo_folder: str = None,
+    repo_folder: str = ".",
     vae_path: str = None,
 ):
     img_str = ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"![img_{i}](./image_{i}.png)\n"
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
 
     model_description = f"""
 # Text-to-image finetuning - {repo_id}

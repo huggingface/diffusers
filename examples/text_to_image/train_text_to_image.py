@@ -68,10 +68,10 @@ def save_model_card(
     args,
     repo_id: str,
     images: list = None,
-    repo_folder: str = None,
+    repo_folder: str = ".",
 ):
     img_str = ""
-    if len(images) > 0:
+    if images is not None:
         image_grid = make_image_grid(images, 1, len(args.validation_prompts))
         image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
         img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
