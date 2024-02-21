@@ -313,12 +313,12 @@ from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipelin
 import torch
 
 pipe = StableDiffusionXLPipeline.from_single_file(
-    "./sd_xl_base_1.0.safetensors", torch_dtype=torch.float16, variant="fp16", use_safetensors=True
+    "./sd_xl_base_1.0.safetensors", torch_dtype=torch.float16
 )
 pipe.to("cuda")
 
 refiner = StableDiffusionXLImg2ImgPipeline.from_single_file(
-    "./sd_xl_refiner_1.0.safetensors", torch_dtype=torch.float16, use_safetensors=True, variant="fp16"
+    "./sd_xl_refiner_1.0.safetensors", torch_dtype=torch.float16
 )
 refiner.to("cuda")
 ```

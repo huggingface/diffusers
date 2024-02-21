@@ -227,14 +227,7 @@ def fetch_ldm_config_and_checkpoint(
     cache_dir=None,
     local_files_only=None,
     revision=None,
-    use_safetensors=True,
 ):
-    file_extension = pretrained_model_link_or_path.rsplit(".", 1)[-1]
-    from_safetensors = file_extension == "safetensors"
-
-    if from_safetensors and use_safetensors is False:
-        raise ValueError("Make sure to install `safetensors` with `pip install safetensors`.")
-
     if os.path.isfile(pretrained_model_link_or_path):
         checkpoint = load_state_dict(pretrained_model_link_or_path)
 
