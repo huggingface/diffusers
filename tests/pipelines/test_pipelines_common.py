@@ -29,6 +29,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
+from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
@@ -1152,6 +1153,14 @@ class PipelineTesterMixin:
         # accounts for models that modify the number of inference steps based on strength
         assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps)
 
+    def test_LDM_component(self):
+        """Any pipeline that have LDMFuncMixin should have vae and unet components."""
+        if not issubclass(self.pipeline_class, LatentDiffusionMixin):
+            return
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        self.assertTrue(hasattr(pipe, "vae"))
+        self.assertTrue(hasattr(pipe, "unet"))
 
 @is_staging_test
 class PipelinePushToHubTester(unittest.TestCase):
