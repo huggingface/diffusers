@@ -588,7 +588,7 @@ def make_VAE(model, device, max_batch_size, embedding_dim, inpaint=False):
     return VAE(model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim)
 
 
-class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
+class TensorRTStableDiffusionPipeline(DiffusionPipeline):
     r"""
     Pipeline for text-to-image generation using TensorRT accelerated Stable Diffusion.
 
@@ -746,6 +746,7 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
 
         return self
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
     def __encode_prompt(self, prompt, negative_prompt):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -832,7 +833,10 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
         latents = 1.0 / 0.18215 * latents
         return latents
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
     def __decode_latent(self, latents):
+        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
+        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
         images = runEngine(self.engine["vae"], {"latent": device_view(latents)}, self.stream)["images"]
         images = (images / 2 + 0.5).clamp(0, 1)
         return images.cpu().permute(0, 2, 3, 1).float().numpy()
