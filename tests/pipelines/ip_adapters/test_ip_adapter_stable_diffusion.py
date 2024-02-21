@@ -31,6 +31,7 @@ from diffusers import (
     StableDiffusionXLInpaintPipeline,
     StableDiffusionXLPipeline,
 )
+from diffusers.image_processor import IPAdapterMaskProcessor
 from diffusers.models.attention_processor import AttnProcessor, AttnProcessor2_0
 from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
@@ -64,7 +65,7 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
         image_processor = CLIPImageProcessor.from_pretrained(repo_id)
         return image_processor
 
-    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False):
+    def get_dummy_inputs(self, for_image_to_image=False, for_inpainting=False, for_sdxl=False, for_masks=False):
         image = load_image(
             "https://user-images.githubusercontent.com/24734142/266492875-2d50d223-8475-44f0-a7c6-08b51cb53572.png"
         )
@@ -100,6 +101,22 @@ class IPAdapterNightlyTestsMixin(unittest.TestCase):
                 ip_image = ip_image.resize((1024, 1024))
 
             input_kwargs.update({"image": image, "mask_image": mask, "ip_adapter_image": ip_image})
+
+        elif for_masks:
+            face_image1 = load_image(
+                "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl1.png"
+            )
+            face_image2 = load_image(
+                "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl2.png"
+            )
+            mask1 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask1.png")
+            mask2 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask2.png")
+            input_kwargs.update(
+                {
+                    "ip_adapter_image": [[face_image1], [face_image2]],
+                    "cross_attention_kwargs": {"ip_adapter_masks": [mask1, mask2]},
+                }
+            )
 
         return input_kwargs
 
@@ -253,7 +270,7 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         pipeline.unload_ip_adapter()
 
         assert getattr(pipeline, "image_encoder") is None
-        assert getattr(pipeline, "feature_extractor") is None
+        assert getattr(pipeline, "feature_extractor") is not None
         processors = [
             isinstance(attn_proc, (AttnProcessor, AttnProcessor2_0))
             for name, attn_proc in pipeline.unet.attn_processors.items()
@@ -462,6 +479,61 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
         image_slice.tolist()
 
         expected_slice = np.array([0.1398, 0.1476, 0.1407, 0.1442, 0.1470, 0.1480, 0.1449, 0.1481, 0.1494])
+
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
+
+    def test_ip_adapter_single_mask(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            image_encoder=image_encoder,
+            torch_dtype=self.dtype,
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter(
+            "h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus-face_sdxl_vit-h.safetensors"
+        )
+        pipeline.set_ip_adapter_scale(0.7)
+
+        inputs = self.get_dummy_inputs(for_masks=True)
+        mask = inputs["cross_attention_kwargs"]["ip_adapter_masks"][0]
+        processor = IPAdapterMaskProcessor()
+        mask = processor.preprocess(mask)
+        inputs["cross_attention_kwargs"]["ip_adapter_masks"] = mask
+        inputs["ip_adapter_image"] = inputs["ip_adapter_image"][0]
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+        expected_slice = np.array(
+            [0.7307304, 0.73450166, 0.73731124, 0.7377061, 0.7318013, 0.73720926, 0.74746597, 0.7409929, 0.74074936]
+        )
+
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
+
+    def test_ip_adapter_multiple_masks(self):
+        image_encoder = self.get_image_encoder(repo_id="h94/IP-Adapter", subfolder="models/image_encoder")
+        pipeline = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            image_encoder=image_encoder,
+            torch_dtype=self.dtype,
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter(
+            "h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2
+        )
+        pipeline.set_ip_adapter_scale([0.7] * 2)
+
+        inputs = self.get_dummy_inputs(for_masks=True)
+        masks = inputs["cross_attention_kwargs"]["ip_adapter_masks"]
+        processor = IPAdapterMaskProcessor()
+        masks = processor.preprocess(masks)
+        inputs["cross_attention_kwargs"]["ip_adapter_masks"] = masks
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+        expected_slice = np.array(
+            [0.79474676, 0.7977683, 0.8013954, 0.7988008, 0.7970615, 0.8029355, 0.80614823, 0.8050743, 0.80627424]
+        )
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
