@@ -46,15 +46,16 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
         if "text" in layer:
             new_state_dict[layer] = state_dict.pop(layer)
         else:
-            layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
-            if sgm_patterns[0] in layer:
-                input_block_ids.add(layer_id)
-            elif sgm_patterns[1] in layer:
-                middle_block_ids.add(layer_id)
-            elif sgm_patterns[2] in layer:
-                output_block_ids.add(layer_id)
+            if not any(p in layer for p in sgm_patterns):
+                logger.warning(f"layer {layer} not supported.")
             else:
-                raise ValueError(f"Checkpoint not supported because layer {layer} not supported.")
+                layer_id = int(layer.split(delimiter)[:block_slice_pos][-1])
+                if sgm_patterns[0] in layer:
+                    input_block_ids.add(layer_id)
+                elif sgm_patterns[1] in layer:
+                    middle_block_ids.add(layer_id)
+                elif sgm_patterns[2] in layer:
+                    output_block_ids.add(layer_id)
 
     input_blocks = {
         layer_id: [key for key in state_dict if f"input_blocks{delimiter}{layer_id}" in key]
@@ -118,7 +119,7 @@ def _maybe_map_sgm_blocks_to_diffusers(state_dict, unet_config, delimiter="_", b
             new_state_dict[new_key] = state_dict.pop(key)
 
     if len(state_dict) > 0:
-        raise ValueError("At this point all state dict entries have to be converted.")
+        logger.warning("At this point all state dict entries should have to be converted.")
 
     return new_state_dict
 
