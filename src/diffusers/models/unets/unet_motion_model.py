@@ -217,6 +217,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         use_motion_mid_block: int = True,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
+        time_cond_proj_dim: Optional[int] = None,
     ):
         super().__init__()
 
@@ -255,6 +256,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             timestep_input_dim,
             time_embed_dim,
             act_fn=act_fn,
+            cond_proj_dim=time_cond_proj_dim
         )
 
         if encoder_hid_dim_type is None:
