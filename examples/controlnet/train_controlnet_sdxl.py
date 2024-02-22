@@ -1028,7 +1028,12 @@ def main(args):
 
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
-        new_fingerprint = Hasher.hash(args)
+        new_fingerprint = Hasher.hash({
+            "cache_dir":args.cache_dir,
+            "dataset_name":args.dataset_name,
+            "dataset_config_name":args.dataset_config_name,
+            "dataset_train_data_dir":args.train_data_dir
+        })
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
 
     del text_encoders, tokenizers
