@@ -31,7 +31,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
         ```py
         >>> from diffusions import StableCascadeCombinedPipeline
 
-        >>> pipe = StableCascadeCombinedPipeline.from_pretrained("warp-ai/Wuerstchen-v3", torch_dtype=torch.float16).to(
+        >>> pipe = StableCascadeCombinedPipeline.from_pretrained("warp-ai/Wuerstchen-v3", torch_dtype=torch.bfloat16).to(
         ...     "cuda"
         ... )
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
@@ -58,10 +58,6 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             The scheduler to be used for decoder image generation pipeline.
         vqgan (`PaellaVQModel`):
             The VQGAN model to be used for decoder image generation pipeline.
-        prior_tokenizer (`CLIPTokenizer`):
-            The prior tokenizer to be used for text inputs.
-        prior_text_encoder (`CLIPTextModel`):
-            The prior text encoder to be used for text inputs.
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `image_encoder`.
         image_encoder ([`CLIPVisionModelWithProjection`]):
@@ -275,19 +271,23 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             generator=generator,
             latents=latents,
             output_type="pt",
-            return_dict=False,
+            return_dict=True,
             callback_on_step_end=prior_callback_on_step_end,
             callback_on_step_end_tensor_inputs=prior_callback_on_step_end_tensor_inputs,
         )
-        image_embeddings = prior_outputs[0]
+        image_embeddings = prior_outputs.image_embeddings
+        prompt_embeds = prior_outputs.get("prompt_embeds", None)
+        negative_prompt_embeds = prior_outputs.get("negative_prompt_embeds", None)
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
-            prompt=prompt if prompt is not None else "",
+            prompt=prompt if prompt_embeds is None else None,
             num_inference_steps=num_inference_steps,
             timesteps=decoder_timesteps,
             guidance_scale=decoder_guidance_scale,
-            negative_prompt=negative_prompt,
+            negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
+            prompt_embeds=prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
             generator=generator,
             output_type=output_type,
             return_dict=return_dict,

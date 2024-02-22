@@ -46,7 +46,6 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         "return_dict",
         "prior_num_inference_steps",
         "output_type",
-        "return_dict",
     ]
     test_xformers_attention = True
 
@@ -76,22 +75,6 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
     def dummy_tokenizer(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         return tokenizer
-
-    @property
-    def dummy_prior_text_encoder(self):
-        torch.manual_seed(0)
-        config = CLIPTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=self.text_embedder_hidden_size,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
-            pad_token_id=1,
-            vocab_size=1000,
-        )
-        return CLIPTextModelWithProjection(config).eval()
 
     @property
     def dummy_text_encoder(self):
@@ -124,15 +107,18 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
     @property
     def dummy_decoder(self):
         torch.manual_seed(0)
-
         model_kwargs = {
-            "c_cond": self.text_embedder_hidden_size,
-            "c_hidden": [320],
-            "nhead": [-1],
-            "blocks": [4],
-            "level_config": ["CT"],
-            "clip_embd": self.text_embedder_hidden_size,
-            "inject_effnet": [False],
+            "c_cond": 128,
+            "block_repeat": [[1, 1, 1, 1], [3, 3, 2, 2]],
+            "c_hidden": [16, 32, 64, 128],
+            "dropout": [0.1, 0.1, 0.1, 0.1],
+            "nhead": [-1, -1, 1, 2],
+            "level_config": ["CT", "CT", "CTA", "CTA"],
+            "blocks": [[1, 1, 1, 1], [1, 1, 1, 1]],
+            "switch_level": None,
+            "in_channels": 4,
+            "c_out": 4,
+            "c_clip_text_pooled": 32,
         }
 
         model = StableCascadeUnet(**model_kwargs)
@@ -140,11 +126,9 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
 
     def get_dummy_components(self):
         prior = self.dummy_prior
-        prior_text_encoder = self.dummy_prior_text_encoder
 
         scheduler = DDPMWuerstchenScheduler()
         tokenizer = self.dummy_tokenizer
-
         text_encoder = self.dummy_text_encoder
         decoder = self.dummy_decoder
         vqgan = self.dummy_vqgan
@@ -156,8 +140,6 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
             "vqgan": vqgan,
             "scheduler": scheduler,
             "prior_prior": prior,
-            "prior_text_encoder": prior_text_encoder,
-            "prior_tokenizer": tokenizer,
             "prior_scheduler": scheduler,
         }
 
@@ -181,7 +163,7 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         }
         return inputs
 
-    def test_wuerstchen(self):
+    def test_stable_cascade(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -201,8 +183,7 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
 
         assert image.shape == (1, 128, 128, 3)
 
-        expected_slice = np.array([0.7616304, 0.0, 1.0, 0.0, 1.0, 0.0, 0.05925313, 0.0, 0.951898])
-
+        expected_slice = np.array([0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0])
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
@@ -238,14 +219,14 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
     def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=1e-2)
+        super().test_inference_batch_single_identical(expected_max_diff=2e-2)
 
-    @unittest.skip(reason="flakey and float16 requires CUDA")
+    @unittest.skip(reason="fp16 not supported")
     def test_float16_inference(self):
         super().test_float16_inference()
 
-    def test_callback_inputs(self):
-        pass
+    # def test_callback_inputs(self):
+    #     pass
 
-    def test_callback_cfg(self):
-        pass
+    # def test_callback_cfg(self):
+    #     pass

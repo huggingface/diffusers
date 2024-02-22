@@ -187,6 +187,6 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             test_mean_pixel_difference=test_mean_pixel_difference,
         )
 
-    @unittest.skip(reason="bf16 not supported and requires CUDA")
+    @unittest.skip(reason="fp16 not supported")
     def test_float16_inference(self):
         super().test_float16_inference()
