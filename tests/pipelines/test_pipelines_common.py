@@ -29,7 +29,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
@@ -60,10 +60,10 @@ def check_same_shape(tensor_list):
     return all(shape == shapes[0] for shape in shapes[1:])
 
 
-class LDMFunctionTesterMixin:
+class SDFunctionTesterMixin:
     """
     This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
-    It provides a set of common tests for PyTorch pipeline that inherit from LatentDiffusionMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
+    It provides a set of common tests for PyTorch pipeline that inherit from StableDiffusionMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
     """
 
     def test_vae_slicing(self):
@@ -94,7 +94,8 @@ class LDMFunctionTesterMixin:
         components = self.get_dummy_components()
 
         # make sure here that pndm scheduler skips prk
-        components["safety_checker"] = None
+        if "safety_checker" in components:
+            components["safety_checker"] = None
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
@@ -1155,12 +1156,13 @@ class PipelineTesterMixin:
 
     def test_LDM_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""
-        if not issubclass(self.pipeline_class, LatentDiffusionMixin):
+        if not issubclass(self.pipeline_class, StableDiffusionMixin):
             return
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         self.assertTrue(hasattr(pipe, "vae"))
         self.assertTrue(hasattr(pipe, "unet"))
+
 
 @is_staging_test
 class PipelinePushToHubTester(unittest.TestCase):

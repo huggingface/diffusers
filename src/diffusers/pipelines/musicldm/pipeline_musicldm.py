@@ -36,7 +36,7 @@ from ...utils import (
     replace_example_docstring,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline, LatentDiffusionMixin
+from ..pipeline_utils import AudioPipelineOutput, DiffusionPipeline, StableDiffusionMixin
 
 
 if is_librosa_available():
@@ -64,7 +64,7 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class MusicLDMPipeline(DiffusionPipeline, LatentDiffusionMixin):
+class MusicLDMPipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for text-to-audio generation using MusicLDM.
 

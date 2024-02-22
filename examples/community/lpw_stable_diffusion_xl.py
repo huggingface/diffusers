@@ -30,7 +30,7 @@ from diffusers.models.attention_processor import (
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
 )
-from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
@@ -546,7 +546,7 @@ def retrieve_timesteps(
 
 class SDXLLongPromptWeightingPipeline(
     DiffusionPipeline,
-    LatentDiffusionMixin,
+    StableDiffusionMixin,
     FromSingleFileMixin,
     IPAdapterMixin,
     LoraLoaderMixin,

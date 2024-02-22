@@ -2098,7 +2098,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             module.set_attention_slice(slice_size)
 
 
-class LatentDiffusionMixin:
+class StableDiffusionMixin:
     r"""
     Helper for DiffusionPipeline with vae and unet.(mainly for LDM such as stable diffusion)
     """

@@ -13,7 +13,7 @@ from transformers import (
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionInpaintPipeline
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -23,7 +23,7 @@ from diffusers.utils import deprecate, logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class TextInpainting(DiffusionPipeline, LatentDiffusionMixin):
+class TextInpainting(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for text based inpainting using Stable Diffusion.
     Uses CLIPSeg to get a mask from the given text, then calls the Inpainting pipeline with the generated mask

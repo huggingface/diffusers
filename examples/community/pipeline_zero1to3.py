@@ -22,10 +22,10 @@ from transformers import CLIPFeatureExtractor, CLIPVisionModelWithProjection
 #     randn_tensor,
 #     replace_example_docstring,
 # )
-# from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
+# from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 # from . import StableDiffusionPipelineOutput
 # from .safety_checker import StableDiffusionSafetyChecker
-from diffusers import AutoencoderKL, DiffusionPipeline, LatentDiffusionMixin, UNet2DConditionModel
+from diffusers import AutoencoderKL, DiffusionPipeline, StableDiffusionMixin, UNet2DConditionModel
 from diffusers.configuration_utils import ConfigMixin, FrozenDict
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
@@ -66,7 +66,7 @@ class CCProjection(ModelMixin, ConfigMixin):
         return self.projection(x)
 
 
-class Zero1to3StableDiffusionPipeline(DiffusionPipeline, LatentDiffusionMixin):
+class Zero1to3StableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for single view conditioned novel view generation using Zero1to3.
 

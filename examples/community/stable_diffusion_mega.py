@@ -16,7 +16,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.configuration_utils import FrozenDict
-from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.utils import deprecate, logging
 
@@ -24,7 +24,7 @@ from diffusers.utils import deprecate, logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class StableDiffusionMegaPipeline(DiffusionPipeline, LatentDiffusionMixin):
+class StableDiffusionMegaPipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 

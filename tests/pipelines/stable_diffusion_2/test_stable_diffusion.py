@@ -53,10 +53,10 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import (
-    LDMFunctionTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
+    SDFunctionTesterMixin,
 )
 
 
@@ -64,7 +64,7 @@ enable_full_determinism()
 
 
 class StableDiffusion2PipelineFastTests(
-    LDMFunctionTesterMixin,
+    SDFunctionTesterMixin,
     PipelineLatentTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineTesterMixin,

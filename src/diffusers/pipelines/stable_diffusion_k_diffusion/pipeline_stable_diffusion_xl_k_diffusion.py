@@ -50,7 +50,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion_xl.pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -91,7 +91,7 @@ class ModelWrapper:
 
 class StableDiffusionXLKDiffusionPipeline(
     DiffusionPipeline,
-    LatentDiffusionMixin,
+    StableDiffusionMixin,
     FromSingleFileMixin,
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,

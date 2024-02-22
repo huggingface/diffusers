@@ -52,7 +52,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -165,7 +165,7 @@ def retrieve_timesteps(
 
 class StableDiffusionXLImg2ImgPipeline(
     DiffusionPipeline,
-    LatentDiffusionMixin,
+    StableDiffusionMixin,
     TextualInversionLoaderMixin,
     FromSingleFileMixin,
     StableDiffusionXLLoraLoaderMixin,

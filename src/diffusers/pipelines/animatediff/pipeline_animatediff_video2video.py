@@ -35,7 +35,7 @@ from ...schedulers import (
 from ...utils import USE_PEFT_BACKEND, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
 from ..free_init_utils import FreeInitMixin
-from ..pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import AnimateDiffPipelineOutput
 
 
@@ -166,7 +166,7 @@ def retrieve_timesteps(
 
 class AnimateDiffVideoToVideoPipeline(
     DiffusionPipeline,
-    LatentDiffusionMixin,
+    StableDiffusionMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
     LoraLoaderMixin,

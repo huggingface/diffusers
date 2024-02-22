@@ -123,12 +123,12 @@ else:
             "DiTPipeline",
             "ImagePipelineOutput",
             "KarrasVePipeline",
-            "LatentDiffusionMixin",
             "LDMPipeline",
             "LDMSuperResolutionPipeline",
             "PNDMPipeline",
             "RePaintPipeline",
             "ScoreSdeVePipeline",
+            "StableDiffusionMixin",
         ]
     )
     _import_structure["schedulers"].extend(
@@ -508,12 +508,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DiTPipeline,
             ImagePipelineOutput,
             KarrasVePipeline,
-            LatentDiffusionMixin,
             LDMPipeline,
             LDMSuperResolutionPipeline,
             PNDMPipeline,
             RePaintPipeline,
             ScoreSdeVePipeline,
+            StableDiffusionMixin,
         )
         from .schedulers import (
             AmusedScheduler,

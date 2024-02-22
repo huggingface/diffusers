@@ -35,7 +35,7 @@ from diffusers.models.attention import Attention, GatedSelfAttentionDense
 from diffusers.models.attention_processor import AttnProcessor2_0
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines import DiffusionPipeline
-from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
@@ -269,7 +269,7 @@ class AttnProcessorWithHook(AttnProcessor2_0):
 
 class LLMGroundedDiffusionPipeline(
     DiffusionPipeline,
-    LatentDiffusionMixin,
+    StableDiffusionMixin,
     TextualInversionLoaderMixin,
     LoraLoaderMixin,
     IPAdapterMixin,

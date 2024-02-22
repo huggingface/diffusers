@@ -19,7 +19,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
-from diffusers.pipelines.pipeline_utils import LatentDiffusionMixin
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 
@@ -27,7 +27,7 @@ from diffusers.utils.torch_utils import randn_tensor
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class RDMPipeline(DiffusionPipeline, LatentDiffusionMixin):
+class RDMPipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for text-to-image generation using Retrieval Augmented Diffusion.
 

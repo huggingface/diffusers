@@ -26,7 +26,7 @@ from diffusers.loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionL
 from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.models.unet_motion_model import MotionAdapter
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline, LatentDiffusionMixin
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.schedulers import (
     DDIMScheduler,
     DPMSolverMultistepScheduler,
@@ -231,7 +231,7 @@ class AnimateDiffImgToVideoPipelineOutput(BaseOutput):
 
 
 class AnimateDiffImgToVideoPipeline(
-    DiffusionPipeline, LatentDiffusionMixin, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin
+    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin
 ):
     r"""
     Pipeline for text-to-video generation.
