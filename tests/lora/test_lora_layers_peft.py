@@ -26,11 +26,13 @@ import torch.nn as nn
 from huggingface_hub import hf_hub_download
 from huggingface_hub.repocard import RepoCard
 from packaging import version
+from safetensors.torch import load_file
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
     AutoPipelineForImage2Image,
+    AutoPipelineForText2Image,
     ControlNetModel,
     DDIMScheduler,
     DiffusionPipeline,
@@ -1725,6 +1727,20 @@ class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
         lora_images_again = lora_images_again[0, -3:, -3:, -1].flatten()
 
         self.assertTrue(np.allclose(lora_images, lora_images_again, atol=1e-3))
+        release_memory(pipe)
+
+    def test_empty_state_dict(self):
+        # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to("cuda")
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+
+        cached_file = hf_hub_download("hf-internal-testing/lcm-lora-test-sd-v1-5", "test_lora.safetensors")
+        lcm_lora = load_file(cached_file)
+
+        pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
+        self.assertTrue(lcm_lora != {})
         release_memory(pipe)
 
 
