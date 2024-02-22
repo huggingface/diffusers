@@ -255,7 +255,6 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.T
         inputs_normal = self.get_dummy_inputs(torch_device)
         frames_normal = pipe(**inputs_normal).frames[0]
 
-        free_init_generator = torch.Generator(device=torch_device).manual_seed(0)
         pipe.enable_free_init(
             num_iters=2,
             use_fast_sampling=True,
@@ -263,7 +262,6 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.T
             order=4,
             spatial_stop_frequency=0.25,
             temporal_stop_frequency=0.25,
-            generator=free_init_generator,
         )
         inputs_enable_free_init = self.get_dummy_inputs(torch_device)
         frames_enable_free_init = pipe(**inputs_enable_free_init).frames[0]

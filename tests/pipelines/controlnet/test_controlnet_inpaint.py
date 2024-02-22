@@ -555,17 +555,16 @@ class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
     def test_load_local(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
         pipe_1 = StableDiffusionControlNetInpaintPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+            "runwayml/stable-diffusion-inpainting", safety_checker=None, controlnet=controlnet
         )
 
         controlnet = ControlNetModel.from_single_file(
             "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
         )
         pipe_2 = StableDiffusionControlNetInpaintPipeline.from_single_file(
-            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+            "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt",
             safety_checker=None,
             controlnet=controlnet,
-            scheduler_type="pndm",
         )
         control_image = load_image(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/sd_controlnet/bird_canny.png"
