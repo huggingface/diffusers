@@ -10,6 +10,7 @@ from transformers import (
 
 from diffusers import (
     DDPMWuerstchenScheduler,
+    StableCascadeCombinedPipeline,
     StableCascadeDecoderPipeline,
     StableCascadePriorPipeline,
 )
@@ -94,7 +95,7 @@ prior_pipeline = StableCascadePriorPipeline(
     scheduler=scheduler,
     feature_extractor=feature_extractor,
 )
-prior_pipeline.save_pretrained("StableCascade-prior")
+prior_pipeline.push_to_hub("diffusers/StableCascade-prior")
 
 # Decoder
 orig_state_dict = torch.load(decoder_checkpoint_path, map_location=device)
@@ -154,21 +155,20 @@ vqmodel = PaellaVQModel.from_pretrained("warp-ai/wuerstchen", subfolder="vqgan")
 decoder_pipeline = StableCascadeDecoderPipeline(
     decoder=decoder, text_encoder=text_encoder, tokenizer=tokenizer, vqgan=vqmodel, scheduler=scheduler
 )
-decoder_pipeline.save_pretrained("StableCascade")
+decoder_pipeline.push_to_hub("diffusers/StableCascade-decoder")
 
-# TODO
-# # Stable Cascade combined pipeline
-# stable_cascade_pipeline = StableCascadeCombinedPipeline(
-#     # Decoder
-#     text_encoder=gen_text_encoder,
-#     tokenizer=gen_tokenizer,
-#     decoder=decoder,
-#     scheduler=scheduler,
-#     vqgan=vqmodel,
-#     # Prior
-#     prior_tokenizer=tokenizer,
-#     prior_text_encoder=text_encoder,
-#     prior=prior_model,
-#     prior_scheduler=scheduler,
-# )
-# stable_cascade_pipeline.save_pretrained("StableCascadeCombinedPipeline")
+# Stable Cascade combined pipeline
+stable_cascade_pipeline = StableCascadeCombinedPipeline(
+    # Decoder
+    text_encoder=text_encoder,
+    tokenizer=tokenizer,
+    decoder=decoder,
+    scheduler=scheduler,
+    vqgan=vqmodel,
+    # Prior
+    prior_prior=prior_model,
+    prior_scheduler=scheduler,
+    image_encoder=image_encoder,
+    feature_extractor=feature_extractor,
+)
+stable_cascade_pipeline.push_to_hub("diffusers/StableCascade")
