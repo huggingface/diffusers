@@ -30,6 +30,9 @@ from diffusers import (
 )
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin
+from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
+from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
+from diffusers.models.unets.unet_motion_model import UNetMotionModel
 from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
@@ -1274,8 +1277,11 @@ class PipelineTesterMixin:
             return
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        self.assertTrue(hasattr(pipe, "vae"))
-        self.assertTrue(hasattr(pipe, "unet"))
+        self.assertTrue(hasattr(pipe, "vae") and isinstance(self.pipe.vae, (AutoencoderKL, AutoencoderTiny)))
+        self.assertTrue(
+            hasattr(pipe, "unet")
+            and isinstance(pipe.unet, (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel))
+        )
 
 
 @is_staging_test
