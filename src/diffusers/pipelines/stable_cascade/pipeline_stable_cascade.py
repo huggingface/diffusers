@@ -34,10 +34,10 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import StableCascadePriorPipeline, StableCascadeDecoderPipeline
 
         >>> prior_pipe = StableCascadePriorPipeline.from_pretrained(
-        ...     "warp-ai/wuerstchen-v3-prior", torch_dtype=torch.bfloat16
+        ...     "stabilityai/stable-cascade-prior", torch_dtype=torch.bfloat16
         ... ).to("cuda")
         >>> gen_pipe = StableCascadeDecoderPipeline.from_pretrain(
-        ...     "warp-ai/wuerstchen-v3", torch_dtype=torch.bfloat16
+        ...     "stabilityai/stable-cascade", torch_dtype=torch.bfloat16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"

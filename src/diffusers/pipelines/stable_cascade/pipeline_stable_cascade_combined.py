@@ -31,7 +31,7 @@ TEXT2IMAGE_EXAMPLE_DOC_STRING = """
         ```py
         >>> from diffusions import StableCascadeCombinedPipeline
 
-        >>> pipe = StableCascadeCombinedPipeline.from_pretrained("warp-ai/Wuerstchen-v3", torch_dtype=torch.bfloat16).to(
+        >>> pipe = StableCascadeCombinedPipeline.from_pretrained("stabilityai/stable-cascade-combined", torch_dtype=torch.bfloat16).to(
         ...     "cuda"
         ... )
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
@@ -68,6 +68,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             The scheduler to be used for prior pipeline.
     """
 
+    model_cpu_offload_seq = "text_encoder->prior_image_encoder->prior_feature_extractor->vqgan->prior_prior->decoder"
     _load_connected_pipes = True
 
     def __init__(
@@ -79,8 +80,8 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         vqgan: PaellaVQModel,
         prior_prior: StableCascadeUnet,
         prior_scheduler: DDPMWuerstchenScheduler,
-        feature_extractor: Optional[CLIPImageProcessor] = None,
-        image_encoder: Optional[CLIPVisionModelWithProjection] = None,
+        prior_feature_extractor: Optional[CLIPImageProcessor] = None,
+        prior_image_encoder: Optional[CLIPVisionModelWithProjection] = None,
     ):
         super().__init__()
 
@@ -92,16 +93,16 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             vqgan=vqgan,
             prior_prior=prior_prior,
             prior_scheduler=prior_scheduler,
-            feature_extractor=feature_extractor,
-            image_encoder=image_encoder,
+            prior_feature_extractor=prior_feature_extractor,
+            prior_image_encoder=prior_image_encoder,
         )
         self.prior_pipe = StableCascadePriorPipeline(
             prior=prior_prior,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
             scheduler=prior_scheduler,
-            image_encoder=image_encoder,
-            feature_extractor=feature_extractor,
+            image_encoder=prior_image_encoder,
+            feature_extractor=prior_feature_extractor,
         )
         self.decoder_pipe = StableCascadeDecoderPipeline(
             text_encoder=text_encoder,
