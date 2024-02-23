@@ -166,44 +166,37 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
             self.flow_blocks = nn.ModuleList([])
             flow_dim = block_out_channels[0] // flow_dim_scale
             flow_in_block = nn.Sequential(
-                [
-                    nn.Conv2d(2, flow_dim // 4, kernel_size=3, stride=2, padding=1),
-                    nn.Conv1d(
-                        flow_dim // 4, flow_dim // 4, kernel_size=3, stride=1, padding=1, padding_mode="replicate"
-                    ),
-                    nn.GroupNorm(8, flow_dim // 4),
-                    nn.SiLU(),
-                    nn.Conv2d(flow_dim // 4, flow_dim // 2, 3, stride=2, padding=1),
-                    nn.Conv1d(
-                        flow_dim // 2, flow_dim // 2, kernel_size=3, stride=1, padding=1, padding_mode="replicate"
-                    ),
-                    nn.GroupNorm(8, flow_dim // 2),
-                    nn.SiLU(),
-                    nn.Conv2d(flow_dim // 2, flow_dim, kernel_size=3, stride=2, padding=1),
-                    nn.Conv1d(flow_dim, flow_dim, kernel_size=3, stride=1, padding=1, padding_mode="replicate"),
-                ]
+                nn.Conv2d(2, flow_dim // 4, kernel_size=3, stride=2, padding=1),
+                nn.Conv1d(flow_dim // 4, flow_dim // 4, kernel_size=3, stride=1, padding=1, padding_mode="replicate"),
+                nn.GroupNorm(8, flow_dim // 4),
+                nn.SiLU(),
+                nn.Conv2d(flow_dim // 4, flow_dim // 2, 3, stride=2, padding=1),
+                nn.Conv1d(flow_dim // 2, flow_dim // 2, kernel_size=3, stride=1, padding=1, padding_mode="replicate"),
+                nn.GroupNorm(8, flow_dim // 2),
+                nn.SiLU(),
+                nn.Conv2d(flow_dim // 2, flow_dim, kernel_size=3, stride=2, padding=1),
+                nn.Conv1d(flow_dim, flow_dim, kernel_size=3, stride=1, padding=1, padding_mode="replicate"),
             )
             self.flow_blocks.append(flow_in_block)
 
             for index, bc in enumerate(block_out_channels[1:]):
-                assert bc % block_out_channels == 0
+                assert bc % block_out_channels[0] == 0
                 mult_factor = bc // block_out_channels[0]
 
                 flow_layer = nn.Sequential(
-                    [
-                        nn.GroupNorm(8, flow_dim),
-                        nn.SiLU(),
-                        nn.Conv2d(flow_dim, mult_factor * flow_dim, 3, padding=1),
-                        nn.Conv1d(
-                            mult_factor * flow_dim,
-                            mult_factor * flow_dim,
-                            kernel_size=3,
-                            stride=1,
-                            padding=1,
-                            padding_mode="replicate",
-                        ),
-                    ]
+                    nn.GroupNorm(8, flow_dim),
+                    nn.SiLU(),
+                    nn.Conv2d(flow_dim, mult_factor * block_out_channels[0] // flow_dim_scale, 3, padding=1),
+                    nn.Conv1d(
+                        mult_factor * block_out_channels[0] // flow_dim_scale,
+                        mult_factor * block_out_channels[0] // flow_dim_scale,
+                        kernel_size=3,
+                        stride=1,
+                        padding=1,
+                        padding_mode="replicate",
+                    ),
                 )
+                flow_dim = mult_factor * block_out_channels[0] // flow_dim_scale
 
                 if index != len(block_out_channels) - 1:
                     flow_layer.append(nn.Conv2d(flow_dim, flow_dim, kernel_size=3, stride=2, padding=1))
