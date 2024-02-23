@@ -328,6 +328,12 @@ def convert_ldm_unet_checkpoint(
     new_checkpoint["conv_out.weight"] = unet_state_dict["out.2.weight"]
     new_checkpoint["conv_out.bias"] = unet_state_dict["out.2.bias"]
 
+    # Retrieves the flow layers
+    for key in unet_state_dict:
+        if "flow" in key:
+            new_key = key.replace("input", "down").replace("output", "up")
+            new_checkpoint[new_key] = unet_state_dict[key]
+
     # Retrieves the keys for the input blocks only
     num_input_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "input_blocks" in layer})
     input_blocks = {
@@ -769,6 +775,7 @@ if __name__ == "__main__":
         "--config_file", type=str, help="The config json file corresponding to the architecture.", required=True
     )
     parser.add_argument("--output_path", default=None, type=str, help="Path to the output model.", required=True)
+    parser.add_argument("--flow_dim_scale", default=1, type=int, help="Flow dim scale for DragNUWA")
     parser.add_argument("--sample_size", type=int, default=768, help="VAE sample size")
     parser.add_argument(
         "--use_legacy_autoencoder",
@@ -783,9 +790,14 @@ if __name__ == "__main__":
 
     original_config = read_config_file(args.config_file)
     state_dict = load_original_state_dict(args.checkpoint_path)
+    lora_state_dict = {}
 
     for key in list(state_dict.keys()):
+        new_key = key.replace("linear.", "")
         state_dict[key.replace("linear.", "")] = state_dict.pop(key)
+        if "lora" in key:
+            lora_state_dict[new_key] = state_dict.pop(key)
+            print(new_key)
 
     vae_config = create_vae_diffusers_config(original_config, args.sample_size)
     vae = AutoencoderKLTemporalDecoder(**vae_config, use_legacy=args.use_legacy_autoencoder)
@@ -807,7 +819,9 @@ if __name__ == "__main__":
     logger.info(f"[VAE] unexpected_keys: {unexpected_keys}")
 
     unet_config = create_unet_diffusers_config(original_config, args.sample_size)
+    unet_config["flow_dim_scale"] = args.flow_dim_scale
     unet_state_dict = convert_ldm_unet_checkpoint(state_dict, unet_config)
+    print(unet_config)
     unet = UNetSpatioTemporalConditionModel.from_config(unet_config)
     missing_keys, unexpected_keys = unet.load_state_dict(unet_state_dict)
     logger.info(f"[UNet] missing_keys: {missing_keys}")
