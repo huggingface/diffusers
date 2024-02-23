@@ -50,6 +50,7 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     SDFunctionTesterMixin,
@@ -62,6 +63,7 @@ enable_full_determinism()
 
 class StableDiffusionXLPipelineFastTests(
     SDFunctionTesterMixin,
+    IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
     SDXLOptionalComponentsTesterMixin,

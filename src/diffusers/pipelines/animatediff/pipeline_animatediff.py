@@ -742,7 +742,11 @@ class AnimateDiffPipeline(
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         # 7. Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+        added_cond_kwargs = (
+            {"image_embeds": image_embeds}
+            if ip_adapter_image is not None or ip_adapter_image_embeds is not None
+            else None
+        )
 
         num_free_init_iters = self._free_init_num_iters if self.free_init_enabled else 1
         for free_init_iter in range(num_free_init_iters):
