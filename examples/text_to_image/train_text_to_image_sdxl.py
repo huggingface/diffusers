@@ -70,7 +70,7 @@ def save_model_card(
     validation_prompt: str = None,
     base_model: str = None,
     dataset_name: str = None,
-    repo_folder: str = ".",
+    repo_folder: str = None,
     vae_path: str = None,
 ):
     img_str = ""
