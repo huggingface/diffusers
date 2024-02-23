@@ -168,7 +168,7 @@ stable_cascade_pipeline = StableCascadeCombinedPipeline(
     # Prior
     prior_prior=prior_model,
     prior_scheduler=scheduler,
-    image_encoder=image_encoder,
-    feature_extractor=feature_extractor,
+    prior_image_encoder=image_encoder,
+    prior_feature_extractor=feature_extractor,
 )
 stable_cascade_pipeline.push_to_hub("diffusers/StableCascade")
