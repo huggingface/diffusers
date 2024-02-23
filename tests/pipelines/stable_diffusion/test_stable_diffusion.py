@@ -23,7 +23,11 @@ import unittest
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import (
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTokenizer,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -60,7 +64,12 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -100,7 +109,11 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
 
 
 class StableDiffusionPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -177,7 +190,7 @@ class StableDiffusionPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

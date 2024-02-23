@@ -477,8 +477,9 @@ class LatentConsistencyModelImg2ImgPipeline(
 
             return image_embeds, uncond_image_embeds
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, do_classifier_free_guidance, device, num_images_per_prompt
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
     ):
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
@@ -502,7 +503,7 @@ class LatentConsistencyModelImg2ImgPipeline(
                     [single_negative_image_embeds] * num_images_per_prompt, dim=0
                 )
 
-                if do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                     single_image_embeds = single_image_embeds.to(device)
 
@@ -700,6 +701,10 @@ class LatentConsistencyModelImg2ImgPipeline(
         return self._clip_skip
 
     @property
+    def do_classifier_free_guidance(self):
+        return False
+
+    @property
     def num_timesteps(self):
         return self._num_timesteps
 
@@ -845,7 +850,7 @@ class LatentConsistencyModelImg2ImgPipeline(
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
-                ip_adapter_image, ip_adapter_image_embeds, False, device, batch_size * num_images_per_prompt
+                ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_images_per_prompt
             )
 
         # 3. Encode input prompt
@@ -860,7 +865,7 @@ class LatentConsistencyModelImg2ImgPipeline(
             prompt,
             device,
             num_images_per_prompt,
-            False,
+            self.do_classifier_free_guidance,
             negative_prompt=None,
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=None,
@@ -906,7 +911,11 @@ class LatentConsistencyModelImg2ImgPipeline(
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, None)
 
         # 7.1 Add image embeds for IP-Adapter
-        added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
+        added_cond_kwargs = (
+            {"image_embeds": image_embeds}
+            if ip_adapter_image is not None or ip_adapter_image_embeds is not None
+            else None
+        )
 
         # 8. LCM Multistep Sampling Loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
