@@ -62,7 +62,7 @@ def save_model_card(
     images: list = None,
     base_model: str = None,
     dataset_name: str = None,
-    repo_folder: str = ".",
+    repo_folder: str = None,
 ):
     img_str = ""
     if images is not None:
