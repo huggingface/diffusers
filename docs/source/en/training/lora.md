@@ -113,6 +113,9 @@ The dataset preprocessing code and training loop are found in the [`main()`](htt
 
 As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) training guide. Instead, this guide takes a look at the LoRA relevant parts of the script.
 
+<hfoptions id="lora">
+<hfoption id="UNet">
+
 Diffusers uses [`~peft.LoraConfig`] from the [PEFT](https://hf.co/docs/peft) library to set up the parameters of the LoRA adapter such as the rank, alpha, and which modules to insert the LoRA weights into. The adapter is added to the UNet, and only the LoRA layers are filtered for optimization in `lora_layers`.
 
 ```py
@@ -126,6 +129,28 @@ unet_lora_config = LoraConfig(
 unet.add_adapter(unet_lora_config)
 lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
 ```
+
+</hfoption>
+<hfoption id="text encoder">
+
+Diffusers also supports finetuning the text encoder with LoRA from the [PEFT](https://hf.co/docs/peft) library when necessary such as finetuning Stable Diffusion XL (SDXL). The [`~peft.LoraConfig`] is used to configure the parameters of the LoRA adapter which are then added to the text encoder, and only the LoRA layers are filtered for training.
+
+```py
+text_lora_config = LoraConfig(
+    r=args.rank,
+    lora_alpha=args.rank,
+    init_lora_weights="gaussian",
+    target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+)
+
+text_encoder_one.add_adapter(text_lora_config)
+text_encoder_two.add_adapter(text_lora_config)
+text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
+text_lora_parameters_two = list(filter(lambda p: p.requires_grad, text_encoder_two.parameters()))
+```
+
+</hfoption>
+</hfoptions>
 
 The [optimizer](https://github.com/huggingface/diffusers/blob/e4b8f173b97731686e290b2eb98e7f5df2b1b322/examples/text_to_image/train_text_to_image_lora.py#L529) is initialized with the `lora_layers` because these are the only weights that'll be optimized:
 
