@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -60,6 +60,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
+from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -351,7 +352,7 @@ def get_class_obj_and_candidates(
 
 def _get_pipeline_class(
     class_obj,
-    config,
+    config=None,
     load_connected_pipeline=False,
     custom_pipeline=None,
     repo_id=None,
@@ -389,7 +390,12 @@ def _get_pipeline_class(
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    class_name = config["_class_name"]
+    class_name = class_name or config["_class_name"]
+    if not class_name:
+        raise ValueError(
+            "The class name could not be found in the configuration file. Please make sure to pass the correct `class_name`."
+        )
+
     class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
     pipeline_cls = getattr(diffusers_module, class_name)
@@ -720,6 +726,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self.save_config(save_directory)
 
         if push_to_hub:
+            # Create a new empty model card and eventually tag it
+            model_card = load_or_create_model_card(repo_id, token=token, is_pipeline=True)
+            model_card = populate_model_card(model_card)
+            model_card.save(os.path.join(save_directory, "README.md"))
+
             self._upload_folder(
                 save_directory,
                 repo_id,
@@ -764,31 +775,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Returns:
             [`DiffusionPipeline`]: The pipeline converted to specified `dtype` and/or `dtype`.
         """
-
-        torch_dtype = kwargs.pop("torch_dtype", None)
-        if torch_dtype is not None:
-            deprecate("torch_dtype", "0.27.0", "")
-        torch_device = kwargs.pop("torch_device", None)
-        if torch_device is not None:
-            deprecate("torch_device", "0.27.0", "")
-
-        dtype_kwarg = kwargs.pop("dtype", None)
-        device_kwarg = kwargs.pop("device", None)
+        dtype = kwargs.pop("dtype", None)
+        device = kwargs.pop("device", None)
         silence_dtype_warnings = kwargs.pop("silence_dtype_warnings", False)
-
-        if torch_dtype is not None and dtype_kwarg is not None:
-            raise ValueError(
-                "You have passed both `torch_dtype` and `dtype` as a keyword argument. Please make sure to only pass `dtype`."
-            )
-
-        dtype = torch_dtype or dtype_kwarg
-
-        if torch_device is not None and device_kwarg is not None:
-            raise ValueError(
-                "You have passed both `torch_device` and `device` as a keyword argument. Please make sure to only pass `device`."
-            )
-
-        device = torch_device or device_kwarg
 
         dtype_arg = None
         device_arg = None
@@ -862,12 +851,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             if is_loaded_in_8bit and dtype is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {torch_dtype} is not yet supported. Module is still in 8bit precision."
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {dtype} is not yet supported. Module is still in 8bit precision."
                 )
 
             if is_loaded_in_8bit and device is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {torch_dtype} via `.to()` is not yet supported. Module is still on {module.device}."
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {dtype} via `.to()` is not yet supported. Module is still on {module.device}."
                 )
             else:
                 module.to(device, dtype)
@@ -992,10 +981,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            custom_revision (`str`, *optional*, defaults to `"main"`):
+            custom_revision (`str`, *optional*):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
-                `revision` when loading a custom pipeline from the Hub. It can be a 🤗 Diffusers version when loading a
-                custom pipeline from GitHub, otherwise it defaults to `"main"` when loading from the Hub.
+                `revision` when loading a custom pipeline from the Hub. Defaults to the latest stable 🤗 Diffusers version.
             mirror (`str`, *optional*):
                 Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
@@ -1434,6 +1422,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
+        self._offload_device = device
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
@@ -1483,7 +1472,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             hook.remove()
 
         # make sure the model is in the same state as before calling it
-        self.enable_model_cpu_offload()
+        self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
     def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
@@ -1519,6 +1508,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
+        self._offload_device = device
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
