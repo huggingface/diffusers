@@ -75,7 +75,7 @@ def save_model_card(
     base_model: str = None,
     dataset_name: str = None,
     train_text_encoder: bool = False,
-    repo_folder: str = ".",
+    repo_folder: str = None,
     vae_path: str = None,
 ):
     img_str = ""
