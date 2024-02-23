@@ -46,7 +46,7 @@ EXAMPLE_DOC_STRING = """
                 torch_dtype=torch.float16
                 ).to('cuda:0')
 
-        >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe_controlnet.scheduler.config)
+        >>> pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
 
         >>> result_img = pipe(ref_image=input_image,
                         prompt="1girl",
