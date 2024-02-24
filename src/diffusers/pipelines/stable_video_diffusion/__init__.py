@@ -28,6 +28,9 @@ else:
                 "StableVideoDiffusionPipeline",
                 "StableVideoDiffusionPipelineOutput",
             ],
+            "pipeline_stable_video_dragnuwa_diffusion": [
+                "StableVideoDragNUWAPipeline",
+            ],
         }
     )
 
@@ -43,6 +46,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableVideoDiffusionPipeline,
             StableVideoDiffusionPipelineOutput,
         )
+        from .pipeline_stable_video_dragnuwa_diffusion import StableVideoDragNUWAPipeline
 
 else:
     import sys

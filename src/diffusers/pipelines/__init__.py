@@ -198,7 +198,7 @@ else:
         "StableDiffusionGLIGENPipeline",
         "StableDiffusionGLIGENTextImagePipeline",
     ]
-    _import_structure["stable_video_diffusion"] = ["StableVideoDiffusionPipeline"]
+    _import_structure["stable_video_diffusion"] = ["StableVideoDiffusionPipeline", "StableVideoDragNUWAPipeline"]
     _import_structure["stable_diffusion_xl"].extend(
         [
             "StableDiffusionXLImg2ImgPipeline",
@@ -448,7 +448,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             StableDiffusionXLInstructPix2PixPipeline,
             StableDiffusionXLPipeline,
         )
-        from .stable_video_diffusion import StableVideoDiffusionPipeline
+        from .stable_video_diffusion import StableVideoDiffusionPipeline, StableVideoDragNUWAPipeline
         from .t2i_adapter import (
             StableDiffusionAdapterPipeline,
             StableDiffusionXLAdapterPipeline,
