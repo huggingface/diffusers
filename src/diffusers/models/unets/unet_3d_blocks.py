@@ -146,6 +146,8 @@ def get_down_block(
             out_channels=out_channels,
             temb_channels=temb_channels,
             add_downsample=add_downsample,
+            flow_is_same_channel=flow_is_same_channel,
+            flow_dim_scale=flow_dim_scale,
         )
     elif down_block_type == "CrossAttnDownBlockSpatioTemporal":
         # added for SDV
@@ -287,6 +289,8 @@ def get_up_block(
             temb_channels=temb_channels,
             resolution_idx=resolution_idx,
             add_upsample=add_upsample,
+            flow_is_same_channel=flow_is_same_channel,
+            flow_dim_scale=flow_dim_scale,
         )
     elif up_block_type == "CrossAttnUpBlockSpatioTemporal":
         # added for SDV
@@ -1981,18 +1985,24 @@ class DownBlockSpatioTemporal(nn.Module):
         temb_channels: int,
         num_layers: int = 1,
         add_downsample: bool = True,
+        flow_is_same_channel: bool = True,
+        flow_dim_scale: Optional[int] = None,
     ):
         super().__init__()
         resnets = []
 
         for i in range(num_layers):
             in_channels = in_channels if i == 0 else out_channels
+            flow_scale = flow_dim_scale if i == 0 else None
+
             resnets.append(
                 SpatioTemporalResBlock(
                     in_channels=in_channels,
                     out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=1e-5,
+                    flow_is_same_channel=flow_is_same_channel,
+                    flow_dim_scale=flow_scale,
                 )
             )
 
@@ -2204,6 +2214,8 @@ class UpBlockSpatioTemporal(nn.Module):
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
         add_upsample: bool = True,
+        flow_is_same_channel: bool = True,
+        flow_dim_scale: Optional[int] = None,
     ):
         super().__init__()
         resnets = []
@@ -2211,6 +2223,7 @@ class UpBlockSpatioTemporal(nn.Module):
         for i in range(num_layers):
             res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
+            flow_scale = flow_dim_scale if i == 0 else None
 
             resnets.append(
                 SpatioTemporalResBlock(
@@ -2218,6 +2231,8 @@ class UpBlockSpatioTemporal(nn.Module):
                     out_channels=out_channels,
                     temb_channels=temb_channels,
                     eps=resnet_eps,
+                    flow_is_same_channel=flow_is_same_channel,
+                    flow_dim_scale=flow_scale,
                 )
             )
 
