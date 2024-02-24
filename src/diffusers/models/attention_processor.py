@@ -559,12 +559,16 @@ class Attention(nn.Module):
             `torch.Tensor`: The reshaped tensor.
         """
         head_size = self.heads
-        batch_size, seq_len, dim = tensor.shape
-        tensor = tensor.reshape(batch_size, seq_len, head_size, dim // head_size)
+        if tensor.ndim == 3:
+            batch_size, seq_len, dim = tensor.shape
+            extra_dim = 1
+        else:
+            batch_size, extra_dim, seq_len, dim = tensor.shape
+        tensor = tensor.reshape(batch_size, seq_len * extra_dim, head_size, dim // head_size)
         tensor = tensor.permute(0, 2, 1, 3)
 
         if out_dim == 3:
-            tensor = tensor.reshape(batch_size * head_size, seq_len, dim // head_size)
+            tensor = tensor.reshape(batch_size * head_size, seq_len * extra_dim, dim // head_size)
 
         return tensor
 
@@ -2186,8 +2190,6 @@ class IPAdapterAttnProcessor(nn.Module):
         for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
             ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
         ):
-            current_ip_hidden_states = torch.squeeze(current_ip_hidden_states, 1)
-
             ip_key = to_k_ip(current_ip_hidden_states)
             ip_value = to_v_ip(current_ip_hidden_states)
 
