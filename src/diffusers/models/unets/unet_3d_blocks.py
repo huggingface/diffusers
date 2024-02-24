@@ -2029,7 +2029,9 @@ class DownBlockSpatioTemporal(nn.Module):
         hidden_states: torch.FloatTensor,
         temb: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        flow: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        print("spatio_down", len(self.resnets))
         output_states = ()
         for resnet in self.resnets:
             if self.training and self.gradient_checkpointing:
@@ -2056,10 +2058,13 @@ class DownBlockSpatioTemporal(nn.Module):
                         image_only_indicator,
                     )
             else:
+                flow = flow if hasattr(resnet.spatial_res_block, "flow_cond_norm") else None
+                print(hasattr(resnet.spatial_res_block, "flow_cond_norm"))
                 hidden_states = resnet(
                     hidden_states,
                     temb,
                     image_only_indicator=image_only_indicator,
+                    flow=flow,
                 )
 
             output_states = output_states + (hidden_states,)
@@ -2148,6 +2153,7 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
         image_only_indicator: Optional[torch.Tensor] = None,
         flow: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        print("length_down", len(self.resnets))
         output_states = ()
 
         blocks = list(zip(self.resnets, self.attentions))
@@ -2179,6 +2185,8 @@ class CrossAttnDownBlockSpatioTemporal(nn.Module):
                     return_dict=False,
                 )[0]
             else:
+                flow = flow if hasattr(resnet.spatial_res_block, "flow_cond_norm") else None
+                print(hasattr(resnet.spatial_res_block, "flow_cond_norm"))
                 hidden_states = resnet(
                     hidden_states,
                     temb,
@@ -2252,7 +2260,9 @@ class UpBlockSpatioTemporal(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         image_only_indicator: Optional[torch.Tensor] = None,
+        flow: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
+        print("spatio_up", len(self.resnets))
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -2284,10 +2294,13 @@ class UpBlockSpatioTemporal(nn.Module):
                         image_only_indicator,
                     )
             else:
+                flow = flow if hasattr(resnet.spatial_res_block, "flow_cond_norm") else None
+                print(hasattr(resnet.spatial_res_block, "flow_cond_norm"))
                 hidden_states = resnet(
                     hidden_states,
                     temb,
                     image_only_indicator=image_only_indicator,
+                    flow=flow,
                 )
 
         if self.upsamplers is not None:
@@ -2369,6 +2382,7 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
         image_only_indicator: Optional[torch.Tensor] = None,
         flow: Optional[torch.Tensor] = None,
     ) -> torch.FloatTensor:
+        print("length_up", len(self.resnets))
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -2402,6 +2416,8 @@ class CrossAttnUpBlockSpatioTemporal(nn.Module):
                     return_dict=False,
                 )[0]
             else:
+                flow = flow if hasattr(resnet.spatial_res_block, "flow_cond_norm") else None
+                print(hasattr(resnet.spatial_res_block, "flow_cond_norm"))
                 hidden_states = resnet(
                     hidden_states,
                     temb,
