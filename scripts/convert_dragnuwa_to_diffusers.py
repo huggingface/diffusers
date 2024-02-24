@@ -328,28 +328,67 @@ def convert_ldm_unet_checkpoint(
     new_checkpoint["conv_out.weight"] = unet_state_dict["out.2.weight"]
     new_checkpoint["conv_out.bias"] = unet_state_dict["out.2.bias"]
 
+    num_input_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "input_blocks" in layer})
+    num_middle_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "middle_block" in layer})
+    num_output_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "output_blocks" in layer})
+
     # Retrieves the flow layers
+    for i in range(1, num_input_blocks):
+        block_id = (i - 1) // (config["layers_per_block"] + 1)
+        layer_in_block_id = (i - 1) % (config["layers_per_block"] + 1)
+
+        for flow_var in [
+            "flow_cond_norm",
+            "flow_gamma_spatial",
+            "flow_gamma_temporal",
+            "flow_beta_spatial",
+            "flow_beta_temporal",
+        ]:
+            if f"input_blocks.{i}.0.{flow_var}.weight" in unet_state_dict:
+                new_checkpoint[
+                    f"down_blocks.{block_id}.resnets.{layer_in_block_id}.spatial_res_block.{flow_var}.weight"
+                ] = unet_state_dict.pop(f"input_blocks.{i}.0.{flow_var}.weight")
+                new_checkpoint[
+                    f"down_blocks.{block_id}.resnets.{layer_in_block_id}.spatial_res_block.{flow_var}.bias"
+                ] = unet_state_dict.pop(f"input_blocks.{i}.0.{flow_var}.bias")
+
+    for i in range(num_output_blocks):
+        block_id = i // (config["layers_per_block"] + 1)
+        layer_in_block_id = i % (config["layers_per_block"] + 1)
+
+        for flow_var in [
+            "flow_cond_norm",
+            "flow_gamma_spatial",
+            "flow_gamma_temporal",
+            "flow_beta_spatial",
+            "flow_beta_temporal",
+        ]:
+            if f"output_blocks.{i}.0.{flow_var}.weight" in unet_state_dict:
+                new_checkpoint[
+                    f"up_blocks.{block_id}.resnets.{layer_in_block_id}.spatial_res_block.{flow_var}.weight"
+                ] = unet_state_dict.pop(f"output_blocks.{i}.0.{flow_var}.weight")
+                new_checkpoint[
+                    f"up_blocks.{block_id}.resnets.{layer_in_block_id}.spatial_res_block.{flow_var}.bias"
+                ] = unet_state_dict.pop(f"output_blocks.{i}.0.{flow_var}.bias")
+
     for key in unet_state_dict:
-        if "flow" in key:
-            new_key = key.replace("input", "down").replace("output", "up")
+        if "flow_blocks" in key:
+            new_key = key.replace("input", "down").replace("output", "up").replace("op.", "")
             new_checkpoint[new_key] = unet_state_dict[key]
 
     # Retrieves the keys for the input blocks only
-    num_input_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "input_blocks" in layer})
     input_blocks = {
         layer_id: [key for key in unet_state_dict if f"input_blocks.{layer_id}" in key]
         for layer_id in range(num_input_blocks)
     }
 
     # Retrieves the keys for the middle blocks only
-    num_middle_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "middle_block" in layer})
     middle_blocks = {
         layer_id: [key for key in unet_state_dict if f"middle_block.{layer_id}" in key]
         for layer_id in range(num_middle_blocks)
     }
 
     # Retrieves the keys for the output blocks only
-    num_output_blocks = len({".".join(layer.split(".")[:2]) for layer in unet_state_dict if "output_blocks" in layer})
     output_blocks = {
         layer_id: [key for key in unet_state_dict if f"output_blocks.{layer_id}" in key]
         for layer_id in range(num_output_blocks)
@@ -821,7 +860,6 @@ if __name__ == "__main__":
     unet_config = create_unet_diffusers_config(original_config, args.sample_size)
     unet_config["flow_dim_scale"] = args.flow_dim_scale
     unet_state_dict = convert_ldm_unet_checkpoint(state_dict, unet_config)
-    print(unet_config)
     unet = UNetSpatioTemporalConditionModel.from_config(unet_config)
     missing_keys, unexpected_keys = unet.load_state_dict(unet_state_dict)
     logger.info(f"[UNet] missing_keys: {missing_keys}")
