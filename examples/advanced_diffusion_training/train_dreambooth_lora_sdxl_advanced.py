@@ -665,7 +665,9 @@ def parse_args(input_args=None):
         "--use_dora",
         type=bool,
         default=False,
-        help=("Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353"),
+        help=(
+            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353"
+        ),
     )
     parser.add_argument(
         "--cache_latents",
