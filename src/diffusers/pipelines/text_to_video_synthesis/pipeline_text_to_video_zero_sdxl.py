@@ -475,7 +475,7 @@ class TextToVideoZeroSDXLPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline._get_add_time_ids
     def _get_add_time_ids(
-        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim=None
+        self, original_size, crops_coords_top_left, target_size, dtype, text_encoder_projection_dim
     ):
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
