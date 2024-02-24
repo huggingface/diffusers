@@ -493,12 +493,12 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                             flow = flow.reshape(
                                 flow_batch_size // num_frames, num_frames, flow_channels, flow_height, flow_width
                             )
-                            flow = flow.permute(0, 3, 4, 2, 1)
-                            flow = flow.flatten(0, 2)
+                            flow = flow.permute(0, 3, 4, 2, 1).flatten(0, 2)
                             flow = flow_module(flow)
                             flow = flow.reshape(flow_batch_size // num_frames, flow_height, flow_width, -1, num_frames)
-                            flow = flow.permute(0, 4, 3, 1, 2)
-                            flow = flow.flatten(0, 1)
+                            flow = flow.permute(0, 4, 3, 1, 2).flatten(0, 1)
+                        else:
+                            flow = flow_module(flow)
 
                     flow_block_samples.append(flow)
 
