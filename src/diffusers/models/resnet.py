@@ -386,9 +386,7 @@ class ResnetBlock2D(nn.Module):
 
         hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
 
-        if self.is_dragnuwa:
-            assert flow is not None
-            assert num_frames is not None
+        if flow is not None:
             gamma_flow: torch.Tensor = self.flow_gamma_spatial(flow)
             beta_flow: torch.Tensor = self.flow_beta_spatial(flow)
 
@@ -399,26 +397,20 @@ class ResnetBlock2D(nn.Module):
             gamma_flow = (
                 gamma_flow.reshape(batch_size, num_frames, channels, height, width)
                 .permute(0, 3, 4, 2, 1)
-                .reshape(batch_size * height * width, channels, num_frames)
+                .flatten(0, 2)
             )
             beta_flow = (
-                beta_flow.reshape(batch_size, num_frames, channels, height, width)
-                .permute(0, 3, 4, 2, 1)
-                .reshape(batch_size * height * width, channels, num_frames)
+                beta_flow.reshape(batch_size, num_frames, channels, height, width).permute(0, 3, 4, 2, 1).flatten(0, 2)
             )
 
             gamma_flow = self.flow_gamma_temporal(gamma_flow)
             beta_flow = self.flow_beta_temporal(beta_flow)
 
             gamma_flow = (
-                gamma_flow.reshape(batch_size, height, width, channels, num_frames)
-                .permute(0, 4, 3, 1, 2)
-                .reshape(batch_size * num_frames, channels, height, width)
+                gamma_flow.reshape(batch_size, height, width, -1, num_frames).permute(0, 4, 3, 1, 2).flatten(0, 1)
             )
             beta_flow = (
-                beta_flow.reshape(batch_size, height, width, channels, num_frames)
-                .permute(0, 4, 3, 1, 2)
-                .reshape(batch_size * num_frames, channels, height, width)
+                beta_flow.reshape(batch_size, height, width, -1, num_frames).permute(0, 4, 3, 1, 2).flatten(0, 1)
             )
 
             hidden_states = hidden_states + self.flow_cond_norm(hidden_states) * gamma_flow + beta_flow
