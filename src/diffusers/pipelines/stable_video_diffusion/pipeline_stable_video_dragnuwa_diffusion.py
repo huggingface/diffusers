@@ -21,6 +21,7 @@ import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ...image_processor import VaeImageProcessor
+from ...loaders import LoraLoaderMixin
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import logging
@@ -62,7 +63,7 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
     return outputs
 
 
-class StableVideoDragNUWAPipeline(DiffusionPipeline):
+class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
     r"""
     Pipeline to generate video from an input image using Stable Video Diffusion.
 
