@@ -13,11 +13,12 @@
 # limitations under the License.
 
 import inspect
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import PIL.Image
 import torch
+from scipy.interpolate import PchipInterpolator
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
 from ...image_processor import VaeImageProcessor
@@ -106,6 +107,7 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion._encode_image
     def _encode_image(self, image, device, num_videos_per_prompt, do_classifier_free_guidance):
         dtype = next(self.image_encoder.parameters()).dtype
 
@@ -148,6 +150,7 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return image_embeddings
 
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion._encode_vae_image
     def _encode_vae_image(
         self,
         image: torch.Tensor,
@@ -171,6 +174,7 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return image_latents
 
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion._get_add_time_ids
     def _get_add_time_ids(
         self,
         fps,
@@ -199,6 +203,7 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         return add_time_ids
 
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.decode_latents
     def decode_latents(self, latents, num_frames, decode_chunk_size=14):
         # [batch, frames, channels, height, width] -> [batch*frames, channels, height, width]
         latents = latents.flatten(0, 1)
@@ -228,7 +233,7 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         frames = frames.float()
         return frames
 
-    def check_inputs(self, image, height, width):
+    def check_inputs(self, image, height, width, trajectories):
         if (
             not isinstance(image, torch.Tensor)
             and not isinstance(image, PIL.Image.Image)
@@ -242,6 +247,24 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
+        if (
+            not isinstance(trajectories, list)
+            or not isinstance(trajectories[0], list)
+            or not isinstance(trajectories[0][0], (tuple, list))
+        ):
+            raise ValueError(
+                f"`trajectories` must be of type `List[List[Tuple[int, int]]]` but found {type(trajectories)=}"
+            )
+        for trajectory in trajectories:
+            if len(trajectory) == 0:
+                raise ValueError("Every trajectory element of `trajectories` must be a non-empty list")
+            for point in trajectory:
+                if len(point) != 2:
+                    raise ValueError(
+                        "Every point in a trajectory of `trajectories` must be described by two integer points"
+                    )
+
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.prepare_latents
     def prepare_latents(
         self,
         batch_size,
@@ -276,6 +299,21 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
+    def _interpolate_trajectory(self, trajectory, n):
+        x = [point[0] for point in trajectory]
+        y = [point[1] for point in trajectory]
+        t = np.linspace(0, 1, len(trajectory))
+
+        fx = PchipInterpolator(t, x)
+        fy = PchipInterpolator(t, y)
+        new_t = np.linspace(0, 1, n)
+
+        new_x = fx(new_t)
+        new_y = fy(new_t)
+        new_trajectory = list(zip(new_x, new_y))
+
+        return new_trajectory
+
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -297,8 +335,9 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
     def __call__(
         self,
         image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
-        height: int = 576,
-        width: int = 1024,
+        trajectories: List[List[Tuple[int, int]]],
+        height: int = 320,
+        width: int = 576,
         num_frames: Optional[int] = None,
         num_inference_steps: int = 25,
         min_guidance_scale: float = 1.0,
@@ -309,7 +348,6 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         decode_chunk_size: Optional[int] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
-        latents: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -351,10 +389,6 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
-            latents (`torch.FloatTensor`, *optional*):
-                Pre-generated noisy latents sampled from a Gaussian distribution, to be used as inputs for image
-                generation. Can be used to tweak the same generation with different prompts. If not provided, a latents
-                tensor is generated by sampling using the supplied random `generator`.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             callback_on_step_end (`Callable`, *optional*):
@@ -399,7 +433,7 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         decode_chunk_size = decode_chunk_size if decode_chunk_size is not None else num_frames
 
         # 1. Check inputs. Raise error if not correct
-        self.check_inputs(image, height, width)
+        self.check_inputs(image, height, width, trajectories)
 
         # 2. Define call parameters
         if isinstance(image, PIL.Image.Image):
@@ -408,6 +442,7 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
             batch_size = len(image)
         else:
             batch_size = image.shape[0]
+
         device = self._execution_device
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
@@ -423,6 +458,7 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         fps = fps - 1
 
         # 4. Encode input image using VAE
+        original_width, original_height = image.size
         image = self.image_processor.preprocess(image, height=height, width=width).to(device)
         noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)
         image = image + noise_aug_strength * noise
@@ -459,11 +495,11 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         )
         added_time_ids = added_time_ids.to(device)
 
-        # 4. Prepare timesteps
+        # 6. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 5. Prepare latent variables
+        # 7. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
@@ -474,10 +510,9 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
             image_embeddings.dtype,
             device,
             generator,
-            latents,
         )
 
-        # 7. Prepare guidance scale
+        # 8. Prepare guidance scale
         guidance_scale = torch.linspace(min_guidance_scale, max_guidance_scale, num_frames).unsqueeze(0)
         guidance_scale = guidance_scale.to(device, latents.dtype)
         guidance_scale = guidance_scale.repeat(batch_size * num_videos_per_prompt, 1)
@@ -485,7 +520,41 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
 
         self._guidance_scale = guidance_scale
 
-        # 8. Denoising loop
+        # 9. Encode trajectories
+        trajectories = [
+            [
+                (
+                    point[0] * width / original_width,
+                    point[1] * height / original_height,
+                )
+                for point in trajectory
+            ]
+            for trajectory in trajectories
+        ]
+        flow = torch.zeros(fps, height, width, 2, device=device)
+
+        for trajectory in trajectories:
+            if len(trajectory) == 1:
+                displacement_point = (trajectory[0][0] + 1, trajectory[0][1] + 1)
+                trajectory = (trajectory, displacement_point)
+
+            trajectory = self._interpolate_trajectory(trajectory, fps + 1)[: fps + 1]
+
+            if len(trajectory) < fps + 1:
+                trajectory = trajectory + [trajectory[-1]] * (fps - len(trajectory))
+
+            for i in range(fps):
+                point1 = trajectory[i]
+                point2 = trajectory[i + 1]
+                flow[i][int(point1[1])][int(point1[0])][0] = point2[0] - point1[0]
+                flow[i][int(point1[1])][int(point1[0])][0] = point2[1] - point1[1]
+
+        flow = flow.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
+        flow = torch.cat([torch.zeros_like(flow[:, 0]).unsqueeze(1), flow], dim=1)
+        flow = flow.permute(0, 1, 4, 2, 3).to(dtype=image_embeddings.dtype)
+        flow = torch.cat([flow] * 2) if self.do_classifier_free_guidance else flow
+
+        # 10. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
@@ -503,6 +572,7 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
                     t,
                     encoder_hidden_states=image_embeddings,
                     added_time_ids=added_time_ids,
+                    flow=flow,
                     return_dict=False,
                 )[0]
 
