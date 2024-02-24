@@ -830,14 +830,10 @@ if __name__ == "__main__":
 
     original_config = read_config_file(args.config_file)
     state_dict = load_original_state_dict(args.checkpoint_path)
-    lora_state_dict = {}
 
     for key in list(state_dict.keys()):
         new_key = key.replace("linear.", "")
-        state_dict[key.replace("linear.", "")] = state_dict.pop(key)
-        if "lora" in key:
-            lora_state_dict[new_key] = state_dict.pop(key)
-            print(new_key)
+        state_dict[new_key] = state_dict.pop(key)
 
     vae_config = create_vae_diffusers_config(original_config, args.sample_size)
     vae = AutoencoderKLTemporalDecoder(**vae_config, use_legacy=args.use_legacy_autoencoder)
@@ -860,8 +856,31 @@ if __name__ == "__main__":
 
     unet_config = create_unet_diffusers_config(original_config, args.sample_size)
     unet_config["flow_dim_scale"] = args.flow_dim_scale
+
     unet_state_dict = convert_ldm_unet_checkpoint(state_dict, unet_config)
     unet = UNetSpatioTemporalConditionModel.from_config(unet_config)
+
+    lora_state_dict = {}
+
+    for key in list(unet_state_dict.keys()):
+        if "lora" not in key:
+            continue
+        if "to_q" in key or "to_k" in key or "to_v" in key:
+            up_down = "up" if "lora_up" in key else "down"
+            new_key = key.replace(f".lora_{up_down}", f"_lora.{up_down}")
+        elif "to_out" in key:
+            up_down = "up" if "lora_up" in key else "down"
+            new_key = key.replace(f"to_out.0.lora_{up_down}", f"to_out_lora.{up_down}")
+        else:
+            up_down = "up" if "lora_up" in key else "down"
+            new_key = key.replace(f"lora_{up_down}", f"lora.{up_down}")
+
+        if "time_pos_embed" in new_key:
+            new_key = new_key.replace("time_pos_embed.0", "time_pos_embed.linear_1")
+            new_key = new_key.replace("time_pos_embed.2", "time_pos_embed.linear_2")
+
+        lora_state_dict[new_key] = unet_state_dict.pop(key)
+
     missing_keys, unexpected_keys = unet.load_state_dict(unet_state_dict)
     logger.info(f"[UNet] missing_keys: {missing_keys}")
     logger.info(f"[UNet] unexpected_keys: {unexpected_keys}")
@@ -879,6 +898,7 @@ if __name__ == "__main__":
         scheduler=scheduler,
         feature_extractor=feature_extractor,
     )
+    pipe.load_lora_weights(lora_state_dict)
 
     pipe.save_pretrained(args.output_path)
     if args.push_to_hub:
