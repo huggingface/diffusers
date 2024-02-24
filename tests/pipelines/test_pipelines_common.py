@@ -1277,7 +1277,7 @@ class PipelineTesterMixin:
             return
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
-        self.assertTrue(hasattr(pipe, "vae") and isinstance(self.pipe.vae, (AutoencoderKL, AutoencoderTiny)))
+        self.assertTrue(hasattr(pipe, "vae") and isinstance(pipe.vae, (AutoencoderKL, AutoencoderTiny)))
         self.assertTrue(
             hasattr(pipe, "unet")
             and isinstance(pipe.unet, (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel))
