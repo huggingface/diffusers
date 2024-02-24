@@ -6,6 +6,7 @@ from safetensors.torch import load_file
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 from yaml.loader import FullLoader
 
+from diffusers import StableVideoDragNUWAPipeline
 from diffusers.models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from diffusers.schedulers import EulerDiscreteScheduler
 from diffusers.utils import is_accelerate_available, logging
@@ -580,7 +581,7 @@ def convert_ldm_unet_checkpoint(
                 new_checkpoint[new_path] = unet_state_dict[old_path]
 
             temporal_layers = [
-                layer for layer in output_block_layers if "time_stack" in layer and "time_mixer" not in key
+                layer for layer in output_block_layers if "time_stack" in layer and "time_mixer" not in "layers"
             ]
             resnet_0_paths = renew_resnet_paths(temporal_layers, n_shave_prefix_segments=1)
             # import ipdb; ipdb.set_trace()
@@ -871,21 +872,21 @@ if __name__ == "__main__":
     feature_extractor = CLIPImageProcessor()
     scheduler = EulerDiscreteScheduler.from_pretrained(original_svd_model_id, subfolder="scheduler")
 
-    # pipe = StableVideoDiffusionPipeline(
-    #     vae=vae,
-    #     image_encoder=image_encoder,
-    #     unet=unet,
-    #     scheduler=scheduler,
-    #     feature_extractor=feature_extractor,
-    # )
+    pipe = StableVideoDragNUWAPipeline(
+        vae=vae,
+        image_encoder=image_encoder,
+        unet=unet,
+        scheduler=scheduler,
+        feature_extractor=feature_extractor,
+    )
 
-    # pipe.save_pretrained(args.output_path)
-    # if args.push_to_hub:
-    #     logger.info("Pushing float32 version to HF hub")
-    #     pipe.push_to_hub(args.output_path)
+    pipe.save_pretrained(args.output_path)
+    if args.push_to_hub:
+        logger.info("Pushing float32 version to HF hub")
+        pipe.push_to_hub(args.output_path)
 
-    # pipe.to(dtype=torch.float16)
-    # pipe.save_pretrained(args.output_path, variant="fp16")
-    # if args.push_to_hub:
-    #     logger.info("Pushing float16 version to HF hub")
-    #     pipe.push_to_hub(args.output_path, variant="fp16")
+    pipe.to(dtype=torch.float16)
+    pipe.save_pretrained(args.output_path, variant="fp16")
+    if args.push_to_hub:
+        logger.info("Pushing float16 version to HF hub")
+        pipe.push_to_hub(args.output_path, variant="fp16")
