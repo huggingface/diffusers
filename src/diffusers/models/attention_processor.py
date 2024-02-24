@@ -2186,6 +2186,8 @@ class IPAdapterAttnProcessor(nn.Module):
         for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
             ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
         ):
+            current_ip_hidden_states = torch.squeeze(current_ip_hidden_states, 1)
+
             ip_key = to_k_ip(current_ip_hidden_states)
             ip_value = to_v_ip(current_ip_hidden_states)
 
