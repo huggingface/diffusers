@@ -485,42 +485,38 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
 
         down_block_res_samples = (sample,)
         for index, downsample_block in enumerate(self.down_blocks):
-            if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
-                if self.is_dragnuwa:
-                    for flow_module in self.flow_blocks[index]:
-                        if isinstance(flow_module, nn.Conv1d):
-                            flow_batch_size, flow_channels, flow_height, flow_width = flow.shape
-                            flow = flow.reshape(
-                                flow_batch_size // num_frames, num_frames, flow_channels, flow_height, flow_width
-                            )
-                            flow = flow.permute(0, 3, 4, 2, 1).flatten(0, 2)
-                            flow = flow_module(flow)
-                            flow = flow.reshape(flow_batch_size // num_frames, flow_height, flow_width, -1, num_frames)
-                            flow = flow.permute(0, 4, 3, 1, 2).flatten(0, 1)
-                        else:
-                            flow = flow_module(flow)
-
-                    flow_block_samples.append(flow)
-
-                    sample, res_samples = downsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        encoder_hidden_states=encoder_hidden_states,
-                        image_only_indicator=image_only_indicator,
-                        flow=flow,
+            for flow_module in self.flow_blocks[index]:
+                if isinstance(flow_module, nn.Conv1d):
+                    flow_batch_size, flow_channels, flow_height, flow_width = flow.shape
+                    flow = flow.reshape(
+                        flow_batch_size // num_frames, num_frames, flow_channels, flow_height, flow_width
                     )
+                    flow = flow.permute(0, 3, 4, 2, 1)
+                    flow = flow.flatten(0, 2)
+                    flow = flow_module(flow)
+                    print("hi")
+                    flow = flow.reshape(flow_batch_size // num_frames, flow_height, flow_width, -1, num_frames)
+                    flow = flow.permute(0, 4, 3, 1, 2)
+                    flow = flow.flatten(0, 1)
                 else:
-                    sample, res_samples = downsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        encoder_hidden_states=encoder_hidden_states,
-                        image_only_indicator=image_only_indicator,
-                    )
+                    flow = flow_module(flow)
+
+            flow_block_samples.append(flow)
+
+            if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
+                sample, res_samples = downsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    encoder_hidden_states=encoder_hidden_states,
+                    image_only_indicator=image_only_indicator,
+                    flow=flow,
+                )
             else:
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
                     image_only_indicator=image_only_indicator,
+                    flow=flow,
                 )
 
             down_block_res_samples += res_samples
@@ -537,31 +533,24 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         for i, upsample_block in enumerate(self.up_blocks):
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
+            flow_sample = flow_block_samples.pop()
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
-                if self.is_dragnuwa:
-                    sample = upsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        res_hidden_states_tuple=res_samples,
-                        encoder_hidden_states=encoder_hidden_states,
-                        image_only_indicator=image_only_indicator,
-                        flow=flow_block_samples.pop(),
-                    )
-                else:
-                    sample = upsample_block(
-                        hidden_states=sample,
-                        temb=emb,
-                        res_hidden_states_tuple=res_samples,
-                        encoder_hidden_states=encoder_hidden_states,
-                        image_only_indicator=image_only_indicator,
-                    )
+                sample = upsample_block(
+                    hidden_states=sample,
+                    temb=emb,
+                    res_hidden_states_tuple=res_samples,
+                    encoder_hidden_states=encoder_hidden_states,
+                    image_only_indicator=image_only_indicator,
+                    flow=flow_sample,
+                )
             else:
                 sample = upsample_block(
                     hidden_states=sample,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     image_only_indicator=image_only_indicator,
+                    flow=flow_sample,
                 )
 
         # 6. post-process
