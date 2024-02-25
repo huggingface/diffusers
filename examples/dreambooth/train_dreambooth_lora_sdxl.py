@@ -102,7 +102,7 @@ These are {repo_id} LoRA adaption weights for {base_model}.
 
 The weights were trained  using [DreamBooth](https://dreambooth.github.io/).
 
-LoRA for the text encoder was enabled: {train_text_encoder}.
+{f"LoRA for the text encoder was enabled." if train_text_encoder else ""}
 
 Special VAE used for training: {vae_path}.
 

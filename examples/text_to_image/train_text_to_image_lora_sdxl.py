@@ -90,7 +90,7 @@ def save_model_card(
 These are LoRA adaption weights for {base_model}. The weights were fine-tuned on the {dataset_name} dataset. You can find some example images in the following. \n
 {img_str}
 
-LoRA for the text encoder was enabled: {train_text_encoder}.
+{"LoRA for the text encoder was enabled." if train_text_encoder}
 
 Special VAE used for training: {vae_path}.
 """

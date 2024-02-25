@@ -196,9 +196,9 @@ All [Files & versions](/{repo_id}/tree/main).
 
 The weights were trained using [🧨 diffusers Advanced Dreambooth Training Script](https://github.com/huggingface/diffusers/blob/main/examples/advanced_diffusion_training/train_dreambooth_lora_sdxl_advanced.py).
 
-LoRA for the text encoder was enabled. {train_text_encoder}.
+{"LoRA for the text encoder was enabled." if train_text_encoder else ""}.
 
-Pivotal tuning was enabled: {train_text_encoder_ti}.
+{"Pivotal tuning was enabled." if train_text_encoder_ti else ""}.
 
 Special VAE used for training: {vae_path}.
 
