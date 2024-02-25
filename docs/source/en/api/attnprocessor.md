@@ -41,12 +41,6 @@ An attention processor is a class for applying different types of attention mech
 ## FusedAttnProcessor2_0
 [[autodoc]] models.attention_processor.FusedAttnProcessor2_0
 
-## LoRAAttnProcessor
-[[autodoc]] models.attention_processor.LoRAAttnProcessor
-
-## LoRAAttnProcessor2_0
-[[autodoc]] models.attention_processor.LoRAAttnProcessor2_0
-
 ## LoRAAttnAddedKVProcessor
 [[autodoc]] models.attention_processor.LoRAAttnAddedKVProcessor
 

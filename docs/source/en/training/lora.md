@@ -113,36 +113,50 @@ The dataset preprocessing code and training loop are found in the [`main()`](htt
 
 As with the script parameters, a walkthrough of the training script is provided in the [Text-to-image](text2image#training-script) training guide. Instead, this guide takes a look at the LoRA relevant parts of the script.
 
-The script begins by adding the [new LoRA weights](https://github.com/huggingface/diffusers/blob/dd9a5caf61f04d11c0fa9f3947b69ab0010c9a0f/examples/text_to_image/train_text_to_image_lora.py#L447) to the attention layers. This involves correctly configuring the weight size for each block in the UNet. You'll see the `rank` parameter is used to create the [`~models.attention_processor.LoRAAttnProcessor`]:
+<hfoptions id="lora">
+<hfoption id="UNet">
+
+Diffusers uses [`~peft.LoraConfig`] from the [PEFT](https://hf.co/docs/peft) library to set up the parameters of the LoRA adapter such as the rank, alpha, and which modules to insert the LoRA weights into. The adapter is added to the UNet, and only the LoRA layers are filtered for optimization in `lora_layers`.
 
 ```py
-lora_attn_procs = {}
-for name in unet.attn_processors.keys():
-    cross_attention_dim = None if name.endswith("attn1.processor") else unet.config.cross_attention_dim
-    if name.startswith("mid_block"):
-        hidden_size = unet.config.block_out_channels[-1]
-    elif name.startswith("up_blocks"):
-        block_id = int(name[len("up_blocks.")])
-        hidden_size = list(reversed(unet.config.block_out_channels))[block_id]
-    elif name.startswith("down_blocks"):
-        block_id = int(name[len("down_blocks.")])
-        hidden_size = unet.config.block_out_channels[block_id]
+unet_lora_config = LoraConfig(
+    r=args.rank,
+    lora_alpha=args.rank,
+    init_lora_weights="gaussian",
+    target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+)
 
-    lora_attn_procs[name] = LoRAAttnProcessor(
-        hidden_size=hidden_size,
-        cross_attention_dim=cross_attention_dim,
-        rank=args.rank,
-    )
-
-unet.set_attn_processor(lora_attn_procs)
-lora_layers = AttnProcsLayers(unet.attn_processors)
+unet.add_adapter(unet_lora_config)
+lora_layers = filter(lambda p: p.requires_grad, unet.parameters())
 ```
 
-The [optimizer](https://github.com/huggingface/diffusers/blob/dd9a5caf61f04d11c0fa9f3947b69ab0010c9a0f/examples/text_to_image/train_text_to_image_lora.py#L519) is initialized with the `lora_layers` because these are the only weights that'll be optimized:
+</hfoption>
+<hfoption id="text encoder">
+
+Diffusers also supports finetuning the text encoder with LoRA from the [PEFT](https://hf.co/docs/peft) library when necessary such as finetuning Stable Diffusion XL (SDXL). The [`~peft.LoraConfig`] is used to configure the parameters of the LoRA adapter which are then added to the text encoder, and only the LoRA layers are filtered for training.
+
+```py
+text_lora_config = LoraConfig(
+    r=args.rank,
+    lora_alpha=args.rank,
+    init_lora_weights="gaussian",
+    target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
+)
+
+text_encoder_one.add_adapter(text_lora_config)
+text_encoder_two.add_adapter(text_lora_config)
+text_lora_parameters_one = list(filter(lambda p: p.requires_grad, text_encoder_one.parameters()))
+text_lora_parameters_two = list(filter(lambda p: p.requires_grad, text_encoder_two.parameters()))
+```
+
+</hfoption>
+</hfoptions>
+
+The [optimizer](https://github.com/huggingface/diffusers/blob/e4b8f173b97731686e290b2eb98e7f5df2b1b322/examples/text_to_image/train_text_to_image_lora.py#L529) is initialized with the `lora_layers` because these are the only weights that'll be optimized:
 
 ```py
 optimizer = optimizer_cls(
-    lora_layers.parameters(),
+    lora_layers,
     lr=args.learning_rate,
     betas=(args.adam_beta1, args.adam_beta2),
     weight_decay=args.adam_weight_decay,
