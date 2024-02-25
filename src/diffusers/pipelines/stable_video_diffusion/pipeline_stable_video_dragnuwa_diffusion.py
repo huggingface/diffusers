@@ -247,22 +247,23 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
 
-        if (
-            not isinstance(trajectories, list)
-            or not isinstance(trajectories[0], list)
-            or not isinstance(trajectories[0][0], (tuple, list))
-        ):
-            raise ValueError(
-                f"`trajectories` must be of type `List[List[Tuple[int, int]]]` but found {type(trajectories)=}"
-            )
-        for trajectory in trajectories:
-            if len(trajectory) == 0:
-                raise ValueError("Every trajectory element of `trajectories` must be a non-empty list")
-            for point in trajectory:
-                if len(point) != 2:
-                    raise ValueError(
-                        "Every point in a trajectory of `trajectories` must be described by two integer points"
-                    )
+        if len(trajectories) > 0:
+            if (
+                not isinstance(trajectories, list)
+                or not isinstance(trajectories[0], list)
+                or not isinstance(trajectories[0][0], (tuple, list))
+            ):
+                raise ValueError(
+                    f"`trajectories` must be of type `List[List[Tuple[int, int]]]` but found {type(trajectories)=}"
+                )
+            for trajectory in trajectories:
+                if len(trajectory) == 0:
+                    raise ValueError("Every trajectory element of `trajectories` must be a non-empty list")
+                for point in trajectory:
+                    if len(point) != 2:
+                        raise ValueError(
+                            "Every point in a trajectory of `trajectories` must be described by two integer points"
+                        )
 
     # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.prepare_latents
     def prepare_latents(
@@ -521,38 +522,41 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         self._guidance_scale = guidance_scale
 
         # 9. Encode trajectories
-        trajectories = [
-            [
-                (
-                    point[0] * width / original_width,
-                    point[1] * height / original_height,
-                )
-                for point in trajectory
+        if len(trajectories) == 0:
+            flow = None
+        else:
+            trajectories = [
+                [
+                    (
+                        point[0] * width / original_width,
+                        point[1] * height / original_height,
+                    )
+                    for point in trajectory
+                ]
+                for trajectory in trajectories
             ]
-            for trajectory in trajectories
-        ]
-        flow = torch.zeros(fps, height, width, 2, device=device)
+            flow = torch.zeros(fps, height, width, 2, device=device)
 
-        for trajectory in trajectories:
-            if len(trajectory) == 1:
-                displacement_point = (trajectory[0][0] + 1, trajectory[0][1] + 1)
-                trajectory = (trajectory, displacement_point)
+            for trajectory in trajectories:
+                if len(trajectory) == 1:
+                    displacement_point = (trajectory[0][0] + 1, trajectory[0][1] + 1)
+                    trajectory = (trajectory, displacement_point)
 
-            trajectory = self._interpolate_trajectory(trajectory, fps + 1)[: fps + 1]
+                trajectory = self._interpolate_trajectory(trajectory, fps + 1)[: fps + 1]
 
-            if len(trajectory) < fps + 1:
-                trajectory = trajectory + [trajectory[-1]] * (fps - len(trajectory))
+                if len(trajectory) < fps + 1:
+                    trajectory = trajectory + [trajectory[-1]] * (fps - len(trajectory))
 
-            for i in range(fps):
-                point1 = trajectory[i]
-                point2 = trajectory[i + 1]
-                flow[i][int(point1[1])][int(point1[0])][0] = point2[0] - point1[0]
-                flow[i][int(point1[1])][int(point1[0])][0] = point2[1] - point1[1]
+                for i in range(fps):
+                    point1 = trajectory[i]
+                    point2 = trajectory[i + 1]
+                    flow[i][int(point1[1])][int(point1[0])][0] = point2[0] - point1[0]
+                    flow[i][int(point1[1])][int(point1[0])][0] = point2[1] - point1[1]
 
-        flow = flow.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
-        flow = torch.cat([torch.zeros_like(flow[:, 0]).unsqueeze(1), flow], dim=1)
-        flow = flow.permute(0, 1, 4, 2, 3).to(dtype=image_embeddings.dtype)
-        flow = torch.cat([flow] * 2) if self.do_classifier_free_guidance else flow
+            flow = flow.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
+            flow = torch.cat([torch.zeros_like(flow[:, 0]).unsqueeze(1), flow], dim=1)
+            flow = flow.permute(0, 1, 4, 2, 3).to(dtype=image_embeddings.dtype)
+            flow = torch.cat([flow] * 2) if self.do_classifier_free_guidance else flow
 
         # 10. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
