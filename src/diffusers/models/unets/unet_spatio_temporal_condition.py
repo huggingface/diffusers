@@ -475,7 +475,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         encoder_hidden_states = encoder_hidden_states.repeat_interleave(num_frames, dim=0)
 
         flow_block_samples = []
-        if self.is_dragnuwa:
+        if self.is_dragnuwa and flow is not None:
             flow = flow.flatten(0, 1)
 
         # 2. pre-process
@@ -495,7 +495,6 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                         flow = flow.permute(0, 3, 4, 2, 1)
                         flow = flow.flatten(0, 2)
                         flow = flow_module(flow)
-                        print("hi")
                         flow = flow.reshape(flow_batch_size // num_frames, flow_height, flow_width, -1, num_frames)
                         flow = flow.permute(0, 4, 3, 1, 2)
                         flow = flow.flatten(0, 1)
