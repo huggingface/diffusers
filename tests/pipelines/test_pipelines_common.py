@@ -89,10 +89,10 @@ class SDFunctionTesterMixin:
         pipe.enable_vae_slicing()
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
+        inputs["return_dict"] = False
         output_2 = pipe(**inputs)
 
-        # there is a small discrepancy at image borders vs. full batch decode
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 3e-3
+        assert np.abs(output_2[0].flatten() - output_1[0].flatten()).max() < 3e-3
 
     def test_vae_tiling(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
@@ -109,14 +109,14 @@ class SDFunctionTesterMixin:
 
         # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
         generator = torch.Generator(device=device).manual_seed(0)
-        output_1 = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        output_1 = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)
 
         # make sure tiled vae decode yields the same result
         pipe.enable_vae_tiling()
         generator = torch.Generator(device=device).manual_seed(0)
-        output_2 = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np")
+        output_2 = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)
 
-        assert np.abs(output_2.images.flatten() - output_1.images.flatten()).max() < 5e-1
+        assert np.abs(output_2[0].flatten() - output_1[0].flatten()).max() < 5e-1
 
         # test that tiled decode works with various shapes
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
@@ -131,10 +131,10 @@ class SDFunctionTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "hey"
-        output = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+        output = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0), return_dict=False)[0]
 
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
-        output_freeu = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+        output_freeu = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0), return_dict=False)[0]
 
         assert not np.allclose(
             output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
@@ -147,7 +147,7 @@ class SDFunctionTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         prompt = "hey"
-        output = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+        output = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0), return_dict=False)[0]
 
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         pipe.disable_freeu()
@@ -157,7 +157,7 @@ class SDFunctionTesterMixin:
             for key in freeu_keys:
                 assert getattr(upsample_block, key) is None, f"Disabling of FreeU should have set {key} to None."
 
-        output_no_freeu = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0)).images
+        output_no_freeu = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0), return_dict=False)[0]
 
         assert np.allclose(
             output[0, -3:, -3:, -1], output_no_freeu[0, -3:, -3:, -1]
@@ -171,18 +171,21 @@ class SDFunctionTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
+        inputs["return_dict"] = False
+        image = pipe(**inputs)[0]
         original_image_slice = image[0, -3:, -3:, -1]
 
         pipe.fuse_qkv_projections()
         inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
+        inputs["return_dict"] = False
+        image_fused = pipe(**inputs)[0]
+        image_slice_fused = image_fused[0, -3:, -3:, -1]
 
         pipe.unfuse_qkv_projections()
         inputs = self.get_dummy_inputs(device)
-        image = pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
+        inputs["return_dict"] = False
+        image_disabled = pipe(**inputs)[0]
+        image_slice_disabled = image_disabled[0, -3:, -3:, -1]
 
         assert np.allclose(
             original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
@@ -1271,7 +1274,7 @@ class PipelineTesterMixin:
         # accounts for models that modify the number of inference steps based on strength
         assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps)
 
-    def test_LDM_component(self):
+    def test_StableDiffusionMixin_component(self):
         """Any pipeline that have LDMFuncMixin should have vae and unet components."""
         if not issubclass(self.pipeline_class, StableDiffusionMixin):
             return
