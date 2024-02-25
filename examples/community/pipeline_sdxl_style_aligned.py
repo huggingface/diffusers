@@ -1769,7 +1769,7 @@ class StyleAlignedSDXLPipeline(
 
         # 4. Prepare timesteps
         def denoising_value_valid(dnv):
-            return isinstance(self.denoising_end, float) and 0 < dnv < 1
+            return isinstance(dnv, float) and 0 < dnv < 1
 
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
 
@@ -1778,7 +1778,7 @@ class StyleAlignedSDXLPipeline(
                 num_inference_steps,
                 strength,
                 device,
-                denoising_start=self.denoising_start if denoising_value_valid else None,
+                denoising_start=self.denoising_start if denoising_value_valid(self.denoising_start) else None,
             )
 
             # check that number of inference steps is not < 1 - as this doesn't make sense
