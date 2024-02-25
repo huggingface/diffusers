@@ -535,19 +535,19 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
                 ]
                 for trajectory in trajectories
             ]
-            flow = torch.zeros(fps, height, width, 2, device=device)
+            flow = torch.zeros(num_frames - 1, height, width, 2, device=device)
 
             for trajectory in trajectories:
                 if len(trajectory) == 1:
                     displacement_point = (trajectory[0][0] + 1, trajectory[0][1] + 1)
                     trajectory = (trajectory, displacement_point)
 
-                trajectory = self._interpolate_trajectory(trajectory, fps + 1)[: fps + 1]
+                trajectory = self._interpolate_trajectory(trajectory, num_frames)[:num_frames]
 
-                if len(trajectory) < fps + 1:
-                    trajectory = trajectory + [trajectory[-1]] * (fps - len(trajectory))
+                if len(trajectory) < num_frames:
+                    trajectory = trajectory + [trajectory[-1]] * (num_frames - len(trajectory))
 
-                for i in range(fps):
+                for i in range(num_frames - 1):
                     point1 = trajectory[i]
                     point2 = trajectory[i + 1]
                     flow[i][int(point1[1])][int(point1[0])][0] = point2[0] - point1[0]
