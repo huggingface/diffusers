@@ -581,7 +581,17 @@ class StableDiffusionXLPipeline(
 
                 image_embeds.append(single_image_embeds)
         else:
-            image_embeds = ip_adapter_image_embeds
+            image_embeds = []
+            for single_image_embeds in ip_adapter_image_embeds:
+                if self.do_classifier_free_guidance:
+                    single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
+                    single_negative_image_embeds = single_negative_image_embeds.repeat(num_images_per_prompt, 1, 1)
+                    single_image_embeds = single_image_embeds.repeat(num_images_per_prompt, 1, 1)
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                else:
+                    single_image_embeds = single_image_embeds.repeat(num_images_per_prompt, 1, 1)
+                image_embeds.append(single_image_embeds)
+
         return image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
