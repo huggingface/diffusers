@@ -3561,6 +3561,8 @@ pipe.disable_style_aligned()
 
 This pipeline adds experimental support for the image-to-video task using AnimateDiff. Refer to [this](https://github.com/huggingface/diffusers/pull/6328) PR for more examples and results.
 
+This pipeline relies on a "hack" discovered by the community that allows the generation of videos given an input image with AnimateDiff. It works by creating a copy of the image `num_frames` times and progressively adding more noise to the image based on the strength and latent interpolation method.
+
 ```py
 import torch
 from diffusers import MotionAdapter, DiffusionPipeline, DDIMScheduler
