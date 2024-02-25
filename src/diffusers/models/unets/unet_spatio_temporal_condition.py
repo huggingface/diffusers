@@ -485,23 +485,24 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
 
         down_block_res_samples = (sample,)
         for index, downsample_block in enumerate(self.down_blocks):
-            for flow_module in self.flow_blocks[index]:
-                if isinstance(flow_module, nn.Conv1d):
-                    flow_batch_size, flow_channels, flow_height, flow_width = flow.shape
-                    flow = flow.reshape(
-                        flow_batch_size // num_frames, num_frames, flow_channels, flow_height, flow_width
-                    )
-                    flow = flow.permute(0, 3, 4, 2, 1)
-                    flow = flow.flatten(0, 2)
-                    flow = flow_module(flow)
-                    print("hi")
-                    flow = flow.reshape(flow_batch_size // num_frames, flow_height, flow_width, -1, num_frames)
-                    flow = flow.permute(0, 4, 3, 1, 2)
-                    flow = flow.flatten(0, 1)
-                else:
-                    flow = flow_module(flow)
+            if flow is not None:
+                for flow_module in self.flow_blocks[index]:
+                    if isinstance(flow_module, nn.Conv1d):
+                        flow_batch_size, flow_channels, flow_height, flow_width = flow.shape
+                        flow = flow.reshape(
+                            flow_batch_size // num_frames, num_frames, flow_channels, flow_height, flow_width
+                        )
+                        flow = flow.permute(0, 3, 4, 2, 1)
+                        flow = flow.flatten(0, 2)
+                        flow = flow_module(flow)
+                        print("hi")
+                        flow = flow.reshape(flow_batch_size // num_frames, flow_height, flow_width, -1, num_frames)
+                        flow = flow.permute(0, 4, 3, 1, 2)
+                        flow = flow.flatten(0, 1)
+                    else:
+                        flow = flow_module(flow)
 
-            flow_block_samples.append(flow)
+                flow_block_samples.append(flow)
 
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 sample, res_samples = downsample_block(
