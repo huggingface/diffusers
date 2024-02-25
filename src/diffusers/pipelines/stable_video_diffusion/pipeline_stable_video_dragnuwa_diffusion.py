@@ -18,6 +18,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import numpy as np
 import PIL.Image
 import torch
+import torch.nn as nn
 from scipy.interpolate import PchipInterpolator
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
@@ -106,6 +107,38 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
         )
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
+
+        kernel_size = 199
+        sigma = 20
+        channels = 2
+        self.gaussian_filter = self._get_gaussian_kernel(kernel_size, sigma, channels)
+
+    def _get_gaussian_kernel(self, kernel_size, sigma, channels):
+        x_coord = torch.arange(kernel_size)
+        x_grid = x_coord.repeat(kernel_size).view(kernel_size, kernel_size)
+        y_grid = x_grid.t()
+        xy_grid = torch.stack([x_grid, y_grid], dim=-1).float()
+        mean = (kernel_size - 1) / 2.0
+        variance = sigma**2.0
+
+        gaussian_kernel = torch.exp(-torch.sum((xy_grid - mean) ** 2.0, dim=-1) / (2 * variance))
+        gaussian_kernel = gaussian_kernel.view(1, 1, kernel_size, kernel_size)
+        gaussian_kernel = gaussian_kernel.repeat(channels, 1, 1, 1)
+        gaussian_filter = nn.Conv2d(
+            in_channels=channels,
+            out_channels=channels,
+            kernel_size=kernel_size,
+            groups=channels,
+            bias=False,
+            padding=kernel_size // 2,
+        )
+        gaussian_filter.weight.data = gaussian_kernel
+        gaussian_filter.weight.requires_grad = False
+
+        for name, param in gaussian_filter.named_parameters():
+            param.requires_grad = False
+
+        return gaussian_filter
 
     # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion._encode_image
     def _encode_image(self, image, device, num_videos_per_prompt, do_classifier_free_guidance):
@@ -554,6 +587,9 @@ class StableVideoDragNUWAPipeline(DiffusionPipeline, LoraLoaderMixin):
                     flow[i][int(point1[1])][int(point1[0])][0] = point2[1] - point1[1]
 
             flow = flow.unsqueeze(0).repeat(batch_size, 1, 1, 1, 1)
+            flow = flow.flatten(0, 1).permute(0, 3, 1, 2)
+            flow = self.gaussian_filter.to(device)(flow)
+            flow = flow.permute(0, 2, 3, 1).reshape(batch_size, num_frames - 1, height, width, 2)
             flow = torch.cat([torch.zeros_like(flow[:, 0]).unsqueeze(1), flow], dim=1)
             flow = flow.permute(0, 1, 4, 2, 3).to(dtype=image_embeddings.dtype)
             flow = torch.cat([flow] * 2) if self.do_classifier_free_guidance else flow
