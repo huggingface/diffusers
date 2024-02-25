@@ -181,10 +181,6 @@ class FromSingleFileMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
-                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
-                weights. If set to `False`, safetensors weights are not loaded.
         Examples:
 
         ```py
@@ -216,7 +212,6 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        use_safetensors = kwargs.pop("use_safetensors", True)
 
         class_name = cls.__name__
 
@@ -230,7 +225,6 @@ class FromSingleFileMixin:
             token=token,
             revision=revision,
             local_files_only=local_files_only,
-            use_safetensors=use_safetensors,
             cache_dir=cache_dir,
         )
 
