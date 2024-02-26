@@ -225,8 +225,9 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
     def test_float16_inference(self):
         super().test_float16_inference()
 
-    # def test_callback_inputs(self):
-    #     pass
+    @unittest.skip(reason="no callback test for combined pipeline")
+    def test_callback_inputs(self):
+        super().test_callback_inputs()
 
     # def test_callback_cfg(self):
     #     pass
