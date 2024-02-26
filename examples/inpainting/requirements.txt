@@ -6,3 +6,4 @@ ftfy
 tensorboard
 Jinja2
 peft==0.7.0
+opencv-python==4.8.0.76

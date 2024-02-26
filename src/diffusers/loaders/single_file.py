@@ -50,6 +50,7 @@ def build_sub_model_components(
     image_size=None,
     **kwargs,
 ):
+    
     if component_name in pipeline_components:
         return {}
 

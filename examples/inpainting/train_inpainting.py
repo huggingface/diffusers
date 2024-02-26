@@ -14,11 +14,13 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import cv2
 import logging
 import math
 import os
 import random
 import shutil
+from functools import partial
 from pathlib import Path
 
 import accelerate
@@ -39,7 +41,6 @@ from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
 from transformers.utils import ContextManagers
-from functools import partial
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
@@ -48,7 +49,6 @@ from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
-
 
 
 if is_wandb_available():
@@ -64,6 +64,173 @@ DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
 
+def make_random_irregular_mask(shape, max_angle, max_len, max_width, min_times, max_times):
+
+    height, width = shape
+    mask = np.zeros((height, width), np.float32)
+    times = np.random.randint(min_times, max_times + 1)
+    for i in range(times):
+        start_x = np.random.randint(width)
+        start_y = np.random.randint(height)
+        for j in range(1 + np.random.randint(5)):
+            angle = 0.01 + np.random.randint(max_angle)
+            if i % 2 == 0:
+                angle = 2 * 3.1415926 - angle
+            length = 10 + np.random.randint(max_len)
+            brush_w = 5 + np.random.randint(max_width)
+            end_x = np.clip((start_x + length * np.sin(angle)).astype(np.int32), 0, width)
+            end_y = np.clip((start_y + length * np.cos(angle)).astype(np.int32), 0, height)
+
+            cv2.line(mask, (start_x, start_y), (end_x, end_y), 1.0, brush_w)
+            start_x, start_y = end_x, end_y
+    return torch.from_numpy(mask[None, ...]).squeeze(0).byte()
+
+def make_random_rectangle_mask(shape, margin, bbox_min_size, bbox_max_size, min_times, max_times):
+    
+    height, width = shape
+    mask = np.zeros((height, width), np.float32)
+    bbox_max_size = min(bbox_max_size, height - margin * 2, width - margin * 2)
+    times = np.random.randint(min_times, max_times + 1)
+    for i in range(times):
+        box_width = np.random.randint(bbox_min_size, bbox_max_size)
+        box_height = np.random.randint(bbox_min_size, bbox_max_size)
+        start_x = np.random.randint(margin, width - margin - box_width + 1)
+        start_y = np.random.randint(margin, height - margin - box_height + 1)
+        mask[start_y:start_y + box_height, start_x:start_x + box_width] = 1
+    return torch.from_numpy(mask[None, ...]).squeeze(0).byte()
+    
+
+class RandomIrregularMaskGenerator:
+    """
+    Initializes the RandomIrregularMaskGenerator with the provided parameters.
+
+    Parameters:
+        max_angle (int): The maximum angle for the line segments, influencing the irregularity of the shapes.
+        max_len (int): The maximum length for each line segment, affecting the size of the irregular shapes.
+        max_width (int): The maximum width for each line segment, determining the thickness of the irregular shapes.
+        min_times (int): The minimum number of irregular shapes to be generated on the mask.
+        max_times (int): The maximum number of irregular shapes to be generated on the mask.
+    """
+    def __init__(self, max_angle, max_len, max_width, min_times, max_times):
+        self.max_angle = max_angle
+        self.max_len = max_len
+        self.max_width = max_width
+        self.min_times = min_times
+        self.max_times = max_times
+
+    def __call__(self, img_shape):
+        """
+        Generates a mask with random irregular shapes when called with an image.
+
+        Parameters:
+            img (tuple): Tuple of image dimensions, excluding channels.
+
+        Returns:
+            np.array: A mask array with the same height and width as the input image, containing random irregular shapes.
+        """
+        cur_max_len = int(max(1, self.max_len))
+        cur_max_width = int(max(1, self.max_width))
+        cur_max_times = int(self.min_times + 1 + (self.max_times - self.min_times))
+        return make_random_irregular_mask(img_shape, max_angle=self.max_angle, max_len=cur_max_len,
+                                          max_width=cur_max_width, min_times=self.min_times, max_times=cur_max_times)
+
+
+class RandomRectangleMaskGenerator:
+    """
+    A generator class for creating masks with random rectangular shapes on images.
+    The rectangles are defined within specified constraints for margins, size, and the number of times they appear.
+
+    Attributes:
+        margin (int): The minimum distance between the rectangle edges and the image boundaries.
+        bbox_min_size (int): The minimum size for the width and height of the rectangles.
+        bbox_max_size (int): The maximum size for the width and height of the rectangles.
+        min_times (int): The minimum number of rectangles to be generated on the mask.
+        max_times (int): The maximum number of rectangles to be generated on the mask.
+    """
+    def __init__(self, margin, bbox_min_size, bbox_max_size, min_times, max_times):
+        self.margin = margin
+        self.bbox_min_size = bbox_min_size
+        self.bbox_max_size = bbox_max_size
+        self.min_times = min_times
+        self.max_times = max_times
+
+    def __call__(self, img_shape):
+        """
+        Generates a mask with random rectangles when called with an image.
+
+        Parameters:
+            img (tuple): Tuple of image dimensions, excluding channels.
+
+        Returns:
+            np.array: A mask array with the same height and width as the input image, containing random rectangles.
+        """
+        cur_bbox_max_size = int(self.bbox_min_size + 1 + (self.bbox_max_size - self.bbox_min_size))
+        cur_max_times = int(self.min_times + (self.max_times - self.min_times))
+        return make_random_rectangle_mask(img_shape, margin=self.margin, bbox_min_size=self.bbox_min_size,
+                                          bbox_max_size=cur_bbox_max_size, min_times=self.min_times,
+                                          max_times=cur_max_times)
+        
+        
+        
+def create_center_square_binary_mask(total_size):
+    """
+    Creates a binary mask tensor based on provided parameters using PyTorch.
+    The output tensor has values of 0 or 1, where 1 represents the masked area.
+
+    :param total_size: The size of the sides of the square black background image.
+    :param max_square_size: The maximum size of the sides of the white square.
+    :param probability_threshold: The threshold for deciding between a completely white mask and a random mask.
+    :param center_mask: If True, generates a centered white square mask 3/4 the size of total_size.
+    :return: A PyTorch tensor representing the binary mask.
+    """
+    # Create a new black image (mask) as a PyTorch tensor
+    mask = torch.zeros(total_size, total_size, dtype=torch.uint8)
+
+    # Create a centered white square mask 3/4 the size of total_size
+    center_square_size = int(total_size * 3 / 4)
+    start = (total_size - center_square_size) // 2
+    end = start + center_square_size
+    mask[start:end, start:end] = 1
+
+    return mask
+
+
+def create_mask(complete_mask_prob, total_size, center_mask, args):
+    
+    
+    if center_mask:
+        mask = create_center_square_binary_mask(total_size)
+    
+    else:
+        random_number = random.random()
+        if random_number < complete_mask_prob:
+            mask = torch.zeros(total_size, total_size, dtype=torch.uint8)
+            mask.fill_(1)
+        else:
+            
+            if random_number < complete_mask_prob + (1 - complete_mask_prob)/2:
+                mask_generator = RandomIrregularMaskGenerator(
+                    max_angle=args.i_max_angle, 
+                    max_len=args.i_max_len, 
+                    max_width=args.i_max_width, 
+                    min_times=args.i_min_times, 
+                    max_times=args.i_max_times
+                    )
+                mask = mask_generator((total_size, total_size))
+            else:
+                mask_generator = RandomRectangleMaskGenerator(
+                    margin=args.r_margin,
+                    bbox_min_size=args.r_bbox_min_size,
+                    bbox_max_size=args.r_bbox_max_size,
+                    min_times=args.r_min_times,
+                    max_times=args.r_max_times
+                )
+                mask = mask_generator((total_size, total_size))
+        
+    return mask
+
+
+
 
 def save_model_card(
     args,
@@ -75,7 +242,7 @@ def save_model_card(
 ):
     img_str = ""
     if len(images) > 0:
-        image_grid = make_image_grid(images+masks, 2, args.validation_size)
+        image_grid = make_image_grid(images + masks, 2, args.validation_size)
         image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
         img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
 
@@ -94,7 +261,7 @@ inference: true
 ---
     """
     model_card = f"""
-# Text-to-image finetuning - {repo_id}
+# Inpainting finetuning - {repo_id}
 
 This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {prompts}: \n
 {img_str}
@@ -109,7 +276,9 @@ import torch
 
 pipeline = DiffusionPipeline.from_pretrained("{repo_id}", torch_dtype=torch.float16)
 prompt = "{prompts[0]}"
-image = pipeline(prompt).images[0]
+mask = "{masks[0]}"
+init_image = "{images[0]}"
+image = pipeline(prompt, mask_image=mask, image=init_image).images[0]
 image.save("my_image.png")
 ```
 
@@ -172,19 +341,14 @@ def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, ar
     masks = []
     image_transform = transforms.ToPILImage()
     for _, batch in enumerate(validation_dataloader):
-        
-        mask = image_transform(batch['masks'][0]*255)
-        init_image= image_transform(batch['pixel_values'][0])
-        prompt = batch['prompts'][0]
-        
+        mask = image_transform(batch["masks"][0] * 255)
+        init_image = image_transform(batch["pixel_values"][0])
+        prompt = batch["prompts"][0]
+
         with torch.autocast("cuda"):
             #### UPDATE PIPELINE HERE
             image = pipeline(
-                prompt,
-                image=init_image,
-                mask_image=mask, 
-                num_inference_steps=20, 
-                generator=generator
+                prompt, image=init_image, mask_image=mask, num_inference_steps=20, generator=generator
             ).images[0]
 
         prompts.append(prompt)
@@ -196,7 +360,6 @@ def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, ar
             np_images = np.stack([np.asarray(img) for img in images])
             tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
         elif tracker.name == "wandb":
-            
             tracker.log(
                 {
                     "validation": [
@@ -214,42 +377,8 @@ def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, ar
     return images
 
 
-def create_custom_binary_mask_torch(total_size, max_square_size, probability_threshold, center_mask=False):
-    """
-    Creates a binary mask tensor based on provided parameters using PyTorch.
-    The output tensor has values of 0 or 1, where 1 represents the masked area.
 
-    :param total_size: The size of the sides of the square black background image.
-    :param max_square_size: The maximum size of the sides of the white square.
-    :param probability_threshold: The threshold for deciding between a completely white mask and a random mask.
-    :param center_mask: If True, generates a centered white square mask 3/4 the size of total_size.
-    :return: A PyTorch tensor representing the binary mask.
-    """
-    # Create a new black image (mask) as a PyTorch tensor
-    mask = torch.zeros(total_size, total_size, dtype=torch.uint8)
 
-    if center_mask:
-        # Create a centered white square mask 3/4 the size of total_size
-        center_square_size = int(total_size * 3 / 4)
-        start = (total_size - center_square_size) // 2
-        end = start + center_square_size
-        mask[start:end, start:end] = 1
-    else:
-        # Generate a random number between 0 and 1
-        random_number = random.random()
-
-        if random_number < probability_threshold:
-            # Create a completely white (binary 1) mask
-            mask.fill_(1)
-        else:
-            # Create a mask with a random white square
-            square_size = random.randint(max_square_size // 2, max_square_size)
-            max_val = total_size - square_size
-            top_left_x = random.randint(0, max_val)
-            top_left_y = random.randint(0, max_val)
-            mask[top_left_y:top_left_y + square_size, top_left_x:top_left_x + square_size] = 1
-
-    return mask
 
 
 def parse_args():
@@ -553,6 +682,7 @@ def parse_args():
 
     return args
 
+
 def main():
     args = parse_args()
 
@@ -611,33 +741,13 @@ def main():
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
-
-    def deepspeed_zero_init_disabled_context_manager():
-        """
-        returns either a context list that includes one that will disable zero.Init or an empty context list
-        """
-        deepspeed_plugin = AcceleratorState().deepspeed_plugin if accelerate.state.is_initialized() else None
-        if deepspeed_plugin is None:
-            return []
-
-        return [deepspeed_plugin.zero3_init_context_manager(enable=False)]
-
-    # Currently Accelerate doesn't know how to handle multiple models under Deepspeed ZeRO stage 3.
-    # For this to work properly all models must be run through `accelerate.prepare`. But accelerate
-    # will try to assign the same optimizer with the same weights to all models during
-    # `deepspeed.initialize`, which of course doesn't work.
-    #
-    # For now the following workaround will partially support Deepspeed ZeRO-3, by excluding the 2
-    # frozen models from being partitioned during `zero.Init` which gets called during
-    # `from_pretrained` So CLIPTextModel and AutoencoderKL will not enjoy the parameter sharding
-    # across multiple gpus and only UNet2DConditionModel will get ZeRO sharded.
-    with ContextManagers(deepspeed_zero_init_disabled_context_manager()):
-        text_encoder = CLIPTextModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
-        )
-        vae = AutoencoderKL.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
-        )
+   
+    text_encoder = CLIPTextModel.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+    )
 
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
@@ -750,14 +860,14 @@ def main():
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             data_dir=args.train_data_dir,
-            split=datasets.ReadInstruction('train', to=args.validation_size, unit='abs')
+            split=datasets.ReadInstruction("train", to=args.validation_size, unit="abs"),
         )
         train_dataset = load_dataset(
             args.dataset_name,
             args.dataset_config_name,
             cache_dir=args.cache_dir,
             data_dir=args.train_data_dir,
-            split=datasets.ReadInstruction('train', from_=args.validation_size, unit='abs')
+            split=datasets.ReadInstruction("train", from_=args.validation_size, unit="abs"),
         )
     else:
         raise ValueError("Current Implementation supports only datasets from the hub.")
@@ -814,16 +924,15 @@ def main():
             transforms.Normalize([0.5], [0.5]),
         ]
     )
-    
+
     val_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
-            transforms.ToTensor()
+            transforms.ToTensor(),
         ]
     )
 
     def preprocess_dataset_train(examples, is_train=True):
-        
         images = [image.convert("RGB") for image in examples[image_column]]
         if is_train:
             examples["pixel_values"] = [train_transforms(image) for image in images]
@@ -843,24 +952,18 @@ def main():
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
         pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
         input_ids = torch.stack([example["input_ids"] for example in examples])
-        
-        masks = torch.stack([
-            create_custom_binary_mask_torch(
-                pixel_values.shape[2], 
-                int(3/4*pixel_values.shape[2]),
-                0.25,
-                center_mask
-                ) for ix in  range(pixel_values.shape[0])
-            ]).unsqueeze(1)
-        
-        prompts = [example[caption_column] for example in examples]
-        return {
-            "pixel_values": pixel_values, 
-            "input_ids": input_ids, 
-            "masks": masks,
-            "prompts": prompts
-            }
 
+        masks = torch.stack(
+            [
+                create_custom_binary_mask_torch(
+                    pixel_values.shape[2], int(3 / 4 * pixel_values.shape[2]), 0.25, center_mask
+                )
+                for ix in range(pixel_values.shape[0])
+            ]
+        ).unsqueeze(1)
+
+        prompts = [example[caption_column] for example in examples]
+        return {"pixel_values": pixel_values, "input_ids": input_ids, "masks": masks, "prompts": prompts}
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -870,7 +973,7 @@ def main():
         batch_size=args.train_batch_size,
         num_workers=args.dataloader_num_workers,
     )
-    
+
     val_dataloader = torch.utils.data.DataLoader(
         val_dataset,
         shuffle=False,
@@ -878,7 +981,6 @@ def main():
         batch_size=1,
         num_workers=0,
     )
-    
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
@@ -983,7 +1085,7 @@ def main():
         # Only show the progress bar once on each machine.
         disable=not accelerator.is_local_main_process,
     )
-    
+
     vae_downscaling_factor = 2 ** (len(vae.config.block_out_channels) - 1)
 
     for epoch in range(first_epoch, args.num_train_epochs):
@@ -992,23 +1094,23 @@ def main():
             with accelerator.accumulate(unet):
                 # Convert images to latent space
                 pixel_values = batch["pixel_values"].to(weight_dtype)
-                
+
                 latents = vae.encode(pixel_values).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
-                
-                mask_orig = batch["masks"].to(weight_dtype) 
-    
+
+                mask_orig = batch["masks"].to(weight_dtype)
+
                 masked_latents = vae.encode(pixel_values * (1.0 - mask_orig)).latent_dist.sample()
                 masked_latents = masked_latents * vae.config.scaling_factor
-                
+
                 mask = torch.nn.functional.interpolate(
-                            mask_orig, 
-                            size=(
-                                int(mask_orig.shape[3] // vae_downscaling_factor), 
-                                int(mask_orig.shape[2] // vae_downscaling_factor)
-                                )
-                        ).to(dtype=weight_dtype, device=accelerator.device)
-                
+                    mask_orig,
+                    size=(
+                        int(mask_orig.shape[3] // vae_downscaling_factor),
+                        int(mask_orig.shape[2] // vae_downscaling_factor),
+                    ),
+                ).to(dtype=weight_dtype, device=accelerator.device)
+
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(latents)
                 if args.noise_offset:
@@ -1090,7 +1192,6 @@ def main():
                 train_loss = 0.0
 
                 if global_step % args.checkpointing_steps == 0:
-                    
                     if accelerator.is_main_process:
                         # _before_ saving state, check if this save would set us over the `checkpoints_total_limit`
                         if args.checkpoints_total_limit is not None:
@@ -1121,7 +1222,7 @@ def main():
 
             if global_step >= args.max_train_steps:
                 break
-                                     
+
         if accelerator.is_main_process:
             if args.validation_size > 0 and epoch % args.validation_epochs == 0:
                 if args.use_ema:
@@ -1142,7 +1243,7 @@ def main():
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
                     ema_unet.restore(unet.parameters())
-              
+
     # Create the pipeline using the trained modules and save it.
     accelerator.wait_for_everyone()
     if accelerator.is_main_process:
@@ -1181,19 +1282,14 @@ def main():
             masks = []
             image_transform = transforms.ToPILImage()
             for _, batch in enumerate(val_dataloader):
-                
-                mask = image_transform(batch['masks'][0]*255)
-                init_image= image_transform(batch['pixel_values'][0])
-                prompt = batch['prompts'][0]
-                
+                mask = image_transform(batch["masks"][0] * 255)
+                init_image = image_transform(batch["pixel_values"][0])
+                prompt = batch["prompts"][0]
+
                 with torch.autocast("cuda"):
                     #### UPDATE PIPELINE HERE
                     image = pipeline(
-                        prompt,
-                        image=init_image,
-                        mask_image=mask, 
-                        num_inference_steps=20, 
-                        generator=generator
+                        prompt, image=init_image, mask_image=mask, num_inference_steps=20, generator=generator
                     ).images[0]
 
                 prompts.append(prompt)
