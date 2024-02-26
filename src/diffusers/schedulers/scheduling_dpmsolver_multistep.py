@@ -930,6 +930,11 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         if self.step_index is None:
             self._init_step_index(timestep)
 
+        # store old dtype because model_output isn't always the same it seems
+        return_dtype = sample.dtype
+        # Upcast to avoid precision issues when computing prev_sample
+        sample = sample.to(torch.float32)
+
         # Improve numerical stability for small number of steps
         lower_order_final = (self.step_index == len(self.timesteps) - 1) and (
             self.config.euler_at_final
@@ -947,7 +952,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if self.config.algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
             noise = randn_tensor(
-                model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
+                model_output.shape, generator=generator, device=model_output.device, dtype=torch.float32
             )
         else:
             noise = None
@@ -961,6 +966,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         if self.lower_order_nums < self.config.solver_order:
             self.lower_order_nums += 1
+
+        # Cast sample back to expected dtype
+        prev_sample = prev_sample.to(return_dtype)
 
         # upon completion increase step index by one
         self._step_index += 1
