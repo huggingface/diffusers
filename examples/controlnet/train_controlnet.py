@@ -83,6 +83,8 @@ def log_validation(
 
     if not is_final_validation:
         controlnet = accelerator.unwrap_model(controlnet)
+    else:
+        controlnet = ControlNetModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
 
     pipeline = StableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -1143,17 +1145,16 @@ def main(args):
         controlnet.save_pretrained(args.output_dir)
 
         # Run a final round of validation.
-        controlnet = ControlNetModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
         image_logs = log_validation(
-            vae,
-            text_encoder,
-            tokenizer,
-            unet,
-            controlnet,
-            args,
-            accelerator,
-            weight_dtype,
-            global_step,
+            vae=vae,
+            text_encoder=text_encoder,
+            tokenizer=tokenizer,
+            unet=unet,
+            controlnet=None,
+            args=args,
+            accelerator=accelerator,
+            weight_dtype=weight_dtype,
+            step=global_step,
             is_final_validation=True,
         )
 

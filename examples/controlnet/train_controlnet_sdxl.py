@@ -71,16 +71,33 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
 
     if not is_final_validation:
         controlnet = accelerator.unwrap_model(controlnet)
+        pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            vae=vae,
+            unet=unet,
+            controlnet=controlnet,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
+        )
+    else:
+        controlnet = ControlNetModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
+        if args.pretrained_vae_model_name_or_path is not None:
+            vae = AutoencoderKL.from_pretrained(args.pretrained_vae_model_name_or_path, torch_dtype=weight_dtype)
+        else:
+            vae = AutoencoderKL.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="vae", torch_dtype=weight_dtype
+            )
 
-    pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        vae=vae,
-        unet=unet,
-        controlnet=controlnet,
-        revision=args.revision,
-        variant=args.variant,
-        torch_dtype=weight_dtype,
-    )
+        pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            vae=vae,
+            controlnet=controlnet,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
+        )
+
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -1232,7 +1249,13 @@ def main(args):
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         image_logs = log_validation(
-                            vae, unet, controlnet, args, accelerator, weight_dtype, global_step
+                            vae=vae,
+                            unet=unet,
+                            controlnet=controlnet,
+                            args=args,
+                            accelerator=accelerator,
+                            weight_dtype=weight_dtype,
+                            step=global_step,
                         )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1249,9 +1272,16 @@ def main(args):
         controlnet.save_pretrained(args.output_dir)
 
         # Run a final round of validation.
-        controlnet = ControlNetModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
+        # Setting `vae`, `unet`, and `controlnet` to None to load automatically from `args.output_dir`.
         image_logs = log_validation(
-            vae, unet, controlnet, args, accelerator, weight_dtype, global_step, is_final_validation=True
+            vae=None,
+            unet=None,
+            controlnet=None,
+            args=args,
+            accelerator=accelerator,
+            weight_dtype=weight_dtype,
+            step=global_step,
+            is_final_validation=True,
         )
 
         if args.push_to_hub:
