@@ -227,6 +227,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
         addition_embed_type_num_heads: int = 64,
+        time_cond_proj_dim: Optional[int] = None,
     ):
         super().__init__()
 
@@ -275,9 +276,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         timestep_input_dim = block_out_channels[0]
 
         self.time_embedding = TimestepEmbedding(
-            timestep_input_dim,
-            time_embed_dim,
-            act_fn=act_fn,
+            timestep_input_dim, time_embed_dim, act_fn=act_fn, cond_proj_dim=time_cond_proj_dim
         )
 
         if encoder_hid_dim_type is None:
@@ -343,6 +342,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 num_attention_heads=num_attention_heads[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=False,
+                use_linear_projection=use_linear_projection,
                 temporal_num_attention_heads=motion_num_attention_heads,
                 temporal_max_seq_length=motion_max_seq_length,
                 use_linear_projection=use_linear_projection,
