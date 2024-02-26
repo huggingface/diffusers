@@ -672,9 +672,9 @@ class StableDiffusionControlNetPipeline(
                 raise ValueError(
                     f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
                 )
-
-            for image_ in image:
-                self.check_image(image_, prompt, prompt_embeds)
+            else:
+                for image_ in image:
+                    self.check_image(image_, prompt, prompt_embeds)
         else:
             assert False
 
