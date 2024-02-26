@@ -500,7 +500,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
         """
-        single_file_ckpt = False
         if is_single_file_checkpoint(pretrained_model_name_or_path):
             if cls.__name__ not in SINGLE_FILE_LOADABLE_CLASSES:
                 raise ValueError(
@@ -508,8 +507,8 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 )
             logger.info("Single file checkpoint detected...")
             model = cls.from_single_file(pretrained_model_name_or_path, **kwargs)
-            single_file_ckpt = True
-
+            model = model.eval()
+            return model
         else:
             cache_dir = kwargs.pop("cache_dir", None)
             ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
@@ -778,12 +777,12 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
 
             model.register_to_config(_name_or_path=pretrained_model_name_or_path)
 
-        # Set model in evaluation mode to deactivate DropOut modules by default
-        model.eval()
-        if not single_file_ckpt and output_loading_info:
-            return model, loading_info
+            # Set model in evaluation mode to deactivate DropOut modules by default
+            model.eval()
+            if output_loading_info:
+                return model, loading_info
 
-        return model
+            return model
 
     @classmethod
     def _load_pretrained_model(
