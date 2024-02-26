@@ -85,6 +85,10 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
+    for component, module in pipeline.components.items():
+        if isinstance(module, torch.nn.Module):
+            print(component, module.dtype)
+
     if args.enable_xformers_memory_efficient_attention:
         pipeline.enable_xformers_memory_efficient_attention()
 
@@ -193,7 +197,7 @@ def import_model_class_from_model_name_or_path(
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
     img_str = ""
     if image_logs is not None:
-        img_str = "You can find some example images below.\n"
+        img_str = "You can find some example images below.\n\n"
         for i, log in enumerate(image_logs):
             images = log["images"]
             validation_prompt = log["validation_prompt"]
@@ -1249,7 +1253,7 @@ def main(args):
         controlnet.save_pretrained(args.output_dir)
 
         # Run a final round of validation.
-        controlnet = ControlNetModel.from_pretrained(args.output_dir)
+        controlnet = ControlNetModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
         image_logs = log_validation(
             vae, unet, controlnet, args, accelerator, weight_dtype, global_step, is_final_validation=True
         )

@@ -208,7 +208,7 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
     img_str = ""
     if image_logs is not None:
-        img_str = "You can find some example images below.\n"
+        img_str = "You can find some example images below.\n\n"
         for i, log in enumerate(image_logs):
             images = log["images"]
             validation_prompt = log["validation_prompt"]
@@ -1143,7 +1143,7 @@ def main(args):
         controlnet.save_pretrained(args.output_dir)
 
         # Run a final round of validation.
-        controlnet = ControlNetModel.from_pretrained(args.output_dir)
+        controlnet = ControlNetModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
         image_logs = log_validation(
             vae,
             text_encoder,
