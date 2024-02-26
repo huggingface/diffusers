@@ -166,6 +166,8 @@ stable_cascade_pipeline = StableCascadeCombinedPipeline(
     scheduler=scheduler,
     vqgan=vqmodel,
     # Prior
+    prior_text_encoder=text_encoder,
+    prior_tokenizer=tokenizer,
     prior_prior=prior_model,
     prior_scheduler=scheduler,
     prior_image_encoder=image_encoder,
