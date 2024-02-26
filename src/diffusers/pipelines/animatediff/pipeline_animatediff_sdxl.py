@@ -1360,11 +1360,8 @@ class AnimateDiffSDXLPipeline(
             self.upcast_vae()
             latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-        if output_type != "latent":
-            video_tensor = self.decode_latents(latents)
-            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
-        else:
-            video = latents
+        video_tensor = self.decode_latents(latents)
+        video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
         # cast back to fp16 if needed
         if needs_upcasting:
