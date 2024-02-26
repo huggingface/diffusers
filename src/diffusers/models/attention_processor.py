@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 from importlib import import_module
 from typing import Callable, Optional, Union
 
@@ -509,6 +510,15 @@ class Attention(nn.Module):
         # The `Attention` class can call different attention processors / attention functions
         # here we simply pass along all tensors to the selected processor class
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
+
+        attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
+        unused_kwargs = [k for k, _ in cross_attention_kwargs.items() if k not in attn_parameters]
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"cross_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
+            )
+        cross_attention_kwargs = {k: w for k, w in cross_attention_kwargs.items() if k in attn_parameters}
+
         return self.processor(
             self,
             hidden_states,
@@ -1799,24 +1809,7 @@ class SpatialNorm(nn.Module):
         return new_f
 
 
-## Deprecated
 class LoRAAttnProcessor(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism.
-
-    Args:
-        hidden_size (`int`, *optional*):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-        network_alpha (`int`, *optional*):
-            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
-        kwargs (`dict`):
-            Additional keyword arguments to pass to the `LoRALinearLayer` layers.
-    """
-
     def __init__(
         self,
         hidden_size: int,
@@ -1825,6 +1818,9 @@ class LoRAAttnProcessor(nn.Module):
         network_alpha: Optional[int] = None,
         **kwargs,
     ):
+        deprecation_message = "Using LoRAAttnProcessor is deprecated. Please use the PEFT backend for all things LoRA. You can install PEFT by running `pip install peft`."
+        deprecate("LoRAAttnProcessor", "0.30.0", deprecation_message, standard_warn=False)
+
         super().__init__()
 
         self.hidden_size = hidden_size
@@ -1873,23 +1869,6 @@ class LoRAAttnProcessor(nn.Module):
 
 
 class LoRAAttnProcessor2_0(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism using PyTorch 2.0's memory-efficient scaled dot-product
-    attention.
-
-    Args:
-        hidden_size (`int`):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-        network_alpha (`int`, *optional*):
-            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
-        kwargs (`dict`):
-            Additional keyword arguments to pass to the `LoRALinearLayer` layers.
-    """
-
     def __init__(
         self,
         hidden_size: int,
@@ -1898,6 +1877,9 @@ class LoRAAttnProcessor2_0(nn.Module):
         network_alpha: Optional[int] = None,
         **kwargs,
     ):
+        deprecation_message = "Using LoRAAttnProcessor is deprecated. Please use the PEFT backend for all things LoRA. You can install PEFT by running `pip install peft`."
+        deprecate("LoRAAttnProcessor2_0", "0.30.0", deprecation_message, standard_warn=False)
+
         super().__init__()
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
