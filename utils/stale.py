@@ -39,7 +39,8 @@ def main():
     open_issues = repo.get_issues(state="open")
 
     for issue in open_issues:
-        if "stale" in issue.get_labels():
+        labels = [label.name for label in issue.get_labels()]
+        if "stale" in labels:
             comments = sorted(issue.get_comments(), key=lambda i: i.created_at, reverse=True)
             last_comment = comments[0] if len(comments) > 0 else None
             if (
@@ -47,7 +48,7 @@ def main():
                 and last_comment.user.login == "github-actions[bot]"
                 and (dt.now(timezone.utc) - issue.updated_at).days > 7
                 and (dt.now(timezone.utc) - issue.created_at).days >= 30
-                and not any(label.name.lower() in LABELS_TO_EXEMPT for label in issue.get_labels())
+                and not any(label.name.lower() in LABELS_TO_EXEMPT for label in labels)
             ):
                 # Closes the issue after 7 days of inactivity since the Stalebot notification.
                 issue.edit(state="closed")
@@ -58,7 +59,7 @@ def main():
         elif (
             (dt.now(timezone.utc) - issue.updated_at).days > 23
             and (dt.now(timezone.utc) - issue.created_at).days >= 30
-            and not any(label.name.lower() in LABELS_TO_EXEMPT for label in issue.get_labels())
+            and not any(label.name.lower() in LABELS_TO_EXEMPT for label in labels)
         ):
             # Post a Stalebot notification after 23 days of inactivity.
             issue.create_comment(
