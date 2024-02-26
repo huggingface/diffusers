@@ -15,6 +15,7 @@
 
 import argparse
 import torch
+import typing
 
 from diffusers import AutoencoderKL
 from diffusers.models.modeling_outputs import AutoencoderKLOutput
@@ -26,6 +27,7 @@ from typing import Optional
 
 def load_vae_model(
     *,
+    device: torch.device,
     model_name_or_path: str,
     revision: Optional[str],
     variant: Optional[str],
@@ -39,31 +41,33 @@ def load_vae_model(
         variant=variant,
     )
     assert isinstance(vae, AutoencoderKL)
+    vae = vae.to(device)
     vae.eval()  # Set the model to inference mode
     return vae
 
 
 def preprocess_image(
     *,
+    device: torch.device,
     image_path: str,
-) -> torch.FloatTensor:
+) -> torch.Tensor:
     image = Image.open(image_path).convert("RGB")
     transform = transforms.Compose(
         [
             transforms.ToTensor(),
         ]
     )
-    nhwc = transform(image).unsqueeze(0)  # type: ignore
-    assert isinstance(nhwc, torch.FloatTensor)
+    nhwc = transform(image).unsqueeze(0).to(device)  # type: ignore
+    assert isinstance(nhwc, torch.Tensor)
     return nhwc
 
 
 def postprocess_image(
     *,
-    nhwc: torch.FloatTensor,
+    nhwc: torch.Tensor,
 ) -> Image.Image:
     assert nhwc.shape[0] == 1
-    hwc = nhwc.squeeze(0)
+    hwc = nhwc.squeeze(0).cpu()
     return transforms.ToPILImage()(hwc)  # type: ignore
 
 
@@ -85,6 +89,7 @@ def concatenate_images(
 
 def infer_and_show_images(
     *,
+    device: torch.device,
     input_image_path: str,
     pretrained_model_name_or_path: str,
     revision: Optional[str],
@@ -92,17 +97,21 @@ def infer_and_show_images(
     subfolder: Optional[str],
 ) -> None:
     vae = load_vae_model(
+        device=device,
         model_name_or_path=pretrained_model_name_or_path,
         revision=revision,
         variant=variant,
         subfolder=subfolder,
     )
-    original_image = preprocess_image(image_path=input_image_path)
+    original_image = preprocess_image(
+        device=device,
+        image_path=input_image_path,
+    )
     with torch.no_grad():
-        encoding = vae.encode(original_image)
+        encoding = vae.encode(typing.cast(torch.FloatTensor, original_image))
         assert isinstance(encoding, AutoencoderKLOutput)
         latent = encoding.latent_dist.sample()  # type: ignore
-        assert isinstance(latent, torch.FloatTensor)
+        assert isinstance(latent, torch.Tensor)
         decoding = vae.decode(latent)  # type: ignore
         assert isinstance(decoding, DecoderOutput)
         reconstructed_image = decoding.sample
@@ -149,6 +158,11 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="Subfolder in the model file.",
     )
+    parser.add_argument(
+        "--use_cuda",
+        action="store_true",
+        help="Use CUDA if available.",
+    )
     return parser.parse_args()
 
 
@@ -170,7 +184,13 @@ def main() -> None:
     subfolder = args.subfolder
     assert subfolder is None or isinstance(subfolder, str)
 
+    use_cuda = args.use_cuda
+    assert isinstance(use_cuda, bool)
+
+    device = torch.device("cuda" if use_cuda else "cpu")
+
     infer_and_show_images(
+        device=device,
         input_image_path=input_image_path,
         pretrained_model_name_or_path=pretrained_model_name_or_path,
         revision=revision,
