@@ -1273,16 +1273,18 @@ def main(args):
 
         # Run a final round of validation.
         # Setting `vae`, `unet`, and `controlnet` to None to load automatically from `args.output_dir`.
-        image_logs = log_validation(
-            vae=None,
-            unet=None,
-            controlnet=None,
-            args=args,
-            accelerator=accelerator,
-            weight_dtype=weight_dtype,
-            step=global_step,
-            is_final_validation=True,
-        )
+        image_logs = None
+        if args.validation_prompt is not None:
+            image_logs = log_validation(
+                vae=None,
+                unet=None,
+                controlnet=None,
+                args=args,
+                accelerator=accelerator,
+                weight_dtype=weight_dtype,
+                step=global_step,
+                is_final_validation=True,
+            )
 
         if args.push_to_hub:
             save_model_card(

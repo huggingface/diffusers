@@ -1145,18 +1145,20 @@ def main(args):
         controlnet.save_pretrained(args.output_dir)
 
         # Run a final round of validation.
-        image_logs = log_validation(
-            vae=vae,
-            text_encoder=text_encoder,
-            tokenizer=tokenizer,
-            unet=unet,
-            controlnet=None,
-            args=args,
-            accelerator=accelerator,
-            weight_dtype=weight_dtype,
-            step=global_step,
-            is_final_validation=True,
-        )
+        image_logs = None
+        if args.validation_prompt is not None:
+            image_logs = log_validation(
+                vae=vae,
+                text_encoder=text_encoder,
+                tokenizer=tokenizer,
+                unet=unet,
+                controlnet=None,
+                args=args,
+                accelerator=accelerator,
+                weight_dtype=weight_dtype,
+                step=global_step,
+                is_final_validation=True,
+            )
 
         if args.push_to_hub:
             save_model_card(
