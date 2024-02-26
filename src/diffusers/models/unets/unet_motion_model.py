@@ -223,8 +223,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         encoder_hid_dim_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,
         addition_time_embed_dim: Optional[int] = None,
-        conv_in_kernel: int = 3,
-        conv_out_kernel: int = 3,
         projection_class_embeddings_input_dim: Optional[int] = None,
         addition_embed_type_num_heads: int = 64,
         time_cond_proj_dim: Optional[int] = None,
@@ -265,6 +263,8 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     raise ValueError("Must provide 'reverse_transformer_layers_per_block` if using asymmetrical UNet.")
 
         # input
+        conv_in_kernel = 3
+        conv_out_kernel = 3
         conv_in_padding = (conv_in_kernel - 1) // 2
         self.conv_in = nn.Conv2d(
             in_channels, block_out_channels[0], kernel_size=conv_in_kernel, padding=conv_in_padding
@@ -345,7 +345,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 use_linear_projection=use_linear_projection,
                 temporal_num_attention_heads=motion_num_attention_heads,
                 temporal_max_seq_length=motion_max_seq_length,
-                use_linear_projection=use_linear_projection,
                 transformer_layers_per_block=transformer_layers_per_block[-1],
             )
 
