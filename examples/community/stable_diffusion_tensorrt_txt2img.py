@@ -49,6 +49,7 @@ from diffusers.pipelines.stable_diffusion import (
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
 )
+from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import logging
 
@@ -588,7 +589,7 @@ def make_VAE(model, device, max_batch_size, embedding_dim, inpaint=False):
     return VAE(model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim)
 
 
-class TensorRTStableDiffusionPipeline(DiffusionPipeline):
+class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin):
     r"""
     Pipeline for text-to-image generation using TensorRT accelerated Stable Diffusion.
 
