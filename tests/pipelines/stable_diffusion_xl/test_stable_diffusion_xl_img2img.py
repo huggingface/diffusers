@@ -838,11 +838,11 @@ class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
                 continue
             assert (
                 pipe.unet.config[param_name] == param_value
-            ), f"{param_name} is differs between single file loading and pretrained loading"
+            ), f"{param_name} differs between single file loading and pretrained loading"
 
         for param_name, param_value in single_file_pipe.vae.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
             assert (
                 pipe.vae.config[param_name] == param_value
-            ), f"{param_name} is differs between single file loading and pretrained loading"
+            ), f"{param_name} differs between single file loading and pretrained loading"
