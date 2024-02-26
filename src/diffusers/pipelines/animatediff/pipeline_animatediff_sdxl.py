@@ -926,19 +926,6 @@ class AnimateDiffSDXLPipeline(
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
 
-    def _retrieve_video_frames(self, latents, output_type, return_dict):
-        """Helper function to handle latents to output conversion."""
-        if output_type == "latent":
-            return AnimateDiffPipelineOutput(frames=latents)
-
-        video_tensor = self.decode_latents(latents)
-        video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
-
-        if not return_dict:
-            return (video,)
-
-        return AnimateDiffPipelineOutput(frames=video)
-
     @property
     def guidance_scale(self):
         return self._guidance_scale
@@ -1373,7 +1360,11 @@ class AnimateDiffSDXLPipeline(
             self.upcast_vae()
             latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-        video = self._retrieve_video_frames(latents, output_type, return_dict)
+        if output_type != "latent":
+            video_tensor = self.decode_latents(latents)
+            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+        else:
+            video = latents
 
         # cast back to fp16 if needed
         if needs_upcasting:
@@ -1382,4 +1373,7 @@ class AnimateDiffSDXLPipeline(
         # 11. Offload all models
         self.maybe_free_model_hooks()
 
-        return video
+        if not return_dict:
+            return (video,)
+
+        return AnimateDiffPipelineOutput(frames=video)
