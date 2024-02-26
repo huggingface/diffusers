@@ -17,7 +17,7 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin
 
 
 def to_np(tensor):
@@ -27,7 +27,7 @@ def to_np(tensor):
     return tensor
 
 
-class AnimateDiffPipelineSDXLFastTests(PipelineTesterMixin, unittest.TestCase):
+class AnimateDiffPipelineSDXLFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = AnimateDiffSDXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
