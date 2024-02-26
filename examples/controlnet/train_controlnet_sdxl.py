@@ -85,10 +85,6 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
-    for component, module in pipeline.components.items():
-        if isinstance(module, torch.nn.Module):
-            print(component, module.dtype)
-
     if args.enable_xformers_memory_efficient_attention:
         pipeline.enable_xformers_memory_efficient_attention()
 
