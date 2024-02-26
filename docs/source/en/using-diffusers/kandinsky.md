@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -20,6 +20,8 @@ The Kandinsky models are a series of multilingual text-to-image generation model
 
 [Kandinsky 2.2](../api/pipelines/kandinsky_v22) improves on the previous model by replacing the image encoder of the image prior model with a larger CLIP-ViT-G model to improve quality. The image prior model was also retrained on images with different resolutions and aspect ratios to generate higher-resolution images and different image sizes.
 
+[Kandinsky 3](../api/pipelines/kandinsky3) simplifies the architecture and shifts away from the two-stage generation process involving the prior model and diffusion model. Instead, Kandinsky 3 uses [Flan-UL2](https://huggingface.co/google/flan-ul2) to encode text, a UNet with [BigGan-deep](https://hf.co/papers/1809.11096) blocks, and [Sber-MoVQGAN](https://github.com/ai-forever/MoVQGAN) to decode the latents into images. Text understanding and generated image quality are primarily achieved by using a larger text encoder and UNet.
+
 This guide will show you how to use the Kandinsky models for text-to-image, image-to-image, inpainting, interpolation, and more.
 
 Before you begin, make sure you have the following libraries installed:
@@ -32,6 +34,10 @@ Before you begin, make sure you have the following libraries installed:
 <Tip warning={true}>
 
 Kandinsky 2.1 and 2.2 usage is very similar! The only difference is Kandinsky 2.2 doesn't accept `prompt` as an input when decoding the latents. Instead, Kandinsky 2.2 only accepts `image_embeds` during decoding.
+
+<br>
+
+Kandinsky 3 has a more concise architecture and it doesn't require a prior model. This means it's usage is identical to other diffusion models like [Stable Diffusion XL](sdxl).
 
 </Tip>
 
@@ -90,6 +96,23 @@ image
 <div class="flex justify-center">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-text-to-image.png"/>
 </div>
+
+</hfoption>
+<hfoption id="Kandinsky 3">
+
+Kandinsky 3 doesn't require a prior model so you can directly load the [`Kandinsky3Pipeline`] and pass a prompt to generate an image:
+
+```py
+from diffusers import Kandinsky3Pipeline
+import torch
+
+pipeline = Kandinsky3Pipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+pipeline.enable_model_cpu_offload()
+
+prompt = "A alien cheeseburger creature eating itself, claymation, cinematic, moody lighting"
+image = pipeline(prompt).images[0]
+image
+```
 
 </hfoption>
 </hfoptions>
@@ -162,6 +185,20 @@ pipeline = KandinskyV22Img2ImgPipeline.from_pretrained("kandinsky-community/kand
 ```
 
 </hfoption>
+<hfoption id="Kandinsky 3">
+
+Kandinsky 3 doesn't require a prior model so you can directly load the image-to-image pipeline:
+
+```py
+from diffusers import Kandinsky3Img2ImgPipeline
+from diffusers.utils import load_image
+import torch
+
+pipeline = Kandinsky3Img2ImgPipeline.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+pipeline.enable_model_cpu_offload()
+```
+
+</hfoption>
 </hfoptions>
 
 Download an image to condition on:
@@ -217,6 +254,14 @@ make_image_grid([original_image.resize((512, 512)), image.resize((512, 512))], r
 <div class="flex justify-center">
     <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/kandinsky-image-to-image.png"/>
 </div>
+
+</hfoption>
+<hfoption id="Kandinsky 3">
+
+```py
+image = pipeline(prompt, negative_prompt=negative_prompt, image=image, strength=0.75, num_inference_steps=25).images[0]
+image
+```
 
 </hfoption>
 </hfoptions>

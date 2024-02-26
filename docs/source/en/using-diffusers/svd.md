@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -14,9 +14,9 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-[Stable Video Diffusion](https://static1.squarespace.com/static/6213c340453c3f502425776e/t/655ce779b9d47d342a93c890/1700587395994/stable_video_diffusion.pdf) is a powerful image-to-video generation model that can generate high resolution (576x1024) 2-4 second videos conditioned on the input image.
+[Stable Video Diffusion (SVD)](https://huggingface.co/papers/2311.15127) is a powerful image-to-video generation model that can generate 2-4 second high resolution (576x1024) videos conditioned on an input image.
 
-This guide will show you how to use SVD to short generate videos from images.
+This guide will show you how to use SVD to generate short videos from images.
 
 Before you begin, make sure you have the following libraries installed:
 
@@ -24,13 +24,9 @@ Before you begin, make sure you have the following libraries installed:
 !pip install -q -U diffusers transformers accelerate 
 ```
 
-## Image to Video Generation
+The are two variants of this model, [SVD](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid) and [SVD-XT](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt). The SVD checkpoint is trained to generate 14 frames and the SVD-XT checkpoint is further finetuned to generate 25 frames.
 
-The are two variants of SVD. [SVD](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid) 
-and [SVD-XT](https://huggingface.co/stabilityai/stable-video-diffusion-img2vid-xt). The svd checkpoint is trained to generate 14 frames and the svd-xt checkpoint is further 
-finetuned to generate 25 frames.
-
-We will use the `svd-xt` checkpoint for this guide.
+You'll use the SVD-XT checkpoint for this guide.
 
 ```python
 import torch
@@ -44,7 +40,7 @@ pipe = StableVideoDiffusionPipeline.from_pretrained(
 pipe.enable_model_cpu_offload()
 
 # Load the conditioning image
-image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png?download=true")
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
 image = image.resize((1024, 576))
 
 generator = torch.manual_seed(42)
@@ -53,22 +49,20 @@ frames = pipe(image, decode_chunk_size=8, generator=generator).frames[0]
 export_to_video(frames, "generated.mp4", fps=7)
 ```
 
-<video controls width="1024" height="576">
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.webm" type="video/webm" />
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated.mp4" type="video/mp4" />
-</video>
+<div class="flex gap-4">
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">"source image of a rocket"</figcaption>
+  </div>
+  <div>
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/output_rocket.gif"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">"generated video from source image"</figcaption>
+  </div>
+</div>
 
-<Tip>
-Since generating videos is more memory intensive we can use the `decode_chunk_size` argument to control how many frames are decoded at once. This will reduce the memory usage. It's recommended to tweak this value based on your GPU memory.
-Setting `decode_chunk_size=1` will decode one frame at a time and will use the least amount of memory but the video might have some flickering.
+## torch.compile
 
-Additionally, we also use [model cpu offloading](../../optimization/memory#model-offloading) to reduce the memory usage.
-</Tip>
-
-
-### Torch.compile
-
-You can achieve a 20-25% speed-up at the expense of slightly increased memory by compiling the UNet as follows:
+You can gain a 20-25% speedup at the expense of slightly increased memory by [compiling](../optimization/torch2.0#torchcompile) the UNet.
 
 ```diff
 - pipe.enable_model_cpu_offload()
@@ -76,37 +70,33 @@ You can achieve a 20-25% speed-up at the expense of slightly increased memory by
 + pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 ```
 
-### Low-memory
+## Reduce memory usage
 
-Video generation is very memory intensive as we have to essentially generate `num_frames` all at once. The mechanism is very comparable to text-to-image generation with a high batch size. To reduce the memory requirement you have multiple options. The following options trade inference speed against lower memory requirement:
-- enable model offloading: Each component of the pipeline is offloaded to CPU once it's not needed anymore.
-- enable feed-forward chunking: The feed-forward layer runs in a loop instead of running with a single huge feed-forward batch size
-- reduce `decode_chunk_size`: This means that the VAE decodes frames in chunks instead of decoding them all together. **Note**: In addition to leading to a small slowdown, this method also slightly leads to video quality deterioration
+Video generation is very memory intensive because you're essentially generating `num_frames` all at once, similar to text-to-image generation with a high batch size. To reduce the memory requirement, there are multiple options that trade-off inference speed for lower memory requirement:
 
-You can enable them as follows:
+- enable model offloading: each component of the pipeline is offloaded to the CPU once it's not needed anymore.
+- enable feed-forward chunking: the feed-forward layer runs in a loop instead of running a single feed-forward with a huge batch size.
+- reduce `decode_chunk_size`: the VAE decodes frames in chunks instead of decoding them all together. Setting `decode_chunk_size=1` decodes one frame at a time and uses the least amount of memory (we recommend adjusting this value based on your GPU memory) but the video might have some flickering.
 
 ```diff
--pipe.enable_model_cpu_offload()
--frames = pipe(image, decode_chunk_size=8, generator=generator).frames[0]
-+pipe.enable_model_cpu_offload()
-+pipe.unet.enable_forward_chunking()
-+frames = pipe(image, decode_chunk_size=2, generator=generator, num_frames=25).frames[0]
+- pipe.enable_model_cpu_offload()
+- frames = pipe(image, decode_chunk_size=8, generator=generator).frames[0]
++ pipe.enable_model_cpu_offload()
++ pipe.unet.enable_forward_chunking()
++ frames = pipe(image, decode_chunk_size=2, generator=generator, num_frames=25).frames[0]
 ```
 
+Using all these tricks togethere should lower the memory requirement to less than 8GB VRAM.
 
-Including all these tricks should lower the memory requirement to less than 8GB VRAM.
+## Micro-conditioning
 
-### Micro-conditioning
+Stable Diffusion Video also accepts micro-conditioning, in addition to the conditioning image, which allows more control over the generated video:
 
-Along with conditioning image Stable Diffusion Video also allows providing micro-conditioning that allows more control over the generated video.
-It accepts the following arguments:
+- `fps`: the frames per second of the generated video.
+- `motion_bucket_id`: the motion bucket id to use for the generated video. This can be used to control the motion of the generated video. Increasing the motion bucket id increases the motion of the generated video.
+- `noise_aug_strength`: the amount of noise added to the conditioning image. The higher the values the less the video resembles the conditioning image. Increasing this value also increases the motion of the generated video.
 
-- `fps`: The frames per second of the generated video.
-- `motion_bucket_id`: The motion bucket id to use for the generated video. This can be used to control the motion of the generated video. Increasing the motion bucket id will increase the motion of the generated video.
-- `noise_aug_strength`: The amount of noise added to the conditioning image. The higher the values the less the video will resemble the conditioning image. Increasing this value will also increase the motion of the generated video.
-
-Here is an example of using micro-conditioning to generate a video with more motion.
-
+For example, to generate a video with more motion, use the `motion_bucket_id` and `noise_aug_strength` micro-conditioning parameters:
 
 ```python
 import torch
@@ -120,7 +110,7 @@ pipe = StableVideoDiffusionPipeline.from_pretrained(
 pipe.enable_model_cpu_offload()
 
 # Load the conditioning image
-image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png?download=true")
+image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
 image = image.resize((1024, 576))
 
 generator = torch.manual_seed(42)
@@ -128,7 +118,4 @@ frames = pipe(image, decode_chunk_size=8, generator=generator, motion_bucket_id=
 export_to_video(frames, "generated.mp4", fps=7)
 ```
 
-<video width="1024" height="576" controls>
-  <source src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket_generated_motion.mp4" type="video/mp4">
-</video>
-
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/output_rocket_with_conditions.gif)

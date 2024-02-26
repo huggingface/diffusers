@@ -12,9 +12,9 @@ from safetensors.torch import load_file as stl
 from tqdm import tqdm
 
 from diffusers import AutoencoderKL, ConsistencyDecoderVAE, DiffusionPipeline, StableDiffusionPipeline, UNet2DModel
+from diffusers.models.autoencoders.vae import Encoder
 from diffusers.models.embeddings import TimestepEmbedding
-from diffusers.models.unet_2d_blocks import ResnetDownsampleBlock2D, ResnetUpsampleBlock2D, UNetMidBlock2D
-from diffusers.models.vae import Encoder
+from diffusers.models.unets.unet_2d_blocks import ResnetDownsampleBlock2D, ResnetUpsampleBlock2D, UNetMidBlock2D
 
 
 args = ArgumentParser()

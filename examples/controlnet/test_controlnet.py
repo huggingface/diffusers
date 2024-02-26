@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -65,7 +65,7 @@ class ControlNet(ExamplesTestsAccelerate):
             --train_batch_size=1
             --gradient_accumulation_steps=1
             --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet
-            --max_train_steps=9
+            --max_train_steps=6
             --checkpointing_steps=2
             """.split()
 
@@ -73,7 +73,7 @@ class ControlNet(ExamplesTestsAccelerate):
 
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6", "checkpoint-8"},
+                {"checkpoint-2", "checkpoint-4", "checkpoint-6"},
             )
 
             resume_run_args = f"""
@@ -85,18 +85,15 @@ class ControlNet(ExamplesTestsAccelerate):
             --train_batch_size=1
             --gradient_accumulation_steps=1
             --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet
-            --max_train_steps=11
+            --max_train_steps=8
             --checkpointing_steps=2
-            --resume_from_checkpoint=checkpoint-8
-            --checkpoints_total_limit=3
+            --resume_from_checkpoint=checkpoint-6
+            --checkpoints_total_limit=2
             """.split()
 
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-8", "checkpoint-10", "checkpoint-12"},
-            )
+            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})
 
 
 class ControlNetSDXL(ExamplesTestsAccelerate):
@@ -111,7 +108,7 @@ class ControlNetSDXL(ExamplesTestsAccelerate):
             --train_batch_size=1
             --gradient_accumulation_steps=1
             --controlnet_model_name_or_path=hf-internal-testing/tiny-controlnet-sdxl
-            --max_train_steps=9
+            --max_train_steps=4
             --checkpointing_steps=2
             """.split()
 

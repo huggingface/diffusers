@@ -47,6 +47,7 @@ write_basic_config()
 ```
 
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
+Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
 
 ### Dog toy example
 
@@ -85,7 +86,7 @@ accelerate launch train_dreambooth_lora_sdxl.py \
   --resolution=1024 \
   --train_batch_size=1 \
   --gradient_accumulation_steps=4 \
-  --learning_rate=1e-5 \
+  --learning_rate=1e-4 \
   --report_to="wandb" \
   --lr_scheduler="constant" \
   --lr_warmup_steps=0 \

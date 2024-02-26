@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -20,7 +20,7 @@ The abstract from the paper is:
 
 ## Tips
 
-- SDXL Turbo uses the exact same architecture as [SDXL](./stable_diffusion_xl).
+- SDXL Turbo uses the exact same architecture as [SDXL](./stable_diffusion_xl), which means it also has the same API. Please refer to the [SDXL](./stable_diffusion_xl) API reference for more details.
 - SDXL Turbo should disable guidance scale by setting `guidance_scale=0.0`
 - SDXL Turbo should use `timestep_spacing='trailing'` for the scheduler and use between 1 and 4 steps.
 - SDXL Turbo has been trained to generate images of size 512x512.
@@ -28,26 +28,8 @@ The abstract from the paper is:
 
 <Tip>
 
-To learn how to use SDXL Turbo for various tasks, how to optimize performance, and other usage examples, take a look at the [Stable Diffusion XL](../../../using-diffusers/sdxl_turbo) guide.
+To learn how to use SDXL Turbo for various tasks, how to optimize performance, and other usage examples, take a look at the [SDXL Turbo](../../../using-diffusers/sdxl_turbo) guide.
 
 Check out the [Stability AI](https://huggingface.co/stabilityai) Hub organization for the official base and refiner model checkpoints!
 
 </Tip>
-
-## StableDiffusionXLPipeline
-
-[[autodoc]] StableDiffusionXLPipeline
-	- all
-	- __call__
-
-## StableDiffusionXLImg2ImgPipeline
-
-[[autodoc]] StableDiffusionXLImg2ImgPipeline
-	- all
-	- __call__
-
-## StableDiffusionXLInpaintPipeline
-
-[[autodoc]] StableDiffusionXLInpaintPipeline
-	- all
-	- __call__

@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -186,7 +186,7 @@ accelerate launch train_unconditional.py \
 If you're training with more than one GPU, add the `--multi_gpu` parameter to the training command:
 
 ```bash
-accelerate launch --mixed_precision="fp16" --multi_gpu train_unconditional.py \
+accelerate launch --multi_gpu train_unconditional.py \
   --dataset_name="huggan/flowers-102-categories" \
   --output_dir="ddpm-ema-flowers-64" \
   --mixed_precision="fp16" \

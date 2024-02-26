@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -90,10 +90,10 @@ class Unconditional(ExamplesTestsAccelerate):
                 --train_batch_size 1
                 --num_epochs 1
                 --gradient_accumulation_steps 1
-                --ddpm_num_inference_steps 2
+                --ddpm_num_inference_steps 1
                 --learning_rate 1e-3
                 --lr_warmup_steps 5
-                --checkpointing_steps=1
+                --checkpointing_steps=2
                 """.split()
 
             run_command(self._launch_args + initial_run_args)
@@ -101,7 +101,7 @@ class Unconditional(ExamplesTestsAccelerate):
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-1", "checkpoint-2", "checkpoint-3", "checkpoint-4", "checkpoint-5", "checkpoint-6"},
+                {"checkpoint-2", "checkpoint-4", "checkpoint-6"},
             )
 
             resume_run_args = f"""
@@ -113,12 +113,12 @@ class Unconditional(ExamplesTestsAccelerate):
                 --train_batch_size 1
                 --num_epochs 2
                 --gradient_accumulation_steps 1
-                --ddpm_num_inference_steps 2
+                --ddpm_num_inference_steps 1
                 --learning_rate 1e-3
                 --lr_warmup_steps 5
                 --resume_from_checkpoint=checkpoint-6
                 --checkpointing_steps=2
-                --checkpoints_total_limit=3
+                --checkpoints_total_limit=2
                 """.split()
 
             run_command(self._launch_args + resume_run_args)
@@ -126,5 +126,5 @@ class Unconditional(ExamplesTestsAccelerate):
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-8", "checkpoint-10", "checkpoint-12"},
+                {"checkpoint-10", "checkpoint-12"},
             )

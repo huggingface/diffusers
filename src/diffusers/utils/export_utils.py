@@ -28,7 +28,7 @@ def buffered_writer(raw_f):
     f.flush()
 
 
-def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> str:
+def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None, fps: int = 10) -> str:
     if output_gif_path is None:
         output_gif_path = tempfile.NamedTemporaryFile(suffix=".gif").name
 
@@ -37,7 +37,7 @@ def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None) -> 
         save_all=True,
         append_images=image[1:],
         optimize=False,
-        duration=100,
+        duration=1000 // fps,
         loop=0,
     )
     return output_gif_path
@@ -125,7 +125,10 @@ def export_to_video(
     if output_video_path is None:
         output_video_path = tempfile.NamedTemporaryFile(suffix=".mp4").name
 
-    if isinstance(video_frames[0], PIL.Image.Image):
+    if isinstance(video_frames[0], np.ndarray):
+        video_frames = [(frame * 255).astype(np.uint8) for frame in video_frames]
+
+    elif isinstance(video_frames[0], PIL.Image.Image):
         video_frames = [np.array(frame) for frame in video_frames]
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")

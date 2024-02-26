@@ -22,7 +22,6 @@ from diffusers.utils import is_accelerate_available, is_accelerate_version, load
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     CaptureLogger,
-    disable_full_determinism,
     enable_full_determinism,
     floats_tensor,
     numpy_cosine_similarity_distance,
@@ -32,6 +31,9 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..test_pipelines_common import PipelineTesterMixin
+
+
+enable_full_determinism()
 
 
 def to_np(tensor):
@@ -184,6 +186,23 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     @unittest.skip("Test is similar to test_inference_batch_single_identical")
     def test_inference_batch_consistent(self):
         pass
+
+    def test_np_output_type(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        generator_device = "cpu"
+        inputs = self.get_dummy_inputs(generator_device)
+        inputs["output_type"] = "np"
+        output = pipe(**inputs).frames
+        self.assertTrue(isinstance(output, np.ndarray))
+        self.assertEqual(len(output.shape), 5)
 
     def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
         components = self.get_dummy_components()
@@ -379,7 +398,7 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
@@ -448,8 +467,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
     def test_xformers_attention_forwardGenerator_pass(self):
-        disable_full_determinism()
-
         expected_max_diff = 9e-4
 
         if not self.test_xformers_attention:
@@ -478,8 +495,6 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, expected_max_diff, "XFormers attention should not affect the inference results")
-
-        enable_full_determinism()
 
 
 @slow

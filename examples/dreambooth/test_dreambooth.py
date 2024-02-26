@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -89,7 +89,7 @@ class DreamBooth(ExamplesTestsAccelerate):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Run training script with checkpointing
-            # max_train_steps == 5, checkpointing_steps == 2
+            # max_train_steps == 4, checkpointing_steps == 2
             # Should create checkpoints at steps 2, 4
 
             initial_run_args = f"""
@@ -100,7 +100,7 @@ class DreamBooth(ExamplesTestsAccelerate):
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 5
+                --max_train_steps 4
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -114,7 +114,7 @@ class DreamBooth(ExamplesTestsAccelerate):
 
             # check can run the original fully trained output pipeline
             pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
-            pipe(instance_prompt, num_inference_steps=2)
+            pipe(instance_prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
             self.assertTrue(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
@@ -123,7 +123,7 @@ class DreamBooth(ExamplesTestsAccelerate):
             # check can run an intermediate checkpoint
             unet = UNet2DConditionModel.from_pretrained(tmpdir, subfolder="checkpoint-2/unet")
             pipe = DiffusionPipeline.from_pretrained(pretrained_model_name_or_path, unet=unet, safety_checker=None)
-            pipe(instance_prompt, num_inference_steps=2)
+            pipe(instance_prompt, num_inference_steps=1)
 
             # Remove checkpoint 2 so that we can check only later checkpoints exist after resuming
             shutil.rmtree(os.path.join(tmpdir, "checkpoint-2"))
@@ -138,7 +138,7 @@ class DreamBooth(ExamplesTestsAccelerate):
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 7
+                --max_train_steps 6
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -153,7 +153,7 @@ class DreamBooth(ExamplesTestsAccelerate):
 
             # check can run new fully trained pipeline
             pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
-            pipe(instance_prompt, num_inference_steps=2)
+            pipe(instance_prompt, num_inference_steps=1)
 
             # check old checkpoints do not exist
             self.assertFalse(os.path.isdir(os.path.join(tmpdir, "checkpoint-2")))
@@ -196,7 +196,7 @@ class DreamBooth(ExamplesTestsAccelerate):
             --resolution=64
             --train_batch_size=1
             --gradient_accumulation_steps=1
-            --max_train_steps=9
+            --max_train_steps=4
             --checkpointing_steps=2
             """.split()
 
@@ -204,7 +204,7 @@ class DreamBooth(ExamplesTestsAccelerate):
 
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6", "checkpoint-8"},
+                {"checkpoint-2", "checkpoint-4"},
             )
 
             resume_run_args = f"""
@@ -216,15 +216,12 @@ class DreamBooth(ExamplesTestsAccelerate):
             --resolution=64
             --train_batch_size=1
             --gradient_accumulation_steps=1
-            --max_train_steps=11
+            --max_train_steps=8
             --checkpointing_steps=2
-            --resume_from_checkpoint=checkpoint-8
-            --checkpoints_total_limit=3
+            --resume_from_checkpoint=checkpoint-4
+            --checkpoints_total_limit=2
             """.split()
 
             run_command(self._launch_args + resume_run_args)
 
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
-            )
+            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-6", "checkpoint-8"})

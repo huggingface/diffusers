@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ from diffusers import (
     FlaxUNet2DConditionModel,
 )
 from diffusers.utils import check_min_version, is_wandb_available, make_image_grid
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 
 
 # To prevent an error that occurs when there are abnormally large compressed data chunk in the png image
@@ -59,7 +60,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.25.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -145,28 +146,33 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
             make_image_grid(images, 1, len(images)).save(os.path.join(repo_folder, f"images_{i}.png"))
             img_str += f"![images_{i})](./images_{i}.png)\n"
 
-    yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {base_model}
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- text-to-image
-- diffusers
-- controlnet
-- jax-diffusers-event
-inference: true
----
-    """
-    model_card = f"""
+    model_description = f"""
 # controlnet- {repo_id}
 
 These are controlnet weights trained on {base_model} with new type of conditioning. You can find some example images in the following. \n
 {img_str}
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=base_model,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = [
+        "stable-diffusion",
+        "stable-diffusion-diffusers",
+        "text-to-image",
+        "diffusers",
+        "controlnet",
+        "jax-diffusers-event",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def parse_args():
@@ -655,6 +661,12 @@ def get_params_to_save(params):
 def main():
     args = parse_args()
 
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -907,10 +919,12 @@ def main():
 
             if args.snr_gamma is not None:
                 snr = jnp.array(compute_snr(timesteps))
-                if noise_scheduler.config.prediction_type == "v_prediction":
-                    # Velocity objective requires that we add one to SNR values before we divide by them.
-                    snr = snr + 1
-                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma) / snr
+                snr_loss_weights = jnp.where(snr < args.snr_gamma, snr, jnp.ones_like(snr) * args.snr_gamma)
+                if noise_scheduler.config.prediction_type == "epsilon":
+                    snr_loss_weights = snr_loss_weights / snr
+                elif noise_scheduler.config.prediction_type == "v_prediction":
+                    snr_loss_weights = snr_loss_weights / (snr + 1)
+
                 loss = loss * snr_loss_weights
 
             loss = loss.mean()

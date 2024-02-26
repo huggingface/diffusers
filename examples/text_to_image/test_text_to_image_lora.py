@@ -1,5 +1,6 @@
+#!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +42,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Run training script with checkpointing
-            # max_train_steps == 7, checkpointing_steps == 2, checkpoints_total_limit == 2
+            # max_train_steps == 6, checkpointing_steps == 2, checkpoints_total_limit == 2
             # Should create checkpoints at steps 2, 4, 6
             # with checkpoint at step 2 deleted
 
@@ -52,7 +53,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 7
+                --max_train_steps 6
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -66,14 +67,11 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
 
             pipe = DiffusionPipeline.from_pretrained(pipeline_path)
             pipe.load_lora_weights(tmpdir)
-            pipe(prompt, num_inference_steps=2)
+            pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                # checkpoint-2 should have been deleted
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            # checkpoint-2 should have been deleted
+            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
 
     def test_text_to_image_lora_checkpointing_checkpoints_total_limit(self):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
@@ -81,7 +79,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Run training script with checkpointing
-            # max_train_steps == 7, checkpointing_steps == 2, checkpoints_total_limit == 2
+            # max_train_steps == 6, checkpointing_steps == 2, checkpoints_total_limit == 2
             # Should create checkpoints at steps 2, 4, 6
             # with checkpoint at step 2 deleted
 
@@ -94,7 +92,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
                 --random_flip
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 7
+                --max_train_steps 6
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -112,14 +110,11 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None
             )
             pipe.load_lora_weights(tmpdir)
-            pipe(prompt, num_inference_steps=2)
+            pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                # checkpoint-2 should have been deleted
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            # checkpoint-2 should have been deleted
+            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})
 
     def test_text_to_image_lora_checkpointing_checkpoints_total_limit_removes_multiple_checkpoints(self):
         pretrained_model_name_or_path = "hf-internal-testing/tiny-stable-diffusion-pipe"
@@ -127,8 +122,8 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Run training script with checkpointing
-            # max_train_steps == 9, checkpointing_steps == 2
-            # Should create checkpoints at steps 2, 4, 6, 8
+            # max_train_steps == 4, checkpointing_steps == 2
+            # Should create checkpoints at steps 2, 4
 
             initial_run_args = f"""
                 examples/text_to_image/train_text_to_image_lora.py
@@ -139,7 +134,7 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
                 --random_flip
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 9
+                --max_train_steps 4
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -156,15 +151,15 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None
             )
             pipe.load_lora_weights(tmpdir)
-            pipe(prompt, num_inference_steps=2)
+            pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-2", "checkpoint-4", "checkpoint-6", "checkpoint-8"},
+                {"checkpoint-2", "checkpoint-4"},
             )
 
-            # resume and we should try to checkpoint at 10, where we'll have to remove
+            # resume and we should try to checkpoint at 6, where we'll have to remove
             # checkpoint-2 and checkpoint-4 instead of just a single previous checkpoint
 
             resume_run_args = f"""
@@ -176,15 +171,15 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
                 --random_flip
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 11
+                --max_train_steps 8
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
                 --lr_warmup_steps 0
                 --output_dir {tmpdir}
                 --checkpointing_steps=2
-                --resume_from_checkpoint=checkpoint-8
-                --checkpoints_total_limit=3
+                --resume_from_checkpoint=checkpoint-4
+                --checkpoints_total_limit=2
                 --seed=0
                 --num_validation_images=0
                 """.split()
@@ -195,12 +190,12 @@ class TextToImageLoRA(ExamplesTestsAccelerate):
                 "hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None
             )
             pipe.load_lora_weights(tmpdir)
-            pipe(prompt, num_inference_steps=2)
+            pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
             self.assertEqual(
                 {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                {"checkpoint-6", "checkpoint-8", "checkpoint-10"},
+                {"checkpoint-6", "checkpoint-8"},
             )
 
 
@@ -272,7 +267,7 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # Run training script with checkpointing
-            # max_train_steps == 7, checkpointing_steps == 2, checkpoints_total_limit == 2
+            # max_train_steps == 6, checkpointing_steps == 2, checkpoints_total_limit == 2
             # Should create checkpoints at steps 2, 4, 6
             # with checkpoint at step 2 deleted
 
@@ -283,7 +278,7 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
                 --resolution 64
                 --train_batch_size 1
                 --gradient_accumulation_steps 1
-                --max_train_steps 7
+                --max_train_steps 6
                 --learning_rate 5.0e-04
                 --scale_lr
                 --lr_scheduler constant
@@ -298,11 +293,8 @@ class TextToImageLoRASDXL(ExamplesTestsAccelerate):
 
             pipe = DiffusionPipeline.from_pretrained(pipeline_path)
             pipe.load_lora_weights(tmpdir)
-            pipe(prompt, num_inference_steps=2)
+            pipe(prompt, num_inference_steps=1)
 
             # check checkpoint directories exist
-            self.assertEqual(
-                {x for x in os.listdir(tmpdir) if "checkpoint" in x},
-                # checkpoint-2 should have been deleted
-                {"checkpoint-4", "checkpoint-6"},
-            )
+            # checkpoint-2 should have been deleted
+            self.assertEqual({x for x in os.listdir(tmpdir) if "checkpoint" in x}, {"checkpoint-4", "checkpoint-6"})

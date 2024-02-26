@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -293,9 +293,6 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
-        eta: float = 0.0,
-        use_clipped_model_output: bool = False,
-        variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
     ) -> Union[DDIMSchedulerOutput, Tuple]:
         """
@@ -332,7 +329,7 @@ class DDIMInverseScheduler(SchedulerMixin, ConfigMixin):
         # 1. get previous step value (=t+1)
         prev_timestep = timestep
         timestep = min(
-            timestep - self.config.num_train_timesteps // self.num_inference_steps, self.num_train_timesteps - 1
+            timestep - self.config.num_train_timesteps // self.num_inference_steps, self.config.num_train_timesteps - 1
         )
 
         # 2. compute alphas, betas

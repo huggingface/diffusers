@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -25,26 +25,24 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 import safetensors
 import torch
 from huggingface_hub import create_repo
+from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
 from ..utils import (
     CONFIG_NAME,
-    DIFFUSERS_CACHE,
     FLAX_WEIGHTS_NAME,
-    HF_HUB_OFFLINE,
-    MIN_PEFT_VERSION,
+    SAFETENSORS_FILE_EXTENSION,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     _add_variant,
     _get_model_file,
-    check_peft_version,
     deprecate,
     is_accelerate_available,
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import PushToHubMixin
+from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 
 
 logger = logging.get_logger(__name__)
@@ -105,10 +103,11 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
     try:
-        if os.path.basename(checkpoint_file) == _add_variant(WEIGHTS_NAME, variant):
-            return torch.load(checkpoint_file, map_location="cpu")
-        else:
+        file_extension = os.path.basename(checkpoint_file).split(".")[-1]
+        if file_extension == SAFETENSORS_FILE_EXTENSION:
             return safetensors.torch.load_file(checkpoint_file, device="cpu")
+        else:
+            return torch.load(checkpoint_file, map_location="cpu")
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
@@ -198,7 +197,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
     _automatically_saved_args = ["_diffusers_version", "_class_name", "_name_or_path"]
     _supports_gradient_checkpointing = False
     _keys_to_ignore_on_load_unexpected = None
-    _hf_peft_config_loaded = False
 
     def __init__(self):
         super().__init__()
@@ -304,153 +302,6 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         """
         self.set_use_memory_efficient_attention_xformers(False)
 
-    def add_adapter(self, adapter_config, adapter_name: str = "default") -> None:
-        r"""
-        Adds a new adapter to the current model for training. If no adapter name is passed, a default name is assigned
-        to the adapter to follow the convention of the PEFT library.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them in the PEFT
-        [documentation](https://huggingface.co/docs/peft).
-
-        Args:
-            adapter_config (`[~peft.PeftConfig]`):
-                The configuration of the adapter to add; supported adapters are non-prefix tuning and adaption prompt
-                methods.
-            adapter_name (`str`, *optional*, defaults to `"default"`):
-                The name of the adapter to add. If no name is passed, a default name is assigned to the adapter.
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        from peft import PeftConfig, inject_adapter_in_model
-
-        if not self._hf_peft_config_loaded:
-            self._hf_peft_config_loaded = True
-        elif adapter_name in self.peft_config:
-            raise ValueError(f"Adapter with name {adapter_name} already exists. Please use a different name.")
-
-        if not isinstance(adapter_config, PeftConfig):
-            raise ValueError(
-                f"adapter_config should be an instance of PeftConfig. Got {type(adapter_config)} instead."
-            )
-
-        # Unlike transformers, here we don't need to retrieve the name_or_path of the unet as the loading logic is
-        # handled by the `load_lora_layers` or `LoraLoaderMixin`. Therefore we set it to `None` here.
-        adapter_config.base_model_name_or_path = None
-        inject_adapter_in_model(adapter_config, self, adapter_name)
-        self.set_adapter(adapter_name)
-
-    def set_adapter(self, adapter_name: Union[str, List[str]]) -> None:
-        """
-        Sets a specific adapter by forcing the model to only use that adapter and disables the other adapters.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
-
-        Args:
-            adapter_name (Union[str, List[str]])):
-                The list of adapters to set or the adapter name in case of single adapter.
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        if not self._hf_peft_config_loaded:
-            raise ValueError("No adapter loaded. Please load an adapter first.")
-
-        if isinstance(adapter_name, str):
-            adapter_name = [adapter_name]
-
-        missing = set(adapter_name) - set(self.peft_config)
-        if len(missing) > 0:
-            raise ValueError(
-                f"Following adapter(s) could not be found: {', '.join(missing)}. Make sure you are passing the correct adapter name(s)."
-                f" current loaded adapters are: {list(self.peft_config.keys())}"
-            )
-
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        _adapters_has_been_set = False
-
-        for _, module in self.named_modules():
-            if isinstance(module, BaseTunerLayer):
-                if hasattr(module, "set_adapter"):
-                    module.set_adapter(adapter_name)
-                # Previous versions of PEFT does not support multi-adapter inference
-                elif not hasattr(module, "set_adapter") and len(adapter_name) != 1:
-                    raise ValueError(
-                        "You are trying to set multiple adapters and you have a PEFT version that does not support multi-adapter inference. Please upgrade to the latest version of PEFT."
-                        " `pip install -U peft` or `pip install -U git+https://github.com/huggingface/peft.git`"
-                    )
-                else:
-                    module.active_adapter = adapter_name
-                _adapters_has_been_set = True
-
-        if not _adapters_has_been_set:
-            raise ValueError(
-                "Did not succeeded in setting the adapter. Please make sure you are using a model that supports adapters."
-            )
-
-    def disable_adapters(self) -> None:
-        r"""
-        Disable all adapters attached to the model and fallback to inference with the base model only.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        if not self._hf_peft_config_loaded:
-            raise ValueError("No adapter loaded. Please load an adapter first.")
-
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        for _, module in self.named_modules():
-            if isinstance(module, BaseTunerLayer):
-                if hasattr(module, "enable_adapters"):
-                    module.enable_adapters(enabled=False)
-                else:
-                    # support for older PEFT versions
-                    module.disable_adapters = True
-
-    def enable_adapters(self) -> None:
-        """
-        Enable adapters that are attached to the model. The model will use `self.active_adapters()` to retrieve the
-        list of adapters to enable.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        if not self._hf_peft_config_loaded:
-            raise ValueError("No adapter loaded. Please load an adapter first.")
-
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        for _, module in self.named_modules():
-            if isinstance(module, BaseTunerLayer):
-                if hasattr(module, "enable_adapters"):
-                    module.enable_adapters(enabled=True)
-                else:
-                    # support for older PEFT versions
-                    module.disable_adapters = False
-
-    def active_adapters(self) -> List[str]:
-        """
-        Gets the current list of active adapters of the model.
-
-        If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
-        official documentation: https://huggingface.co/docs/peft
-        """
-        check_peft_version(min_version=MIN_PEFT_VERSION)
-
-        if not self._hf_peft_config_loaded:
-            raise ValueError("No adapter loaded. Please load an adapter first.")
-
-        from peft.tuners.tuners_utils import BaseTunerLayer
-
-        for _, module in self.named_modules():
-            if isinstance(module, BaseTunerLayer):
-                return module.active_adapter
-
     def save_pretrained(
         self,
         save_directory: Union[str, os.PathLike],
@@ -526,6 +377,11 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
 
         if push_to_hub:
+            # Create a new empty model card and eventually tag it
+            model_card = load_or_create_model_card(repo_id, token=token)
+            model_card = populate_model_card(model_card)
+            model_card.save(os.path.join(save_directory, "README.md"))
+
             self._upload_folder(
                 save_directory,
                 repo_id,
@@ -535,6 +391,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             )
 
     @classmethod
+    @validate_hf_hub_args
     def from_pretrained(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
         r"""
         Instantiate a pretrained PyTorch model from a pretrained model configuration.
@@ -571,7 +428,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             local_files_only(`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -640,15 +497,15 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         You should probably TRAIN this model on a down-stream task to be able to use it for predictions and inference.
         ```
         """
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         ignore_mismatched_sizes = kwargs.pop("ignore_mismatched_sizes", False)
         force_download = kwargs.pop("force_download", False)
         from_flax = kwargs.pop("from_flax", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
         output_loading_info = kwargs.pop("output_loading_info", False)
-        local_files_only = kwargs.pop("local_files_only", HF_HUB_OFFLINE)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
         subfolder = kwargs.pop("subfolder", None)
@@ -718,7 +575,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             resume_download=resume_download,
             proxies=proxies,
             local_files_only=local_files_only,
-            use_auth_token=use_auth_token,
+            token=token,
             revision=revision,
             subfolder=subfolder,
             device_map=device_map,
@@ -740,7 +597,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                 resume_download=resume_download,
                 proxies=proxies,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 revision=revision,
                 subfolder=subfolder,
                 user_agent=user_agent,
@@ -763,7 +620,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         resume_download=resume_download,
                         proxies=proxies,
                         local_files_only=local_files_only,
-                        use_auth_token=use_auth_token,
+                        token=token,
                         revision=revision,
                         subfolder=subfolder,
                         user_agent=user_agent,
@@ -782,7 +639,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                     resume_download=resume_download,
                     proxies=proxies,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     revision=revision,
                     subfolder=subfolder,
                     user_agent=user_agent,
