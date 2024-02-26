@@ -97,17 +97,14 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
     for batch_idx in range(batch_size):
         batch_vid = video[batch_idx].permute(1, 0, 2, 3)
         batch_output = processor.postprocess(batch_vid, output_type)
-
         outputs.append(batch_output)
 
     if output_type == "np":
         outputs = np.stack(outputs)
-
-    elif output_type == "pt":
+    elif output_type == "pt" or output_type == "latent":
         outputs = torch.stack(outputs)
-
     elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil', 'latent']")
 
     return outputs
 
@@ -1040,13 +1037,11 @@ class PIAPipeline(
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
 
-        if output_type == "latent":
-            return PIAPipelineOutput(frames=latents)
-
+        # 9. Post processing
         video_tensor = self.decode_latents(latents)
         video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
-        # 9. Offload all models
+        # 10. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:

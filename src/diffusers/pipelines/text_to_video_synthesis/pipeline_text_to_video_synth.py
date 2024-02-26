@@ -66,17 +66,14 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
     for batch_idx in range(batch_size):
         batch_vid = video[batch_idx].permute(1, 0, 2, 3)
         batch_output = processor.postprocess(batch_vid, output_type)
-
         outputs.append(batch_output)
 
     if output_type == "np":
         outputs = np.stack(outputs)
-
-    elif output_type == "pt":
+    elif output_type == "pt" or output_type == "latent":
         outputs = torch.stack(outputs)
-
     elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil', 'latent']")
 
     return outputs
 
@@ -707,13 +704,11 @@ class TextToVideoSDPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lora
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
-        if output_type == "latent":
-            return TextToVideoSDPipelineOutput(frames=latents)
-
+        # 8. Post processing
         video_tensor = self.decode_latents(latents)
         video = tensor2vid(video_tensor, self.image_processor, output_type)
 
-        # Offload all models
+        # 9. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
