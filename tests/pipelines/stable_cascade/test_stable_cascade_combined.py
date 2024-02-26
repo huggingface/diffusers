@@ -134,15 +134,13 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         vqgan = self.dummy_vqgan
 
         components = {
-            "tokenizer": tokenizer,
             "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
             "decoder": decoder,
-            "vqgan": vqgan,
             "scheduler": scheduler,
+            "vqgan": vqgan,
             "prior_prior": prior,
             "prior_scheduler": scheduler,
-            "prior_feature_extractor": None,
-            "prior_image_encoder": None,
         }
 
         return components
