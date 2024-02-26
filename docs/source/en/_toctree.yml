@@ -318,6 +318,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/unicontrol
+      title: UniControl
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview

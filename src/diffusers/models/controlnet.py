@@ -38,7 +38,7 @@ from .unets.unet_2d_blocks import (
     get_down_block,
 )
 from .unets.unet_2d_condition import UNet2DConditionModel
-
+from .unicontrol_blocks import UniControlTaskIDHypernet, UniControlTaskMOEEmbedding, modulated_conv2d
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
@@ -215,6 +215,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
         upcast_attention: bool = False,
         resnet_time_scale_shift: str = "default",
         projection_class_embeddings_input_dim: Optional[int] = None,
+        controlnet_conditioning_embedding: str = "ControlNetConditioningEmbedding",
         controlnet_conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Optional[Tuple[int, ...]] = (16, 32, 96, 256),
         global_pool_conditions: bool = False,
@@ -341,13 +342,17 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
         elif addition_embed_type is not None:
             raise ValueError(f"addition_embed_type: {addition_embed_type} must be None, 'text' or 'text_image'.")
 
-        # control net conditioning embedding
-        self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
-            conditioning_embedding_channels=block_out_channels[0],
-            block_out_channels=conditioning_embedding_out_channels,
-            conditioning_channels=conditioning_channels,
-        )
-
+        if controlnet_conditioning_embedding == "ControlNetConditioningEmbedding":
+            self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
+                conditioning_embedding_channels=block_out_channels[0],
+                block_out_channels=conditioning_embedding_out_channels,
+                conditioning_channels=conditioning_channels,
+            )
+        elif controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
+            self.controlnet_cond_embedding = UniControlTaskMOEEmbedding(time_embed_dim=time_embed_dim, model_channels=block_out_channels[0], conditioning_embedding_out_channels=conditioning_embedding_out_channels)
+            self.task_id_hypernet = UniControlTaskIDHypernet(time_embed_dim=time_embed_dim, cross_attention_dim=cross_attention_dim)
+        else:
+            raise ValueError(f"Unsupported value for controlnet_conditioning_embedding: {controlnet_conditioning_embedding}")
         self.down_blocks = nn.ModuleList([])
         self.controlnet_down_blocks = nn.ModuleList([])
 
@@ -366,6 +371,11 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
         controlnet_block = nn.Conv2d(output_channel, output_channel, kernel_size=1)
         controlnet_block = zero_module(controlnet_block)
         self.controlnet_down_blocks.append(controlnet_block)
+
+        if controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
+            # Add layernet here, adds 1 layernet.
+            self.task_id_layernet = nn.ModuleList([])
+            self.task_id_layernet.append(nn.Linear(time_embed_dim, block_out_channels[0]))
 
         for i, down_block_type in enumerate(down_block_types):
             input_channel = output_channel
@@ -398,11 +408,20 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
                 controlnet_block = nn.Conv2d(output_channel, output_channel, kernel_size=1)
                 controlnet_block = zero_module(controlnet_block)
                 self.controlnet_down_blocks.append(controlnet_block)
+                if controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
+                    # Add layer net here ( accounts for 4 * 2 layernets)
+                    self.task_id_layernet.append(nn.Linear(time_embed_dim, output_channel))
+                    
 
             if not is_final_block:
                 controlnet_block = nn.Conv2d(output_channel, output_channel, kernel_size=1)
                 controlnet_block = zero_module(controlnet_block)
                 self.controlnet_down_blocks.append(controlnet_block)
+                if controlnet_conditioning_embedding == "UniControlTaskMOEEmbedding":
+                    # Add layer net here ( accounts for 3 layernets)
+                    # Total layernets by this point = 12
+                    self.task_id_layernet.append(nn.Linear(time_embed_dim, output_channel))
+                
 
         # mid
         mid_block_channel = block_out_channels[-1]
@@ -667,6 +686,8 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: torch.FloatTensor,
         conditioning_scale: float = 1.0,
+        task_id = None, #None for controlnet. Needed for Unicontrolnet
+        task_text_embeds = None, #None for controlnet. Needed for Unicontrolnet
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
@@ -689,6 +710,8 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
                 The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
             conditioning_scale (`float`, defaults to `1.0`):
                 The scale factor for ControlNet outputs.
+            task_id = None, #None for controlnet. Needed for Unicontrolnet
+            task_text_embeds = None, #None for controlnet. Needed for Unicontrolnet
             class_labels (`torch.Tensor`, *optional*, defaults to `None`):
                 Optional class labels for conditioning. Their embeddings will be summed with the timestep embeddings.
             timestep_cond (`torch.Tensor`, *optional*, defaults to `None`):
@@ -793,8 +816,21 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
 
         # 2. pre-process
         sample = self.conv_in(sample)
+        if isinstance(self.controlnet_cond_embedding, ControlNetConditioningEmbedding):
+            controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
+        elif isinstance(self.controlnet_cond_embedding, UniControlTaskMOEEmbedding):
+            task_feature = task_text_embeds[:,:1,:]
+            task_id_emb = self.task_id_hypernet(task_feature.squeeze(0))
 
-        controlnet_cond = self.controlnet_cond_embedding(controlnet_cond)
+            controlnet_cond = self.controlnet_cond_embedding(
+                x = sample,
+                context = encoder_hidden_states,
+                hint = controlnet_cond,
+                task_id_emb=task_id_emb,
+                task_id=task_id
+            )
+        else:
+            raise ValueError('Incorrectly configured controlnet conditioning embedding')
         sample = sample + controlnet_cond
 
         # 3. down
@@ -829,10 +865,19 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
         # 5. Control net blocks
 
         controlnet_down_block_res_samples = ()
+        if  isinstance(self.controlnet_cond_embedding, ControlNetConditioningEmbedding):
+            for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):
+                down_block_res_sample = controlnet_block(down_block_res_sample)
+                controlnet_down_block_res_samples = controlnet_down_block_res_samples + (down_block_res_sample,)
+        elif  isinstance(self.controlnet_cond_embedding, UniControlTaskMOEEmbedding):
+            for down_block_res_sample, controlnet_block, task_hyperlayer in zip(down_block_res_samples, self.controlnet_down_blocks, self.task_id_layernet):
+                down_block_res_sample = modulated_conv2d(
+                    down_block_res_sample,
+                    controlnet_block.weight,
+                    task_hyperlayer(task_id_emb).repeat(sample.shape[0], 1).detach()) #BS_Real = sample.shape[0] ?
 
-        for down_block_res_sample, controlnet_block in zip(down_block_res_samples, self.controlnet_down_blocks):
-            down_block_res_sample = controlnet_block(down_block_res_sample)
-            controlnet_down_block_res_samples = controlnet_down_block_res_samples + (down_block_res_sample,)
+                down_block_res_sample += controlnet_block.bias.unsqueeze(0).unsqueeze(2).unsqueeze(3)
+                controlnet_down_block_res_samples = controlnet_down_block_res_samples + (down_block_res_sample,)
 
         down_block_res_samples = controlnet_down_block_res_samples
 

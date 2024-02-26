@@ -24,6 +24,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["multicontrolnet"] = ["MultiControlNetModel"]
     _import_structure["pipeline_controlnet"] = ["StableDiffusionControlNetPipeline"]
+    _import_structure["pipeline_unicontrol"] = ["StableDiffusionUniControlPipeline"]
     _import_structure["pipeline_controlnet_blip_diffusion"] = ["BlipDiffusionControlNetPipeline"]
     _import_structure["pipeline_controlnet_img2img"] = ["StableDiffusionControlNetImg2ImgPipeline"]
     _import_structure["pipeline_controlnet_inpaint"] = ["StableDiffusionControlNetInpaintPipeline"]
@@ -51,6 +52,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .multicontrolnet import MultiControlNetModel
         from .pipeline_controlnet import StableDiffusionControlNetPipeline
+        from .pipeline_unicontrol import StableDiffusionUniControlPipeline
         from .pipeline_controlnet_blip_diffusion import BlipDiffusionControlNetPipeline
         from .pipeline_controlnet_img2img import StableDiffusionControlNetImg2ImgPipeline
         from .pipeline_controlnet_inpaint import StableDiffusionControlNetInpaintPipeline
