@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import contextlib
+import gc
 import logging
 import math
 import os
@@ -74,10 +76,13 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
-def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, accelerator, weight_dtype, step):
+def log_validation(
+    vae, text_encoder, tokenizer, unet, controlnet, args, accelerator, weight_dtype, step, is_final_validation=False
+):
     logger.info("Running validation... ")
 
-    controlnet = accelerator.unwrap_model(controlnet)
+    if not is_final_validation:
+        controlnet = accelerator.unwrap_model(controlnet)
 
     pipeline = StableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -118,6 +123,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
         )
 
     image_logs = []
+    inference_ctx = contextlib.nullcontext() if is_final_validation else torch.autocast("cuda")
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
@@ -125,7 +131,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
         images = []
 
         for _ in range(args.num_validation_images):
-            with torch.autocast("cuda"):
+            with inference_ctx:
                 image = pipeline(
                     validation_prompt, validation_image, num_inference_steps=20, generator=generator
                 ).images[0]
@@ -136,6 +142,7 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
             {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}
         )
 
+    tracker_key = "test" if is_final_validation else "validation"
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             for log in image_logs:
@@ -167,9 +174,13 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
                     image = wandb.Image(image, caption=validation_prompt)
                     formatted_images.append(image)
 
-            tracker.log({"validation": formatted_images})
+            tracker.log({tracker_key: formatted_images})
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
+
+        del pipeline
+        gc.collect()
+        torch.cuda.empty_cache()
 
         return image_logs
 
@@ -1130,6 +1141,21 @@ def main(args):
     if accelerator.is_main_process:
         controlnet = unwrap_model(controlnet)
         controlnet.save_pretrained(args.output_dir)
+
+        # Run a final round of validation.
+        controlnet = ControlNetModel.from_pretrained(args.output_dir)
+        image_logs = log_validation(
+            vae,
+            text_encoder,
+            tokenizer,
+            unet,
+            controlnet,
+            args,
+            accelerator,
+            weight_dtype,
+            global_step,
+            is_final_validation=True,
+        )
 
         if args.push_to_hub:
             save_model_card(
