@@ -1076,6 +1076,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 )
             logger.info("Single file checkpoint detected...")
             model = cls.from_single_file(pretrained_model_name_or_path, **kwargs)
+            return model
+
         else:
             cache_dir = kwargs.pop("cache_dir", None)
             resume_download = kwargs.pop("resume_download", False)
@@ -1393,7 +1395,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # 9. Save where the model was instantiated from
             model.register_to_config(_name_or_path=pretrained_model_name_or_path)
-        return model
+            return model
 
     @property
     def name_or_path(self) -> str:
