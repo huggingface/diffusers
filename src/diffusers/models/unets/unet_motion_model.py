@@ -224,7 +224,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         addition_embed_type: Optional[str] = None,
         addition_time_embed_dim: Optional[int] = None,
         projection_class_embeddings_input_dim: Optional[int] = None,
-        addition_embed_type_num_heads: int = 64,
         time_cond_proj_dim: Optional[int] = None,
     ):
         super().__init__()
