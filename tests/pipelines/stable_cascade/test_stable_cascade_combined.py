@@ -132,6 +132,8 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
         text_encoder = self.dummy_text_encoder
         decoder = self.dummy_decoder
         vqgan = self.dummy_vqgan
+        prior_text_encoder = self.dummy_text_encoder
+        prior_tokenizer = self.dummy_tokenizer
 
         components = {
             "text_encoder": text_encoder,
@@ -139,6 +141,8 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
             "decoder": decoder,
             "scheduler": scheduler,
             "vqgan": vqgan,
+            "prior_text_encoder": prior_text_encoder,
+            "prior_tokenizer": prior_tokenizer,
             "prior_prior": prior,
             "prior_scheduler": scheduler,
         }
