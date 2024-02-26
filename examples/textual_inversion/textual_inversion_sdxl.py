@@ -546,6 +546,8 @@ class TextualInversionDataset(Dataset):
 
         example["original_size"] = (image.height, image.width)
 
+        image = image.resize((self.size, self.size), resample=self.interpolation)
+
         if self.center_crop:
             y1 = max(0, int(round((image.height - self.size) / 2.0)))
             x1 = max(0, int(round((image.width - self.size) / 2.0)))
@@ -576,7 +578,6 @@ class TextualInversionDataset(Dataset):
         img = np.array(image).astype(np.uint8)
 
         image = Image.fromarray(img)
-        image = image.resize((self.size, self.size), resample=self.interpolation)
 
         image = self.flip_transform(image)
         image = np.array(image).astype(np.uint8)
