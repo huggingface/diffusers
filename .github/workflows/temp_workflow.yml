@@ -44,6 +44,7 @@ jobs:
           python -m pip install -e .[quality,test]
           python -m pip install -U git+https://github.com/huggingface/transformers
           python -m pip install git+https://github.com/huggingface/accelerate
+          python -m pip install git+https://github.com/huggingface/peft
           pip install pytest-reportlog
       - name: Run a nightly PyTorch CUDA test
         run: |
