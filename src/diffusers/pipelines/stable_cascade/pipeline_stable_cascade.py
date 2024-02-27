@@ -384,6 +384,11 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         prompt_embeds_pooled = (
             torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
         )
+        effnet = (
+            torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
+            if self.do_classifier_free_guidance
+            else image_embeddings
+        )
 
         # 3. Determine latent shape of latents
         latent_height = int(image_embeddings.size(2) * self.config.latent_dim_scale)
@@ -406,11 +411,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
-            effnet = (
-                torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
-                if self.do_classifier_free_guidance
-                else image_embeddings
-            )
+
             # 7. Denoise latents
             predicted_latents = self.decoder(
                 x=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
