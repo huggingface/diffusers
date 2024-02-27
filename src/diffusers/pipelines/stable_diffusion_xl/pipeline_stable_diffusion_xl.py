@@ -1313,7 +1313,16 @@ class StableDiffusionXLPipeline(
                 self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            # unscale/denormalize the latents
+            # denormalize with the mean and std if available
+            if hasattr(self.vae.config, "latents_mean") and hasattr(self.vae.config, "latents_std"):
+                latents = (
+                    latents * self.vae.config.latents_std / self.vae.config.scale_factor + self.vae.config.latents_mean
+                )
+            else:
+                latents = latents * self.vae.config.scale_factor
+
+            image = self.vae.decode(latents, return_dict=False)[0]
 
             # cast back to fp16 if needed
             if needs_upcasting:
