@@ -215,7 +215,7 @@ class TextualInversionLoaderMixin:
                 embedding = state_dict["string_to_param"]["*"]
             else:
                 raise ValueError(
-                    f"Loaded state dictonary is incorrect: {state_dict}. \n\n"
+                    f"Loaded state dictionary is incorrect: {state_dict}. \n\n"
                     "Please verify that the loaded state dictionary of the textual embedding either only has a single key or includes the `string_to_param`"
                     " input key."
                 )
