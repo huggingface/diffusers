@@ -382,7 +382,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 negative_prompt_embeds=negative_prompt_embeds,
             )
         prompt_embeds_pooled = (
-            torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
+            torch.cat([prompt_embeds, negative_prompt_embeds]) if self.do_classifier_free_guidance else prompt_embeds
         )
         effnet = (
             torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
