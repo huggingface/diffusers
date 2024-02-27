@@ -340,9 +340,9 @@ Once loaded, you can use the pipeline with an image and text prompt to guide the
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_neg_embed.png")
 generator = torch.Generator(device="cpu").manual_seed(33)
 images = pipeline(
-    prompt='best quality, high quality, wearing sunglasses', 
+    prompt='best quality, high quality, wearing sunglasses',
     ip_adapter_image=image,
-    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality",
     num_inference_steps=50,
     generator=generator,
 ).images[0]
@@ -355,11 +355,13 @@ images
 
 ### IP-Adapter Plus
 
-IP-Adapter relies on an image encoder to generate image features. If the IP-Adapter repository contains a `image_encoder` subfolder, the image encoder is automatically loaded and registed to the pipeline. Otherwise, you'll need to explicitly load the image encoder with a [`~transformers.CLIPVisionModelWithProjection`] model and pass it to the pipeline.
+IP-Adapter relies on an image encoder to generate image features. If the IP-Adapter repository contains an `image_encoder` subfolder, the image encoder is automatically loaded and registered to the pipeline. Otherwise, you'll need to explicitly load the image encoder with a [`~transformers.CLIPVisionModelWithProjection`] model and pass it to the pipeline.
 
 This is the case for *IP-Adapter Plus* checkpoints which use the ViT-H image encoder.
 
 ```py
+from transformers import CLIPVisionModelWithProjection
+
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
     "h94/IP-Adapter",
     subfolder="models/image_encoder",
