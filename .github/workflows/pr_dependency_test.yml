@@ -25,9 +25,8 @@ jobs:
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pip install --upgrade pip uv
-          uv venv && source .venv/bin/activate
-          uv pip install -e .
-          uv pip install pytest
+          python -m uv pip install -e .
+          python -m uv pip install pytest
       - name: Check for soft dependencies
         run: |
           python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
