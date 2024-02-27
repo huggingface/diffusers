@@ -27,7 +27,7 @@ from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, Schedul
 class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
     """
     Implements DPMSolverMultistepScheduler in EDM formulation as presented in Karras et al. 2022 [1].
-    `DPMSolverMultistepScheduler` is a fast dedicated high-order solver for diffusion ODEs.
+    `EDMDPMSolverMultistepScheduler` is a fast dedicated high-order solver for diffusion ODEs.
 
     [1] Karras, Tero, et al. "Elucidating the Design Space of Diffusion-Based Generative Models."
     https://arxiv.org/abs/2206.00364
@@ -108,7 +108,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             if algorithm_type == "deis":
                 self.register_to_config(algorithm_type="dpmsolver++")
             else:
-                raise NotImplementedError(f"{algorithm_type} does is not implemented for {self.__class__}")
+                raise NotImplementedError(f"{algorithm_type} is not implemented for {self.__class__}")
 
         if solver_type not in ["midpoint", "heun"]:
             if solver_type in ["logrho", "bh1", "bh2"]:
