@@ -44,6 +44,7 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
+        uv venv && source .venv/bin/activate
         python -m uv pip install -e .[quality,test]
         if [ "${{ matrix.lib-versions }}" == "main" ]; then
             python -m uv pip install -U peft@git+https://github.com/huggingface/peft.git
