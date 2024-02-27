@@ -31,10 +31,10 @@ class StableDiffusionXLWatermarker:
         # Convert RGB to BGR, which is the channel order expected by the watermark encoder.
         images = images[:, :, :, ::-1]
 
-        images = [self.encoder.encode(image, "dwtDct") for image in images]
+        # Add watermark and convert BGR back to RGB
+        images = [self.encoder.encode(image, "dwtDct")[:, :, ::-1] for image in images]
 
-        # Convert BGR back to RGB
-        images = np.array(images)[:, :, :, ::-1]
+        images = np.array(images)
 
         images = torch.from_numpy(images).permute(0, 3, 1, 2)
 
