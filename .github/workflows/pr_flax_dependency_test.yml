@@ -23,12 +23,12 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .
-          pip install "jax[cpu]>=0.2.16,!=0.3.2"
-          pip install "flax>=0.4.1"
-          pip install "jaxlib>=0.1.65"
-          pip install pytest
+          python -m pip install --upgrade pip uv
+          uv pip install -e .
+          uv pip install "jax[cpu]>=0.2.16,!=0.3.2"
+          uv pip install "flax>=0.4.1"
+          uv pip install "jaxlib>=0.1.65"
+          uv pip install pytest
       - name: Check for soft dependencies
         run: |
           pytest tests/others/test_dependencies.py
