@@ -33,7 +33,7 @@ jobs:
         run: |
           apt-get update && apt-get install libsndfile1-dev libgl1 -y
           python -m uv pip install -e .[quality,test]
-          python -m uv pip install git+https://github.com/huggingface/accelerate.git
+          python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
 
       - name: Environment
         run: |
@@ -77,7 +77,7 @@ jobs:
         run: |
           apt-get update && apt-get install libsndfile1-dev libgl1 -y
           python -m uv pip install -e .[quality,test]
-          python -m uv pip install git+https://github.com/huggingface/accelerate.git
+          python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
       - name: Environment
         run: |
           python utils/print_env.py
@@ -126,7 +126,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m uv pip install -e .[quality,test]
-        python -m uv pip install git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
@@ -175,8 +175,8 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m uv pip install -e .[quality,test]
-        python -m uv pip install git+https://github.com/huggingface/accelerate.git
-        python -m uv pip install git+https://github.com/huggingface/peft.git
+        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install peft@git+https://github.com/huggingface/peft.git
 
     - name: Environment
       run: |
@@ -225,7 +225,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m uv pip install -e .[quality,test]
-        python -m uv pip install git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
@@ -272,7 +272,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m uv pip install -e .[quality,test]
-        python -m uv pip install git+https://github.com/huggingface/accelerate.git
+        python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
 
     - name: Environment
       run: |
