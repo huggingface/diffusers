@@ -1073,9 +1073,9 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_single_file_component_configs(self):
-        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny")
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
         pipe = StableDiffusionControlNetPipeline.from_pretrained(
-            "runwayml/stable-diffusion-v1-5", safety_checker=None, controlnet=controlnet
+            "runwayml/stable-diffusion-v1-5", variant="fp16", safety_checker=None, controlnet=controlnet
         )
 
         controlnet_single_file = ControlNetModel.from_single_file(

@@ -1099,7 +1099,9 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         ckpt_path = (
             "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
         )
-        single_file_pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
+        single_file_pipe = StableDiffusionXLPipeline.from_single_file(
+            ckpt_path, variant="fp16", torch_dtype=torch.float16
+        )
 
         for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
             if param_name in ["torch_dtype", "architectures", "_name_or_path"]:

@@ -515,7 +515,9 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         )
 
     def test_single_file_component_configs(self):
-        pipe = StableDiffusionUpscalePipeline.from_pretrained("stabilityai/stable-diffusion-x4-upscaler")
+        pipe = StableDiffusionUpscalePipeline.from_pretrained(
+            "stabilityai/stable-diffusion-x4-upscaler", variant="fp16"
+        )
 
         ckpt_path = (
             "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"

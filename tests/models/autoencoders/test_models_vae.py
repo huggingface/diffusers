@@ -810,6 +810,21 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
         assert torch_all_close(output_slice_1, output_slice_2, atol=3e-3)
 
+    @require_torch_gpu
+    def test_single_file_loading(self):
+        vae_single_file = AutoencoderKL.from_single_file(
+            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
+        )
+        vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
+        for param_name, param_value in vae_single_file.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                vae.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
 
 @slow
 class AsymmetricAutoencoderKLIntegrationTests(unittest.TestCase):
