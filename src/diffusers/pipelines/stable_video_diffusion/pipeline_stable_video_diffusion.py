@@ -51,7 +51,7 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
 
     if output_type == "np":
         outputs = np.stack(outputs)
-    elif output_type == "pt" or output_type == "latent":
+    elif output_type == "pt":
         outputs = torch.stack(outputs)
     elif not output_type == "pil":
         raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil', 'latent']")
