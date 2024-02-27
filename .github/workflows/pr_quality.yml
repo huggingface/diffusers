@@ -23,8 +23,8 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip uv
           uv venv && source .venv/bin/activate
+          python -m pip install --upgrade pip uv
           python -m uv pip install [quality]
       - name: Check quality
         run: |
@@ -41,8 +41,8 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip uv
           uv venv && source .venv/bin/activate
+          python -m pip install --upgrade pip uv
           python -m uv pip install [quality]
       - name: Check quality
         run: |
