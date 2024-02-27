@@ -21,7 +21,7 @@ import torch
 
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils.torch_utils import randn_tensor
-from .scheduling_utils import KarrasDiffusionSchedulers, SchedulerMixin, SchedulerOutput
+from .scheduling_utils import SchedulerMixin, SchedulerOutput
 
 
 class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
@@ -81,7 +81,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             is the same as the last sigma in the training schedule. If `zero`, the final sigma is set to 0.
     """
 
-    _compatibles = [e.name for e in KarrasDiffusionSchedulers]
+    _compatibles = []
     order = 1
 
     @register_to_config
