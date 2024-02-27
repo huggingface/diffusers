@@ -30,6 +30,10 @@ jobs:
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+    defaults:
+      run:
+        shell: bash
+    
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
@@ -43,7 +47,7 @@ jobs:
           pip install pytest-reportlog
       - name: Run a nightly PyTorch CUDA test
         run: |
-            python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            python -m pytest \
               --report-log=single_nightly_test.log \
               tests/lora/test_lora_layers_peft.py::StableDiffusionLoRATests::test_integration_logits_no_scale
       - name: Generate Report and Notify Channel
