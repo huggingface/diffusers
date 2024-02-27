@@ -26,7 +26,7 @@ jobs:
     name: Run a nightly test
     strategy:
       fail-fast: false
-    runner: docker-gpu
+    runs-on: docker-gpu
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
