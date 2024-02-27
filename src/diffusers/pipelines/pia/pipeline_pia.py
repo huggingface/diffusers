@@ -886,8 +886,8 @@ class PIAPipeline(
         Examples:
 
         Returns:
-            [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] is
+            [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet

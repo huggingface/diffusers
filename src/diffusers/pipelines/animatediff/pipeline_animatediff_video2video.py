@@ -848,8 +848,8 @@ class AnimateDiffVideoToVideoPipeline(
         Examples:
 
         Returns:
-            [`AnimateDiffPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`AnimateDiffPipelineOutput`] is
+            [`pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
 
