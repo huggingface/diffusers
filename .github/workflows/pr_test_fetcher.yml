@@ -34,7 +34,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         uv venv && source .venv/bin/activate
-        python -m uv pip install -e .[quality,test]
+        python -m uv pip install -e [quality,test]
     - name: Environment
       run: |
         python utils/print_env.py
@@ -90,7 +90,7 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
-        python -m pip install -e .[quality,test]
+        python -m pip install -e [quality,test]
         python -m pip install accelerate
 
     - name: Environment
@@ -145,7 +145,7 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
-        python -m pip install -e .[quality,test]
+        python -m pip install -e [quality,test]
 
     - name: Environment
       run: |
