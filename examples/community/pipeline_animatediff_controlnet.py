@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -27,6 +26,7 @@ from diffusers.loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionL
 from diffusers.models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.models.unets.unet_motion_model import MotionAdapter
+from diffusers.pipelines.animatediff.pipeline_output import AnimateDiffPipelineOutput
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.schedulers import (
@@ -37,7 +37,7 @@ from diffusers.schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
 
 
@@ -111,11 +111,6 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
 
     return outputs
-
-
-@dataclass
-class AnimateDiffControlNetPipelineOutput(BaseOutput):
-    frames: Union[torch.Tensor, np.ndarray]
 
 
 class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMixin, IPAdapterMixin, LoraLoaderMixin):
@@ -907,8 +902,8 @@ class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMix
         Examples:
 
         Returns:
-            [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] is
+            [`~pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
 
@@ -1173,4 +1168,4 @@ class AnimateDiffControlNetPipeline(DiffusionPipeline, TextualInversionLoaderMix
         if not return_dict:
             return (video,)
 
-        return AnimateDiffControlNetPipelineOutput(frames=video)
+        return AnimateDiffPipelineOutput(frames=video)
