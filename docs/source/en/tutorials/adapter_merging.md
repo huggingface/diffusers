@@ -142,6 +142,9 @@ model.add_weighted_adapter(
 model.set_adapters("toy-pixel")
 ```
 
+> [!WARNING]
+> In order for these LoRAs to be merged, they need to have the same rank.
+
 Refer to [this post](https://huggingface.co/blog/peft_merging) to know more about the different merging methods available for LoRA adapters.
 
 ## Run inference
