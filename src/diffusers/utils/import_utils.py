@@ -422,8 +422,7 @@ installation page: https://librosa.org/doc/latest/install.html and follow the on
 
 # docstyle-ignore
 TRANSFORMERS_IMPORT_ERROR = """
-{0} requires the transformers library but it was not found in your environment. You can install it with pip: `pip
-install transformers`
+{0} requires the transformers library but it was not found in your environment. You can install it with pip: `pip install transformers`
 """
 
 # docstyle-ignore
