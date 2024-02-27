@@ -67,7 +67,7 @@ class StableCascadePriorPipelineOutput(BaseOutput):
     negative_prompt_embeds: Union[torch.FloatTensor, np.ndarray]
 
 
-class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
+class StableCascadePriorPipeline(DiffusionPipeline):
     """
     Pipeline for generating image prior for Stable Cascade.
 
