@@ -1729,7 +1729,7 @@ class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
         self.assertTrue(np.allclose(lora_images, lora_images_again, atol=1e-3))
         release_memory(pipe)
 
-    def test_empty_state_dict(self):
+    def test_not_empty_state_dict(self):
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
         pipe = AutoPipelineForText2Image.from_pretrained(
             "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
@@ -1741,6 +1741,26 @@ class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
         self.assertTrue(lcm_lora != {})
+        release_memory(pipe)
+
+    def test_load_unload_load_state_dict(self):
+        # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to("cuda")
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+
+        cached_file = hf_hub_download("hf-internal-testing/lcm-lora-test-sd-v1-5", "test_lora.safetensors")
+        lcm_lora = load_file(cached_file)
+        previous_state_dict = lcm_lora.copy()
+
+        pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
+        self.assertDictEqual(lcm_lora, previous_state_dict)
+
+        pipe.unload_lora_weights()
+        pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
+        self.assertDictEqual(lcm_lora, previous_state_dict)
+
         release_memory(pipe)
 
 
