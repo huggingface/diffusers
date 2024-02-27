@@ -21,7 +21,6 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from ...loaders import LoraLoaderMixin
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -545,7 +544,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         if isinstance(self.scheduler, DDPMWuerstchenScheduler):
             timesteps = timesteps[:-1]
         else:
-            if self.scheduler.config.clip_sample
+            if self.scheduler.config.clip_sample:
                 self.scheduler.config.clip_sample = False  # disample sample clipping
                 logger.warning(" set `clip_sample` to be False")
         # 6. Run denoising loop
