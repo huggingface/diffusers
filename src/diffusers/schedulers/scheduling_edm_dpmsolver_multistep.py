@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver
+# DISCLAIMER: This file is strongly influenced by https://github.com/LuChengTHU/dpm-solver and https://github.com/NVlabs/edm
 
 from typing import List, Optional, Tuple, Union
 
@@ -154,6 +154,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         return self._begin_index
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.set_begin_index
     def set_begin_index(self, begin_index: int = 0):
         """
         Sets the begin index for the scheduler. This function should be run from pipeline before the inference.
@@ -164,11 +165,13 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         """
         self._begin_index = begin_index
 
+    # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_inputs
     def precondition_inputs(self, sample, sigma):
         c_in = 1 / ((sigma**2 + self.config.sigma_data**2) ** 0.5)
         scaled_sample = sample * c_in
         return scaled_sample
 
+    # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_noise
     def precondition_noise(self, sigma):
         if not isinstance(sigma, torch.Tensor):
             sigma = torch.tensor([sigma])
@@ -177,6 +180,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         return c_noise
 
+    # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.precondition_outputs
     def precondition_outputs(self, sample, model_output, sigma):
         sigma_data = self.config.sigma_data
         c_skip = sigma_data**2 / (sigma**2 + sigma_data**2)
@@ -192,6 +196,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         return denoised
 
+    # Copied from diffusers.schedulers.scheduling_edm_euler.EDMEulerScheduler.scale_model_input
     def scale_model_input(
         self, sample: torch.FloatTensor, timestep: Union[float, torch.FloatTensor]
     ) -> torch.FloatTensor:
@@ -257,7 +262,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         self._step_index = None
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
-    
+
     # Taken from https://github.com/crowsonkb/k-diffusion/blob/686dbad0f39640ea25c8a8c6a6e56bb40eacefa2/k_diffusion/sampling.py#L17
     def _compute_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
@@ -533,6 +538,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         return x_t
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.index_for_timestep
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
@@ -552,6 +558,7 @@ class EDMDPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         return step_index
 
+    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
         """
         Initialize the step_index counter for the scheduler.
