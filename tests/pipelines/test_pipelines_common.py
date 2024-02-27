@@ -105,18 +105,19 @@ class SDFunctionTesterMixin:
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
 
-        prompt = "A painting of a squirrel eating a burger"
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
 
         # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
-        generator = torch.Generator(device=device).manual_seed(0)
-        output_1 = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)
+        output_1 = pipe(**inputs)[0]
 
         # make sure tiled vae decode yields the same result
         pipe.enable_vae_tiling()
-        generator = torch.Generator(device=device).manual_seed(0)
-        output_2 = pipe([prompt], generator=generator, guidance_scale=6.0, num_inference_steps=2, output_type="np", return_dict=False)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output_2 = pipe(**inputs)[0]
 
-        assert np.abs(output_2[0].flatten() - output_1[0].flatten()).max() < 5e-1
+        assert np.abs(output_2.flatten() - output_1.flatten()).max() < 5e-1
 
         # test that tiled decode works with various shapes
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
@@ -130,11 +131,14 @@ class SDFunctionTesterMixin:
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        prompt = "hey"
-        output = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0), return_dict=False)[0]
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output = pipe(**inputs)[0]
 
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
-        output_freeu = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0), return_dict=False)[0]
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output_freeu = pipe(**inputs)[0]
 
         assert not np.allclose(
             output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
@@ -146,8 +150,9 @@ class SDFunctionTesterMixin:
         pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
-        prompt = "hey"
-        output = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0), return_dict=False)[0]
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output = pipe(**inputs)[0]
 
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         pipe.disable_freeu()
@@ -157,8 +162,9 @@ class SDFunctionTesterMixin:
             for key in freeu_keys:
                 assert getattr(upsample_block, key) is None, f"Disabling of FreeU should have set {key} to None."
 
-        output_no_freeu = pipe(prompt, num_inference_steps=1, output_type="np", generator=torch.manual_seed(0), return_dict=False)[0]
-
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output_no_freeu = pipe(**inputs)[0]
         assert np.allclose(
             output[0, -3:, -3:, -1], output_no_freeu[0, -3:, -3:, -1]
         ), "Disabling of FreeU should lead to results similar to the default pipeline results."

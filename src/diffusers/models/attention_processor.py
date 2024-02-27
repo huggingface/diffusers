@@ -723,7 +723,7 @@ class Attention(nn.Module):
             self.to_kv = self.linear_cls(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_kv.weight.copy_(concatenated_weights)
             if self.use_bias:
-                concatenated_bias = torch.cat([ self.to_k.bias.data, self.to_v.bias.data])
+                concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
                 self.to_kv.bias.copy_(concatenated_bias)
 
         self.fused_projections = fuse
