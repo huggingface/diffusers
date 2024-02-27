@@ -217,3 +217,9 @@ Check your image dimensions to see if they're correct:
 images.shape
 # (8, 1, 512, 512, 3)
 ```
+
+## Resources
+
+To learn more about how JAX works with Stable Diffusion, you may be interested in reading:
+
+* [Accelerating Stable Diffusion XL Inference with JAX on Cloud TPU v5e](https://hf.co/blog/sdxl_jax)
