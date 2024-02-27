@@ -810,8 +810,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
 
         assert torch_all_close(output_slice_1, output_slice_2, atol=3e-3)
 
-    @require_torch_gpu
-    def test_single_file_loading(self):
+    def test_single_file_component_configs(self):
         vae_single_file = AutoencoderKL.from_single_file(
             "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
         )
@@ -824,6 +823,29 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
             assert (
                 vae.config[param_name] == param_value
             ), f"{param_name} differs between single file loading and pretrained loading"
+
+    def test_single_file_arguments(self):
+        vae_default = AutoencoderKL.from_single_file(
+            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors",
+        )
+
+        assert vae_default.config.scaling_factor == 0.18125
+        assert vae_default.config.sample_size == 512
+        assert vae_default.dtype == torch.float32
+
+        scaling_factor = 2.0
+        image_size = 256
+        torch_dtype = torch.float16
+
+        vae = AutoencoderKL.from_single_file(
+            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors",
+            image_size=image_size,
+            scaling_factor=scaling_factor,
+            torch_dtype=torch_dtype,
+        )
+        assert vae.config.scaling_factor == scaling_factor
+        assert vae.config.sample_size == image_size
+        assert vae.dtype == torch_dtype
 
 
 @slow
