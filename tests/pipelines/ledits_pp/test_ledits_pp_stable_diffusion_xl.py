@@ -284,6 +284,6 @@ class LEditsPPPipelineStableDiffusionXLSlowTests(unittest.TestCase):
         output_slice = reconstruction[150:153, 140:143, -1]
         output_slice = output_slice.flatten()
         expected_slice = np.array(
-            [0.56419, 0.44121838, 0.2765603 , 0.5708484 , 0.42763475, 0.30945742, 0.5387106, 0.4735807, 0.3547244]
+            [0.56419, 0.44121838, 0.2765603, 0.5708484, 0.42763475, 0.30945742, 0.5387106, 0.4735807, 0.3547244]
         )
         assert np.abs(output_slice - expected_slice).max() < 1e-3

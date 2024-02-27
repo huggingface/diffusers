@@ -1459,7 +1459,7 @@ class LEditsPPPipelineStableDiffusionXL(
         return LEditsPPDiffusionPipelineOutput(images=image, nsfw_content_detected=None)
 
     @torch.no_grad()
-    # Copied from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.LEditsPPPipelineStableDiffusion.encode_image
+    # Modified from diffusers.pipelines.ledits_pp.pipeline_leditspp_stable_diffusion.LEditsPPPipelineStableDiffusion.encode_image
     def encode_image(self, image, dtype=None, height=None, width=None, resize_mode="default", crops_coords=None):
         image = self.image_processor.preprocess(
             image=image, height=height, width=width, resize_mode=resize_mode, crops_coords=crops_coords
