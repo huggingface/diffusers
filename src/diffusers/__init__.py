@@ -144,6 +144,7 @@ else:
             "DPMSolverMultistepInverseScheduler",
             "DPMSolverMultistepScheduler",
             "DPMSolverSinglestepScheduler",
+            "EDMEulerScheduler",
             "EulerAncestralDiscreteScheduler",
             "EulerDiscreteScheduler",
             "HeunDiscreteScheduler",

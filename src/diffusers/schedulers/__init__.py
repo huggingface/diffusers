@@ -52,6 +52,7 @@ else:
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
     _import_structure["scheduling_dpmsolver_singlestep"] = ["DPMSolverSinglestepScheduler"]
+    _import_structure["scheduling_edm_euler"] = ["EDMEulerScheduler"]
     _import_structure["scheduling_euler_ancestral_discrete"] = ["EulerAncestralDiscreteScheduler"]
     _import_structure["scheduling_euler_discrete"] = ["EulerDiscreteScheduler"]
     _import_structure["scheduling_heun_discrete"] = ["HeunDiscreteScheduler"]
