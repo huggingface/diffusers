@@ -1321,10 +1321,13 @@ class StableDiffusionXLPipeline(
                 and hasattr(self.vae.config, "latents_std")
                 and self.vae.config.latents_std is not None
             ):
-                latents = (
-                    latents * self.vae.config.latents_std / self.vae.config.scaling_factor
-                    + self.vae.config.latents_mean
+                latents_mean = (
+                    torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1).to(latents.device, latents.dtype)
                 )
+                latents_std = (
+                    torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1).to(latents.device, latents.dtype)
+                )
+                latents = latents * latents_std / self.vae.config.scaling_factor + latents_mean
             else:
                 latents = latents / self.vae.config.scaling_factor
 
