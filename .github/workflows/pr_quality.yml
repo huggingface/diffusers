@@ -23,8 +23,7 @@ jobs:
           python-version: "3.8"
       - name: Install dependencies
         run: |
-          python -m venv /opt/venv
-          export PATH="/opt/venv/bin:$PATH"
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pip install --upgrade pip uv
           python -m uv pip install -e [quality]
       - name: Check quality

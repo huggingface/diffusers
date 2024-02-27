@@ -70,11 +70,13 @@ jobs:
 
     - name: Environment
       run: |
+        uv venv && source .venv/bin/activate
         python utils/print_env.py
 
     - name: Run fast PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
+        uv venv && source .venv/bin/activate
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -83,6 +85,7 @@ jobs:
     - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
+        uv venv && source .venv/bin/activate
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -91,6 +94,7 @@ jobs:
     - name: Run fast ONNXRuntime CPU tests
       if: ${{ matrix.config.framework == 'onnxruntime' }}
       run: |
+        uv venv && source .venv/bin/activate
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -99,6 +103,7 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
+        uv venv && source .venv/bin/activate
         python -m uv pip install peft
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \

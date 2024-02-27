@@ -74,6 +74,7 @@ jobs:
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
+          uv venv && source .venv/bin/activate
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
             --make-reports=tests_${{ matrix.config.report }} \
@@ -84,6 +85,7 @@ jobs:
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
+          uv venv && source .venv/bin/activate
           python -m pytest -n 0 \
             -s -v -k "Flax" \
             --make-reports=tests_${{ matrix.config.report }} \
@@ -94,6 +96,7 @@ jobs:
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
+          uv venv && source .venv/bin/activate
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "Onnx" \
             --make-reports=tests_${{ matrix.config.report }} \

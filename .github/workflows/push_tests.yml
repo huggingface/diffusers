@@ -414,12 +414,14 @@ jobs:
 
     - name: Environment
       run: |
+        uv venv && source .venv/bin/activate
         python utils/print_env.py
 
     - name: Run example tests on GPU
       env:
         HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
       run: |
+        uv venv && source .venv/bin/activate
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile -s -v --make-reports=examples_torch_cuda examples/
 
     - name: Failure short reports

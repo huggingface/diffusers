@@ -60,6 +60,7 @@ jobs:
 
     - name: Run fast PyTorch LoRA CPU tests with PEFT backend
       run: |
+        uv venv && source .venv/bin/activate
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_${{ matrix.config.report }} \
