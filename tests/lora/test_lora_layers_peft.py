@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,19 +26,23 @@ import torch.nn as nn
 from huggingface_hub import hf_hub_download
 from huggingface_hub.repocard import RepoCard
 from packaging import version
+from safetensors.torch import load_file
 from transformers import CLIPTextModel, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import (
     AutoencoderKL,
     AutoPipelineForImage2Image,
+    AutoPipelineForText2Image,
     ControlNetModel,
     DDIMScheduler,
     DiffusionPipeline,
     EulerDiscreteScheduler,
     LCMScheduler,
     StableDiffusionPipeline,
+    StableDiffusionXLAdapterPipeline,
     StableDiffusionXLControlNetPipeline,
     StableDiffusionXLPipeline,
+    T2IAdapter,
     UNet2DConditionModel,
 )
 from diffusers.utils.import_utils import is_accelerate_available, is_peft_available
@@ -1175,6 +1179,24 @@ class PeftLoraLoaderMixinTests:
             # Just makes sure it works..
             _ = pipe(**inputs, generator=torch.manual_seed(0)).images
 
+    def test_modify_padding_mode(self):
+        def set_pad_mode(network, mode="circular"):
+            for _, module in network.named_modules():
+                if isinstance(module, torch.nn.Conv2d):
+                    module.padding_mode = mode
+
+        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
+            components, _, _ = self.get_dummy_components(scheduler_cls)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(self.torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            _pad_mode = "circular"
+            set_pad_mode(pipe.vae, _pad_mode)
+            set_pad_mode(pipe.unet, _pad_mode)
+
+            _, _, inputs = self.get_dummy_inputs()
+            _ = pipe(**inputs).images
+
 
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
     pipeline_class = StableDiffusionPipeline
@@ -1725,6 +1747,40 @@ class LoraIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
         self.assertTrue(np.allclose(lora_images, lora_images_again, atol=1e-3))
         release_memory(pipe)
 
+    def test_not_empty_state_dict(self):
+        # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to("cuda")
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+
+        cached_file = hf_hub_download("hf-internal-testing/lcm-lora-test-sd-v1-5", "test_lora.safetensors")
+        lcm_lora = load_file(cached_file)
+
+        pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
+        self.assertTrue(lcm_lora != {})
+        release_memory(pipe)
+
+    def test_load_unload_load_state_dict(self):
+        # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to("cuda")
+        pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+
+        cached_file = hf_hub_download("hf-internal-testing/lcm-lora-test-sd-v1-5", "test_lora.safetensors")
+        lcm_lora = load_file(cached_file)
+        previous_state_dict = lcm_lora.copy()
+
+        pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
+        self.assertDictEqual(lcm_lora, previous_state_dict)
+
+        pipe.unload_lora_weights()
+        pipe.load_lora_weights(lcm_lora, adapter_name="lcm")
+        self.assertDictEqual(lcm_lora, previous_state_dict)
+
+        release_memory(pipe)
+
 
 @slow
 @require_torch_gpu
@@ -2175,7 +2231,7 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
         self.assertTrue(np.allclose(images, expected, atol=1e-3))
         release_memory(pipeline)
 
-    def test_canny_lora(self):
+    def test_controlnet_canny_lora(self):
         controlnet = ControlNetModel.from_pretrained("diffusers/controlnet-canny-sdxl-1.0")
 
         pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
@@ -2198,6 +2254,34 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
         expected_image = np.array([0.4574, 0.4461, 0.4435, 0.4462, 0.4396, 0.439, 0.4474, 0.4486, 0.4333])
         assert np.allclose(original_image, expected_image, atol=1e-04)
         release_memory(pipe)
+
+    def test_sdxl_t2i_adapter_canny_lora(self):
+        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16).to(
+            "cpu"
+        )
+        pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            adapter=adapter,
+            torch_dtype=torch.float16,
+            variant="fp16",
+        )
+        pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors")
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        prompt = "toy"
+        image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
+        )
+
+        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
+
+        assert images[0].shape == (768, 512, 3)
+
+        image_slice = images[0, -3:, -3:, -1].flatten()
+        expected_slice = np.array([0.4284, 0.4337, 0.4319, 0.4255, 0.4329, 0.4280, 0.4338, 0.4420, 0.4226])
+        assert numpy_cosine_similarity_distance(image_slice, expected_slice) < 1e-4
 
     @nightly
     def test_sequential_fuse_unfuse(self):

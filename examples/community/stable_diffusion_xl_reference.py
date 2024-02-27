@@ -507,7 +507,7 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
             return hidden_states, output_states
 
-        def hacked_DownBlock2D_forward(self, hidden_states, temb=None):
+        def hacked_DownBlock2D_forward(self, hidden_states, temb=None, *args, **kwargs):
             eps = 1e-6
 
             output_states = ()
@@ -603,7 +603,9 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
             return hidden_states
 
-        def hacked_UpBlock2D_forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
+        def hacked_UpBlock2D_forward(
+            self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, **kwargs
+        ):
             eps = 1e-6
             for i, resnet in enumerate(self.resnets):
                 # pop res hidden states
@@ -684,8 +686,17 @@ class StableDiffusionXLReferencePipeline(StableDiffusionXLPipeline):
 
         # 10. Prepare added time ids & embeddings
         add_text_embeds = pooled_prompt_embeds
+        if self.text_encoder_2 is None:
+            text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
+        else:
+            text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
+
         add_time_ids = self._get_add_time_ids(
-            original_size, crops_coords_top_left, target_size, dtype=prompt_embeds.dtype
+            original_size,
+            crops_coords_top_left,
+            target_size,
+            dtype=prompt_embeds.dtype,
+            text_encoder_projection_dim=text_encoder_projection_dim,
         )
 
         if do_classifier_free_guidance:

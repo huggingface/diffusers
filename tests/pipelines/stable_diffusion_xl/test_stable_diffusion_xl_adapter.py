@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ from diffusers.utils.testing_utils import (
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS, TEXT_GUIDED_IMAGE_VARIATION_PARAMS
 from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
     PipelineTesterMixin,
     SDXLOptionalComponentsTesterMixin,
     assert_mean_pixel_difference,
@@ -54,7 +55,7 @@ enable_full_determinism()
 
 
 class StableDiffusionXLAdapterPipelineFastTests(
-    PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionXLAdapterPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
@@ -671,34 +672,6 @@ class AdapterSDXLPipelineSlowTests(unittest.TestCase):
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-
-    def test_canny_lora(self):
-        adapter = T2IAdapter.from_pretrained("TencentARC/t2i-adapter-lineart-sdxl-1.0", torch_dtype=torch.float16).to(
-            "cpu"
-        )
-        pipe = StableDiffusionXLAdapterPipeline.from_pretrained(
-            "stabilityai/stable-diffusion-xl-base-1.0",
-            adapter=adapter,
-            torch_dtype=torch.float16,
-            variant="fp16",
-        )
-        pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors")
-        pipe.enable_model_cpu_offload()
-        pipe.set_progress_bar_config(disable=None)
-
-        generator = torch.Generator(device="cpu").manual_seed(0)
-        prompt = "toy"
-        image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/t2i_adapter/toy_canny.png"
-        )
-
-        images = pipe(prompt, image=image, generator=generator, output_type="np", num_inference_steps=3).images
-
-        assert images[0].shape == (768, 512, 3)
-
-        image_slice = images[0, -3:, -3:, -1].flatten()
-        expected_slice = np.array([0.4284, 0.4337, 0.4319, 0.4255, 0.4329, 0.4280, 0.4338, 0.4420, 0.4226])
-        assert numpy_cosine_similarity_distance(image_slice, expected_slice) < 1e-4
 
     def test_download_ckpt_diff_format_is_same(self):
         ckpt_path = (

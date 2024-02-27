@@ -52,12 +52,16 @@
       title: Image-to-image
     - local: using-diffusers/inpaint
       title: Inpainting
+    - local: using-diffusers/text-img2vid
+      title: Text or image-to-video
     - local: using-diffusers/depth2img
       title: Depth-to-image
     title: Tasks
   - sections:
     - local: using-diffusers/textual_inversion_inference
       title: Textual inversion
+    - local: using-diffusers/ip_adapter
+      title: IP-Adapter
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
@@ -284,6 +288,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/i2vgenxl
+      title: I2VGen-XL
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
@@ -304,6 +310,8 @@
       title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: Paint by Example
+    - local: api/pipelines/pia
+      title: Personalized Image Animator (PIA)
     - local: api/pipelines/pixart
       title: PixArt-α
     - local: api/pipelines/self_attention_guidance
@@ -319,6 +327,8 @@
         title: Text-to-image
       - local: api/pipelines/stable_diffusion/img2img
         title: Image-to-image
+      - local: api/pipelines/stable_diffusion/svd
+        title: Image-to-video
       - local: api/pipelines/stable_diffusion/inpaint
         title: Inpainting
       - local: api/pipelines/stable_diffusion/depth2img
