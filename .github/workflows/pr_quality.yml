@@ -25,7 +25,7 @@ jobs:
         run: |
           uv venv && source .venv/bin/activate
           python -m pip install --upgrade pip uv
-          python -m uv pip install [quality]
+          python -m uv pip install -e [quality]
       - name: Check quality
         run: |
           ruff check examples tests src utils scripts
@@ -43,7 +43,7 @@ jobs:
         run: |
           uv venv && source .venv/bin/activate
           python -m pip install --upgrade pip uv
-          python -m uv pip install [quality]
+          python -m uv pip install -e [quality]
       - name: Check quality
         run: |
           python utils/check_copies.py
