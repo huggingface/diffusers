@@ -73,13 +73,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
             Video](https://imagen.research.google/video/paper.pdf) paper).
         rho (`float`, *optional*, defaults to 7.0):
             The rho parameter used for calculating the Karras sigma schedule, which is set to 7.0 in the EDM paper [1].
-        timestep_spacing (`str`, defaults to `"linspace"`):
-            The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
-            Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
-        steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
     """
 
     _compatibles = []
@@ -94,8 +87,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         num_train_timesteps: int = 1000,
         prediction_type: str = "epsilon",
         rho: float = 7.0,
-        timestep_spacing: str = "linspace",
-        steps_offset: int = 0,
     ):
         # setable values
         self.num_inference_steps = None
@@ -115,9 +106,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
     @property
     def init_noise_sigma(self):
         # standard deviation of the initial noise distribution
-        if self.config.timestep_spacing in ["linspace", "trailing"]:
-            return self.config.sigma_max
-
         return (self.config.sigma_max**2 + 1) ** 0.5
 
     @property
@@ -211,28 +199,6 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         """
         self.num_inference_steps = num_inference_steps
 
-        # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
-        if self.config.timestep_spacing == "linspace":
-            timesteps = np.linspace(0, self.config.num_train_timesteps - 1, num_inference_steps, dtype=np.float32)[
-                ::-1
-            ].copy()
-        elif self.config.timestep_spacing == "leading":
-            step_ratio = self.config.num_train_timesteps // self.num_inference_steps
-            # creates integer timesteps by multiplying by ratio
-            # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(0, num_inference_steps) * step_ratio).round()[::-1].copy().astype(np.float32)
-            timesteps += self.config.steps_offset
-        elif self.config.timestep_spacing == "trailing":
-            step_ratio = self.config.num_train_timesteps / self.num_inference_steps
-            # creates integer timesteps by multiplying by ratio
-            # casting to int to avoid issues when num_inference_step is power of 3
-            timesteps = (np.arange(self.config.num_train_timesteps, 0, -step_ratio)).round().copy().astype(np.float32)
-            timesteps -= 1
-        else:
-            raise ValueError(
-                f"{self.config.timestep_spacing} is not supported. Please make sure to choose one of 'linspace', 'leading' or 'trailing'."
-            )
-
         ramp = np.linspace(0, 1, self.num_inference_steps)
         sigmas = self._compute_sigmas(ramp)
 
@@ -244,7 +210,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         self._begin_index = None
         self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
-    # Copied from https://github.com/crowsonkb/k-diffusion/blob/686dbad0f39640ea25c8a8c6a6e56bb40eacefa2/k_diffusion/sampling.py#L17
+    # Taken from https://github.com/crowsonkb/k-diffusion/blob/686dbad0f39640ea25c8a8c6a6e56bb40eacefa2/k_diffusion/sampling.py#L17
     def _compute_sigmas(self, ramp, sigma_min=None, sigma_max=None) -> torch.FloatTensor:
         """Constructs the noise schedule of Karras et al. (2022)."""
 
@@ -257,6 +223,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
         sigmas = (max_inv_rho + ramp * (min_inv_rho - max_inv_rho)) ** rho
         return sigmas
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.index_for_timestep
     def index_for_timestep(self, timestep, schedule_timesteps=None):
         if schedule_timesteps is None:
             schedule_timesteps = self.timesteps
@@ -271,6 +238,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
         return indices[pos].item()
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler._init_step_index
     def _init_step_index(self, timestep):
         if self.begin_index is None:
             if isinstance(timestep, torch.Tensor):
@@ -379,6 +347,7 @@ class EDMEulerScheduler(SchedulerMixin, ConfigMixin):
 
         return EDMEulerSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
 
+    # Copied from diffusers.schedulers.scheduling_euler_discrete.EulerDiscreteScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,
