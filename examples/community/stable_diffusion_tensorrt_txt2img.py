@@ -40,6 +40,7 @@ from polygraphy.backend.trt import (
     network_from_onnx_path,
     save_engine,
 )
+from ...utils import deprecate
 from polygraphy.backend.trt import util as trt_util
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
