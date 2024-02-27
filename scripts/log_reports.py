@@ -4,6 +4,7 @@ import os
 from datetime import date
 from pathlib import Path
 
+from slack_sdk import WebClient
 from tabulate import tabulate
 
 
@@ -66,7 +67,7 @@ def main(slack_channel_name=None):
             "type": "header",
             "text": {
                 "type": "plain_text",
-                "text": "🤗 Results of the {} PEFT scheduled tests.".format(os.environ.get("TEST_TYPE", "")),
+                "text": "🤗 Results of the Diffusers scheduled nightly tests.",
             },
         },
     ]
@@ -95,45 +96,42 @@ def main(slack_channel_name=None):
     else:
         payload.append(no_error_payload)
 
-    if os.environ.get("TEST_TYPE", "") != "":
-        from slack_sdk import WebClient
+    if len(message) > MAX_LEN_MESSAGE:
+        print(f"Truncating long message from {len(message)} to {MAX_LEN_MESSAGE}")
+        message = message[:MAX_LEN_MESSAGE] + "..."
 
-        if len(message) > MAX_LEN_MESSAGE:
-            print(f"Truncating long message from {len(message)} to {MAX_LEN_MESSAGE}")
-            message = message[:MAX_LEN_MESSAGE] + "..."
-
-        if len(message) != 0:
-            md_report = {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": message},
-            }
-            payload.append(md_report)
-            action_button = {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": "*For more details:*"},
-                "accessory": {
-                    "type": "button",
-                    "text": {"type": "plain_text", "text": "Check Action results", "emoji": True},
-                    "url": f"https://github.com/huggingface/peft/actions/runs/{os.environ['GITHUB_RUN_ID']}",
-                },
-            }
-            payload.append(action_button)
-
-        date_report = {
-            "type": "context",
-            "elements": [
-                {
-                    "type": "plain_text",
-                    "text": f"Nightly {os.environ.get('TEST_TYPE')} test results for {date.today()}",
-                },
-            ],
+    if len(message) != 0:
+        md_report = {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": message},
         }
-        payload.append(date_report)
+        payload.append(md_report)
+        action_button = {
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": "*For more details:*"},
+            "accessory": {
+                "type": "button",
+                "text": {"type": "plain_text", "text": "Check Action results", "emoji": True},
+                "url": f"https://github.com/huggingface/diffusers/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+            },
+        }
+        payload.append(action_button)
 
-        print(payload)
+    date_report = {
+        "type": "context",
+        "elements": [
+            {
+                "type": "plain_text",
+                "text": f"Nightly test results for {date.today()}",
+            },
+        ],
+    }
+    payload.append(date_report)
 
-        client = WebClient(token=os.environ.get("SLACK_API_TOKEN"))
-        client.chat_postMessage(channel=f"#{slack_channel_name}", text=message, blocks=payload)
+    print(payload)
+
+    client = WebClient(token=os.environ.get("SLACK_API_TOKEN"))
+    client.chat_postMessage(channel=f"#{slack_channel_name}", text=message, blocks=payload)
 
 
 if __name__ == "__main__":

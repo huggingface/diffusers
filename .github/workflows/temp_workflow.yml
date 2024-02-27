@@ -20,6 +20,7 @@ env:
   PYTEST_TIMEOUT: 600
   RUN_SLOW: yes
   RUN_NIGHTLY: yes
+  SLACK_API_TOKEN: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
 
 jobs:
   run_nightly_tests:
