@@ -29,6 +29,7 @@ jobs:
           python -m uv pip install -e [quality]
       - name: Check quality
         run: |
+          python -m venv /opt/venv
           ruff check examples tests src utils scripts
           ruff format examples tests src utils scripts --check
 
@@ -48,6 +49,7 @@ jobs:
           python -m uv pip install -e [quality]
       - name: Check quality
         run: |
+          python -m venv /opt/venv
           python utils/check_copies.py
           python utils/check_dummies.py
           make deps_table_check_updated
