@@ -113,7 +113,7 @@ pipe.enable_xformers_memory_efficient_attention()
 # memory optimization.
 pipe.enable_model_cpu_offload()
 
-control_image = load_image("./conditioning_image_1.png")
+control_image = load_image("./conditioning_image_1.png").resize((1024, 1024))
 prompt = "pale golden rod circle with old lace background"
 
 # generate image
