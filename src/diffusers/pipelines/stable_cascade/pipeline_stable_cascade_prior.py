@@ -544,7 +544,9 @@ class StableCascadePriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         if isinstance(self.scheduler, DDPMWuerstchenScheduler):
             timesteps = timesteps[:-1]
         else:
-            self.scheduler.config.clip_sample = False  # disample sample clipping
+            if self.scheduler.config.clip_sample
+                self.scheduler.config.clip_sample = False  # disample sample clipping
+                logger.warning(" set `clip_sample` to be False")
         # 6. Run denoising loop
         if hasattr(self.scheduler, "betas"):
             alphas = 1.0 - self.scheduler.betas
