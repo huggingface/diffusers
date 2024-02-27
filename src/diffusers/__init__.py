@@ -526,6 +526,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DPMSolverMultistepInverseScheduler,
             DPMSolverMultistepScheduler,
             DPMSolverSinglestepScheduler,
+            EDMEulerScheduler,
             EulerAncestralDiscreteScheduler,
             EulerDiscreteScheduler,
             HeunDiscreteScheduler,
