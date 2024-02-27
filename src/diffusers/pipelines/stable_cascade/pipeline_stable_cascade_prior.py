@@ -59,7 +59,8 @@ class StableCascadePriorPipelineOutput(BaseOutput):
             Prior image embeddings for text prompt
         prompt_embeds (`torch.FloatTensor`):
             Text embeddings for the prompt.
-
+        negative_prompt_embeds (`torch.FloatTensor`):
+            Text embeddings for the negative prompt.
     """
 
     image_embeddings: Union[torch.FloatTensor, np.ndarray]
