@@ -113,7 +113,7 @@ pipe.enable_xformers_memory_efficient_attention()
 # memory optimization.
 pipe.enable_model_cpu_offload()
 
-control_image = load_image("./conditioning_image_1.png")
+control_image = load_image("./conditioning_image_1.png").resize((1024, 1024))
 prompt = "pale golden rod circle with old lace background"
 
 # generate image
@@ -128,4 +128,14 @@ image.save("./output.png")
 
 ### Specifying a better VAE
 
-SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of an alternative VAE (such as [`madebyollin/sdxl-vae-fp16-fix`](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+
+If you're using this VAE during training, you need to ensure you're using it during inference too. You do so by:
+
+```diff
++ vae = AutoencoderKL.from_pretrained(vae_path_or_repo_id, torch_dtype=torch.float16)
+controlnet = ControlNetModel.from_pretrained(controlnet_path, torch_dtype=torch.float16)
+pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+    base_model_path, controlnet=controlnet, torch_dtype=torch.float16,
++   vae=vae,
+)
