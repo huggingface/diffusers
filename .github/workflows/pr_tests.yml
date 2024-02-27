@@ -66,19 +66,19 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
-        uv venv && source .venv/bin/activate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
         python -m uv pip install accelerate
 
     - name: Environment
       run: |
-        uv venv && source .venv/bin/activate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run fast PyTorch Pipeline CPU tests
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
-        uv venv && source .venv/bin/activate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -87,7 +87,7 @@ jobs:
     - name: Run fast PyTorch Model Scheduler CPU tests
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
-        uv venv && source .venv/bin/activate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -96,7 +96,7 @@ jobs:
     - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
-        uv venv && source .venv/bin/activate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -105,7 +105,7 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
-        uv venv && source .venv/bin/activate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install peft
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -154,18 +154,18 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
-        uv venv && source .venv/bin/activate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install -e [quality,test]
 
     - name: Environment
       run: |
-        uv venv && source .venv/bin/activate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run Hub tests for models, schedulers, and pipelines on a staging env
       if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
       run: |
-        uv venv && source .venv/bin/activate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         HUGGINGFACE_CO_STAGING=true python -m pytest \
           -m "is_staging_test" \
           --make-reports=tests_${{ matrix.config.report }} \

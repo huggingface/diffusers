@@ -60,7 +60,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          uv venv && source .venv/bin/activate
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers
           python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate
@@ -74,7 +74,7 @@ jobs:
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
-          uv venv && source .venv/bin/activate
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
             --make-reports=tests_${{ matrix.config.report }} \
@@ -85,7 +85,7 @@ jobs:
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
-          uv venv && source .venv/bin/activate
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pytest -n 0 \
             -s -v -k "Flax" \
             --make-reports=tests_${{ matrix.config.report }} \
@@ -96,7 +96,7 @@ jobs:
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
-          uv venv && source .venv/bin/activate
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "Onnx" \
             --make-reports=tests_${{ matrix.config.report }} \

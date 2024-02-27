@@ -31,7 +31,7 @@ jobs:
       - name: Install dependencies
         run: |
           apt-get update && apt-get install libsndfile1-dev libgl1 -y
-          uv venv && source .venv/bin/activate
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m uv pip install -e [quality,test]
           python -m uv pip install pandas peft
       - name: Environment
