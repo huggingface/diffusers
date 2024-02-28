@@ -12,12 +12,12 @@ from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextModel, CLIPTok
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    DiffusionPipeline,
     DPMSolverMultistepScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import PIL_INTERPOLATION, deprecate
 from diffusers.utils.torch_utils import randn_tensor
@@ -125,7 +125,7 @@ def set_requires_grad(model, value):
         param.requires_grad = value
 
 
-class CLIPGuidedStableDiffusion(DiffusionPipeline):
+class CLIPGuidedStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
     """CLIP guided stable diffusion based on the amazing repo by @crowsonkb and @Jack000
     - https://github.com/Jack000/glid-3-xl
     - https://github.dev/crowsonkb/k-diffusion

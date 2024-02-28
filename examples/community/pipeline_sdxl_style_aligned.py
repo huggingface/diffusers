@@ -85,7 +85,7 @@ EXAMPLE_DOC_STRING = """
         >>> from typing import List
 
         >>> import torch
-        >>> from diffusers.pipelines.pipeline_utils import DiffusionPipeline,StableDiffusionMixin
+        >>> from diffusers.pipelines.pipeline_utils import DiffusionPipeline
         >>> from PIL import Image
 
         >>> model_id = "a-r-r-o-w/dreamshaper-xl-turbo"

@@ -12,12 +12,12 @@ from transformers import CLIPFeatureExtractor, CLIPModel, CLIPTextModel, CLIPTok
 from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
-    DiffusionPipeline,
     DPMSolverMultistepScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import PIL_INTERPOLATION
 from diffusers.utils.torch_utils import randn_tensor
@@ -77,7 +77,7 @@ def set_requires_grad(model, value):
         param.requires_grad = value
 
 
-class CLIPGuidedImagesMixingStableDiffusion(DiffusionPipeline):
+class CLIPGuidedImagesMixingStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
     def __init__(
         self,
         vae: AutoencoderKL,

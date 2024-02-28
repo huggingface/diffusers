@@ -7,9 +7,9 @@ import numpy as np
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -46,7 +46,7 @@ def slerp(t, v0, v1, DOT_THRESHOLD=0.9995):
     return v2
 
 
-class StableDiffusionWalkPipeline(DiffusionPipeline):
+class StableDiffusionWalkPipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion.
 

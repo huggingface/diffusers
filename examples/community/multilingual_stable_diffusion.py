@@ -11,9 +11,9 @@ from transformers import (
     pipeline,
 )
 
-from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -48,7 +48,7 @@ def translate_prompt(prompt, translation_tokenizer, translation_model, device):
     return en_trans[0]
 
 
-class MultilingualStableDiffusion(DiffusionPipeline):
+class MultilingualStableDiffusion(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion in different languages.
 

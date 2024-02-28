@@ -19,6 +19,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from diffusers import DiffusionPipeline
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -56,7 +57,7 @@ def preprocess(image):
     return 2.0 * image - 1.0
 
 
-class ImagicStableDiffusionPipeline(DiffusionPipeline):
+class ImagicStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for imagic image editing.
     See paper here: https://arxiv.org/pdf/2210.09276.pdf
