@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ from diffusers.utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     load_numpy,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -62,8 +63,8 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
     def get_dummy_components(self):
         torch.manual_seed(0)
         unet = UNet3DConditionModel(
-            block_out_channels=(32, 32),
-            layers_per_block=2,
+            block_out_channels=(4, 8),
+            layers_per_block=1,
             sample_size=32,
             in_channels=4,
             out_channels=4,
@@ -71,6 +72,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             up_block_types=("UpBlock3D", "CrossAttnUpBlock3D"),
             cross_attention_dim=4,
             attention_head_dim=4,
+            norm_num_groups=2,
         )
         scheduler = DDIMScheduler(
             beta_start=0.00085,
@@ -81,13 +83,14 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         )
         torch.manual_seed(0)
         vae = AutoencoderKL(
-            block_out_channels=(32,),
+            block_out_channels=(8,),
             in_channels=3,
             out_channels=3,
             down_block_types=["DownEncoderBlock2D"],
             up_block_types=["UpDecoderBlock2D"],
             latent_channels=4,
             sample_size=32,
+            norm_num_groups=2,
         )
         torch.manual_seed(0)
         text_encoder_config = CLIPTextConfig(
@@ -139,13 +142,15 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs = self.get_dummy_inputs(device)
         inputs["output_type"] = "np"
         frames = sd_pipe(**inputs).frames
-        image_slice = frames[0][-3:, -3:, -1]
 
-        assert frames[0].shape == (32, 32, 3)
-        expected_slice = np.array([91.0, 152.0, 66.0, 192.0, 94.0, 126.0, 101.0, 123.0, 152.0])
+        image_slice = frames[0][0][-3:, -3:, -1]
+
+        assert frames[0][0].shape == (32, 32, 3)
+        expected_slice = np.array([0.7537, 0.1752, 0.6157, 0.5508, 0.4240, 0.4110, 0.4838, 0.5648, 0.5094])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
+    @unittest.skipIf(torch_device != "cuda", reason="Feature isn't heavily used. Test in CUDA environment only.")
     def test_attention_slicing_forward_pass(self):
         self._test_attention_slicing_forward_pass(test_mean_pixel_difference=False, expected_max_diff=3e-3)
 
@@ -180,7 +185,7 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 class TextToVideoSDPipelineSlowTests(unittest.TestCase):
     def test_two_step_model(self):
         expected_video = load_numpy(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text_to_video/video_2step.npy"
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text-to-video/video_2step.npy"
         )
 
         pipe = TextToVideoSDPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b")
@@ -189,10 +194,8 @@ class TextToVideoSDPipelineSlowTests(unittest.TestCase):
         prompt = "Spiderman is surfing"
         generator = torch.Generator(device="cpu").manual_seed(0)
 
-        video_frames = pipe(prompt, generator=generator, num_inference_steps=2, output_type="pt").frames
-        video = video_frames.cpu().numpy()
-
-        assert np.abs(expected_video - video).mean() < 5e-2
+        video_frames = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").frames
+        assert numpy_cosine_similarity_distance(expected_video.flatten(), video_frames.flatten()) < 1e-4
 
     def test_two_step_model_with_freeu(self):
         expected_video = []
@@ -204,10 +207,9 @@ class TextToVideoSDPipelineSlowTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
 
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
-        video_frames = pipe(prompt, generator=generator, num_inference_steps=2, output_type="pt").frames
-        video = video_frames.cpu().numpy()
-        video = video[0, 0, -3:, -3:, -1].flatten()
+        video_frames = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").frames
+        video = video_frames[0, 0, -3:, -3:, -1].flatten()
 
-        expected_video = [-0.3102, -0.2477, -0.1772, -0.648, -0.6176, -0.5484, -0.0217, -0.056, -0.0177]
+        expected_video = [0.3643, 0.3455, 0.3831, 0.3923, 0.2978, 0.3247, 0.3278, 0.3201, 0.3475]
 
         assert np.abs(expected_video - video).mean() < 5e-2

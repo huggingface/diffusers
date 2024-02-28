@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -72,6 +72,7 @@ class AudioLDMPipeline(DiffusionPipeline):
         vocoder ([`~transformers.SpeechT5HifiGan`]):
             Vocoder of class `SpeechT5HifiGan`.
     """
+
     model_cpu_offload_seq = "text_encoder->unet->vae"
 
     def __init__(

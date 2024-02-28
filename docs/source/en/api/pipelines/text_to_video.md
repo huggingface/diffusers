@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -12,27 +12,27 @@ specific language governing permissions and limitations under the License.
 
 <Tip warning={true}>
 
-🧪 This pipeline is for research purposes only. 
+🧪 This pipeline is for research purposes only.
 
 </Tip>
 
 # Text-to-video
 
-[VideoFusion: Decomposed Diffusion Models for High-Quality Video Generation](https://huggingface.co/papers/2303.08320) is by Zhengxiong Luo, Dayou Chen, Yingya Zhang, Yan Huang, Liang Wang, Yujun Shen, Deli Zhao, Jingren Zhou, Tieniu Tan.
+[ModelScope Text-to-Video Technical Report](https://arxiv.org/abs/2308.06571) is by Jiuniu Wang, Hangjie Yuan, Dayou Chen, Yingya Zhang, Xiang Wang, Shiwei Zhang.
 
 The abstract from the paper is:
 
-*A diffusion probabilistic model (DPM), which constructs a forward diffusion process by gradually adding noise to data points and learns the reverse denoising process to generate new samples, has been shown to handle complex data distribution. Despite its recent success in image synthesis, applying DPMs to video generation is still challenging due to high-dimensional data spaces. Previous methods usually adopt a standard diffusion process, where frames in the same video clip are destroyed with independent noises, ignoring the content redundancy and temporal correlation. This work presents a decomposed diffusion process via resolving the per-frame noise into a base noise that is shared among all frames and a residual noise that varies along the time axis. The denoising pipeline employs two jointly-learned networks to match the noise decomposition accordingly. Experiments on various datasets confirm that our approach, termed as VideoFusion, surpasses both GAN-based and diffusion-based alternatives in high-quality video generation. We further show that our decomposed formulation can benefit from pre-trained image diffusion models and well-support text-conditioned video creation.*
+*This paper introduces ModelScopeT2V, a text-to-video synthesis model that evolves from a text-to-image synthesis model (i.e., Stable Diffusion). ModelScopeT2V incorporates spatio-temporal blocks to ensure consistent frame generation and smooth movement transitions. The model could adapt to varying frame numbers during training and inference, rendering it suitable for both image-text and video-text datasets. ModelScopeT2V brings together three components (i.e., VQGAN, a text encoder, and a denoising UNet), totally comprising 1.7 billion parameters, in which 0.5 billion parameters are dedicated to temporal capabilities. The model demonstrates superior performance over state-of-the-art methods across three evaluation metrics. The code and an online demo are available at https://modelscope.cn/models/damo/text-to-video-synthesis/summary.*
 
 You can find additional information about Text-to-Video on the [project page](https://modelscope.cn/models/damo/text-to-video-synthesis/summary), [original codebase](https://github.com/modelscope/modelscope/), and try it out in a [demo](https://huggingface.co/spaces/damo-vilab/modelscope-text-to-video-synthesis). Official checkpoints can be found at [damo-vilab](https://huggingface.co/damo-vilab) and [cerspense](https://huggingface.co/cerspense).
 
-## Usage example 
+## Usage example
 
 ### `text-to-video-ms-1.7b`
 
 Let's start by generating a short video with the default length of 16 frames (2s at 8 fps):
 
-```python 
+```python
 import torch
 from diffusers import DiffusionPipeline
 from diffusers.utils import export_to_video
@@ -41,7 +41,7 @@ pipe = DiffusionPipeline.from_pretrained("damo-vilab/text-to-video-ms-1.7b", tor
 pipe = pipe.to("cuda")
 
 prompt = "Spiderman is surfing"
-video_frames = pipe(prompt).frames
+video_frames = pipe(prompt).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
@@ -64,7 +64,7 @@ pipe.enable_model_cpu_offload()
 pipe.enable_vae_slicing()
 
 prompt = "Darth Vader surfing a wave"
-video_frames = pipe(prompt, num_frames=64).frames
+video_frames = pipe(prompt, num_frames=64).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
@@ -83,12 +83,12 @@ pipe.scheduler = DPMSolverMultistepScheduler.from_config(pipe.scheduler.config)
 pipe.enable_model_cpu_offload()
 
 prompt = "Spiderman is surfing"
-video_frames = pipe(prompt, num_inference_steps=25).frames
+video_frames = pipe(prompt, num_inference_steps=25).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
 
-Here are some sample outputs: 
+Here are some sample outputs:
 
 <table>
     <tr>
@@ -118,8 +118,9 @@ which can then be upscaled using [`VideoToVideoSDPipeline`] and [`cerspense/zero
 
 ```py
 import torch
-from diffusers import DiffusionPipeline
+from diffusers import DiffusionPipeline, DPMSolverMultistepScheduler
 from diffusers.utils import export_to_video
+from PIL import Image
 
 pipe = DiffusionPipeline.from_pretrained("cerspense/zeroscope_v2_576w", torch_dtype=torch.float16)
 pipe.enable_model_cpu_offload()
@@ -129,7 +130,7 @@ pipe.unet.enable_forward_chunking(chunk_size=1, dim=1)
 pipe.enable_vae_slicing()
 
 prompt = "Darth Vader surfing a wave"
-video_frames = pipe(prompt, num_frames=24).frames
+video_frames = pipe(prompt, num_frames=24).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
@@ -147,12 +148,12 @@ pipe.enable_vae_slicing()
 
 video = [Image.fromarray(frame).resize((1024, 576)) for frame in video_frames]
 
-video_frames = pipe(prompt, video=video, strength=0.6).frames
+video_frames = pipe(prompt, video=video, strength=0.6).frames[0]
 video_path = export_to_video(video_frames)
 video_path
 ```
 
-Here are some sample outputs: 
+Here are some sample outputs:
 
 <table>
     <tr>
@@ -165,6 +166,18 @@ Here are some sample outputs:
         </center></td>
     </tr>
 </table>
+
+## Tips
+
+Video generation is memory-intensive and one way to reduce your memory usage is to set `enable_forward_chunking` on the pipeline's UNet so you don't run the entire feedforward layer at once. Breaking it up into chunks in a loop is more efficient.
+
+Check out the [Text or image-to-video](text-img2vid) guide for more details about how certain parameters can affect video generation and how to optimize inference by reducing memory usage.
+
+<Tip>
+
+Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
+
+</Tip>
 
 ## TextToVideoSDPipeline
 [[autodoc]] TextToVideoSDPipeline

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -172,6 +172,7 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "output_type",
         "return_dict",
     ]
+    callback_cfg_params = ["image_embds"]
     test_xformers_attention = False
 
     def get_dummy_inputs(self, device, seed=0):

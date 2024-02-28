@@ -31,10 +31,12 @@ keywords:
   - deep-learning
   - pytorch
   - image-generation
+  - hacktoberfest
   - diffusion
   - text2image
   - image2image
   - score-based-generative-modeling
   - stable-diffusion
+  - stable-diffusion-diffusers
 license: Apache-2.0
 version: 0.12.1
