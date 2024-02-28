@@ -416,11 +416,11 @@ images[0]
 <hfoption id="inpaint">
 
 ```py
-from diffusers import AutoPipelineForInpaint
+from diffusers import AutoPipelineForInpainting
 import torch
 from diffusers.utils import load_image
 
-pipeline = AutoPipelineForInpaint.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float).to("cuda")
+pipeline = AutoPipelineForInpainting.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float).to("cuda")
 
 image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/inpaint_image.png")
 mask = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/mask.png")
