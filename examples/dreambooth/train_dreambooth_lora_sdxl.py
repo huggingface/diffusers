@@ -1615,6 +1615,9 @@ def main(args):
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
+                # For EDM-style training, we first obtain the sigmas based on the continuous timesteps.
+                # We then precondition the final model inputs based on these sigmas instead of the timesteps.
+                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 if args.do_edm_style_training:
                     sigmas = get_sigmas(timesteps, len(noisy_model_input.shape), noisy_model_input.dtype)
                     inp_noisy_latents = noise_scheduler.precondition_inputs(noisy_model_input, sigmas)
@@ -1668,6 +1671,9 @@ def main(args):
                     )[0]
 
                 if args.do_edm_style_training:
+                    # Similar to the input preconditioning, the model predictions are also preconditioned
+                    # on noised model inputs (before preconditioning) and the sigmas. 
+                    # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                     model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
                     # We are not doing weighting here because it tends result in numerical problems.
                     # See: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
