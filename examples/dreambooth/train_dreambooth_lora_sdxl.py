@@ -1061,9 +1061,7 @@ def main(args):
     scheduler_type = determine_scheduler_type(args.pretrained_model_name_or_path, args.revision)
     if "EDM" in scheduler_type or args.do_edm_style_training:
         args.do_edm_style_training = True
-        noise_scheduler = EDMEulerScheduler.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="scheduler"
-        )
+        noise_scheduler = EDMEulerScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
         logger.info("Performing EDM-style training!")
     else:
         noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -1672,7 +1670,7 @@ def main(args):
 
                 if args.do_edm_style_training:
                     # Similar to the input preconditioning, the model predictions are also preconditioned
-                    # on noised model inputs (before preconditioning) and the sigmas. 
+                    # on noised model inputs (before preconditioning) and the sigmas.
                     # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                     model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
                     # We are not doing weighting here because it tends result in numerical problems.
