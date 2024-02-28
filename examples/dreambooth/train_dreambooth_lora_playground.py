@@ -1002,7 +1002,6 @@ def main(args):
         args.pretrained_model_name_or_path,
         subfolder="vae",
         revision=args.revision,
-        variant=args.variant,
     )
     latents_mean = torch.tensor(vae.config.latents_mean).view(1, 4, 1, 1)
     latents_std = torch.tensor(vae.config.latents_std).view(1, 4, 1, 1)
@@ -1560,7 +1559,6 @@ def main(args):
                     )[0]
 
                 model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
-                weighing = sigmas**-2.0
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -1577,7 +1575,7 @@ def main(args):
 
                     # Compute prior loss
                     prior_loss = torch.mean(
-                        (weighing.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                        ((model_pred_prior.float() - target_prior.float()) ** 2).reshape(
                             target_prior.shape[0], -1
                         ),
                         1,
@@ -1585,7 +1583,7 @@ def main(args):
                     prior_loss = prior_loss.mean()
 
                 loss = torch.mean(
-                    (weighing.float() * (model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
+                    ((model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
                 )
                 loss = loss.mean()
 
