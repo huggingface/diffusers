@@ -48,4 +48,4 @@ if __name__ == "__main__":
     # skip loading position embeddings
     adapter.load_state_dict(conv_state_dict, strict=False)
     adapter.save_pretrained(args.output_path)
-    adapter.save_pretrained(args.output_path, variant="fp16", torch_dtype=torch.float16)
+    adapter.to(torch.float16).save_pretrained(args.output_path, variant="fp16")
