@@ -1606,7 +1606,9 @@ def main(args):
                     )
                     timesteps = timesteps.long()
                 else:
-                    # in EDM formulation, the model is conditioned on the pre-conditioned noise levels instead of discrete timesteps, so here we sample indices to get the noise levels from `scheduler.timesteps`
+                    # in EDM formulation, the model is conditioned on the pre-conditioned noise levels
+                    # instead of discrete timesteps, so here we sample indices to get the noise levels
+                    # from `scheduler.timesteps`
                     indices = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,))
                     timesteps = noise_scheduler.timesteps[indices].to(device=model_input.device)
 
@@ -1686,23 +1688,10 @@ def main(args):
                     target, target_prior = torch.chunk(target, 2, dim=0)
 
                     # Compute prior loss
-                    if args.do_edm_style_training:
-                        prior_loss = torch.mean(
-                            ((model_pred_prior.float() - target_prior.float()) ** 2).reshape(
-                                target_prior.shape[0], -1
-                            ),
-                            1,
-                        )
-                        prior_loss = prior_loss.mean()
-                    else:
-                        prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
                 if args.snr_gamma is None:
-                    if args.do_edm_style_training:
-                        loss = torch.mean(((model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1)
-                        loss = loss.mean()
-                    else:
-                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
