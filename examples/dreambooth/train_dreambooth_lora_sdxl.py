@@ -1606,6 +1606,7 @@ def main(args):
                     )
                     timesteps = timesteps.long()
                 else:
+                    # in EDM formulation, the model is conditioned on the pre-conditioned noise levels instead of discrete timesteps, so here we sample indices to get the noise levels from `scheduler.timesteps`
                     indices = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,))
                     timesteps = noise_scheduler.timesteps[indices].to(device=model_input.device)
 
