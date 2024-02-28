@@ -74,9 +74,10 @@ def save_model_card(
     vae_path: str = None,
 ):
     img_str = ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"![img_{i}](./image_{i}.png)\n"
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
 
     model_description = f"""
 # Text-to-image finetuning - {repo_id}
@@ -419,7 +420,7 @@ def parse_args(input_args=None):
         "--prediction_type",
         type=str,
         default=None,
-        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.",
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediction_type` is chosen.",
     )
     parser.add_argument(
         "--hub_model_id",
@@ -683,7 +684,7 @@ def main(args):
     # Set unet as trainable.
     unet.train()
 
-    # For mixed precision training we cast all non-trainable weigths to half-precision
+    # For mixed precision training we cast all non-trainable weights to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -738,7 +739,7 @@ def main(args):
                 ema_unet.to(accelerator.device)
                 del load_model
 
-            for i in range(len(models)):
+            for _ in range(len(models)):
                 # pop models so that they are not loaded again
                 model = models.pop()
 
@@ -950,6 +951,9 @@ def main(args):
         unet, optimizer, train_dataloader, lr_scheduler
     )
 
+    if args.use_ema:
+        ema_unet.to(accelerator.device)
+
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -962,7 +966,7 @@ def main(args):
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune-sdxl", config=vars(args))
 
-    # Function for unwraping if torch.compile() was used in accelerate.
+    # Function for unwrapping if torch.compile() was used in accelerate.
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
         model = model._orig_mod if is_compiled_module(model) else model
@@ -1125,6 +1129,8 @@ def main(args):
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)

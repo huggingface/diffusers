@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "src/diffusers/**.py"
+      - "examples/**.py"
+      - "tests/**.py"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
