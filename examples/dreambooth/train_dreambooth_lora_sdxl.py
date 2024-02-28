@@ -1764,7 +1764,7 @@ def main(args):
                 accelerator,
                 pipeline_args,
                 epoch,
-                final_validation=True,
+                is_final_validation=True,
             )
 
         if args.push_to_hub:
