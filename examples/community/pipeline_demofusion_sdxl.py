@@ -23,7 +23,7 @@ from diffusers.models.attention_processor import (
     XFormersAttnProcessor,
 )
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     is_accelerate_available,
@@ -93,7 +93,9 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
     return noise_cfg
 
 
-class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin):
+class DemoFusionSDXLPipeline(
+    DiffusionPipeline, StableDiffusionMixin, FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
+):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL.
 
@@ -175,39 +177,6 @@ class DemoFusionSDXLPipeline(DiffusionPipeline, FromSingleFileMixin, LoraLoaderM
             self.watermark = StableDiffusionXLWatermarker()
         else:
             self.watermark = None
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.vae.enable_tiling()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
 
     def encode_prompt(
         self,

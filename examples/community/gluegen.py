@@ -10,6 +10,7 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import LoraLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
@@ -193,7 +194,7 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-class GlueGenStableDiffusionPipeline(DiffusionPipeline, LoraLoaderMixin):
+class GlueGenStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin, LoraLoaderMixin):
     def __init__(
         self,
         vae: AutoencoderKL,
@@ -240,35 +241,6 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, LoraLoaderMixin):
             device
         )
         self.language_adapter.load_state_dict(torch.load(model_path))
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
 
     def _adapt_language(self, prompt_embeds: torch.FloatTensor):
         prompt_embeds = prompt_embeds / 3
@@ -543,32 +515,6 @@ class GlueGenStableDiffusionPipeline(DiffusionPipeline, LoraLoaderMixin):
         # scale the initial noise by the standard deviation required by the scheduler
         latents = latents * self.scheduler.init_noise_sigma
         return latents
-
-    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
-
-        The suffixes after the scaling factors represent the stages where they are being applied.
-
-        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
-        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
-
-        Args:
-            s1 (`float`):
-                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            s2 (`float`):
-                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
-            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
-        """
-        if not hasattr(self, "unet"):
-            raise ValueError("The pipeline must have `unet` for using FreeU.")
-        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
-
-    def disable_freeu(self):
-        """Disables the FreeU mechanism if enabled."""
-        self.unet.disable_freeu()
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):

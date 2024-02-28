@@ -128,6 +128,7 @@ else:
             "PNDMPipeline",
             "RePaintPipeline",
             "ScoreSdeVePipeline",
+            "StableDiffusionMixin",
         ]
     )
     _import_structure["schedulers"].extend(
@@ -514,6 +515,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PNDMPipeline,
             RePaintPipeline,
             ScoreSdeVePipeline,
+            StableDiffusionMixin,
         )
         from .schedulers import (
             AmusedScheduler,

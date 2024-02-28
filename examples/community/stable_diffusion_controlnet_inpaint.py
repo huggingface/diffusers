@@ -9,14 +9,13 @@ import torch
 import torch.nn.functional as F
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from diffusers import AutoencoderKL, ControlNetModel, DiffusionPipeline, UNet2DConditionModel, logging
+from diffusers import AutoencoderKL, ControlNetModel, UNet2DConditionModel, logging
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     PIL_INTERPOLATION,
-    is_accelerate_available,
-    is_accelerate_version,
     replace_example_docstring,
 )
 from diffusers.utils.torch_utils import randn_tensor
@@ -228,7 +227,7 @@ def prepare_controlnet_conditioning_image(
     return controlnet_conditioning_image
 
 
-class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline):
+class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline, StableDiffusionMixin):
     """
     Inspired by: https://github.com/haofanwang/ControlNet-for-Diffusers/
     """
@@ -281,89 +280,6 @@ class StableDiffusionControlNetInpaintPipeline(DiffusionPipeline):
 
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae, controlnet, and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae, self.controlnet]:
-            cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            # the safety checker can offload the vae again
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # control net hook has be manually offloaded as it alternates with unet
-        cpu_offload_with_hook(self.controlnet, device)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
-    @property
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     def _encode_prompt(
         self,
