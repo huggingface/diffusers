@@ -1805,8 +1805,6 @@ def main(args):
                     torch_dtype=weight_dtype,
                 )
                 pipeline_args = {"prompt": args.validation_prompt}
-                if args.do_edm_style_training:
-                    pipeline_args.update({"guidance_scale": 5.0})
 
                 images = log_validation(
                     pipeline,
@@ -1867,8 +1865,6 @@ def main(args):
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
             pipeline_args = {"prompt": args.validation_prompt, "num_inference_steps": 25}
-            if args.do_edm_style_training:
-                pipeline_args.update({"guidance_scale": 5.0})
             images = log_validation(
                 pipeline,
                 args,
