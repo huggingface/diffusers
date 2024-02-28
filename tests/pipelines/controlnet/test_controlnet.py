@@ -475,12 +475,12 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         sd_pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(device)
-        inputs["prompt"] = [inputs["prompt"], inputs["prompt"]]
-        inputs["image"] = [inputs["image"], inputs["image"]]
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"], inputs["prompt"], inputs["prompt"]]
+        inputs["image"] = [inputs["image"], inputs["image"], inputs["image"], inputs["image"]]
         output = sd_pipe(**inputs)
         image = output.images
 
-        assert image.shape == (2, 64, 64, 3)
+        assert image.shape == (4, 64, 64, 3)
 
         image_1, image_2 = image
         # make sure that the outputs are different
