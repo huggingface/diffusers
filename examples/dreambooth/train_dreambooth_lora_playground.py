@@ -161,8 +161,7 @@ def log_validation(
     # run inference
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
 
-    with torch.cuda.amp.autocast():
-        images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
+    images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
     for tracker in accelerator.trackers:
         phase_name = "test" if is_final_validation else "validation"
@@ -1575,16 +1574,11 @@ def main(args):
 
                     # Compute prior loss
                     prior_loss = torch.mean(
-                        ((model_pred_prior.float() - target_prior.float()) ** 2).reshape(
-                            target_prior.shape[0], -1
-                        ),
-                        1,
+                        ((model_pred_prior.float() - target_prior.float()) ** 2).reshape(target_prior.shape[0], -1), 1
                     )
                     prior_loss = prior_loss.mean()
 
-                loss = torch.mean(
-                    ((model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1
-                )
+                loss = torch.mean(((model_pred.float() - target.float()) ** 2).reshape(target.shape[0], -1), 1)
                 loss = loss.mean()
 
                 if args.with_prior_preservation:
