@@ -52,7 +52,7 @@ from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
     DPMSolverMultistepScheduler,
-    EDMDPMSolverMultistepScheduler,
+    EDMEulerScheduler,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
@@ -1059,9 +1059,9 @@ def main(args):
 
     # Load scheduler and models
     scheduler_type = determine_scheduler_type(args.pretrained_model_name_or_path, args.revision)
-    if scheduler_type == "EDMDPMSolverMultistepScheduler" or args.do_edm_style_training:
+    if "EDM" in scheduler_type or args.do_edm_style_training:
         args.do_edm_style_training = True
-        noise_scheduler = EDMDPMSolverMultistepScheduler.from_pretrained(
+        noise_scheduler = EDMEulerScheduler.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="scheduler"
         )
         logger.info("Performing EDM-style training!")
@@ -1085,6 +1085,7 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
+    latents_mean = latents_std = None
     if hasattr(vae.config, "latents_mean") and vae.config.latents_mean is not None:
         latents_mean = torch.tensor(vae.config.latents_mean).view(1, 4, 1, 1)
     if hasattr(vae.config, "latents_std") and vae.config.latents_std is not None:
@@ -1584,7 +1585,7 @@ def main(args):
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
 
-                if "playgroundai" not in args.pretrained_model_name_or_path:
+                if latents_mean is None and latents_std is None:
                     model_input = model_input * vae.config.scaling_factor
                     if args.pretrained_vae_model_name_or_path is None:
                         model_input = model_input.to(weight_dtype)
