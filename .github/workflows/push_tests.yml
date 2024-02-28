@@ -4,7 +4,10 @@ on:
   push:
     branches:
       - main
-
+    paths:
+      - "src/diffusers/**.py"
+      - "examples/**.py"
+      - "tests/**.py"
 
 env:
   DIFFUSERS_IS_CI: yes
