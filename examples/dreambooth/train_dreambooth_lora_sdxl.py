@@ -112,7 +112,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# SDXL LoRA DreamBooth - {repo_id}
+# {'SDXL' if 'playgroundai' not in base_model else 'Playground'} LoRA DreamBooth - {repo_id}
 
 <Gallery />
 
@@ -1485,7 +1485,12 @@ def main(args):
     # We need to initialize the trackers we use, and also store our configuration.
     # The trackers initializes automatically on the main process.
     if accelerator.is_main_process:
-        accelerator.init_trackers("dreambooth-lora-sd-xl", config=vars(args))
+        tracker_name = (
+            "dreambooth-lora-sd-xl"
+            if "playgroundai" not in args.pretrained_model_name_or_path
+            else "dreambooth-lora-playground"
+        )
+        accelerator.init_trackers(tracker_name, config=vars(args))
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
