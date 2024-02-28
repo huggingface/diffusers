@@ -49,6 +49,8 @@ pipeline = StableDiffusionXLPipeline.from_single_file(
 pipeline = pipeline.to("cuda")
 ```
 
+In this method, you need to set `timestep_spacing` parameter of the `StableDiffusionXLPipeline`'s scheduler to `'trailing'`.
+
 ## Text-to-image
 
 For text-to-image, pass a text prompt. By default, SDXL Turbo generates a 512x512 image, and that resolution gives the best results. You can try setting the `height` and `width` parameters to 768x768 or 1024x1024, but you should expect quality degradations when doing so.
