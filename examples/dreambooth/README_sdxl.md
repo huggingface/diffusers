@@ -225,7 +225,6 @@ accelerate launch train_dreambooth_lora_sdxl.py \
   --instance_data_dir="dog" \
   --output_dir="dog-playground-lora" \
   --mixed_precision="fp16" \
-  --variant="fp16" \
   --instance_prompt="a photo of sks dog" \
   --resolution=1024 \
   --train_batch_size=1 \
@@ -243,4 +242,4 @@ accelerate launch train_dreambooth_lora_sdxl.py \
 ```
 
 > [!CAUTION]
-> Min-SNR gamma is not supported with the EDM-style training yet.
+> Min-SNR gamma is not supported with the EDM-style training yet. When training with the PlaygroundAI model, it's recommended to not pass any "variant".

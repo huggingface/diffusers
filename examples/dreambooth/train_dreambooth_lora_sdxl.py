@@ -1083,10 +1083,11 @@ def main(args):
         vae_path,
         subfolder="vae" if args.pretrained_vae_model_name_or_path is None else None,
         revision=args.revision,
-        variant=args.variant if "playgroundai" not in args.pretrained_model_name_or_path else None,
+        variant=args.variant,
     )
-    if "playgroundai" in args.pretrained_model_name_or_path:
+    if hasattr(vae.config, "latents_mean") and vae.config.latents_mean is not None:
         latents_mean = torch.tensor(vae.config.latents_mean).view(1, 4, 1, 1)
+    if hasattr(vae.config, "latents_std") and vae.config.latents_std is not None:
         latents_std = torch.tensor(vae.config.latents_std).view(1, 4, 1, 1)
 
     unet = UNet2DConditionModel.from_pretrained(
