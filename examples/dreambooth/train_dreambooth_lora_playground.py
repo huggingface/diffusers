@@ -1027,7 +1027,7 @@ def main(args):
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)
-    vae.to(accelerator.device, dtype=weight_dtype)
+    vae.to(accelerator.device, dtype=torch.float32)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
     text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
@@ -1477,7 +1477,7 @@ def main(args):
 
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
-                pixel_values = batch["pixel_values"].to(dtype=weight_dtype)
+                pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                 prompts = batch["prompts"]
 
                 # encode batch prompts when custom prompts are provided for each image -
@@ -1492,6 +1492,7 @@ def main(args):
 
                 # Convert images to latent space
                 model_input = vae.encode(pixel_values).latent_dist.sample()
+                model_input = model_input.to(dtype=weight_dtype)
                 latents_mean = latents_mean.to(device=model_input.device, dtype=model_input.dtype)
                 latents_std = latents_std.to(device=model_input.device, dtype=model_input.dtype)
                 model_input = (model_input - latents_mean) * vae.config.scaling_factor / latents_std
@@ -1508,7 +1509,7 @@ def main(args):
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
                 sigmas = get_sigmas(timesteps, len(noisy_model_input.shape), noisy_model_input.dtype)
-                inp_noisy_latents = noisy_model_input / ((sigmas**2 + 1) ** 0.5)
+                inp_noisy_latents = noise_scheduler.precondition_inputs(noisy_model_input, sigmas)
 
                 # time ids
                 add_time_ids = torch.cat(
@@ -1558,12 +1559,12 @@ def main(args):
                         return_dict=False,
                     )[0]
 
-                model_pred = model_pred * (-sigmas) + noisy_model_input
+                model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
                 weighing = sigmas**-2.0
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
+                    target = model_input
                 elif noise_scheduler.config.prediction_type == "v_prediction":
                     target = noise_scheduler.get_velocity(model_input, noise, timesteps)
                 else:
