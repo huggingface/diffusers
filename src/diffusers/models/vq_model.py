@@ -145,6 +145,7 @@ class VQModel(ModelMixin, ConfigMixin):
             quant, commit_loss, _ = self.quantize(h)
         elif self.config.lookup_from_codebook:
             quant = self.quantize.get_codebook_entry(h, shape)
+            commit_loss = torch.zeros((h.shape[0])).to(h.device, dtype=h.dtype)
         else:
             quant = h
             commit_loss = torch.zeros((h.shape[0])).to(h.device, dtype=h.dtype)
