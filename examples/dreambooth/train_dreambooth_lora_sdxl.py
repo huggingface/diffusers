@@ -89,7 +89,7 @@ def determine_scheduler_type(pretrained_model_name_or_path, revision):
         )
 
     with open(model_index, "r") as f:
-        scheduler_type = json.load(f)["scheduler"][0]
+        scheduler_type = json.load(f)["scheduler"][1]
     return scheduler_type
 
 
@@ -1064,6 +1064,7 @@ def main(args):
         noise_scheduler = EDMDPMSolverMultistepScheduler.from_pretrained(
             args.pretrained_model_name_or_path, subfolder="scheduler"
         )
+        logger.info("Performing EDM-style training!")
     else:
         noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 
