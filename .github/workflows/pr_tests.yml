@@ -4,6 +4,14 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/diffusers/**.py"
+      - "benchmarks/**.py"
+      - "examples/**.py"
+      - "scripts/**.py"
+      - "tests/**.py"
+      - ".github/**.yml"
+      - "utils/**.py"
   push:
     branches:
       - ci-*
@@ -19,7 +27,44 @@ env:
   PYTEST_TIMEOUT: 60
 
 jobs:
+  check_code_quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[quality]
+      - name: Check quality
+        run: |
+          ruff check examples tests src utils scripts
+          ruff format examples tests src utils scripts --check
+
+  check_repository_consistency:
+    needs: check_code_quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[quality]
+      - name: Check quality
+        run: |
+          python utils/check_copies.py
+          python utils/check_dummies.py
+          make deps_table_check_updated
+
   run_fast_tests:
+    needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
       matrix:
@@ -123,6 +168,7 @@ jobs:
         path: reports
 
   run_staging_tests:
+    needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
       matrix:
