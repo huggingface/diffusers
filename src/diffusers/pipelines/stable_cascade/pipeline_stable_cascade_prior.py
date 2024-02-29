@@ -247,7 +247,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
             image_embeds.append(image_embed)
         image_embeds = torch.cat(image_embeds, dim=1)
 
-        image_embeds = image_embeds.repeat(batch_size * num_images_per_prompt)
+        image_embeds = image_embeds.repeat(batch_size * num_images_per_prompt, 1, 1)
         negative_image_embeds = torch.zeros_like(image_embeds)
 
         return image_embeds, negative_image_embeds
@@ -492,7 +492,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
                 num_images_per_prompt=num_images_per_prompt,
             )
         elif image_embeds is not None:
-            image_embeds_pooled = image_embeds.repeat(batch_size * num_images_per_prompt)
+            image_embeds_pooled = image_embeds.repeat(batch_size * num_images_per_prompt, 1, 1)
             uncond_image_embeds_pooled = torch.zeros_like(image_embeds_pooled)
         else:
             image_embeds_pooled = torch.zeros(
