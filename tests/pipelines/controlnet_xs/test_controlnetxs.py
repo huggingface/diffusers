@@ -263,7 +263,9 @@ class ControlNetXSPipelineFastTests(
                 pipe.get_controlnet_addon().save_pretrained(tmpdir_addon, safe_serialization=False)
 
                 addon_loaded = ControlNetXSAddon.from_pretrained(tmpdir_addon)
-                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, controlnet_addon=addon_loaded)
+                pipe_loaded = self.pipeline_class.from_pretrained(
+                    base_path=tmpdir_components, controlnet_addon=addon_loaded
+                )
 
                 for component in pipe_loaded.components.values():
                     if hasattr(component, "set_default_attn_processor"):
@@ -301,7 +303,9 @@ class ControlNetXSPipelineFastTests(
                 pipe.get_controlnet_addon().save_pretrained(tmpdir_addon, safe_serialization=False)
 
                 addon_loaded = ControlNetXSAddon.from_pretrained(tmpdir_addon)
-                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, controlnet_addon=addon_loaded)
+                pipe_loaded = self.pipeline_class.from_pretrained(
+                    base_path=tmpdir_components, controlnet_addon=addon_loaded
+                )
 
                 for component in pipe_loaded.components.values():
                     if hasattr(component, "set_default_attn_processor"):
