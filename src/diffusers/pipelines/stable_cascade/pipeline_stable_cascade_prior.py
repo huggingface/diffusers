@@ -21,11 +21,11 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from ...models import StableCascadeUnet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline
-from .modeling_stable_cascade_common import StableCascadeUnet
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -75,7 +75,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        prior ([`Prior`]):
+        prior ([`StableCascadeUnet`]):
             The Stable Cascade prior to approximate the image embedding from the text and/or image embedding.
         text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen text-encoder ([laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)).
@@ -571,7 +571,8 @@ class StableCascadePriorPipeline(DiffusionPipeline):
                 clip_text_pooled=text_encoder_pooled,
                 clip_text=text_encoder_hidden_states,
                 clip_img=image_embeds,
-            )
+                return_dict=False,
+            )[0]
 
             # 8. Check for classifier free guidance and apply it
             if self.do_classifier_free_guidance:

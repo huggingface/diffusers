@@ -14,7 +14,7 @@ from diffusers import (
     StableCascadeDecoderPipeline,
     StableCascadePriorPipeline,
 )
-from diffusers.pipelines.stable_cascade import StableCascadeUnet
+from diffusers.models import StableCascadeUnet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 
 

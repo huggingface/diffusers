@@ -86,6 +86,7 @@ else:
             "MotionAdapter",
             "MultiAdapter",
             "PriorTransformer",
+            "StableCascadeUnet",
             "T2IAdapter",
             "T5FilmDecoder",
             "Transformer2DModel",

@@ -21,7 +21,6 @@ except OptionalDependencyNotAvailable:
 
     _dummy_objects.update(get_objects_from_module(dummy_torch_and_transformers_objects))
 else:
-    _import_structure["modeling_stable_cascade_common"] = ["StableCascadeUnet"]
     _import_structure["pipeline_stable_cascade"] = ["StableCascadeDecoderPipeline"]
     _import_structure["pipeline_stable_cascade_combined"] = ["StableCascadeCombinedPipeline"]
     _import_structure["pipeline_stable_cascade_prior"] = ["StableCascadePriorPipeline"]
@@ -34,7 +33,6 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     except OptionalDependencyNotAvailable:
         from ...utils.dummy_torch_and_transformers_objects import *  # noqa F403
     else:
-        from .modeling_stable_cascade_common import StableCascadeUnet
         from .pipeline_stable_cascade import StableCascadeDecoderPipeline
         from .pipeline_stable_cascade_combined import StableCascadeCombinedPipeline
         from .pipeline_stable_cascade_prior import StableCascadePriorPipeline

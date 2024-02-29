@@ -17,11 +17,11 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from ...models import StableCascadeUnet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
-from .modeling_stable_cascade_common import StableCascadeUnet
 from .pipeline_stable_cascade import StableCascadeDecoderPipeline
 from .pipeline_stable_cascade_prior import StableCascadePriorPipeline
 

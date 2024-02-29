@@ -11,7 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import math
+from dataclasses import dataclass
 from typing import List, Optional
 
 import numpy as np
@@ -19,9 +21,15 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...models.modeling_utils import ModelMixin
-from ..wuerstchen.modeling_wuerstchen_common import AttnBlock, TimestepBlock, WuerstchenLayerNorm
-from ..wuerstchen.modeling_wuerstchen_diffnext import ResBlockStageB
+from ...pipelines.wuerstchen.modeling_wuerstchen_common import AttnBlock, TimestepBlock, WuerstchenLayerNorm
+from ...pipelines.wuerstchen.modeling_wuerstchen_diffnext import ResBlockStageB
+from ...utils import BaseOutput
+from ..modeling_utils import ModelMixin
+
+
+@dataclass
+class StableCascadeUnetOutput(BaseOutput):
+    sample: torch.FloatTensor = None
 
 
 class UpDownBlock2d(nn.Module):
@@ -44,6 +52,8 @@ class UpDownBlock2d(nn.Module):
 
 
 class StableCascadeUnet(ModelMixin, ConfigMixin):
+    _supports_gradient_checkpointing = True
+
     @register_to_config
     def __init__(
         self,
@@ -181,8 +191,10 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
             nn.PixelShuffle(patch_size),
         )
 
-        # --- WEIGHT INIT ---
-        # self.apply(self._init_weights)  # General init
+        self.gradient_checkpointing = False
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        self.gradient_checkpointing = value
 
     def _init_weights(self, m):
         if isinstance(m, (nn.Conv2d, nn.Linear)):
@@ -245,49 +257,125 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
     def _down_encode(self, x, r_embed, clip):
         level_outputs = []
         block_group = zip(self.down_blocks, self.down_downscalers, self.down_repeat_mappers)
-        for down_block, downscaler, repmap in block_group:
-            x = downscaler(x)
-            for i in range(len(repmap) + 1):
-                for block in down_block:
-                    if isinstance(block, ResBlockStageB):
-                        x = block(x)
-                    elif isinstance(block, AttnBlock):
-                        x = block(x, clip)
-                    elif isinstance(block, TimestepBlock):
-                        x = block(x, r_embed)
-                    else:
-                        x = block(x)
-                if i < len(repmap):
-                    x = repmap[i](x)
-            level_outputs.insert(0, x)
+
+        if self.training and self.gradient_checkpointing:
+
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+
+                return custom_forward
+
+            for down_block, downscaler, repmap in block_group:
+                x = downscaler(x)
+                for i in range(len(repmap) + 1):
+                    for block in down_block:
+                        if isinstance(block, ResBlockStageB):
+                            x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), x, use_reentrant=False)
+                        elif isinstance(block, AttnBlock):
+                            x = torch.utils.checkpoint.checkpoint(
+                                create_custom_forward(block), x, clip, use_reentrant=False
+                            )
+                        elif isinstance(block, TimestepBlock):
+                            x = torch.utils.checkpoint.checkpoint(
+                                create_custom_forward(block), x, r_embed, use_reentrant=False
+                            )
+                        else:
+                            x = x = torch.utils.checkpoint.checkpoint(
+                                create_custom_forward(block), use_reentrant=False
+                            )
+                    if i < len(repmap):
+                        x = repmap[i](x)
+                level_outputs.insert(0, x)
+        else:
+            for down_block, downscaler, repmap in block_group:
+                x = downscaler(x)
+                for i in range(len(repmap) + 1):
+                    for block in down_block:
+                        if isinstance(block, ResBlockStageB):
+                            x = block(x)
+                        elif isinstance(block, AttnBlock):
+                            x = block(x, clip)
+                        elif isinstance(block, TimestepBlock):
+                            x = block(x, r_embed)
+                        else:
+                            x = block(x)
+                    if i < len(repmap):
+                        x = repmap[i](x)
+                level_outputs.insert(0, x)
         return level_outputs
 
     def _up_decode(self, level_outputs, r_embed, clip):
         x = level_outputs[0]
         block_group = zip(self.up_blocks, self.up_upscalers, self.up_repeat_mappers)
-        for i, (up_block, upscaler, repmap) in enumerate(block_group):
-            for j in range(len(repmap) + 1):
-                for k, block in enumerate(up_block):
-                    if isinstance(block, ResBlockStageB):
-                        skip = level_outputs[i] if k == 0 and i > 0 else None
-                        if skip is not None and (x.size(-1) != skip.size(-1) or x.size(-2) != skip.size(-2)):
-                            x = torch.nn.functional.interpolate(
-                                x.float(), skip.shape[-2:], mode="bilinear", align_corners=True
+
+        if self.training and self.gradient_checkpointing:
+
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+
+                return custom_forward
+
+            for i, (up_block, upscaler, repmap) in enumerate(block_group):
+                for j in range(len(repmap) + 1):
+                    for k, block in enumerate(up_block):
+                        if isinstance(block, ResBlockStageB):
+                            skip = level_outputs[i] if k == 0 and i > 0 else None
+                            if skip is not None and (x.size(-1) != skip.size(-1) or x.size(-2) != skip.size(-2)):
+                                x = torch.nn.functional.interpolate(
+                                    x.float(), skip.shape[-2:], mode="bilinear", align_corners=True
+                                )
+                            x = torch.utils.checkpoint.checkpoint(
+                                create_custom_forward(block), x, skip, use_reentrant=False
                             )
-                        x = block(x, skip)
-                    elif isinstance(block, AttnBlock):
-                        x = block(x, clip)
-                    elif isinstance(block, TimestepBlock):
-                        x = block(x, r_embed)
-                    else:
-                        x = block(x)
-                if j < len(repmap):
-                    x = repmap[j](x)
-            x = upscaler(x)
+                        elif isinstance(block, AttnBlock):
+                            x = torch.utils.checkpoint.checkpoint(
+                                create_custom_forward(block), x, clip, use_reentrant=False
+                            )
+                        elif isinstance(block, TimestepBlock):
+                            x = torch.utils.checkpoint.checkpoint(
+                                create_custom_forward(block), x, r_embed, use_reentrant=False
+                            )
+                        else:
+                            x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), x, use_reentrant=False)
+                    if j < len(repmap):
+                        x = repmap[j](x)
+                x = upscaler(x)
+        else:
+            for i, (up_block, upscaler, repmap) in enumerate(block_group):
+                for j in range(len(repmap) + 1):
+                    for k, block in enumerate(up_block):
+                        if isinstance(block, ResBlockStageB):
+                            skip = level_outputs[i] if k == 0 and i > 0 else None
+                            if skip is not None and (x.size(-1) != skip.size(-1) or x.size(-2) != skip.size(-2)):
+                                x = torch.nn.functional.interpolate(
+                                    x.float(), skip.shape[-2:], mode="bilinear", align_corners=True
+                                )
+                            x = block(x, skip)
+                        elif isinstance(block, AttnBlock):
+                            x = block(x, clip)
+                        elif isinstance(block, TimestepBlock):
+                            x = block(x, r_embed)
+                        else:
+                            x = block(x)
+                    if j < len(repmap):
+                        x = repmap[j](x)
+                x = upscaler(x)
         return x
 
     def forward(
-        self, x, r, clip_text_pooled, clip_text=None, clip_img=None, effnet=None, pixels=None, sca=None, crp=None
+        self,
+        x,
+        r,
+        clip_text_pooled,
+        clip_text=None,
+        clip_img=None,
+        effnet=None,
+        pixels=None,
+        sca=None,
+        crp=None,
+        return_dict=True,
     ):
         if pixels is None:
             pixels = x.new_zeros(x.size(0), 3, 8, 8)
@@ -317,4 +405,8 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
             )
         level_outputs = self._down_encode(x, r_embed, clip)
         x = self._up_decode(level_outputs, r_embed, clip)
-        return self.clf(x)
+        sample = self.clf(x)
+
+        if not return_dict:
+            return (sample,)
+        return StableCascadeUnetOutput(sample=sample)

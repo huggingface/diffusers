@@ -17,12 +17,12 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
+from ...models import StableCascadeUnet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
 from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
-from .modeling_stable_cascade_common import StableCascadeUnet
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -418,7 +418,8 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
                 clip_text_pooled=prompt_embeds_pooled,
                 effnet=effnet,
-            )
+                return_dict=False,
+            )[0]
 
             # 8. Check for classifier free guidance and apply it
             if self.do_classifier_free_guidance:
