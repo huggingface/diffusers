@@ -189,7 +189,7 @@ class IPAdapterTesterMixin:
 
         # forward pass with CFG not applied
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
-        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)[0]]
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)[0].unsqueeze(0)]
         inputs["guidance_scale"] = 1.0
         out_no_cfg = pipe(**inputs)[0]
 
@@ -199,7 +199,7 @@ class IPAdapterTesterMixin:
         inputs["guidance_scale"] = 7.5
         out_cfg = pipe(**inputs)[0]
 
-        assert out_cfg.shap == out_no_cfg.shape
+        assert out_cfg.shape == out_no_cfg.shape
 
         self.assertGreater(
             np.abs(out_cfg - out_no_cfg).max(), 1e-2, "Output with ip-adapter must be different from normal inference"
