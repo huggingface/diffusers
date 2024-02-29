@@ -57,7 +57,7 @@ class IPAdapterMixin:
     ):
         """
         Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+            pretrained_model_name_or_path_or_dict (`str` or `List[str]` or `os.PathLike` or `List[os.PathLike]` or `dict` or `List[dict]`):
                 Can be either:
 
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
@@ -66,7 +66,18 @@ class IPAdapterMixin:
                       with [`ModelMixin.save_pretrained`].
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
+            subfolder (`str` or `List[str]`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+                If a list is passed, it should have the same length as `weight_name`.
+            weight_name (`str` or `List[str]`):
+                The name of the weight file to load. If a list is passed, it should have the same length as
+                `weight_name`.
+            image_encoder_folder (`str`, *optional*, defaults to `image_encoder`):
+                The subfolder location of the image encoder within a larger model repository on the Hub or locally.
+                Pass `None` to not load the image encoder. If the image encoder is located in a folder inside `subfolder`,
+                you only need to pass the name of the folder that contains image encoder weights, e.g. `image_encoder_folder="image_encoder"`.
+                If the image encoder is located in a folder other than `subfolder`, you should pass the path to the folder that contains image encoder weights,
+                for example, `image_encoder_folder="different_subfolder/image_encoder"`.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
@@ -88,8 +99,6 @@ class IPAdapterMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
             low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
                 Speed up model loading only loading the pretrained weights and not initializing the weights. This also
                 tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
