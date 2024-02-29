@@ -115,7 +115,7 @@ class HfDoctestModule(Module):
     tests.
     """
 
-    def collect(self) -> Iterable[DoctestItem]:
+    def collect(self) -> Iterable["DoctestItem"]:
         class MockAwareDocTestFinder(doctest.DocTestFinder):
             """A hackish doctest finder that overrides stdlib internals to fix a stdlib bug.
 
