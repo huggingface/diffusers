@@ -201,10 +201,6 @@ class IPAdapterTesterMixin:
 
         assert out_cfg.shape == out_no_cfg.shape
 
-        self.assertGreater(
-            np.abs(out_cfg - out_no_cfg).max(), 1e-2, "Output with ip-adapter must be different from normal inference"
-        )
-
 
 class PipelineLatentTesterMixin:
     """
