@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,6 +38,9 @@ class FromOriginalVAEMixin:
                     - A link to the `.ckpt` file (for example
                       `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
                     - A path to a *file* containing all pipeline weights.
+            config_file (`str`, *optional*):
+                Filepath to the configuration YAML file associated with the model. If not provided it will default to:
+                https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml
             torch_dtype (`str` or `torch.dtype`, *optional*):
                 Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
                 dtype is automatically derived from the model's weights.
@@ -65,10 +68,13 @@ class FromOriginalVAEMixin:
             image_size (`int`, *optional*, defaults to 512):
                 The image size the model was trained on. Use 512 for all Stable Diffusion v1 models and the Stable
                 Diffusion v2 base model. Use 768 for Stable Diffusion v2.
-            use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
-                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
-                weights. If set to `False`, safetensors weights are not loaded.
+            scaling_factor (`float`, *optional*, defaults to 0.18215):
+                The component-wise standard deviation of the trained latent space computed using the first batch of the
+                training set. This is used to scale the latent space to have unit variance when training the diffusion
+                model. The latents are scaled with the formula `z = z * scaling_factor` before being passed to the
+                diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z
+                = 1 / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution
+                Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -92,6 +98,7 @@ class FromOriginalVAEMixin:
         """
 
         original_config_file = kwargs.pop("original_config_file", None)
+        config_file = kwargs.pop("config_file", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -100,9 +107,15 @@ class FromOriginalVAEMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        use_safetensors = kwargs.pop("use_safetensors", True)
 
         class_name = cls.__name__
+
+        if (config_file is not None) and (original_config_file is not None):
+            raise ValueError(
+                "You cannot pass both `config_file` and `original_config_file` to `from_single_file`. Please use only one of these arguments."
+            )
+
+        original_config_file = original_config_file or config_file
         original_config, checkpoint = fetch_ldm_config_and_checkpoint(
             pretrained_model_link_or_path=pretrained_model_link_or_path,
             class_name=class_name,
@@ -113,12 +126,19 @@ class FromOriginalVAEMixin:
             token=token,
             revision=revision,
             local_files_only=local_files_only,
-            use_safetensors=use_safetensors,
             cache_dir=cache_dir,
         )
 
         image_size = kwargs.pop("image_size", None)
-        component = create_diffusers_vae_model_from_ldm(class_name, original_config, checkpoint, image_size=image_size)
+        scaling_factor = kwargs.pop("scaling_factor", None)
+        component = create_diffusers_vae_model_from_ldm(
+            class_name,
+            original_config,
+            checkpoint,
+            image_size=image_size,
+            scaling_factor=scaling_factor,
+            torch_dtype=torch_dtype,
+        )
         vae = component["vae"]
         if torch_dtype is not None:
             vae = vae.to(torch_dtype)

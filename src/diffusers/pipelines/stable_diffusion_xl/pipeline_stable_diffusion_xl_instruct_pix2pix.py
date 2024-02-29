@@ -1,4 +1,4 @@
-# Copyright 2023 Harutatsu Akiyama and The HuggingFace Team. All rights reserved.
+# Copyright 2024 Harutatsu Akiyama and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ from ...utils import (
     scale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -118,7 +118,11 @@ def rescale_noise_cfg(noise_cfg, noise_pred_text, guidance_rescale=0.0):
 
 
 class StableDiffusionXLInstructPix2PixPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin
+    DiffusionPipeline,
+    StableDiffusionMixin,
+    TextualInversionLoaderMixin,
+    FromSingleFileMixin,
+    StableDiffusionXLLoraLoaderMixin,
 ):
     r"""
     Pipeline for pixel-level image editing by following text instructions. Based on Stable Diffusion XL.
@@ -204,38 +208,6 @@ class StableDiffusionXLInstructPix2PixPipeline(
             self.watermark = StableDiffusionXLWatermarker()
         else:
             self.watermark = None
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
-        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
-        """
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
 
     def encode_prompt(
         self,
@@ -326,7 +298,7 @@ class StableDiffusionXLInstructPix2PixPipeline(
 
         if prompt_embeds is None:
             prompt_2 = prompt_2 or prompt
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
             for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
@@ -620,34 +592,6 @@ class StableDiffusionXLInstructPix2PixPipeline(
             self.vae.post_quant_conv.to(dtype)
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
-    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
-
-        The suffixes after the scaling factors represent the stages where they are being applied.
-
-        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
-        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
-
-        Args:
-            s1 (`float`):
-                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            s2 (`float`):
-                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
-            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
-        """
-        if not hasattr(self, "unet"):
-            raise ValueError("The pipeline must have `unet` for using FreeU.")
-        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_freeu
-    def disable_freeu(self):
-        """Disables the FreeU mechanism if enabled."""
-        self.unet.disable_freeu()
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)

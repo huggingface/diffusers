@@ -268,7 +268,6 @@ class GLIGENTextBoundingboxProjection(nn.Module):
         return objs
 
 
-# Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel with UNet2DConditionModel->UNetFlatConditionModel, nn.Conv2d->LinearMultiDim, Block2D->BlockFlat
 class UNetFlatConditionModel(ModelMixin, ConfigMixin):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
@@ -1280,8 +1279,8 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                     f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
-            image_embeds = self.encoder_hid_proj(image_embeds).to(encoder_hidden_states.dtype)
-            encoder_hidden_states = torch.cat([encoder_hidden_states, image_embeds], dim=1)
+            image_embeds = self.encoder_hid_proj(image_embeds)
+            encoder_hidden_states = (encoder_hidden_states, image_embeds)
 
         # 2. pre-process
         sample = self.conv_in(sample)

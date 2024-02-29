@@ -14,7 +14,7 @@ from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import deprecate, logging
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from . import StableDiffusionSafePipelineOutput
 from .safety_checker import SafeStableDiffusionSafetyChecker
 
@@ -22,7 +22,7 @@ from .safety_checker import SafeStableDiffusionSafetyChecker
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class StableDiffusionPipelineSafe(DiffusionPipeline, IPAdapterMixin):
+class StableDiffusionPipelineSafe(DiffusionPipeline, StableDiffusionMixin, IPAdapterMixin):
     r"""
     Pipeline based on the [`StableDiffusionPipeline`] for text-to-image generation using Safe Latent Diffusion.
 
@@ -361,7 +361,6 @@ class StableDiffusionPipelineSafe(DiffusionPipeline, IPAdapterMixin):
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
