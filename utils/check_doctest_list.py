@@ -37,7 +37,7 @@ import os
 # All paths are set with the intent you should run this script from the root of the repo with the command
 # python utils/check_doctest_list.py
 REPO_PATH = "."
-DOCTEST_FILE_PATHS = ["not_doctested.txt", "slow_documentation_tests.txt"]
+DOCTEST_FILE_PATHS = ["not_doctested.txt"]
 
 
 def clean_doctest_list(doctest_file: str, overwrite: bool = False):
