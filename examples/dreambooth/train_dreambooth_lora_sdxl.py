@@ -1682,7 +1682,11 @@ def main(args):
                 if noise_scheduler.config.prediction_type == "epsilon":
                     target = model_input if args.do_edm_style_training else noise
                 elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(model_input, noise, timesteps)
+                    target = (
+                        model_input
+                        if args.do_edm_style_training
+                        else noise_scheduler.get_velocity(model_input, noise, timesteps)
+                    )
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
