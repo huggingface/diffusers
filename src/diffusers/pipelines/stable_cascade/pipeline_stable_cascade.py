@@ -71,6 +71,8 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             width=int(24*10.67)=256 in order to match the training conditions.
     """
 
+    unet_name = "decoder"
+    text_encoder_name = "text_encoder"
     model_cpu_offload_seq = "text_encoder->decoder->vqgan"
     _callback_tensor_inputs = [
         "latents",
@@ -414,8 +416,8 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
 
             # 7. Denoise latents
             predicted_latents = self.decoder(
-                x=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
-                r=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
+                sample=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
+                ratio=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
                 clip_text_pooled=prompt_embeds_pooled,
                 effnet=effnet,
                 return_dict=False,

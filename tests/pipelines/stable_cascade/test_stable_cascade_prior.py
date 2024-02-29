@@ -23,11 +23,11 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
 from diffusers.loaders import AttnProcsLayers
+from diffusers.models import StableCascadeUnet
 from diffusers.models.attention_processor import (
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
 )
-from diffusers.pipelines.stable_cascade import StableCascadeUnet
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import enable_full_determinism, require_peft_backend, skip_mps, torch_device
 

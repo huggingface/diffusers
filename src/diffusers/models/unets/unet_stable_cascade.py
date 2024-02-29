@@ -225,8 +225,8 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
                 elif isinstance(block, TimestepBlock):
                     nn.init.constant_(block.mapper.weight, 0)
 
-    def gen_r_embedding(self, r, max_positions=10000):
-        r = r * max_positions
+    def gen_r_embedding(self, ratio, max_positions=10000):
+        r = ratio * max_positions
         half_dim = self.config.c_r // 2
         emb = math.log(max_positions) / (half_dim - 1)
         emb = torch.arange(half_dim, device=r.device).float().mul(-emb).exp()
@@ -366,8 +366,8 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        x,
-        r,
+        sample,
+        ratio,
         clip_text_pooled,
         clip_text=None,
         clip_img=None,
@@ -378,10 +378,10 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
         return_dict=True,
     ):
         if pixels is None:
-            pixels = x.new_zeros(x.size(0), 3, 8, 8)
+            pixels = sample.new_zeros(sample.size(0), 3, 8, 8)
 
         # Process the conditioning embeddings
-        r_embed = self.gen_r_embedding(r)
+        r_embed = self.gen_r_embedding(ratio)
         for c in self.config.t_conds:
             if c == "sca":
                 cond = sca
@@ -389,12 +389,12 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
                 cond = crp
             else:
                 cond = None
-            t_cond = cond or torch.zeros_like(r)
+            t_cond = cond or torch.zeros_like(ratio)
             r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
         clip = self.gen_c_embeddings(clip_txt_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
 
         # Model Blocks
-        x = self.embedding(x)
+        x = self.embedding(sample)
         if hasattr(self, "effnet_mapper") and effnet is not None:
             x = x + self.effnet_mapper(
                 nn.functional.interpolate(effnet, size=x.shape[-2:], mode="bilinear", align_corners=True)

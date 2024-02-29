@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadeCombinedPipeline
-from diffusers.pipelines.stable_cascade import StableCascadeUnet
+from diffusers.models import StableCascadeUnet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
