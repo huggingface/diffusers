@@ -23,7 +23,10 @@ If you have a tip or trick you'd like to share, we'd love to [hear from you](htt
 
 Display an image after each generation step by using a [callback](../using-diffusers/callback) to access and manipulate the latents after each step and convert them into an image.
 
-1. Use the function below to convert the SDXL latents (4 channels) to RGB tensors (3 channels) as explained in the [Explaining the SDXL latent space](https://huggingface.co/blog/TimothyAlexisVass/explaining-the-sdxl-latent-space) blog post:
+1. Use the function below to convert the SDXL latents (4 channels) to RGB tensors (3 channels) as explained in the [Explaining the SDXL latent space](https://huggingface.co/blog/TimothyAlexisVass/explaining-the-sdxl-latent-space) blog post.
+
+> [!TIP]
+> The latent space is compressed to 128x128 so the images are also 128x128 which is useful for a quick preview.
 
 ```py
 def latents_to_rgb(latents):
@@ -54,7 +57,7 @@ def decode_tensors(pipe, step, timestep, callback_kwargs):
     return callback_kwargs
 ```
 
-3. Pass the `decode_tensors` function to the `callback_on_step_end` parameter to decode the tensors after each step. You need to also specify what you want to modify in the `callback_on_step_end_tensor_inputs` parameter, which in this case are the latents.
+3. Pass the `decode_tensors` function to the `callback_on_step_end` parameter to decode the tensors after each step. You also need to specify what you want to modify in the `callback_on_step_end_tensor_inputs` parameter, which in this case are the latents.
 
 ```py
 from diffusers import AutoPipelineForText2Image
@@ -72,9 +75,6 @@ image = pipe(
     callback_on_step_end_tensor_inputs=["latents"],
 ).images[0]
 ```
-
-> [!TIP]
-> The latent space is compressed to 128x128 so the images are also 128x128 which is useful for a quick preview.
 
 <div class="flex gap-4">
   <div>
@@ -105,9 +105,9 @@ image = pipe(
 > [!TIP]
 > This tip was contributed by [asomoza](https://github.com/asomoza).
 
-Generating high-quality anime images is a popular application of diffusion models. To achieve this in Diffusers:
+Generating high-quality anime images is a very popular application of diffusion models. To achieve this in Diffusers:
 
-1. Choose a good anime model like [Counterfeit](https://hf.co/gsdf/Counterfeit-V3.0) and pair it with negative prompt embeddings such as EasyNegative to further improve the quality of the generated images.
+1. Choose a good anime model like [Counterfeit](https://hf.co/gsdf/Counterfeit-V3.0) and pair it with negative prompt embeddings such as [EasyNegative](https://huggingface.co/embed/EasyNegative) to further improve the quality of the generated images.
 
 ```py
 from diffusers import StableDiffusionPipeline, DPMSolverMultistepScheduler
@@ -124,7 +124,7 @@ pipeline.load_textual_inversion(
 )
 ```
 
-2. This is optional, but if there is a specific style (typically a LoRA adapter) you want to apply to the images, download the weights and use the [`load_lora_weights`] method to add it to the pipeline. This example uses the [Dungeon Meshi Marcille Character Lora](https://civitai.com/models/106199/dungeon-meshi-marcille-character-lora).
+2. Download the weights (typically a LoRA adapter) of a specific style to apply to the image and use the [`load_lora_weights`] method to add it to the pipeline. This example uses the [Dungeon Meshi Marcille Character Lora](https://civitai.com/models/106199/dungeon-meshi-marcille-character-lora).
 
 ```py
 !wget https://civitai.com/api/download/models/114049 -O marcille.safetensors
@@ -136,19 +136,19 @@ pipeline.load_lora_weights('.', weight_name="marcille.safetensors")
 ```py
 pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
 pipeline.scheduler.config.use_karras_sigmas=True
-pipeline.to('cuda')
+pipeline.to("cuda")
 ```
 
 4. Create your prompt and negative prompts, and remember to use the trigger words for this specific LoRA adapter (`dmarci`) and embeddings (`EasyNegative`). It is also important to set the:
 
-    - `lora_scale` parameter to control how to scale the output with the LoRA weights.
+    - `lora_scale` parameter to control how much to scale the output with the LoRA weights by.
     - `clip_skip` parameter to specify the layers of the CLIP model to use. This parameter is especially important for anime checkpoints because it controls how closely aligned the text prompt and image are. A higher `clip_skip` value produces more abstract images.
 
 ```py
-generator = torch.Generator("cpu").manual_seed(0)
+generator = torch.Generator("cpu").manual_seed(77)
 
-prompt = "dmarci, masterpiece, best quality, 1girl, solo, marcillessa, red choker, detailed and beautiful eyes, (cowboy shot:1.2), HAPPY, walking, jumping,(Turtleneck_sweater:1.4), (Leather_skirt:1.3)"
-negative_prompt = "EasyNegative, (worst quality, low quality, bad quality, normal quality:2), logo, text, blurry, low quality, bad anatomy, lowres, normal quality, monochrome, grayscale, worstquality, signature, watermark, cropped, bad proportions, out of focus, username, bad body, long body, (fat:1.2), long neck, deformed, mutated, mutation, ugly, disfigured, poorly drawn face, skin blemishes, skin spots, acnes, missing limb, malformed limbs, floating limbs, disconnected limbs, extra limb, extra arms, mutated hands, poorly drawn hands, malformed hands, mutated hands and fingers, bad hands, missing fingers, fused fingers, too many fingers, extra legs, bad feet, backlighting"
+prompt = "dmarci, masterpiece, best quality, 1girl, solo, marcillessa, red choker, detailed and beautiful eyes, cowboy shot, HAPPY, walking, jumping, turtleneck sweater, leather skirt"
+negative_prompt = "EasyNegative, worst quality, low quality, bad quality, blurry, bad anatomy, lowres, monochrome, grayscale, bad proportions, out of focus, bad body, deformed, mutated, mutation, ugly, disfigured, poorly drawn face, skin spots, malformed limbs, extra arms, mutated hands and fingers, fused fingers, bad fingers, too many fingers"
 
 lora_scale = 1.0
 images = pipeline(prompt, width=768, height=768, negative_prompt=negative_prompt, num_inference_steps=20, cross_attention_kwargs={"scale": lora_scale}, generator=generator, num_images_per_prompt=4, clip_skip=2, guidance_scale=7).images[0]
@@ -158,10 +158,3 @@ images
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/tips_anime_models.png">
 </div>
-
-## Increase image details with negative noise
-
-> [!TIP]
-> This tip was contributed by [asomoza](https://github.com/asomoza).
-
-Negative noise can increase the level of details in the generated image because it allows the model more "creative freedom". You can pass a noisy image created from the original image or a noise algorithms to the model.
