@@ -76,6 +76,10 @@ The model should not be used in any way that violates Stability AI's [Acceptable
 	- all
 	- __call__
 
+## StableCascadePriorPipelineOutput
+
+[[autodoc]] pipelines.stable_cascade.pipeline_stable_cascade_prior.StableCascadePriorPipelineOutput
+
 ## StableCascadeDecoderPipeline
 
 [[autodoc]] StableCascadeDecoderPipeline
