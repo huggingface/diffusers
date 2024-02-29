@@ -293,7 +293,7 @@ def _get_model_file(
     if os.path.isfile(pretrained_model_name_or_path):
         return pretrained_model_name_or_path
     elif os.path.isdir(pretrained_model_name_or_path):
-        if os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
+        if subfolder is None and os.path.isfile(os.path.join(pretrained_model_name_or_path, weights_name)):
             # Load from a PyTorch checkpoint
             model_file = os.path.join(pretrained_model_name_or_path, weights_name)
             return model_file
