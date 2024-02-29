@@ -748,7 +748,6 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         return self
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
     def __encode_prompt(self, prompt, negative_prompt):
         r"""
         Encodes the prompt into text encoder hidden states.
@@ -762,6 +761,7 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
         """
         # Tokenize prompt
+        # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
         text_input_ids = (
             self.tokenizer(
                 prompt,
@@ -781,6 +781,7 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
         ].clone()
 
         # Tokenize negative prompt
+        # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
         uncond_input_ids = (
             self.tokenizer(
                 negative_prompt,
@@ -835,7 +836,6 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
         latents = 1.0 / 0.18215 * latents
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
     def __decode_latent(self, latents):
         deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
         deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
@@ -853,6 +853,7 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
             )
 
     @torch.no_grad()
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -924,6 +925,7 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
 
             # Pre-initialize latents
             num_channels_latents = self.unet.in_channels
+            # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
             latents = self.prepare_latents(
                 batch_size,
                 num_channels_latents,
@@ -939,7 +941,7 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
 
             # VAE decode latent
             images = self.__decode_latent(latents)
-
+        # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
         images, has_nsfw_concept = self.run_safety_checker(images, self.torch_device, text_embeddings.dtype)
         images = self.numpy_to_pil(images)
         return StableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
