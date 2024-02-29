@@ -471,11 +471,11 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         )
         added_time_ids = added_time_ids.to(device)
 
-        # 4. Prepare timesteps
+        # 6. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
 
-        # 5. Prepare latent variables
+        # 7. Prepare latent variables
         num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_videos_per_prompt,
@@ -489,7 +489,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             latents,
         )
 
-        # 7. Prepare guidance scale
+        # 8. Prepare guidance scale
         guidance_scale = torch.linspace(min_guidance_scale, max_guidance_scale, num_frames).unsqueeze(0)
         guidance_scale = guidance_scale.to(device, latents.dtype)
         guidance_scale = guidance_scale.repeat(batch_size * num_videos_per_prompt, 1)
@@ -497,7 +497,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         self._guidance_scale = guidance_scale
 
-        # 8. Denoising loop
+        # 9. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
