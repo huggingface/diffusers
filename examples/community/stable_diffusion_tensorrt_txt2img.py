@@ -40,7 +40,8 @@ from polygraphy.backend.trt import (
     network_from_onnx_path,
     save_engine,
 )
-from ...utils import deprecate
+from ...utils.torch_utils import randn_tensor
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from polygraphy.backend.trt import util as trt_util
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
@@ -676,6 +677,8 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
         self.stream = None  # loaded in loadResources()
         self.models = {}  # loaded in __loadModels()
         self.engine = {}  # loaded in build_engines()
+        self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
+        self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
     def __loadModels(self):
         # Load pipeline models
@@ -693,8 +696,32 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
         if "vae" in self.stages:
             self.models["vae"] = make_VAE(self.vae, **models_args)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
-    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
+    def prepare_latents(
+        self,
+        batch_size: int,
+        num_channels_latents: int,
+        height: int,
+        width: int,
+        dtype: torch.dtype,
+        device: torch.device,
+        generator: Union[torch.Generator, List[torch.Generator]],
+        latents: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        r"""
+        Prepare the latent vectors for diffusion.
+        Args:
+            batch_size (int): The number of samples in the batch.
+            num_channels_latents (int): The number of channels in the latent vectors.
+            height (int): The height of the latent vectors.
+            width (int): The width of the latent vectors.
+            dtype (torch.dtype): The data type of the latent vectors.
+            device (torch.device): The device to place the latent vectors on.
+            generator (Union[torch.Generator, List[torch.Generator]]): The generator(s) to use for random number generation.
+            latents (Optional[torch.Tensor]): The pre-existing latent vectors. If None, new latent vectors will be generated.
+        Returns:
+            torch.Tensor: The prepared latent vectors.
+        """
         shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
         if isinstance(generator, list) and len(generator) != batch_size:
             raise ValueError(
@@ -711,8 +738,20 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
-    def run_safety_checker(self, image, device, dtype):
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.run_safety_checker
+    def run_safety_checker(
+        self, image: Union[torch.Tensor, PIL.Image.Image], device: torch.device, dtype: torch.dtype
+    ) -> Tuple[Union[torch.Tensor, PIL.Image.Image], Optional[bool]]:
+        r"""
+        Runs the safety checker on the given image.
+        Args:
+            image (Union[torch.Tensor, PIL.Image.Image]): The input image to be checked.
+            device (torch.device): The device to run the safety checker on.
+            dtype (torch.dtype): The data type of the input image.
+        Returns:
+            (image, has_nsfw_concept) Tuple[Union[torch.Tensor, PIL.Image.Image], Optional[bool]]: A tuple containing the processed image and
+            a boolean indicating whether the image has a NSFW (Not Safe for Work) concept.
+        """
         if self.safety_checker is None:
             has_nsfw_concept = None
         else:
@@ -868,8 +907,6 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
         return latents
 
     def __decode_latent(self, latents):
-        deprecation_message = "The decode_latents method is deprecated and will be removed in 1.0.0. Please use VaeImageProcessor.postprocess(...) instead"
-        deprecate("decode_latents", "1.0.0", deprecation_message, standard_warn=False)
         images = runEngine(self.engine["vae"], {"latent": device_view(latents)}, self.stream)["images"]
         images = (images / 2 + 0.5).clamp(0, 1)
         return images.cpu().permute(0, 2, 3, 1).float().numpy()
