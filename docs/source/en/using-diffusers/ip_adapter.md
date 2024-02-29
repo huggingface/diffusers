@@ -248,7 +248,10 @@ image_embeds = pipeline.prepare_ip_adapter_image_embeds(
 torch.save(image_embeds, "image_embeds.ipadpt")
 ```
 
-You can then use image embedding as input for IP-Adapter
+Load the image embedding and pass it to the pipeline as `ip_adapter_image_embeds`
+
+> [!TIP]
+> ComfyUI image embeddings are fully compatible with IP-Adapter in diffusers and will work out-of-box.
 
 ```py
 image_embeds = torch.load("image_embeds.ipadpt")
