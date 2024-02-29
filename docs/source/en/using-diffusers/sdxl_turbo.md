@@ -38,7 +38,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/sdxl-turbo", t
 pipeline = pipeline.to("cuda")
 ```
 
-You can also use the [`~StableDiffusionXLPipeline.from_single_file`] method to load a model checkpoint stored in a single file format (`.ckpt` or `.safetensors`) from the Hub or locally:
+You can also use the [`~StableDiffusionXLPipeline.from_single_file`] method to load a model checkpoint stored in a single file format (`.ckpt` or `.safetensors`) from the Hub or locally. For this loading method, you need to set `timestep_spacing="trailing"` (feel free to experiment with the other scheduler config values to get better results):
 
 ```py
 from diffusers import StableDiffusionXLPipeline, EulerAncestralDiscreteScheduler
@@ -50,8 +50,6 @@ pipeline = StableDiffusionXLPipeline.from_single_file(
 pipeline = pipeline.to("cuda")
 pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config, timestep_spacing="trailing")
 ```
-
-When using [`~StableDiffusionXLPipeline.from_single_file`], users can play around with the scheduler config values, but the main one is to set `timestep_spacing="trailing"`.
 
 ## Text-to-image
 
