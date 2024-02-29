@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import math
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -470,47 +469,6 @@ class ControlNetXSModel(nn.Module):
             If 1, then only the control model's time embedding is used.
             Otherwise, both are combined.
     """
-
-    @classmethod
-    def init_original(cls, base_model: UNet2DConditionModel, is_sdxl=False):
-        """
-        Create a `ControlNetXSModel` model with the same parameters as in the original paper (https://github.com/vislearn/ControlNet-XS).
-
-        Parameters:
-            base_model (`UNet2DConditionModel`):
-                Base UNet model. Needs to be either StableDiffusion or StableDiffusion-XL.
-            is_sdxl (`bool`, defaults to `False`):
-                Whether passed `base_model` is a StableDiffusion-XL model.
-        """
-
-        def get_dim_attn_heads(base_model: UNet2DConditionModel, size_ratio: float, num_attn_heads: int):
-            """
-            Currently, diffusers can only set the dimension of attention heads (see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why).
-            The original ControlNet-XS model, however, define the number of attention heads.
-            That's why we compute the dimensions needed to get the correct number of attention heads.
-            """
-            block_out_channels = [int(size_ratio * c) for c in base_model.config.block_out_channels]
-            dim_attn_heads = [math.ceil(c / num_attn_heads) for c in block_out_channels]
-            return dim_attn_heads
-
-        if is_sdxl:
-            time_embedding_mix = 0.95
-            controlnet_addon = ControlNetXSAddon.from_unet(
-                base_model,
-                learn_time_embedding=True,
-                size_ratio=0.1,
-                num_attention_heads=get_dim_attn_heads(base_model, 0.1, 64),
-            )
-        else:
-            time_embedding_mix = 1.0
-            controlnet_addon = ControlNetXSAddon.from_unet(
-                base_model,
-                learn_time_embedding=True,
-                size_ratio=0.0125,
-                num_attention_heads=get_dim_attn_heads(base_model, 0.0125, 8),
-            )
-
-        return cls(base_model=base_model, ctrl_addon=controlnet_addon, time_embedding_mix=time_embedding_mix)
 
     def __init__(
         self,

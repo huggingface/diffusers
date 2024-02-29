@@ -64,7 +64,7 @@ EXAMPLE_DOC_STRING = """
     Examples:
         ```py
         >>> # !pip install opencv-python transformers accelerate
-        >>> from diffusers import StableDiffusionXLControlNetXSPipeline, ControlNetXSModel, AutoencoderKL
+        >>> from diffusers import StableDiffusionXLControlNetXSPipeline, ControlNetXSAddon, AutoencoderKL
         >>> from diffusers.utils import load_image
         >>> import numpy as np
         >>> import torch
@@ -87,8 +87,9 @@ EXAMPLE_DOC_STRING = """
         ...     "UmerHA/Testing-ConrolNetXS-SDXL-canny", torch_dtype=torch.float16
         ... )
         >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-        ...     base_path="stabilityai/stable-diffusion-xl-base-1.0", controlnet_xs_addon=controlnet_xs_addon, torch_dtype=torch.float16
-        ... )
+        ...     base_path="stabilityai/stable-diffusion-xl-base-1.0", controlnet_xs_addon=controlnet_xs_addon,
+        ...     time_embedding_mix=0.95, torch_dtype=torch.float16
+        ... ) # paper used time_embedding_mix=0.95
         >>> pipe.enable_model_cpu_offload()
 
         >>> # get canny image
@@ -211,7 +212,7 @@ class StableDiffusionXLControlNetXSPipeline(
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
 
     @classmethod
-    def from_pretrained(cls, base_path, controlnet_addon, **kwargs):
+    def from_pretrained(cls, base_path, controlnet_addon, time_embedding_mix=1.0, **kwargs):
         """
         Instantiates pipeline from a `StableDiffusionXLPipeline` and a `ControlNetXSAddon`.
 
@@ -237,7 +238,7 @@ class StableDiffusionXLControlNetXSPipeline(
 
         components = {k: v for k, v in components.items() if k not in ["unet"] + to_ignore}
 
-        controlnet = ControlNetXSModel(unet, controlnet_addon)
+        controlnet = ControlNetXSModel(unet, controlnet_addon, time_embedding_mix)
         return StableDiffusionXLControlNetXSPipeline(controlnet=controlnet, **components)
 
     def save_pretrained(self, *args, **kwargs):
@@ -256,7 +257,7 @@ class StableDiffusionXLControlNetXSPipeline(
         """Get the `ControlNetXSAddon` model."""
         return self.components["controlnet"].ctrl_addon
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
+    # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.enable_vae_slicing
     def enable_vae_slicing(self):
         r"""
         Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
@@ -264,7 +265,7 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         self.vae.enable_slicing()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
+    # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.disable_vae_slicing
     def disable_vae_slicing(self):
         r"""
         Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
@@ -272,7 +273,7 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         self.vae.disable_slicing()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
+    # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.enable_vae_tiling
     def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
@@ -281,7 +282,7 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         self.vae.enable_tiling()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
+    # Copied from diffusers.pipelines.pipeline_utils.StableDiffusionMixin.disable_vae_tiling
     def disable_vae_tiling(self):
         r"""
         Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
