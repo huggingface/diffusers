@@ -328,14 +328,11 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
         with tempfile.TemporaryDirectory() as tmpdir_components:
             with tempfile.TemporaryDirectory() as tmpdir_addon:
-                pipe.save_pretrained(
-                    base_path=tmpdir_components,
-                    addon_path=tmpdir_addon,
-                    base_kwargs={"safe_serialization": False},
-                    addon_kwargs={"safe_serialization": False},
-                )
+                pipe.get_base_pipeline().save_pretrained(tmpdir_components, safe_serialization=False)
+                pipe.get_controlnet_addon().save_pretrained(tmpdir_addon, safe_serialization=False)
 
-                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, addon_path=tmpdir_addon)
+                addon_loaded = ControlNetXSAddon.from_pretrained(tmpdir_addon)
+                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, controlnet_addon=addon_loaded)
 
                 for component in pipe_loaded.components.values():
                     if hasattr(component, "set_default_attn_processor"):
@@ -390,14 +387,11 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
         with tempfile.TemporaryDirectory() as tmpdir_components:
             with tempfile.TemporaryDirectory() as tmpdir_addon:
-                pipe.save_pretrained(
-                    base_path=tmpdir_components,
-                    addon_path=tmpdir_addon,
-                    base_kwargs={"safe_serialization": False},
-                    addon_kwargs={"safe_serialization": False},
-                )
+                pipe.get_base_pipeline().save_pretrained(tmpdir_components, safe_serialization=False)
+                pipe.get_controlnet_addon().save_pretrained(tmpdir_addon, safe_serialization=False)
 
-                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, addon_path=tmpdir_addon)
+                addon_loaded = ControlNetXSAddon.from_pretrained(tmpdir_addon)
+                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, controlnet_addon=addon_loaded)
 
                 for component in pipe_loaded.components.values():
                     if hasattr(component, "set_default_attn_processor"):

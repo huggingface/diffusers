@@ -266,7 +266,11 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         time_embedding_input_dim: Optional[int] = 320,
         time_embedding_dim: Optional[int] = 1280,
         learn_time_embedding: bool = False,
-        channels_base: Dict[str, List[Tuple[int]]] = gather_base_subblock_sizes((320, 640, 1280, 1280)),
+        channels_base: Dict[str, List[Tuple[int]]] = {
+            "down - out": [320, 320, 320, 320, 640, 640, 640, 1280, 1280, 1280, 1280, 1280],
+            "mid - out": 1280,
+            "up - in": [1280, 1280, 1280, 1280, 1280, 1280, 1280, 640, 640, 640, 320, 320],
+        },
         attention_head_dim: Union[int, Tuple[int]] = 4,
         block_out_channels: Tuple[int] = (4, 8, 16, 16),
         cross_attention_dim: int = 1024,
@@ -462,8 +466,8 @@ class ControlNetXSModel(nn.Module):
         ctrl_addon (`ControlNetXSAddon`):
             The control addon.
         time_embedding_mix (`float`, defaults to 1.0):
-            If 0, then only the base model's time embedding is be used.
-            If 1, then only the control model's time embedding is be used.
+            If 0, then only the base model's time embedding is used.
+            If 1, then only the control model's time embedding is used.
             Otherwise, both are combined.
     """
 

@@ -30,7 +30,7 @@ from diffusers.utils.import_utils import is_invisible_watermark_available
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetXSAddon, ControlNetXSModel
+from ...models import AutoencoderKL, ControlNetXSModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
@@ -83,11 +83,12 @@ EXAMPLE_DOC_STRING = """
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
+        >>> controlnet_xs_addon = ControlNetXSAddon.from_pretrained(
+        ...     "UmerHA/Testing-ConrolNetXS-SDXL-canny", torch_dtype=torch.float16
+        ... )
         >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-        >>>     base_path="stabilityai/stable-diffusion-xl-base-1.0", base_kwargs=dict(vae=vae, torch_dtype=torch.float16),
-        >>>     addon_path="UmerHA/Testing-ConrolNetXS-SDXL-canny", addon_kwargs=dict(torch_dtype=torch.float16),
-        >>> )
-
+        ...     base_path="stabilityai/stable-diffusion-xl-base-1.0", controlnet_xs_addon=controlnet_xs_addon, torch_dtype=torch.float16
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
         >>> # get canny image
@@ -207,23 +208,20 @@ class StableDiffusionXLControlNetXSPipeline(
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
 
     @classmethod
-    def from_pretrained(cls, base_path, addon_path, base_kwargs={}, addon_kwargs={}):
+    def from_pretrained(cls, base_path, controlnet_addon, **kwargs):
         """
         Instantiates pipeline from a `StableDiffusionXLPipeline` and a `ControlNetXSAddon`.
 
         Arguments:
             base_path (`str` or `os.PathLike`):
                 Directory to load underlying `StableDiffusionXLPipeline` from.
-            addon_path (`str` or `os.PathLike`):
-                Directory to load underlying `ControlNetXSAddon` model from.
-            base_kwargs (`Dict[str, Any]`, *optional*):
+            controlnet_addon (`ControlNetXSAddon`):
+                A `ControlNetXSAddon` model.
+            kwargs (`Dict[str, Any]`, *optional*):
                 Additional keyword arguments passed along to the [`~StableDiffusionXLPipeline.from_pretrained`] method.
-            addon_kwargs (`Dict[str, Any]`, *optional*):
-                Additional keyword arguments passed along to the [`~ControlNetXSAddon.from_pretrained`] method.
         """
 
-        components = StableDiffusionXLPipeline.from_pretrained(base_path, **base_kwargs).components
-        controlnet_addon = ControlNetXSAddon.from_pretrained(addon_path, **addon_kwargs)
+        components = StableDiffusionXLPipeline.from_pretrained(base_path, **kwargs).components
 
         unet = components["unet"]
 
@@ -239,31 +237,21 @@ class StableDiffusionXLControlNetXSPipeline(
         controlnet = ControlNetXSModel(unet, controlnet_addon)
         return StableDiffusionXLControlNetXSPipeline(controlnet=controlnet, **components)
 
-    def save_pretrained(self, base_path, addon_path, base_kwargs={}, addon_kwargs={}):
-        """
+    def save_pretrained(self, *args, **kwargs):
+        raise EnvironmentError(
+            "Save the underlying `StableDiffusionXLPipeline` and the `ControlNetXSAddon` separately"
+            " by using `pipe.get_base_pipeline().save_pretrained()` and `pipe.get_controlnet_addon().save_pretrained()`."
+        )
 
-        Separately save the underlying `StableDiffusionXLPipeline` and the `ControlNetXSAddon` so the pipeline is easily reloaded using the
-        [`~StableDiffusionControlNetXSPipeline.from_pretrained`] class method.
-
-        Arguments:
-            base_path (`str` or `os.PathLike`):
-                Directory to save underlying `StableDiffusionXLPipeline` to. Will be created if it doesn't exist.
-            addon_path (`str` or `os.PathLike`):
-                Directory to save underlying `ControlNetXSAddon` model to. Will be created if it doesn't exist.
-            base_kwargs (`Dict[str, Any]`, *optional*):
-                Additional keyword arguments passed along to the [`~StableDiffusionXLPipeline.save_pretrained`] method.
-            addon_kwargs (`Dict[str, Any]`, *optional*):
-                Additional keyword arguments passed along to the [`~ControlNetXSAddon.save_pretrained`] method.
-
-        """
-
+    def get_base_pipeline(self):
+        """Get underlying `StableDiffusionXLPipeline` without the `ControlNetXSAddon` model."""
         components = {k: v for k, v in self.components.items() if k != "controlnet"}
         components["unet"] = self.components["controlnet"].base_model
+        return StableDiffusionXLPipeline(**components)
 
-        controlnet_addon = self.components["controlnet"].ctrl_addon
-
-        StableDiffusionXLPipeline(**components).save_pretrained(base_path, **base_kwargs)
-        controlnet_addon.save_pretrained(addon_path, **addon_kwargs)
+    def get_controlnet_addon(self):
+        """Get the `ControlNetXSAddon` model."""
+        return self.components["controlnet"].ctrl_addon
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
     def enable_vae_slicing(self):
