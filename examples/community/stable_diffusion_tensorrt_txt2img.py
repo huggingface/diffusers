@@ -693,6 +693,39 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
         if "vae" in self.stages:
             self.models["vae"] = make_VAE(self.vae, **models_args)
 
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
+    def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, generator, latents=None):
+        shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
+
+        if latents is None:
+            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+        else:
+            latents = latents.to(device)
+
+        # scale the initial noise by the standard deviation required by the scheduler
+        latents = latents * self.scheduler.init_noise_sigma
+        return latents
+
+    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
+    def run_safety_checker(self, image, device, dtype):
+        if self.safety_checker is None:
+            has_nsfw_concept = None
+        else:
+            if torch.is_tensor(image):
+                feature_extractor_input = self.image_processor.postprocess(image, output_type="pil")
+            else:
+                feature_extractor_input = self.image_processor.numpy_to_pil(image)
+            safety_checker_input = self.feature_extractor(feature_extractor_input, return_tensors="pt").to(device)
+            image, has_nsfw_concept = self.safety_checker(
+                images=image, clip_input=safety_checker_input.pixel_values.to(dtype)
+            )
+        return image, has_nsfw_concept
+
     @classmethod
     @validate_hf_hub_args
     def set_cached_folder(cls, pretrained_model_name_or_path: Optional[Union[str, os.PathLike]], **kwargs):
@@ -761,7 +794,6 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
                 Ignored when not using guidance (i.e., ignored if `guidance_scale` is less than `1`).
         """
         # Tokenize prompt
-        # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
         text_input_ids = (
             self.tokenizer(
                 prompt,
@@ -781,7 +813,6 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
         ].clone()
 
         # Tokenize negative prompt
-        # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
         uncond_input_ids = (
             self.tokenizer(
                 negative_prompt,
@@ -853,7 +884,6 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
             )
 
     @torch.no_grad()
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
     def __call__(
         self,
         prompt: Union[str, List[str]] = None,
@@ -925,7 +955,6 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
 
             # Pre-initialize latents
             num_channels_latents = self.unet.in_channels
-            # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
             latents = self.prepare_latents(
                 batch_size,
                 num_channels_latents,
@@ -941,7 +970,6 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
 
             # VAE decode latent
             images = self.__decode_latent(latents)
-        # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline
         images, has_nsfw_concept = self.run_safety_checker(images, self.torch_device, text_embeddings.dtype)
         images = self.numpy_to_pil(images)
         return StableDiffusionPipelineOutput(images=images, nsfw_content_detected=has_nsfw_concept)
