@@ -41,15 +41,17 @@ pipeline = pipeline.to("cuda")
 You can also use the [`~StableDiffusionXLPipeline.from_single_file`] method to load a model checkpoint stored in a single file format (`.ckpt` or `.safetensors`) from the Hub or locally:
 
 ```py
-from diffusers import StableDiffusionXLPipeline
+from diffusers import StableDiffusionXLPipeline, EulerAncestralDiscreteScheduler
 import torch
 
 pipeline = StableDiffusionXLPipeline.from_single_file(
-    "https://huggingface.co/stabilityai/sdxl-turbo/blob/main/sd_xl_turbo_1.0_fp16.safetensors", torch_dtype=torch.float16)
+    "https://huggingface.co/stabilityai/sdxl-turbo/blob/main/sd_xl_turbo_1.0_fp16.safetensors",
+    torch_dtype=torch.float16, variant="fp16")
 pipeline = pipeline.to("cuda")
+pipeline.scheduler = EulerAncestralDiscreteScheduler.from_config(pipeline.scheduler.config, timestep_spacing="trailing")
 ```
 
-In this method, you need to set `timestep_spacing` parameter of the `StableDiffusionXLPipeline`'s scheduler to `'trailing'`.
+When using [`~StableDiffusionXLPipeline.from_single_file`], users can play around with the scheduler config values, but the main one is to set `timestep_spacing="trailing"`.
 
 ## Text-to-image
 
