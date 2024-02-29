@@ -53,6 +53,7 @@ from diffusers import (
     DDPMScheduler,
     DPMSolverMultistepScheduler,
     EDMEulerScheduler,
+    EulerDiscreteScheduler,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
@@ -1059,9 +1060,14 @@ def main(args):
 
     # Load scheduler and models
     scheduler_type = determine_scheduler_type(args.pretrained_model_name_or_path, args.revision)
-    if "EDM" in scheduler_type or args.do_edm_style_training:
+    if "EDM" in scheduler_type:
         args.do_edm_style_training = True
         noise_scheduler = EDMEulerScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+        logger.info("Performing EDM-style training!")
+    elif args.do_edm_style_training:
+        noise_scheduler = EulerDiscreteScheduler.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="scheduler"
+        )
         logger.info("Performing EDM-style training!")
     else:
         noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
@@ -1618,7 +1624,10 @@ def main(args):
                 # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
                 if args.do_edm_style_training:
                     sigmas = get_sigmas(timesteps, len(noisy_model_input.shape), noisy_model_input.dtype)
-                    inp_noisy_latents = noise_scheduler.precondition_inputs(noisy_model_input, sigmas)
+                    if "EDM" in scheduler_type:
+                        inp_noisy_latents = noise_scheduler.precondition_inputs(noisy_model_input, sigmas)
+                    else:
+                        inp_noisy_latents = noisy_model_input / ((sigmas**2 + 1) ** 0.5)
 
                 # time ids
                 add_time_ids = torch.cat(
@@ -1668,15 +1677,21 @@ def main(args):
                         return_dict=False,
                     )[0]
 
+                weighting = None
                 if args.do_edm_style_training:
                     # Similar to the input preconditioning, the model predictions are also preconditioned
                     # on noised model inputs (before preconditioning) and the sigmas.
                     # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
-                    model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
+                    if "EDM" in scheduler_type:
+                        model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
+                    else:
+                        model_pred = model_pred * (-sigmas) + noisy_model_input
                     # We are not doing weighting here because it tends result in numerical problems.
                     # See: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
                     # There might be other alternatives for weighting as well:
                     # https://github.com/huggingface/diffusers/pull/7126#discussion_r1505404686
+                    if "EDM" not in scheduler_type:
+                        weighting = (sigmas**-2.0).float()
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
@@ -1696,10 +1711,28 @@ def main(args):
                     target, target_prior = torch.chunk(target, 2, dim=0)
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+                    if weighting is not None:
+                        prior_loss = torch.mean(
+                            (weighting.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                                target_prior.shape[0], -1
+                            ),
+                            1,
+                        )
+                        prior_loss = prior_loss.mean()
+                    else:
+                        prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
                 if args.snr_gamma is None:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    if weighting is not None:
+                        loss = torch.mean(
+                            (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(
+                                target.shape[0], -1
+                            ),
+                            1,
+                        )
+                        loss = loss.mean()
+                    else:
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
