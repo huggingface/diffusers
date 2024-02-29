@@ -14,6 +14,7 @@ from .utils import (
     is_peft_available,
     is_torchvision_available,
     is_transformers_available,
+    is_torch_npu_available,
 )
 
 
@@ -26,6 +27,8 @@ if is_peft_available():
 if is_torchvision_available():
     from torchvision import transforms
 
+if is_torch_npu_available():
+    import torch_npu
 
 def set_seed(seed: int):
     """
@@ -36,9 +39,11 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    # ^^ safe to call this function even if cuda is not available
-
+    if is_torch_npu_available():
+        torch.npu.manual_seed_all(seed)
+    else:
+        torch.cuda.manual_seed_all(seed)
+        # ^^ safe to call this function even if cuda is not available
 
 def compute_snr(noise_scheduler, timesteps):
     """
