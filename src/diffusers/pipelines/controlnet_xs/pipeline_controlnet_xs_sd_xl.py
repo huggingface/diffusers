@@ -107,7 +107,10 @@ EXAMPLE_DOC_STRING = """
 
 
 class StableDiffusionXLControlNetXSPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, StableDiffusionXLLoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline,
+    TextualInversionLoaderMixin,
+    StableDiffusionXLLoraLoaderMixin,
+    FromSingleFileMixin,
 ):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion XL with ControlNet-XS guidance.
