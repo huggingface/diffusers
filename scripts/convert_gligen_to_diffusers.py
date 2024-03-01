@@ -576,6 +576,6 @@ if __name__ == "__main__":
     )
 
     if args.half:
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
 
     pipe.save_pretrained(args.dump_path)

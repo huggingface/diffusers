@@ -18,7 +18,7 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import numpy_cosine_similarity_distance, require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin, SDFunctionTesterMixin
 
 
 def to_np(tensor):
@@ -28,7 +28,9 @@ def to_np(tensor):
     return tensor
 
 
-class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class AnimateDiffPipelineFastTests(
+    IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = AnimateDiffPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -218,7 +220,7 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
@@ -242,7 +244,6 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs_normal = self.get_dummy_inputs(torch_device)
         frames_normal = pipe(**inputs_normal).frames[0]
 
-        free_init_generator = torch.Generator(device=torch_device).manual_seed(0)
         pipe.enable_free_init(
             num_iters=2,
             use_fast_sampling=True,
@@ -250,7 +251,6 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             order=4,
             spatial_stop_frequency=0.25,
             temporal_stop_frequency=0.25,
-            generator=free_init_generator,
         )
         inputs_enable_free_init = self.get_dummy_inputs(torch_device)
         frames_enable_free_init = pipe(**inputs_enable_free_init).frames[0]

@@ -20,13 +20,15 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class LatentConsistencyModelPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class LatentConsistencyModelPipelineFastTests(
+    IPAdapterTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = LatentConsistencyModelPipeline
     params = TEXT_TO_IMAGE_PARAMS - {"negative_prompt", "negative_prompt_embeds"}
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS - {"negative_prompt"}
