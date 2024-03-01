@@ -21,7 +21,7 @@ import PIL.Image
 import torch
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
 
-from ...image_processor import VaeImageProcessor, PipelineImageInput
+from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
@@ -61,16 +61,18 @@ def _append_dims(x, target_dims):
 def tensor2vid(video: torch.Tensor, processor: VaeImageProcessor, output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
-
     for batch_idx in range(batch_size):
         batch_vid = video[batch_idx].permute(1, 0, 2, 3)
         batch_output = processor.postprocess(batch_vid, output_type)
+
         outputs.append(batch_output)
 
     if output_type == "np":
         outputs = np.stack(outputs)
+
     elif output_type == "pt":
         outputs = torch.stack(outputs)
+
     elif not output_type == "pil":
         raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
 
@@ -134,7 +136,13 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
-    def _encode_image(self, image: PipelineImageInput, device: Union[str, torch.device], num_videos_per_prompt: int, do_classifier_free_guidance: bool) -> torch.FloatTensor:
+    def _encode_image(
+        self,
+        image: PipelineImageInput,
+        device: Union[str, torch.device],
+        num_videos_per_prompt: int,
+        do_classifier_free_guidance: bool,
+    ) -> torch.FloatTensor:
         dtype = next(self.image_encoder.parameters()).dtype
 
         if not isinstance(image, torch.Tensor):
