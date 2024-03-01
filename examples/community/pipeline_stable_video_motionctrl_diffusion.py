@@ -217,6 +217,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
 
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.StableVideoDiffusionPipeline._encode_image
     def _encode_image(self, image, device, num_videos_per_prompt, do_classifier_free_guidance):
         dtype = next(self.image_encoder.parameters()).dtype
 
@@ -259,6 +260,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
 
         return image_embeddings
 
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.StableVideoDiffusionPipeline._encode_vae_image
     def _encode_vae_image(
         self,
         image: torch.Tensor,
@@ -282,6 +284,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
 
         return image_latents
 
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.StableVideoDiffusionPipeline._get_add_time_ids
     def _get_add_time_ids(
         self,
         fps,
@@ -310,6 +313,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
 
         return add_time_ids
 
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.StableVideoDiffusionPipeline.decode_latents
     def decode_latents(self, latents, num_frames, decode_chunk_size=14):
         # [batch, frames, channels, height, width] -> [batch*frames, channels, height, width]
         latents = latents.flatten(0, 1)
@@ -359,6 +363,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
         if not all(x == 12 for x in camera_pose_lengths):
             raise ValueError(f"All camera poses must have 12 values but got {camera_pose_lengths}")
 
+    # Copied from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion.StableVideoDiffusionPipeline.prepare_latents
     def prepare_latents(
         self,
         batch_size,
