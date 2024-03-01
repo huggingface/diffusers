@@ -265,7 +265,7 @@ images = pipeline(
 ```
 
 > [!TIP]
-> If you use IP-Adapter with image embedding instead of image, you can choose not to load a image encoder by passing `image_encoder_folder=None` to `load_ip_adapter()`
+> If you use IP-Adapter with `ip_adapter_image_embedding` instead of `ip_adapter_image`, you can choose not to load an image encoder by passing `image_encoder_folder=None` to `load_ip_adapter()`. 
 
 ## Specific use cases
 
