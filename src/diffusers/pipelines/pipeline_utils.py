@@ -78,6 +78,7 @@ from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_
 
 if is_accelerate_available():
     import accelerate
+    from accelerate import dispatch_model
     from accelerate.utils import compute_module_sizes, get_max_memory
 
 
@@ -535,6 +536,9 @@ def load_sub_model(
     else:
         # else load from the root directory
         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+
+    if is_transformers_model and device_map is not None:
+        dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
 
     return loaded_sub_model
 

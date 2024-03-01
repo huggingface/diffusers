@@ -905,8 +905,6 @@ class StableDiffusionPipeline(
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
-        print(f"Prompt embeds: {prompt_embeds[0, :4, :4]}")
-
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
@@ -931,7 +929,6 @@ class StableDiffusionPipeline(
             generator,
             latents,
         )
-        print(f"Initial latents: {latents[0, :4, :4, :1].flatten()}")
 
         # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
@@ -973,7 +970,6 @@ class StableDiffusionPipeline(
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
-                print(f"UNet predictions {i}: {noise_pred[0, :4, :4, :1].flatten()}")
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
