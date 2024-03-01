@@ -537,7 +537,7 @@ def load_sub_model(
         # else load from the root directory
         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
-    if is_transformers_model and device_map is not None:
+    if is_transformers_model and device_map is not None and isinstance(device_map, dict):
         dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
 
     return loaded_sub_model
@@ -1206,10 +1206,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         use_safetensors = kwargs.pop("use_safetensors", None)
         use_onnx = kwargs.pop("use_onnx", None)
         load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
-
-        # is_cuda_multi_device = torch.cuda.is_available() and torch.cuda.device_count() > 1
-        # if device_map is not None and device_map == "auto" and not is_cuda_multi_device:
-        #     raise ValueError("`device_map='auto'` needs multiple CUDA devices to be present.")
 
         # 1. Download the checkpoints and configs
         # use snapshot download here to get it working from from_pretrained
