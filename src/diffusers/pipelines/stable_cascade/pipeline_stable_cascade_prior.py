@@ -21,7 +21,7 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModelWithProjection, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from ...models import StableCascadeUnet
+from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import BaseOutput, logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -75,7 +75,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
     library implements for all the pipelines (such as downloading or saving, running on a particular device, etc.)
 
     Args:
-        prior ([`StableCascadeUnet`]):
+        prior ([`StableCascadeUNet`]):
             The Stable Cascade prior to approximate the image embedding from the text and/or image embedding.
         text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen text-encoder ([laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)).
@@ -102,7 +102,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModelWithProjection,
-        prior: StableCascadeUnet,
+        prior: StableCascadeUNet,
         scheduler: DDPMWuerstchenScheduler,
         resolution_multiple: float = 42.67,
         feature_extractor: Optional[CLIPImageProcessor] = None,

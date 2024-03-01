@@ -17,7 +17,7 @@ import PIL
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
-from ...models import StableCascadeUnet
+from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
@@ -52,7 +52,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             The decoder tokenizer to be used for text inputs.
         text_encoder (`CLIPTextModel`):
             The decoder text encoder to be used for text inputs.
-        decoder (`StableCascadeUnet`):
+        decoder (`StableCascadeUNet`):
             The decoder model to be used for decoder image generation pipeline.
         scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for decoder image generation pipeline.
@@ -62,7 +62,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             Model that extracts features from generated images to be used as inputs for the `image_encoder`.
         image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen CLIP image-encoder ([clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14)).
-        prior_prior (`StableCascadeUnet`):
+        prior_prior (`StableCascadeUNet`):
             The prior model to be used for prior pipeline.
         prior_scheduler (`DDPMWuerstchenScheduler`):
             The scheduler to be used for prior pipeline.
@@ -74,10 +74,10 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         self,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
-        decoder: StableCascadeUnet,
+        decoder: StableCascadeUNet,
         scheduler: DDPMWuerstchenScheduler,
         vqgan: PaellaVQModel,
-        prior_prior: StableCascadeUnet,
+        prior_prior: StableCascadeUNet,
         prior_text_encoder: CLIPTextModel,
         prior_tokenizer: CLIPTokenizer,
         prior_scheduler: DDPMWuerstchenScheduler,

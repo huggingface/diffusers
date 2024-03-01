@@ -14,7 +14,7 @@ from diffusers import (
     StableCascadeDecoderPipeline,
     StableCascadePriorPipeline,
 )
-from diffusers.models import StableCascadeUnet
+from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 
 
@@ -24,7 +24,6 @@ device = "cpu"
 model_path = "../StableCascade"
 prior_checkpoint_path = f"{model_path}/v1.pt"
 decoder_checkpoint_path = f"{model_path}/base_120k.pt"
-
 
 # Clip Text encoder and tokenizer
 config = CLIPConfig.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
@@ -60,7 +59,7 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
-prior_model = StableCascadeUnet(
+prior_model = StableCascadeUNet(
     in_channels=16,
     c_out=16,
     c_r=64,
@@ -126,7 +125,7 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
-decoder = StableCascadeUnet(
+decoder = StableCascadeUNet(
     in_channels=4,
     c_out=4,
     c_r=64,

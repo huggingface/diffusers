@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadeDecoderPipeline
-from diffusers.models import StableCascadeUnet
+from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
 
@@ -112,7 +112,7 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
             "c_clip_text_pooled": 32,
         }
 
-        model = StableCascadeUnet(**model_kwargs)
+        model = StableCascadeUNet(**model_kwargs)
         return model.eval()
 
     def get_dummy_components(self):

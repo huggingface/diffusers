@@ -17,7 +17,7 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 from transformers import CLIPTextModel, CLIPTokenizer
 
-from ...models import StableCascadeUnet
+from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
 from ...utils import logging, replace_example_docstring
 from ...utils.torch_utils import randn_tensor
@@ -59,7 +59,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             The CLIP tokenizer.
         text_encoder (`CLIPTextModel`):
             The CLIP text encoder.
-        decoder ([`StableCascadeUnet`]):
+        decoder ([`StableCascadeUNet`]):
             The Stable Cascade decoder unet.
         vqgan ([`PaellaVQModel`]):
             The VQGAN model.
@@ -83,7 +83,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
 
     def __init__(
         self,
-        decoder: StableCascadeUnet,
+        decoder: StableCascadeUNet,
         tokenizer: CLIPTokenizer,
         text_encoder: CLIPTextModel,
         scheduler: DDPMWuerstchenScheduler,

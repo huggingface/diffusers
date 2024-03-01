@@ -20,7 +20,7 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadeCombinedPipeline
-from diffusers.models import StableCascadeUnet
+from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
@@ -68,7 +68,7 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
             "c_clip_text_pooled": self.text_embedder_hidden_size,
         }
 
-        model = StableCascadeUnet(**model_kwargs)
+        model = StableCascadeUNet(**model_kwargs)
         return model.eval()
 
     @property
@@ -121,7 +121,7 @@ class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestC
             "c_clip_text_pooled": 32,
         }
 
-        model = StableCascadeUnet(**model_kwargs)
+        model = StableCascadeUNet(**model_kwargs)
         return model.eval()
 
     def get_dummy_components(self):

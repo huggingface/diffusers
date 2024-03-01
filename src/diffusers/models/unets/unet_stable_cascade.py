@@ -28,7 +28,7 @@ from ..modeling_utils import ModelMixin
 
 
 @dataclass
-class StableCascadeUnetOutput(BaseOutput):
+class StableCascadeUNetOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
@@ -51,7 +51,7 @@ class UpDownBlock2d(nn.Module):
         return x
 
 
-class StableCascadeUnet(ModelMixin, ConfigMixin):
+class StableCascadeUNet(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -409,4 +409,4 @@ class StableCascadeUnet(ModelMixin, ConfigMixin):
 
         if not return_dict:
             return (sample,)
-        return StableCascadeUnetOutput(sample=sample)
+        return StableCascadeUNetOutput(sample=sample)

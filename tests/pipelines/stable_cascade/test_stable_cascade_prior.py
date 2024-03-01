@@ -23,7 +23,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
 from diffusers.loaders import AttnProcsLayers
-from diffusers.models import StableCascadeUnet
+from diffusers.models import StableCascadeUNet
 from diffusers.models.attention_processor import (
     LoRAAttnProcessor,
     LoRAAttnProcessor2_0,
@@ -125,7 +125,7 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             "c_clip_text_pooled": self.text_embedder_hidden_size,
         }
 
-        model = StableCascadeUnet(**model_kwargs)
+        model = StableCascadeUNet(**model_kwargs)
         return model.eval()
 
     def get_dummy_components(self):
