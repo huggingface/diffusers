@@ -58,7 +58,7 @@ def _append_dims(x, target_dims):
 
 
 # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
-def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
+def tensor2vid(video: torch.Tensor, processor: VaeImageProcessor, output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
 
@@ -509,7 +509,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # Concatenate image_latents over channels dimention
+                # Concatenate image_latents over channels dimension
                 latent_model_input = torch.cat([latent_model_input, image_latents], dim=2)
 
                 # predict the noise residual
