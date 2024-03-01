@@ -39,11 +39,72 @@ from diffusers.pipelines.stable_video_diffusion.pipeline_stable_video_diffusion 
     _resize_with_antialiasing,
 )
 from diffusers.schedulers import EulerDiscreteScheduler
-from diffusers.utils import logging
+from diffusers.utils import logging, replace_example_docstring
 from diffusers.utils.torch_utils import is_compiled_module, maybe_allow_in_graph, randn_tensor
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
+
+EXAMPLE_DOC_STRING = """
+    Examples:
+        ```py
+        >>> import torch
+        >>> from diffusers import DiffusionPipeline
+        >>> from diffusers.utils import export_to_gif, load_image
+        >>> from examples.community.pipeline_stable_video_motionctrl_diffusion import UNetSpatioTemporalConditionMotionCtrlModel
+
+        >>> # Initialize pipeline
+        >>> ckpt = "a-r-r-o-w/motionctrl-svd"
+        >>> unet = UNetSpatioTemporalConditionMotionCtrlModel.from_pretrained(ckpt, subfolder="unet", torch_dtype=torch.float16)
+        >>> pipe = DiffusionPipeline.from_pretrained(
+        ...     ckpt,
+        ...     unet=unet,
+        ...     torch_dtype=torch.float16,
+        ...     variant="fp16",
+        ...     custom_pipeline="pipeline_stable_video_motionctrl_diffusion"
+        >>> ).to("cuda")
+
+        >>> # Input image and camera pose
+        >>> image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/svd/rocket.png")
+        >>> camera_pose = [
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.2, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.28750000000000003, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.37500000000000006, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.4625000000000001, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.55, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.6375000000000002, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.7250000000000001, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.8125000000000002, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.9000000000000001, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -0.9875000000000003, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.0750000000000002, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.1625000000000003, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.2500000000000002, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.3375000000000001, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.4250000000000003, 0.0, 0.0, 1.0, 0.0],
+        ...     [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, -1.5125000000000004, 0.0, 0.0, 1.0, 0.0],
+        >>> ]
+
+        >>> # Set MotionCtrl scale
+        >>> pipe.unet.set_motionctrl_scale(0.8)
+
+        >>> # Generation (make sure num_frames == len(camera_pose))
+        >>> num_frames = 16
+        >>> frames = pipe(
+        ...     image=image,
+        ...     camera_pose=camera_pose,
+        ...     num_frames=num_frames,
+        ...     num_inference_steps=20,
+        ...     decode_chunk_size=2,
+        ...     motion_bucket_id=255,
+        ...     fps=15,
+        ...     min_guidance_scale=3.5,
+        ...     max_guidance_scale=1,
+        ...     generator=torch.Generator().manual_seed(42)
+        >>> ).frames[0]
+        >>> export_to_gif(frames, f"animation.gif")
+        ```
+"""
 
 
 def _append_dims(x, target_dims):
@@ -438,6 +499,7 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
         return self._num_timesteps
 
     @torch.no_grad()
+    @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
         self,
         image: Union[PIL.Image.Image, List[PIL.Image.Image], torch.FloatTensor],
@@ -516,26 +578,12 @@ class StableVideoMotionCtrlDiffusionPipeline(DiffusionPipeline):
                 Whether or not to return a [`~pipelines.stable_diffusion.StableDiffusionPipelineOutput`] instead of a
                 plain tuple.
 
+        Examples:
+
         Returns:
             [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is returned,
                 otherwise a `tuple` is returned where the first element is a list of list with the generated frames.
-
-        Examples:
-
-        ```py
-        from diffusers import StableVideoDiffusionPipeline
-        from diffusers.utils import load_image, export_to_video
-
-        pipe = StableVideoDiffusionPipeline.from_pretrained("stabilityai/stable-video-diffusion-img2vid-xt", torch_dtype=torch.float16, variant="fp16")
-        pipe.to("cuda")
-
-        image = load_image("https://lh3.googleusercontent.com/y-iFOHfLTwkuQSUegpwDdgKmOjRSTvPxat63dQLB25xkTs4lhIbRUFeNBWZzYf370g=s1200")
-        image = image.resize((1024, 576))
-
-        frames = pipe(image, num_frames=25, decode_chunk_size=8).frames[0]
-        export_to_video(frames, "generated.mp4", fps=7)
-        ```
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
