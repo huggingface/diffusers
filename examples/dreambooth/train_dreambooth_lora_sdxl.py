@@ -1685,7 +1685,12 @@ def main(args):
                     if "EDM" in scheduler_type:
                         model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
                     else:
-                        model_pred = model_pred * (-sigmas) + noisy_model_input
+                        if noise_scheduler.config.prediction_type == "epsilon":
+                            model_pred = model_pred * (-sigmas) + noisy_model_input
+                        elif noise_scheduler.config.prediction_type == "v_prediction":
+                            model_pred = model_pred * (-sigmas / (sigmas**2 + 1) ** 0.5) + (
+                                noisy_model_input / (sigmas**2 + 1)
+                            )
                     # We are not doing weighting here because it tends result in numerical problems.
                     # See: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
                     # There might be other alternatives for weighting as well:
