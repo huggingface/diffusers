@@ -1,6 +1,7 @@
 name: Benchmarking tests
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "30 1 1,15 * *" # every 2 weeks on the 1st and the 15th of every month at 1:30 AM
 
