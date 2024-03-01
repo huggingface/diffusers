@@ -141,6 +141,7 @@ class LCMLoRATextToImageBenchmark(TextToImageBenchmark):
         super().__init__(args)
         self.pipe.load_lora_weights(self.lora_id)
         self.pipe.fuse_lora()
+        self.pipe.unload_lora_weights()
         self.pipe.scheduler = LCMScheduler.from_config(self.pipe.scheduler.config)
 
     def get_result_filepath(self, args):

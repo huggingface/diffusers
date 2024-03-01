@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -46,7 +46,7 @@ from diffusers.utils.testing_utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
-from .test_modeling_common import ModelTesterMixin, UNetTesterMixin
+from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
 
 
 enable_full_determinism()
@@ -809,6 +809,43 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         output_slice_2 = sample_2[-1, -2:, -2:, :2].flatten().float().cpu()
 
         assert torch_all_close(output_slice_1, output_slice_2, atol=3e-3)
+
+    def test_single_file_component_configs(self):
+        vae_single_file = AutoencoderKL.from_single_file(
+            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors"
+        )
+        vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
+        for param_name, param_value in vae_single_file.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                vae.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+    def test_single_file_arguments(self):
+        vae_default = AutoencoderKL.from_single_file(
+            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors",
+        )
+
+        assert vae_default.config.scaling_factor == 0.18125
+        assert vae_default.config.sample_size == 512
+        assert vae_default.dtype == torch.float32
+
+        scaling_factor = 2.0
+        image_size = 256
+        torch_dtype = torch.float16
+
+        vae = AutoencoderKL.from_single_file(
+            "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/blob/main/vae-ft-mse-840000-ema-pruned.safetensors",
+            image_size=image_size,
+            scaling_factor=scaling_factor,
+            torch_dtype=torch_dtype,
+        )
+        assert vae.config.scaling_factor == scaling_factor
+        assert vae.config.sample_size == image_size
+        assert vae.dtype == torch_dtype
 
 
 @slow

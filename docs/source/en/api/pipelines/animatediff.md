@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -407,6 +407,91 @@ FreeInit is not really free - the improved quality comes at the cost of extra co
 Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) to learn how to explore the tradeoff between scheduler speed and quality, and see the [reuse components across pipelines](../../using-diffusers/loading#reuse-components-across-pipelines) section to learn how to efficiently load the same components into multiple pipelines.
 
 </Tip>
+
+## Using AnimateLCM
+
+[AnimateLCM](https://animatelcm.github.io/) is a motion module checkpoint and an [LCM LoRA](https://huggingface.co/docs/diffusers/using-diffusers/inference_with_lcm_lora) that have been created using a consistency learning strategy that decouples the distillation of the image generation priors and the motion generation priors.
+
+```python
+import torch
+from diffusers import AnimateDiffPipeline, LCMScheduler, MotionAdapter
+from diffusers.utils import export_to_gif
+
+adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM")
+pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter)
+pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
+
+pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="sd15_lora_beta.safetensors", adapter_name="lcm-lora")
+
+pipe.enable_vae_slicing()
+pipe.enable_model_cpu_offload()
+
+output = pipe(
+    prompt="A space rocket with trails of smoke behind it launching into space from the desert, 4k, high resolution",
+    negative_prompt="bad quality, worse quality, low resolution",
+    num_frames=16,
+    guidance_scale=1.5,
+    num_inference_steps=6,
+    generator=torch.Generator("cpu").manual_seed(0),
+)
+frames = output.frames[0]
+export_to_gif(frames, "animatelcm.gif")
+```
+
+<table>
+    <tr>
+        <td><center>
+        A space rocket, 4K.
+        <br>
+        <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatelcm-output.gif"
+            alt="A space rocket, 4K"
+            style="width: 300px;" />
+        </center></td>
+    </tr>
+</table>
+
+AnimateLCM is also compatible with existing [Motion LoRAs](https://huggingface.co/collections/dn6/animatediff-motion-loras-654cb8ad732b9e3cf4d3c17e).
+
+```python
+import torch
+from diffusers import AnimateDiffPipeline, LCMScheduler, MotionAdapter
+from diffusers.utils import export_to_gif
+
+adapter = MotionAdapter.from_pretrained("wangfuyun/AnimateLCM")
+pipe = AnimateDiffPipeline.from_pretrained("emilianJR/epiCRealism", motion_adapter=adapter)
+pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config, beta_schedule="linear")
+
+pipe.load_lora_weights("wangfuyun/AnimateLCM", weight_name="sd15_lora_beta.safetensors", adapter_name="lcm-lora")
+pipe.load_lora_weights("guoyww/animatediff-motion-lora-tilt-up", adapter_name="tilt-up")
+
+pipe.set_adapters(["lcm-lora", "tilt-up"], [1.0, 0.8])
+pipe.enable_vae_slicing()
+pipe.enable_model_cpu_offload()
+
+output = pipe(
+    prompt="A space rocket with trails of smoke behind it launching into space from the desert, 4k, high resolution",
+    negative_prompt="bad quality, worse quality, low resolution",
+    num_frames=16,
+    guidance_scale=1.5,
+    num_inference_steps=6,
+    generator=torch.Generator("cpu").manual_seed(0),
+)
+frames = output.frames[0]
+export_to_gif(frames, "animatelcm-motion-lora.gif")
+```
+
+<table>
+    <tr>
+        <td><center>
+        A space rocket, 4K.
+        <br>
+        <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatelcm-motion-lora.gif"
+            alt="A space rocket, 4K"
+            style="width: 300px;" />
+        </center></td>
+    </tr>
+</table>
+
 
 ## AnimateDiffPipeline
 

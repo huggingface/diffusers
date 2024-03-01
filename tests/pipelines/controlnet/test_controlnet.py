@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -54,6 +54,7 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -110,7 +111,11 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
 
 
 class ControlNetPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -273,7 +278,7 @@ class ControlNetPipelineFastTests(
 
 
 class StableDiffusionMultiControlNetPipelineFastTests(
-    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -490,7 +495,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
-    PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
 ):
     pipeline_class = StableDiffusionControlNetPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -1066,6 +1071,44 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
         max_diff = numpy_cosine_similarity_distance(output_sf.flatten(), output.flatten())
         assert max_diff < 1e-3
+
+    def test_single_file_component_configs(self):
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", variant="fp16", safety_checker=None, controlnet=controlnet
+        )
+
+        controlnet_single_file = ControlNetModel.from_single_file(
+            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
+        )
+        single_file_pipe = StableDiffusionControlNetPipeline.from_single_file(
+            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+            safety_checker=None,
+            controlnet=controlnet_single_file,
+            scheduler_type="pndm",
+        )
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        for param_name, param_value in single_file_pipe.controlnet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.controlnet.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.unet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.unet.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.vae.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.vae.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
 
 
 @slow

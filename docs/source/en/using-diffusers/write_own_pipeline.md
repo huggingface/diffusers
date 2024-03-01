@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -273,7 +273,7 @@ Lastly, convert the image to a `PIL.Image` to see your generated image!
 ```py
 >>> image = (image / 2 + 0.5).clamp(0, 1).squeeze()
 >>> image = (image.permute(1, 2, 0) * 255).to(torch.uint8).cpu().numpy()
->>> images = (image * 255).round().astype("uint8")
+>>> image = (image * 255).round().astype("uint8")
 >>> image = Image.fromarray(image)
 >>> image
 ```

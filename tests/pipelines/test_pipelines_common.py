@@ -8,7 +8,7 @@ import re
 import tempfile
 import unittest
 import uuid
-from typing import Callable, Union
+from typing import Any, Callable, Dict, Union
 
 import numpy as np
 import PIL.Image
@@ -29,6 +29,11 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import IPAdapterMixin
+from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
+from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
+from diffusers.models.unets.unet_motion_model import UNetMotionModel
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
@@ -38,12 +43,13 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..models.test_models_vae import (
+from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
     get_autoencoder_kl_config,
     get_autoencoder_tiny_config,
     get_consistency_vae_config,
 )
+from ..models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
 from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
@@ -57,6 +63,290 @@ def to_np(tensor):
 def check_same_shape(tensor_list):
     shapes = [tensor.shape for tensor in tensor_list]
     return all(shape == shapes[0] for shape in shapes[1:])
+
+
+class SDFunctionTesterMixin:
+    """
+    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
+    It provides a set of common tests for PyTorch pipeline that inherit from StableDiffusionMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
+    """
+
+    def test_vae_slicing(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        # components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        image_count = 4
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * image_count
+        if "image" in inputs:  # fix batch size mismatch in I2V_Gen pipeline
+            inputs["image"] = [inputs["image"]] * image_count
+        output_1 = pipe(**inputs)
+
+        # make sure sliced vae decode yields the same result
+        pipe.enable_vae_slicing()
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"]] * image_count
+        if "image" in inputs:
+            inputs["image"] = [inputs["image"]] * image_count
+        inputs["return_dict"] = False
+        output_2 = pipe(**inputs)
+
+        assert np.abs(output_2[0].flatten() - output_1[0].flatten()).max() < 1e-2
+
+    def test_vae_tiling(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+
+        # make sure here that pndm scheduler skips prk
+        if "safety_checker" in components:
+            components["safety_checker"] = None
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+
+        # Test that tiled decode at 512x512 yields the same result as the non-tiled decode
+        output_1 = pipe(**inputs)[0]
+
+        # make sure tiled vae decode yields the same result
+        pipe.enable_vae_tiling()
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output_2 = pipe(**inputs)[0]
+
+        assert np.abs(output_2 - output_1).max() < 5e-1
+
+        # test that tiled decode works with various shapes
+        shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
+        for shape in shapes:
+            zeros = torch.zeros(shape).to(device)
+            pipe.vae.decode(zeros)
+
+    def test_freeu_enabled(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output = pipe(**inputs)[0]
+
+        pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output_freeu = pipe(**inputs)[0]
+
+        assert not np.allclose(
+            output[0, -3:, -3:, -1], output_freeu[0, -3:, -3:, -1]
+        ), "Enabling of FreeU should lead to different results."
+
+    def test_freeu_disabled(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output = pipe(**inputs)[0]
+
+        pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
+        pipe.disable_freeu()
+
+        freeu_keys = {"s1", "s2", "b1", "b2"}
+        for upsample_block in pipe.unet.up_blocks:
+            for key in freeu_keys:
+                assert getattr(upsample_block, key) is None, f"Disabling of FreeU should have set {key} to None."
+
+        inputs = self.get_dummy_inputs(torch_device)
+        inputs["return_dict"] = False
+        output_no_freeu = pipe(**inputs)[0]
+        assert np.allclose(
+            output, output_no_freeu, atol=1e-2
+        ), f"Disabling of FreeU should lead to results similar to the default pipeline results but Max Abs Error={np.abs(output_no_freeu - output).max()}."
+
+    def test_fused_qkv_projections(self):
+        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(device)
+        pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(device)
+        inputs["return_dict"] = False
+        image = pipe(**inputs)[0]
+        original_image_slice = image[0, -3:, -3:, -1]
+
+        pipe.fuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        inputs["return_dict"] = False
+        image_fused = pipe(**inputs)[0]
+        image_slice_fused = image_fused[0, -3:, -3:, -1]
+
+        pipe.unfuse_qkv_projections()
+        inputs = self.get_dummy_inputs(device)
+        inputs["return_dict"] = False
+        image_disabled = pipe(**inputs)[0]
+        image_slice_disabled = image_disabled[0, -3:, -3:, -1]
+
+        assert np.allclose(
+            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
+        ), "Fusion of QKV projections shouldn't affect the outputs."
+        assert np.allclose(
+            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
+        assert np.allclose(
+            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
+        ), "Original outputs should match when fused QKV projections are disabled."
+
+
+class IPAdapterTesterMixin:
+    """
+    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
+    It provides a set of common tests for pipelines that support IP Adapters.
+    """
+
+    def test_pipeline_signature(self):
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
+
+        assert issubclass(self.pipeline_class, IPAdapterMixin)
+        self.assertIn(
+            "ip_adapter_image",
+            parameters,
+            "`ip_adapter_image` argument must be supported by the `__call__` method",
+        )
+        self.assertIn(
+            "ip_adapter_image_embeds",
+            parameters,
+            "`ip_adapter_image_embeds` argument must be supported by the `__call__` method",
+        )
+
+    def _get_dummy_image_embeds(self, cross_attention_dim: int = 32):
+        return torch.randn((2, 1, cross_attention_dim), device=torch_device)
+
+    def _modify_inputs_for_ip_adapter_test(self, inputs: Dict[str, Any]):
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
+        if "image" in parameters.keys() and "strength" in parameters.keys():
+            inputs["num_inference_steps"] = 4
+
+        inputs["output_type"] = "np"
+        inputs["return_dict"] = False
+        return inputs
+
+    def test_ip_adapter_single(self, expected_max_diff: float = 1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
+
+        # forward pass without ip adapter
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        output_without_adapter = pipe(**inputs)[0]
+
+        adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
+        pipe.unet._load_ip_adapter_weights(adapter_state_dict)
+
+        # forward pass with single ip adapter, but scale=0 which should have no effect
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
+        pipe.set_ip_adapter_scale(0.0)
+        output_without_adapter_scale = pipe(**inputs)[0]
+
+        # forward pass with single ip adapter, but with scale of adapter weights
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
+        pipe.set_ip_adapter_scale(42.0)
+        output_with_adapter_scale = pipe(**inputs)[0]
+
+        max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
+        max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
+
+        self.assertLess(
+            max_diff_without_adapter_scale,
+            expected_max_diff,
+            "Output without ip-adapter must be same as normal inference",
+        )
+        self.assertGreater(
+            max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
+        )
+
+    def test_ip_adapter_multi(self, expected_max_diff: float = 1e-4):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
+
+        # forward pass without ip adapter
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        output_without_adapter = pipe(**inputs)[0]
+
+        adapter_state_dict_1 = create_ip_adapter_state_dict(pipe.unet)
+        adapter_state_dict_2 = create_ip_adapter_state_dict(pipe.unet)
+        pipe.unet._load_ip_adapter_weights([adapter_state_dict_1, adapter_state_dict_2])
+
+        # forward pass with multi ip adapter, but scale=0 which should have no effect
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
+        pipe.set_ip_adapter_scale([0.0, 0.0])
+        output_without_multi_adapter_scale = pipe(**inputs)[0]
+
+        # forward pass with multi ip adapter, but with scale of adapter weights
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)] * 2
+        pipe.set_ip_adapter_scale([42.0, 42.0])
+        output_with_multi_adapter_scale = pipe(**inputs)[0]
+
+        max_diff_without_multi_adapter_scale = np.abs(
+            output_without_multi_adapter_scale - output_without_adapter
+        ).max()
+        max_diff_with_multi_adapter_scale = np.abs(output_with_multi_adapter_scale - output_without_adapter).max()
+        self.assertLess(
+            max_diff_without_multi_adapter_scale,
+            expected_max_diff,
+            "Output without multi-ip-adapter must be same as normal inference",
+        )
+        self.assertGreater(
+            max_diff_with_multi_adapter_scale,
+            1e-2,
+            "Output with multi-ip-adapter scale must be different from normal inference",
+        )
+
+    def test_ip_adapter_cfg(self, expected_max_diff: float = 1e-4):
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
+
+        if "guidance_scale" not in parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
+
+        adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
+        pipe.unet._load_ip_adapter_weights(adapter_state_dict)
+        pipe.set_ip_adapter_scale(1.0)
+
+        # forward pass with CFG not applied
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)[0].unsqueeze(0)]
+        inputs["guidance_scale"] = 1.0
+        out_no_cfg = pipe(**inputs)[0]
+
+        # forward pass with CFG applied
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
+        inputs["guidance_scale"] = 7.5
+        out_cfg = pipe(**inputs)[0]
+
+        assert out_cfg.shape == out_no_cfg.shape
 
 
 class PipelineLatentTesterMixin:
@@ -716,7 +1006,7 @@ class PipelineTesterMixin:
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = [component.dtype for component in components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
@@ -1022,6 +1312,18 @@ class PipelineTesterMixin:
         # check that the guidance scale is increased by the number of scheduler timesteps
         # accounts for models that modify the number of inference steps based on strength
         assert pipe.guidance_scale == (inputs["guidance_scale"] + pipe.num_timesteps)
+
+    def test_StableDiffusionMixin_component(self):
+        """Any pipeline that have LDMFuncMixin should have vae and unet components."""
+        if not issubclass(self.pipeline_class, StableDiffusionMixin):
+            return
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        self.assertTrue(hasattr(pipe, "vae") and isinstance(pipe.vae, (AutoencoderKL, AutoencoderTiny)))
+        self.assertTrue(
+            hasattr(pipe, "unet")
+            and isinstance(pipe.unet, (UNet2DConditionModel, UNet3DConditionModel, I2VGenXLUNet, UNetMotionModel))
+        )
 
 
 @is_staging_test

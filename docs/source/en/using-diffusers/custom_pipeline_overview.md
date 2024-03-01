@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -55,6 +55,60 @@ pipeline = DiffusionPipeline.from_pretrained(
     use_safetensors=True,
 )
 ```
+
+### Load from a local file
+
+Community pipelines can also be loaded from a local file if you pass a file path instead. The path to the passed directory must contain a `pipeline.py` file that contains the pipeline class in order to successfully load it.
+
+```py
+pipeline = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    custom_pipeline="./path/to/pipeline_directory/",
+    clip_model=clip_model,
+    feature_extractor=feature_extractor,
+    use_safetensors=True,
+)
+```
+
+### Load from a specific version
+
+By default, community pipelines are loaded from the latest stable version of Diffusers. To load a community pipeline from another version, use the `custom_revision` parameter.
+
+<hfoptions id="version">
+<hfoption id="main">
+
+For example, to load from the `main` branch:
+
+```py
+pipeline = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    custom_pipeline="clip_guided_stable_diffusion",
+    custom_revision="main",
+    clip_model=clip_model,
+    feature_extractor=feature_extractor,
+    use_safetensors=True,
+)
+```
+
+</hfoption>
+<hfoption id="older version">
+
+For example, to load from a previous version of Diffusers like `v0.25.0`:
+
+```py
+pipeline = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    custom_pipeline="clip_guided_stable_diffusion",
+    custom_revision="v0.25.0",
+    clip_model=clip_model,
+    feature_extractor=feature_extractor,
+    use_safetensors=True,
+)
+```
+
+</hfoption>
+</hfoptions>
+
 
 For more information about community pipelines, take a look at the [Community pipelines](custom_pipeline_examples) guide for how to use them and if you're interested in adding a community pipeline check out the [How to contribute a community pipeline](contribute_pipeline) guide!
 

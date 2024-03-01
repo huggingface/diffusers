@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ from ...utils import logging
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
+    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
@@ -89,6 +90,7 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         motion_norm_num_groups: int = 32,
         motion_max_seq_length: int = 32,
         use_motion_mid_block: bool = True,
+        conv_in_channels: Optional[int] = None,
     ):
         """Container to store AnimateDiff Motion Modules
 
@@ -112,6 +114,12 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         super().__init__()
         down_blocks = []
         up_blocks = []
+
+        if conv_in_channels:
+            # input
+            self.conv_in = nn.Conv2d(conv_in_channels, block_out_channels[0], kernel_size=3, padding=1)
+        else:
+            self.conv_in = None
 
         for i, channel in enumerate(block_out_channels):
             output_channel = block_out_channels[i]
@@ -210,6 +218,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         use_motion_mid_block: int = True,
         encoder_hid_dim: Optional[int] = None,
         encoder_hid_dim_type: Optional[str] = None,
+        time_cond_proj_dim: Optional[int] = None,
     ):
         super().__init__()
 
@@ -245,9 +254,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         timestep_input_dim = block_out_channels[0]
 
         self.time_embedding = TimestepEmbedding(
-            timestep_input_dim,
-            time_embed_dim,
-            act_fn=act_fn,
+            timestep_input_dim, time_embed_dim, act_fn=act_fn, cond_proj_dim=time_cond_proj_dim
         )
 
         if encoder_hid_dim_type is None:
@@ -299,6 +306,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 num_attention_heads=num_attention_heads[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=False,
+                use_linear_projection=use_linear_projection,
                 temporal_num_attention_heads=motion_num_attention_heads,
                 temporal_max_seq_length=motion_max_seq_length,
             )
@@ -314,6 +322,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 num_attention_heads=num_attention_heads[-1],
                 resnet_groups=norm_num_groups,
                 dual_cross_attention=False,
+                use_linear_projection=use_linear_projection,
             )
 
         # count how many layers upsample the images
@@ -410,6 +419,10 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             config["motion_max_seq_length"] = motion_adapter.config["motion_max_seq_length"]
             config["use_motion_mid_block"] = motion_adapter.config["use_motion_mid_block"]
 
+            # For PIA UNets we need to set the number input channels to 9
+            if motion_adapter.config["conv_in_channels"]:
+                config["in_channels"] = motion_adapter.config["conv_in_channels"]
+
         # Need this for backwards compatibility with UNet2DConditionModel checkpoints
         if not config.get("num_attention_heads"):
             config["num_attention_heads"] = config["attention_head_dim"]
@@ -419,7 +432,17 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not load_weights:
             return model
 
-        model.conv_in.load_state_dict(unet.conv_in.state_dict())
+        # Logic for loading PIA UNets which allow the first 4 channels to be any UNet2DConditionModel conv_in weight
+        # while the last 5 channels must be PIA conv_in weights.
+        if has_motion_adapter and motion_adapter.config["conv_in_channels"]:
+            model.conv_in = motion_adapter.conv_in
+            updated_conv_in_weight = torch.cat(
+                [unet.conv_in.weight, motion_adapter.conv_in.weight[:, 4:, :, :]], dim=1
+            )
+            model.conv_in.load_state_dict({"weight": updated_conv_in_weight, "bias": unet.conv_in.bias})
+        else:
+            model.conv_in.load_state_dict(unet.conv_in.state_dict())
+
         model.time_proj.load_state_dict(unet.time_proj.state_dict())
         model.time_embedding.load_state_dict(unet.time_embedding.state_dict())
 
@@ -679,6 +702,44 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
 
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    def fuse_qkv_projections(self):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+        """
+        self.original_attn_processors = None
+
+        for _, attn_processor in self.attn_processors.items():
+            if "Added" in str(attn_processor.__class__.__name__):
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+
+        self.original_attn_processors = self.attn_processors
+
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.fuse_projections(fuse=True)
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
+    def unfuse_qkv_projections(self):
+        """Disables the fused QKV projection if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        """
+        if self.original_attn_processors is not None:
+            self.set_attn_processor(self.original_attn_processors)
+
     def forward(
         self,
         sample: torch.FloatTensor,
@@ -771,6 +832,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
 
         emb = self.time_embedding(t_emb, timestep_cond)
         emb = emb.repeat_interleave(repeats=num_frames, dim=0)
+        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
 
         if self.encoder_hid_proj is not None and self.config.encoder_hid_dim_type == "ip_image_proj":
             if "image_embeds" not in added_cond_kwargs:
@@ -778,10 +840,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
                     f"{self.__class__} has the config param `encoder_hid_dim_type` set to 'ip_image_proj' which requires the keyword argument `image_embeds` to be passed in  `added_conditions`"
                 )
             image_embeds = added_cond_kwargs.get("image_embeds")
-            image_embeds = self.encoder_hid_proj(image_embeds).to(encoder_hidden_states.dtype)
-            encoder_hidden_states = torch.cat([encoder_hidden_states, image_embeds], dim=1)
-
-        encoder_hidden_states = encoder_hidden_states.repeat_interleave(repeats=num_frames, dim=0)
+            image_embeds = self.encoder_hid_proj(image_embeds)
+            image_embeds = [image_embed.repeat_interleave(repeats=num_frames, dim=0) for image_embed in image_embeds]
+            encoder_hidden_states = (encoder_hidden_states, image_embeds)
 
         # 2. pre-process
         sample = sample.permute(0, 2, 1, 3, 4).reshape((sample.shape[0] * num_frames, -1) + sample.shape[3:])
