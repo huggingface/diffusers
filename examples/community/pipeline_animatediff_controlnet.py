@@ -799,8 +799,10 @@ class AnimateDiffControlNetPipeline(
             ip_adapter_image (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
+                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
+                if `do_classifier_free_guidance` is set to `True`.
+                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
             conditioning_frames (`List[PipelineImageInput]`, *optional*):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If multiple ControlNets
                 are specified, images must be passed as a list such that each element of the list can be correctly
