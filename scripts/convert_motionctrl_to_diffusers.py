@@ -16,6 +16,7 @@ from diffusers.models import AutoencoderKLTemporalDecoder
 from diffusers.schedulers import EulerDiscreteScheduler
 from diffusers.utils import is_accelerate_available, logging
 
+
 sys.path.append(os.getcwd())
 from examples.community.pipeline_stable_video_motionctrl_diffusion import UNetSpatioTemporalConditionMotionCtrlModel
 
@@ -780,12 +781,6 @@ if __name__ == "__main__":
     parser.add_argument("--output_path", default=None, type=str, help="Path to the output model.", required=True)
     parser.add_argument("--sample_size", type=int, default=768, help="VAE sample size")
     parser.add_argument(
-        "--use_legacy_autoencoder",
-        action="store_true",
-        default=False,
-        help="Whether or not to use the `quant_conv` layers from the original implementation (which is now legacy behaviour).",
-    )
-    parser.add_argument(
         "--push_to_hub", action="store_true", default=False, help="Whether to push to huggingface hub or not."
     )
     args = parser.parse_args()
@@ -794,7 +789,7 @@ if __name__ == "__main__":
     state_dict = load_original_state_dict(args.checkpoint_path)
 
     vae_config = create_vae_diffusers_config(original_config, args.sample_size)
-    vae = AutoencoderKLTemporalDecoder(**vae_config, use_legacy=args.use_legacy_autoencoder)
+    vae = AutoencoderKLTemporalDecoder(**vae_config, use_quant_conv=False)
     vae_state_dict = convert_ldm_vae_checkpoint(state_dict, vae_config)
 
     remove = []

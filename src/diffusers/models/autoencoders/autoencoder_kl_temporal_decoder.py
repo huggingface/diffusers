@@ -205,7 +205,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
         force_upcast: float = True,
-        use_legacy: bool = True,
+        use_quant_conv: bool = True,
     ):
         super().__init__()
 
@@ -227,7 +227,7 @@ class AutoencoderKLTemporalDecoder(ModelMixin, ConfigMixin):
             layers_per_block=layers_per_block,
         )
 
-        self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_legacy else None
+        self.quant_conv = nn.Conv2d(2 * latent_channels, 2 * latent_channels, 1) if use_quant_conv else None
 
         sample_size = (
             self.config.sample_size[0]
