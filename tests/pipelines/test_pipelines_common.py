@@ -25,7 +25,6 @@ from diffusers import (
     ConsistencyDecoderVAE,
     DDIMScheduler,
     DiffusionPipeline,
-    StableDiffusionPipeline,
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
@@ -1369,6 +1368,8 @@ class PipelinePushToHubTester(unittest.TestCase):
         return components
 
     def test_push_to_hub(self):
+        from diffusers import StableDiffusionPipeline
+
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
         pipeline.push_to_hub(self.repo_id, token=TOKEN)
@@ -1393,6 +1394,8 @@ class PipelinePushToHubTester(unittest.TestCase):
         delete_repo(self.repo_id, token=TOKEN)
 
     def test_push_to_hub_in_organization(self):
+        from diffusers import StableDiffusionPipeline
+
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
         pipeline.push_to_hub(self.org_repo_id, token=TOKEN)
@@ -1421,6 +1424,8 @@ class PipelinePushToHubTester(unittest.TestCase):
         reason="Model card tests cannot be performed without Jinja installed.",
     )
     def test_push_to_hub_library_name(self):
+        from diffusers import StableDiffusionPipeline
+
         components = self.get_pipeline_components()
         pipeline = StableDiffusionPipeline(**components)
         pipeline.push_to_hub(self.repo_id, token=TOKEN)
