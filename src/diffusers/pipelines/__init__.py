@@ -22,7 +22,6 @@ _import_structure = {
     "controlnet_xs": [],
     "deprecated": [],
     "latent_diffusion": [],
-    "ledits_pp": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -170,12 +169,10 @@ else:
         "LatentConsistencyModelPipeline",
     ]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
-    _import_structure["ledits_pp"].extend(
-        [
-            "LEditsPPPipelineStableDiffusion",
-            "LEditsPPPipelineStableDiffusionXL",
-        ]
-    )
+    _import_structure["ledits_pp"] = [
+        "LEditsPPPipelineStableDiffusion",
+        "LEditsPPPipelineStableDiffusionXL",
+    ]
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
