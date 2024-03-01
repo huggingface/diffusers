@@ -1178,7 +1178,7 @@ def main(args):
             _set_state_dict_into_text_encoder(lora_state_dict, prefix="text_encoder.", text_encoder=text_encoder_one_)
 
             _set_state_dict_into_text_encoder(
-                lora_state_dict, prefix="text_encoder_2.", text_encoder=text_encoder_one_
+                lora_state_dict, prefix="text_encoder_2.", text_encoder=text_encoder_two_
             )
 
         # Make sure the trainable params are in float32. This is again needed since the base models
@@ -1764,7 +1764,7 @@ def main(args):
                 accelerator,
                 pipeline_args,
                 epoch,
-                final_validation=True,
+                is_final_validation=True,
             )
 
         if args.push_to_hub:
