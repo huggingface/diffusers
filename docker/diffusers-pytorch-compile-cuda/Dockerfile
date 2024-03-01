@@ -24,7 +24,7 @@ RUN python3.9 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN python3.9 -m pip install --no-cache-dir --upgrade pip uv && \
+RUN python3.9 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
     python3.9 -m uv pip install --no-cache-dir \
     torch \
     torchvision \
