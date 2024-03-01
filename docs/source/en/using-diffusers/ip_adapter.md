@@ -234,6 +234,39 @@ export_to_gif(frames, "gummy_bear.gif")
 > [!TIP]
 > While calling `load_ip_adapter()`, pass `low_cpu_mem_usage=True` to speed up the loading time.
 
+All the pipelines supporting IP-Adapter accept a `ip_adapter_image_embeds` argument. If you need to run the IP-Adapter multiple times with the same image, you can encode the image once and save the embedding to the disk.
+
+```py
+image_embeds = pipeline.prepare_ip_adapter_image_embeds(
+    ip_adapter_image=image,
+    ip_adapter_image_embeds=None,
+    device="cuda",
+    num_images_per_prompt=1,
+    do_classifier_free_guidance=True,
+)
+
+torch.save(image_embeds, "image_embeds.ipadpt")
+```
+
+Load the image embedding and pass it to the pipeline as `ip_adapter_image_embeds`
+
+> [!TIP]
+> ComfyUI image embeddings for IP-Adapters are fully compatible in Diffusers and should work out-of-box.
+
+```py
+image_embeds = torch.load("image_embeds.ipadpt")
+images = pipeline(
+    prompt="a polar bear sitting in a chair drinking a milkshake",
+    ip_adapter_image_embeds=image_embeds,
+    negative_prompt="deformed, ugly, wrong proportion, low res, bad anatomy, worst quality, low quality",
+    num_inference_steps=100,
+    generator=generator,
+).images
+```
+
+> [!TIP]
+> If you use IP-Adapter with `ip_adapter_image_embedding` instead of `ip_adapter_image`, you can choose not to load an image encoder by passing `image_encoder_folder=None` to `load_ip_adapter()`. 
+
 ## Specific use cases
 
 IP-Adapter's image prompting and compatibility with other adapters and models makes it a versatile tool for a variety of use cases. This section covers some of the more popular applications of IP-Adapter, and we can't wait to see what you come up with!
