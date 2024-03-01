@@ -896,7 +896,9 @@ def main(args):
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
         new_fingerprint_for_vae = Hasher.hash("vae")
-        train_dataset_with_embeddings = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
+        train_dataset_with_embeddings = train_dataset.map(
+            compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint
+        )
         train_dataset_with_vae = train_dataset.map(
             compute_vae_encodings_fn,
             batched=True,
@@ -904,11 +906,7 @@ def main(args):
             new_fingerprint=new_fingerprint_for_vae,
         )
         precomputed_dataset = concatenate_datasets(
-            [
-                train_dataset_with_embeddings,
-                train_dataset_with_vae.remove_columns(['image', 'text'])
-            ],
-            axis=1
+            [train_dataset_with_embeddings, train_dataset_with_vae.remove_columns(["image", "text"])], axis=1
         )
         precomputed_dataset = precomputed_dataset.with_transform(preprocess_train)
 
