@@ -83,12 +83,12 @@ class StableVideoDiffusionPipelineOutput(BaseOutput):
     Output class for Stable Video Diffusion pipeline.
 
     Args:
-        frames (`[List[PIL.Image.Image]`, `np.ndarray`, `torch.FloatTensor`]):
-            List of denoised PIL images of length `batch_size` or NumPy array of shape
-            `(batch_size, height, width, num_channels)`.
+        frames (`[List[List[PIL.Image.Image]]`, `np.ndarray`, `torch.FloatTensor`]):
+            List of denoised PIL images of length `batch_size` or numpy array or torch tensor
+            of shape `(batch_size, num_frames, height, width, num_channels)`.
     """
 
-    frames: Union[List[PIL.Image.Image], np.ndarray, torch.FloatTensor]
+    frames: Union[List[List[PIL.Image.Image]], np.ndarray, torch.FloatTensor]
 
 
 class StableVideoDiffusionPipeline(DiffusionPipeline):
@@ -403,9 +403,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `List[List[PIL.Image.Image]]` or `np.ndarray` or `torch.FloatTensor`:
+            [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] or `tuple`:
                 If `return_dict` is `True`, [`~pipelines.stable_diffusion.StableVideoDiffusionPipelineOutput`] is returned,
-                otherwise a `tuple` is returned where the first element is a list of list with the generated frames.
+                otherwise a `tuple` of (`List[List[PIL.Image.Image]]` or `np.ndarray` or `torch.FloatTensor`) is returned.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor
