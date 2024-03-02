@@ -36,7 +36,7 @@ Note also that we use PEFT library as backend for LoRA training, make sure to ha
 
 ### Pokemon example
 
-You need to accept the model license before downloading or using the weights. In this example we'll use model version `sd-v1-5-inpainting` from runwayml, so you'll need to visit [its card](https://huggingface.co/runwayml/stable-diffusion-inpainting), read the license and tick the checkbox if you agree.
+You need to accept the model license before downloading or using the weights. In this example we'll use model version `sd-v1-5-inpainting` or `v1-5` from runwayml, so you'll need to visit [inpainting card](https://huggingface.co/runwayml/stable-diffusion-inpainting) or [v1-5 card](https://huggingface.co/runwayml/stable-diffusion-v1-5), read the license and tick the checkbox if you agree.
 
 You have to be a registered user in 🤗 Hugging Face Hub, and you'll also need to use an access token for the code to work. For more information on access tokens, please refer to [this section of the documentation](https://huggingface.co/docs/hub/security-tokens).
 
@@ -53,7 +53,7 @@ If you have already cloned the repo, then you won't need to go through these ste
 #### Hardware
 With `gradient_checkpointing` and `mixed_precision` it should be possible to fine tune the model on a single 24GB GPU. For higher `batch_size` and faster training it's better to use GPUs with >30GB memory.
 
-**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) 768x768 model.___**
+**___Note: Change the `resolution` to 768 if you are using the [stable-diffusion-2-inpainting](https://huggingface.co/stabilityai/stable-diffusion-2-inpainting) or [stable-diffusion-2](https://huggingface.co/stabilityai/stable-diffusion-2) 768x768 model.___**
 <!-- accelerate_snippet_start -->
 ```bash
 export MODEL_NAME="runwayml/stable-diffusion-inpainting"
