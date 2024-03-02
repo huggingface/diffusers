@@ -213,6 +213,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         for num_inference_steps in [1, 2, 3, 5, 10, 50, 100, 999, 1000]:
             self.check_over_forward(num_inference_steps=num_inference_steps, time_step=0)
 
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
+
     def test_full_loop_no_noise(self):
         sample = self.full_loop()
         result_mean = torch.mean(torch.abs(sample))
