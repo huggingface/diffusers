@@ -14,9 +14,11 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import contextlib
 import gc
 import hashlib
 import itertools
+import json
 import logging
 import math
 import os
@@ -37,7 +39,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
-from huggingface_hub import create_repo, upload_folder
+from huggingface_hub import create_repo, hf_hub_download, upload_folder
 from packaging import version
 from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
@@ -55,6 +57,8 @@ from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
     DPMSolverMultistepScheduler,
+    EDMEulerScheduler,
+    EulerDiscreteScheduler,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
@@ -78,6 +82,18 @@ check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
+def determine_scheduler_type(pretrained_model_name_or_path, revision):
+    model_index_filename = "model_index.json"
+    if os.path.isdir(pretrained_model_name_or_path):
+        model_index = os.path.join(pretrained_model_name_or_path, model_index_filename)
+    else:
+        model_index = hf_hub_download(
+            repo_id=pretrained_model_name_or_path, filename=model_index_filename, revision=revision
+        )
+
+    with open(model_index, "r") as f:
+        scheduler_type = json.load(f)["scheduler"][1]
+    return scheduler_type
 
 def save_model_card(
     repo_id: str,
@@ -1776,6 +1792,18 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
+    def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
+        sigmas = noise_scheduler.sigmas.to(device=accelerator.device, dtype=dtype)
+        schedule_timesteps = noise_scheduler.timesteps.to(accelerator.device)
+        timesteps = timesteps.to(accelerator.device)
+
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < n_dim:
+            sigma = sigma.unsqueeze(-1)
+        return sigma
+
     if args.train_text_encoder:
         num_train_epochs_text_encoder = int(args.train_text_encoder_frac * args.num_train_epochs)
     elif args.train_text_encoder_ti:  # args.train_text_encoder_ti
@@ -1827,9 +1855,16 @@ def main(args):
                     pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.sample()
 
-                model_input = model_input * vae_scaling_factor
-                if args.pretrained_vae_model_name_or_path is None:
-                    model_input = model_input.to(weight_dtype)
+                if latents_mean is None and latents_std is None:
+                    model_input = model_input * vae.config.scaling_factor
+                    if args.pretrained_vae_model_name_or_path is None:
+                        model_input = model_input.to(weight_dtype)
+                else:
+                    latents_mean = latents_mean.to(device=model_input.device, dtype=model_input.dtype)
+                    latents_std = latents_std.to(device=model_input.device, dtype=model_input.dtype)
+                    model_input = (model_input - latents_mean) * vae.config.scaling_factor / latents_std
+                    model_input = model_input.to(dtype=weight_dtype)
+
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
@@ -1840,15 +1875,33 @@ def main(args):
                     )
 
                 bsz = model_input.shape[0]
+
                 # Sample a random timestep for each image
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
-                )
-                timesteps = timesteps.long()
+                if not args.do_edm_style_training:
+                    timesteps = torch.randint(
+                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
+                    )
+                    timesteps = timesteps.long()
+                else:
+                    # in EDM formulation, the model is conditioned on the pre-conditioned noise levels
+                    # instead of discrete timesteps, so here we sample indices to get the noise levels
+                    # from `scheduler.timesteps`
+                    indices = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,))
+                    timesteps = noise_scheduler.timesteps[indices].to(device=model_input.device)
+
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
+                # For EDM-style training, we first obtain the sigmas based on the continuous timesteps.
+                # We then precondition the final model inputs based on these sigmas instead of the timesteps.
+                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                if args.do_edm_style_training:
+                    sigmas = get_sigmas(timesteps, len(noisy_model_input.shape), noisy_model_input.dtype)
+                    if "EDM" in scheduler_type:
+                        inp_noisy_latents = noise_scheduler.precondition_inputs(noisy_model_input, sigmas)
+                    else:
+                        inp_noisy_latents = noisy_model_input / ((sigmas ** 2 + 1) ** 0.5)
 
                 # time ids
                 add_time_ids = torch.cat(
@@ -1874,7 +1927,7 @@ def main(args):
                     }
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
-                        noisy_model_input,
+                        inp_noisy_latents if args.do_edm_style_training else noisy_model_input,
                         timesteps,
                         prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
@@ -1892,14 +1945,42 @@ def main(args):
                     )
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions
+                        inp_noisy_latents if args.do_edm_style_training else noisy_model_input,
+                        timesteps,
+                        prompt_embeds_input,
+                        added_cond_kwargs=unet_added_conditions
                     ).sample
+
+                weighting = None
+                if args.do_edm_style_training:
+                    # Similar to the input preconditioning, the model predictions are also preconditioned
+                    # on noised model inputs (before preconditioning) and the sigmas.
+                    # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                    if "EDM" in scheduler_type:
+                        model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
+                    else:
+                        if noise_scheduler.config.prediction_type == "epsilon":
+                            model_pred = model_pred * (-sigmas) + noisy_model_input
+                        elif noise_scheduler.config.prediction_type == "v_prediction":
+                            model_pred = model_pred * (-sigmas / (sigmas ** 2 + 1) ** 0.5) + (
+                                    noisy_model_input / (sigmas ** 2 + 1)
+                            )
+                    # We are not doing weighting here because it tends result in numerical problems.
+                    # See: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
+                    # There might be other alternatives for weighting as well:
+                    # https://github.com/huggingface/diffusers/pull/7126#discussion_r1505404686
+                    if "EDM" not in scheduler_type:
+                        weighting = (sigmas ** -2.0).float()
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
+                    target = model_input if args.do_edm_style_training else noise
                 elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(model_input, noise, timesteps)
+                    target = (
+                        model_input
+                        if args.do_edm_style_training
+                        else noise_scheduler.get_velocity(model_input, noise, timesteps)
+                    )
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
