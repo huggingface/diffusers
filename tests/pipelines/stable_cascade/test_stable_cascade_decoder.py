@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import numpy as np
@@ -20,9 +21,18 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadeDecoderPipeline
+from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
-from diffusers.utils.testing_utils import enable_full_determinism, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_image,
+    load_pt,
+    require_torch_gpu,
+    skip_mps,
+    slow,
+    torch_device,
+)
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -190,3 +200,48 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     @unittest.skip(reason="fp16 not supported")
     def test_float16_inference(self):
         super().test_float16_inference()
+
+
+@slow
+@require_torch_gpu
+class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_stable_cascade_decoder(self):
+        pipe = StableCascadeDecoderPipeline.from_pretrained(
+            "diffusers/StableCascade-decoder", torch_dtype=torch.bfloat16
+        )
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_embedding = load_pt(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/image_embedding.pt"
+        )
+
+        image = pipe(
+            prompt=prompt, image_embedding=image_embedding, num_inference_steps=10, generator=generator
+        ).images[0]
+
+        import pdb
+
+        pdb.set_trace()
+
+        assert image.size == (1024, 1024)
+
+        expected_image = load_image(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/t2i.png"
+        )
+
+        image_processor = VaeImageProcessor()
+
+        image_np = image_processor.pil_to_numpy(image)
+        expected_image_np = image_processor.pil_to_numpy(expected_image)
+
+        self.assertTrue(np.allclose(image_np, expected_image_np, atol=5e-2))

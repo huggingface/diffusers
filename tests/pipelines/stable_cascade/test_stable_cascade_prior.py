@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import numpy as np
@@ -29,7 +30,15 @@ from diffusers.models.attention_processor import (
     LoRAAttnProcessor2_0,
 )
 from diffusers.utils.import_utils import is_peft_available
-from diffusers.utils.testing_utils import enable_full_determinism, require_peft_backend, skip_mps, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    load_pt,
+    require_peft_backend,
+    require_torch_gpu,
+    skip_mps,
+    slow,
+    torch_device,
+)
 
 
 if is_peft_available():
@@ -264,3 +273,33 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         lora_image_embed = output_lora.image_embeddings
 
         self.assertTrue(image_embed.shape == lora_image_embed.shape)
+
+
+@slow
+@require_torch_gpu
+class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def test_stable_cascade_prior(self):
+        pipe = StableCascadePriorPipeline.from_pretrained("diffusers/StableCascade-prior", torch_dtype=torch.bfloat16)
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+
+        prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+
+        output = pipe(prompt, num_inference_steps=10, generator=generator)
+        image_embedding = output.image_embeddings[0]
+
+        expected_image_embedding = load_pt(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/image_embedding.pt"
+        )
+
+        assert image_embedding.shape == (16, 24, 24)
+
+        self.assertTrue(np.allclose(image_embedding.numpy(), expected_image_embedding.numpy(), atol=5e-2))
