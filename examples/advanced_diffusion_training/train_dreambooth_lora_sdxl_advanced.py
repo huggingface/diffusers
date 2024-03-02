@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import contextlib
 import gc
 import hashlib
 import itertools
@@ -57,8 +56,6 @@ from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
     DPMSolverMultistepScheduler,
-    EDMEulerScheduler,
-    EulerDiscreteScheduler,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
@@ -82,6 +79,7 @@ check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
+
 def determine_scheduler_type(pretrained_model_name_or_path, revision):
     model_index_filename = "model_index.json"
     if os.path.isdir(pretrained_model_name_or_path):
@@ -94,6 +92,7 @@ def determine_scheduler_type(pretrained_model_name_or_path, revision):
     with open(model_index, "r") as f:
         scheduler_type = json.load(f)["scheduler"][1]
     return scheduler_type
+
 
 def save_model_card(
     repo_id: str,
@@ -1865,7 +1864,6 @@ def main(args):
                     model_input = (model_input - latents_mean) * vae.config.scaling_factor / latents_std
                     model_input = model_input.to(dtype=weight_dtype)
 
-
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
                 if args.noise_offset:
@@ -1889,7 +1887,6 @@ def main(args):
                     indices = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,))
                     timesteps = noise_scheduler.timesteps[indices].to(device=model_input.device)
 
-
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
@@ -1901,7 +1898,7 @@ def main(args):
                     if "EDM" in scheduler_type:
                         inp_noisy_latents = noise_scheduler.precondition_inputs(noisy_model_input, sigmas)
                     else:
-                        inp_noisy_latents = noisy_model_input / ((sigmas ** 2 + 1) ** 0.5)
+                        inp_noisy_latents = noisy_model_input / ((sigmas**2 + 1) ** 0.5)
 
                 # time ids
                 add_time_ids = torch.cat(
@@ -1948,7 +1945,7 @@ def main(args):
                         inp_noisy_latents if args.do_edm_style_training else noisy_model_input,
                         timesteps,
                         prompt_embeds_input,
-                        added_cond_kwargs=unet_added_conditions
+                        added_cond_kwargs=unet_added_conditions,
                     ).sample
 
                 weighting = None
@@ -1962,15 +1959,15 @@ def main(args):
                         if noise_scheduler.config.prediction_type == "epsilon":
                             model_pred = model_pred * (-sigmas) + noisy_model_input
                         elif noise_scheduler.config.prediction_type == "v_prediction":
-                            model_pred = model_pred * (-sigmas / (sigmas ** 2 + 1) ** 0.5) + (
-                                    noisy_model_input / (sigmas ** 2 + 1)
+                            model_pred = model_pred * (-sigmas / (sigmas**2 + 1) ** 0.5) + (
+                                noisy_model_input / (sigmas**2 + 1)
                             )
                     # We are not doing weighting here because it tends result in numerical problems.
                     # See: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
                     # There might be other alternatives for weighting as well:
                     # https://github.com/huggingface/diffusers/pull/7126#discussion_r1505404686
                     if "EDM" not in scheduler_type:
-                        weighting = (sigmas ** -2.0).float()
+                        weighting = (sigmas**-2.0).float()
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
