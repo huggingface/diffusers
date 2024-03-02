@@ -378,7 +378,7 @@ def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, ar
     del pipeline
     torch.cuda.empty_cache()
 
-    return images
+    return images, prompts, masks
 
 
 def parse_args():
@@ -1312,39 +1312,19 @@ def main():
         pipeline.save_pretrained(args.output_dir)
 
         # Run a final round of inference.
-        images = []
         if args.validation_size > 0:
             logger.info("Running inference for collecting generated images...")
-            pipeline = pipeline.to(accelerator.device)
-            pipeline.torch_dtype = weight_dtype
-            pipeline.set_progress_bar_config(disable=True)
-
-            if args.enable_xformers_memory_efficient_attention:
-                pipeline.enable_xformers_memory_efficient_attention()
-
-            if args.seed is None:
-                generator = None
-            else:
-                generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
-
-            images = []
-            prompts = []
-            masks = []
-            image_transform = transforms.ToPILImage()
-            for _, batch in enumerate(val_dataloader):
-                mask = image_transform(batch["masks"][0] * 255)
-                init_image = image_transform(batch["pixel_values"][0])
-                prompt = batch["prompts"][0]
-
-                with torch.autocast("cuda"):
-                    #### UPDATE PIPELINE HERE
-                    image = pipeline(
-                        prompt, image=init_image, mask_image=mask, num_inference_steps=20, generator=generator
-                    ).images[0]
-
-                prompts.append(prompt)
-                images.append(image)
-                masks.append(mask)
+            images, prompts, masks = log_validation(
+                val_dataloader,
+                vae,
+                text_encoder,
+                tokenizer,
+                unet,
+                args,
+                accelerator,
+                weight_dtype,
+                global_step,
+            )
 
         if args.push_to_hub:
             save_model_card(args, repo_id, images, prompts, masks, repo_folder=args.output_dir)
