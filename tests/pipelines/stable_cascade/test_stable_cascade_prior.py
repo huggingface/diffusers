@@ -294,12 +294,16 @@ class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
 
         output = pipe(prompt, num_inference_steps=10, generator=generator)
-        image_embedding = output.image_embeddings[0]
+        image_embedding = output.image_embeddings
 
         expected_image_embedding = load_pt(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/image_embedding.pt"
         )
 
-        assert image_embedding.shape == (16, 24, 24)
+        assert image_embedding.shape == (1, 16, 24, 24)
 
-        self.assertTrue(np.allclose(image_embedding.numpy(), expected_image_embedding.numpy(), atol=5e-2))
+        self.assertTrue(
+            np.allclose(
+                image_embedding.cpu().float().numpy(), expected_image_embedding.cpu().float().numpy(), atol=5e-2
+            )
+        )
