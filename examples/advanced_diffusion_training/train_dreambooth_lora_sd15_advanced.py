@@ -654,9 +654,11 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--use_dora",
         type=bool,
+        action="store_true",
         default=False,
         help=(
-            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353"
+            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
         ),
     )
     parser.add_argument(
