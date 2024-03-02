@@ -549,7 +549,9 @@ class StableDiffusionXLControlNetInpaintPipeline(
                     )
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                 else:
-                    single_image_embeds = single_image_embeds.repeat(num_images_per_prompt, 1, 1)
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *([1] * len(single_image_embeds.shape[1:]))
+                    )
                 image_embeds.append(single_image_embeds)
 
         return image_embeds
