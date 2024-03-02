@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import cv2
 import logging
 import math
 import os
@@ -24,6 +23,7 @@ from functools import partial
 from pathlib import Path
 
 import accelerate
+import cv2
 import datasets
 import numpy as np
 import torch
@@ -32,7 +32,6 @@ import torch.utils.checkpoint
 import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
-from accelerate.state import AcceleratorState
 from accelerate.utils import ProjectConfiguration, set_seed
 from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
@@ -40,13 +39,13 @@ from packaging import version
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import CLIPTextModel, CLIPTokenizer
-from transformers.utils import ContextManagers
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionInpaintPipeline, UNet2DConditionModel
 from diffusers.optimization import get_scheduler
 from diffusers.training_utils import EMAModel, compute_snr
 from diffusers.utils import check_min_version, deprecate, is_wandb_available, make_image_grid
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.torch_utils import is_compiled_module
 
@@ -64,8 +63,8 @@ DATASET_NAME_MAPPING = {
     "lambdalabs/pokemon-blip-captions": ("image", "text"),
 }
 
-def make_random_irregular_mask(shape, max_angle, max_len, max_width, min_times, max_times):
 
+def make_random_irregular_mask(shape, max_angle, max_len, max_width, min_times, max_times):
     height, width = shape
     mask = np.zeros((height, width), np.float32)
     times = np.random.randint(min_times, max_times + 1)
@@ -85,8 +84,8 @@ def make_random_irregular_mask(shape, max_angle, max_len, max_width, min_times, 
             start_x, start_y = end_x, end_y
     return torch.from_numpy(mask[None, ...]).squeeze(0).byte()
 
+
 def make_random_rectangle_mask(shape, margin, bbox_min_size, bbox_max_size, min_times, max_times):
-    
     height, width = shape
     mask = np.zeros((height, width), np.float32)
     bbox_max_size = min(bbox_max_size, height - margin * 2, width - margin * 2)
@@ -96,9 +95,9 @@ def make_random_rectangle_mask(shape, margin, bbox_min_size, bbox_max_size, min_
         box_height = np.random.randint(bbox_min_size, bbox_max_size)
         start_x = np.random.randint(margin, width - margin - box_width + 1)
         start_y = np.random.randint(margin, height - margin - box_height + 1)
-        mask[start_y:start_y + box_height, start_x:start_x + box_width] = 1
+        mask[start_y : start_y + box_height, start_x : start_x + box_width] = 1
     return torch.from_numpy(mask[None, ...]).squeeze(0).byte()
-    
+
 
 class RandomIrregularMaskGenerator:
     """
@@ -111,6 +110,7 @@ class RandomIrregularMaskGenerator:
         min_times (int): The minimum number of irregular shapes to be generated on the mask.
         max_times (int): The maximum number of irregular shapes to be generated on the mask.
     """
+
     def __init__(self, max_angle, max_len, max_width, min_times, max_times):
         self.max_angle = max_angle
         self.max_len = max_len
@@ -131,8 +131,14 @@ class RandomIrregularMaskGenerator:
         cur_max_len = int(max(1, self.max_len))
         cur_max_width = int(max(1, self.max_width))
         cur_max_times = int(self.min_times + 1 + (self.max_times - self.min_times))
-        return make_random_irregular_mask(img_shape, max_angle=self.max_angle, max_len=cur_max_len,
-                                          max_width=cur_max_width, min_times=self.min_times, max_times=cur_max_times)
+        return make_random_irregular_mask(
+            img_shape,
+            max_angle=self.max_angle,
+            max_len=cur_max_len,
+            max_width=cur_max_width,
+            min_times=self.min_times,
+            max_times=cur_max_times,
+        )
 
 
 class RandomRectangleMaskGenerator:
@@ -147,6 +153,7 @@ class RandomRectangleMaskGenerator:
         min_times (int): The minimum number of rectangles to be generated on the mask.
         max_times (int): The maximum number of rectangles to be generated on the mask.
     """
+
     def __init__(self, margin, bbox_min_size, bbox_max_size, min_times, max_times):
         self.margin = margin
         self.bbox_min_size = bbox_min_size
@@ -166,12 +173,16 @@ class RandomRectangleMaskGenerator:
         """
         cur_bbox_max_size = int(self.bbox_min_size + 1 + (self.bbox_max_size - self.bbox_min_size))
         cur_max_times = int(self.min_times + (self.max_times - self.min_times))
-        return make_random_rectangle_mask(img_shape, margin=self.margin, bbox_min_size=self.bbox_min_size,
-                                          bbox_max_size=cur_bbox_max_size, min_times=self.min_times,
-                                          max_times=cur_max_times)
-        
-        
-        
+        return make_random_rectangle_mask(
+            img_shape,
+            margin=self.margin,
+            bbox_min_size=self.bbox_min_size,
+            bbox_max_size=cur_bbox_max_size,
+            min_times=self.min_times,
+            max_times=cur_max_times,
+        )
+
+
 def create_center_square_binary_mask(total_size):
     """
     Creates a binary mask tensor based on provided parameters using PyTorch.
@@ -195,27 +206,24 @@ def create_center_square_binary_mask(total_size):
     return mask
 
 
-def create_mask(complete_mask_prob, total_size, center_mask, args):
-    
-    
+def create_mask(total_size, center_mask, args):
     if center_mask:
         mask = create_center_square_binary_mask(total_size)
-    
+
     else:
         random_number = random.random()
-        if random_number < complete_mask_prob:
+        if random_number < args.complete_mask_prob:
             mask = torch.zeros(total_size, total_size, dtype=torch.uint8)
             mask.fill_(1)
         else:
-            
-            if random_number < complete_mask_prob + (1 - complete_mask_prob)/2:
+            if random_number < args.complete_mask_prob + (1.0 - args.complete_mask_prob) / 2:
                 mask_generator = RandomIrregularMaskGenerator(
-                    max_angle=args.i_max_angle, 
-                    max_len=args.i_max_len, 
-                    max_width=args.i_max_width, 
-                    min_times=args.i_min_times, 
-                    max_times=args.i_max_times
-                    )
+                    max_angle=args.i_max_angle,
+                    max_len=args.i_max_len,
+                    max_width=args.i_max_width,
+                    min_times=args.i_min_times,
+                    max_times=args.i_max_times,
+                )
                 mask = mask_generator((total_size, total_size))
             else:
                 mask_generator = RandomRectangleMaskGenerator(
@@ -223,13 +231,11 @@ def create_mask(complete_mask_prob, total_size, center_mask, args):
                     bbox_min_size=args.r_bbox_min_size,
                     bbox_max_size=args.r_bbox_max_size,
                     min_times=args.r_min_times,
-                    max_times=args.r_max_times
+                    max_times=args.r_max_times,
                 )
                 mask = mask_generator((total_size, total_size))
-        
+
     return mask
-
-
 
 
 def save_model_card(
@@ -241,26 +247,12 @@ def save_model_card(
     repo_folder=None,
 ):
     img_str = ""
-    if len(images) > 0:
-        image_grid = make_image_grid(images + masks, 2, args.validation_size)
+    if images is not None > 0:
+        image_grid = make_image_grid(images, 1, len(args.validation_prompts))
         image_grid.save(os.path.join(repo_folder, "val_imgs_grid.png"))
         img_str += "![val_imgs_grid](./val_imgs_grid.png)\n"
 
-    yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {args.pretrained_model_name_or_path}
-datasets:
-- {args.dataset_name}
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- text-to-image
-- diffusers
-inference: true
----
-    """
-    model_card = f"""
+    model_description = f"""
 # Inpainting finetuning - {repo_id}
 
 This pipeline was finetuned from **{args.pretrained_model_name_or_path}** on the **{args.dataset_name}** dataset. Below are some example images generated with the finetuned pipeline using the following prompts: {prompts}: \n
@@ -305,10 +297,21 @@ These are the key hyperparameters used during training:
 More information on all the CLI arguments and the environment are available on your [`wandb` run page]({wandb_run_url}).
 """
 
-    model_card += wandb_info
+    model_description += wandb_info
 
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=args.pretrained_model_name_or_path,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = ["stable-diffusion", "stable-diffusion-diffusers", "inpainting", "diffusers"]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, epoch):
@@ -325,6 +328,7 @@ def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, ar
         variant=args.variant,
         torch_dtype=weight_dtype,
     )
+
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
 
@@ -375,10 +379,6 @@ def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, ar
     torch.cuda.empty_cache()
 
     return images
-
-
-
-
 
 
 def parse_args():
@@ -667,6 +667,43 @@ def parse_args():
         ),
     )
 
+    parser.add_argument(
+        "--complete_mask_prob", type=float, default=0.25, help="The probability of using a complete mask."
+    )
+    parser.add_argument("--i_max_angle", type=int, default=4, help="The maximum angle for the line segments.")
+    parser.add_argument("--i_max_len", type=int, default=400, help="The maximum length for each line segment.")
+    parser.add_argument("--i_max_width", type=int, default=200, help="The maximum width for each line segment.")
+    parser.add_argument(
+        "--i_min_times",
+        type=int,
+        default=1,
+        help="The minimum number of irregular shapes to be generated on the mask.",
+    )
+    parser.add_argument(
+        "--i_max_times",
+        type=int,
+        default=5,
+        help="The maximum number of irregular shapes to be generated on the mask.",
+    )
+    parser.add_argument(
+        "--r_margin",
+        type=int,
+        default=10,
+        help="The minimum distance between the rectangle edges and the image boundaries.",
+    )
+    parser.add_argument(
+        "--r_bbox_min_size", type=int, default=60, help="The minimum size for the width and height of the rectangles."
+    )
+    parser.add_argument(
+        "--r_bbox_max_size", type=int, default=300, help="The maximum size for the width and height of the rectangles."
+    )
+    parser.add_argument(
+        "--r_min_times", type=int, default=1, help="The minimum number of rectangles to be generated on the mask."
+    )
+    parser.add_argument(
+        "--r_max_times", type=int, default=4, help="The maximum number of rectangles to be generated on the mask."
+    )
+
     args = parser.parse_args()
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -731,7 +768,7 @@ def main():
         if args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
 
-        if args.push_to_hub:
+        if args.report_to == "wandb" and args.hub_token is not None:
             repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
@@ -741,7 +778,7 @@ def main():
     tokenizer = CLIPTokenizer.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision
     )
-   
+
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
@@ -753,6 +790,27 @@ def main():
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.non_ema_revision
     )
 
+    # InstructPix2Pix uses an additional image for conditioning. To accommodate that,
+    # it uses 8 channels (instead of 4) in the first (conv) layer of the UNet. This UNet is
+    # then fine-tuned on the custom InstructPix2Pix dataset. This modified UNet is initialized
+    # from the pre-trained checkpoints. For the extra channels added to the first layer, they are
+    # initialized to zero.
+
+    # when most likely a text2img pretrained model is used
+    if unet.conv_in.in_channels == 4:
+        logger.info("Initializing the Inpainting UNet from the pretrained 4 channel UNet .")
+        in_channels = 9
+        out_channels = unet.conv_in.out_channels
+        unet.register_to_config(in_channels=in_channels)
+
+        with torch.no_grad():
+            new_conv_in = torch.nn.Conv2d(
+                in_channels, out_channels, unet.conv_in.kernel_size, unet.conv_in.stride, unet.conv_in.padding
+            )
+            new_conv_in.weight.zero_()
+            new_conv_in.weight[:, :4, :, :].copy_(unet.conv_in.weight)
+            unet.conv_in = new_conv_in
+
     # Freeze vae and text_encoder and set unet to trainable
     vae.requires_grad_(False)
     text_encoder.requires_grad_(False)
@@ -760,10 +818,7 @@ def main():
 
     # Create EMA for the unet.
     if args.use_ema:
-        ema_unet = UNet2DConditionModel.from_pretrained(
-            args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
-        )
-        ema_unet = EMAModel(ema_unet.parameters(), model_cls=UNet2DConditionModel, model_config=ema_unet.config)
+        ema_unet = EMAModel(unet.parameters(), model_cls=UNet2DConditionModel, model_config=unet.config)
 
     if args.enable_xformers_memory_efficient_attention:
         if is_xformers_available():
@@ -954,12 +1009,7 @@ def main():
         input_ids = torch.stack([example["input_ids"] for example in examples])
 
         masks = torch.stack(
-            [
-                create_custom_binary_mask_torch(
-                    pixel_values.shape[2], int(3 / 4 * pixel_values.shape[2]), 0.25, center_mask
-                )
-                for ix in range(pixel_values.shape[0])
-            ]
+            [create_mask(pixel_values.shape[2], center_mask, args) for _ in range(pixel_values.shape[0])]
         ).unsqueeze(1)
 
         prompts = [example[caption_column] for example in examples]
