@@ -414,20 +414,21 @@ class StableDiffusionPanoramaPipeline(
 
                 image_embeds.append(single_image_embeds)
         else:
+            repeat_dims = [1]
             image_embeds = []
             for single_image_embeds in ip_adapter_image_embeds:
                 if do_classifier_free_guidance:
                     single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
                     single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *([1] * len(single_image_embeds.shape[1:]))
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
                     )
                     single_negative_image_embeds = single_negative_image_embeds.repeat(
-                        num_images_per_prompt, *([1] * len(single_negative_image_embeds.shape[1:]))
+                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
                     )
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                 else:
                     single_image_embeds = single_image_embeds.repeat(
-                        num_images_per_prompt, *([1] * len(single_image_embeds.shape[1:]))
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
                     )
                 image_embeds.append(single_image_embeds)
 
