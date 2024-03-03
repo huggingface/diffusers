@@ -48,10 +48,10 @@ Create a text prompt and load an image prompt before passing them to the pipelin
 image = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_diner.png")
 generator = torch.Generator(device="cpu").manual_seed(0)
 images = pipeline(
-    prompt="a polar bear sitting in a chair drinking a milkshake", 
+    prompt="a polar bear sitting in a chair drinking a milkshake",
     ip_adapter_image=image,
     negative_prompt="deformed, ugly, wrong proportion, low res, bad anatomy, worst quality, low quality",
-    num_inference_steps=100, 
+    num_inference_steps=100,
     generator=generator,
 ).images
 images[0]
@@ -234,6 +234,39 @@ export_to_gif(frames, "gummy_bear.gif")
 > [!TIP]
 > While calling `load_ip_adapter()`, pass `low_cpu_mem_usage=True` to speed up the loading time.
 
+All the pipelines supporting IP-Adapter accept a `ip_adapter_image_embeds` argument. If you need to run the IP-Adapter multiple times with the same image, you can encode the image once and save the embedding to the disk.
+
+```py
+image_embeds = pipeline.prepare_ip_adapter_image_embeds(
+    ip_adapter_image=image,
+    ip_adapter_image_embeds=None,
+    device="cuda",
+    num_images_per_prompt=1,
+    do_classifier_free_guidance=True,
+)
+
+torch.save(image_embeds, "image_embeds.ipadpt")
+```
+
+Load the image embedding and pass it to the pipeline as `ip_adapter_image_embeds`
+
+> [!TIP]
+> ComfyUI image embeddings for IP-Adapters are fully compatible in Diffusers and should work out-of-box.
+
+```py
+image_embeds = torch.load("image_embeds.ipadpt")
+images = pipeline(
+    prompt="a polar bear sitting in a chair drinking a milkshake",
+    ip_adapter_image_embeds=image_embeds,
+    negative_prompt="deformed, ugly, wrong proportion, low res, bad anatomy, worst quality, low quality",
+    num_inference_steps=100,
+    generator=generator,
+).images
+```
+
+> [!TIP]
+> If you use IP-Adapter with `ip_adapter_image_embedding` instead of `ip_adapter_image`, you can choose not to load an image encoder by passing `image_encoder_folder=None` to `load_ip_adapter()`. 
+
 ## Specific use cases
 
 IP-Adapter's image prompting and compatibility with other adapters and models makes it a versatile tool for a variety of use cases. This section covers some of the more popular applications of IP-Adapter, and we can't wait to see what you come up with!
@@ -270,7 +303,7 @@ generator = torch.Generator(device="cpu").manual_seed(26)
 image = pipeline(
     prompt="A photo of Einstein as a chef, wearing an apron, cooking in a French restaurant",
     ip_adapter_image=image,
-    negative_prompt="lowres, bad anatomy, worst quality, low quality", 
+    negative_prompt="lowres, bad anatomy, worst quality, low quality",
     num_inference_steps=100,
     generator=generator,
 ).images[0]
@@ -304,7 +337,7 @@ from transformers import CLIPVisionModelWithProjection
 from diffusers.utils import load_image
 
 image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-    "h94/IP-Adapter", 
+    "h94/IP-Adapter",
     subfolder="models/image_encoder",
     torch_dtype=torch.float16,
 )
@@ -323,8 +356,8 @@ pipeline = AutoPipelineForText2Image.from_pretrained(
 )
 pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
 pipeline.load_ip_adapter(
-  "h94/IP-Adapter", 
-  subfolder="sdxl_models", 
+  "h94/IP-Adapter",
+  subfolder="sdxl_models",
   weight_name=["ip-adapter-plus_sdxl_vit-h.safetensors", "ip-adapter-plus-face_sdxl_vit-h.safetensors"]
 )
 pipeline.set_ip_adapter_scale([0.7, 0.3])
@@ -336,7 +369,7 @@ Load an image prompt and a folder containing images of a certain style you want 
 ```py
 face_image = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/women_input.png")
 style_folder = "https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/style_ziggy"
-style_images =  [load_image(f"{style_folder}/img{i}.png") for i in range(10)]
+style_images = [load_image(f"{style_folder}/img{i}.png") for i in range(10)]
 ```
 
 <div class="flex flex-row gap-4">
@@ -358,10 +391,11 @@ generator = torch.Generator(device="cpu").manual_seed(0)
 image = pipeline(
     prompt="wonderwoman",
     ip_adapter_image=[style_images, face_image],
-    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality",
     num_inference_steps=50, num_images_per_prompt=1,
     generator=generator,
 ).images[0]
+image
 ```
 
 <div class="flex justify-center">
@@ -379,14 +413,14 @@ from diffusers import DiffusionPipeline, LCMScheduler
 import torch
 from diffusers.utils import load_image
 
-model_id =  "sd-dreambooth-library/herge-style"
+model_id = "sd-dreambooth-library/herge-style"
 lcm_lora_id = "latent-consistency/lcm-lora-sdv1-5"
 
 pipeline = DiffusionPipeline.from_pretrained(model_id, torch_dtype=torch.float16)
 
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="models", weight_name="ip-adapter_sd15.bin")
 pipeline.load_lora_weights(lcm_lora_id)
-pipeline.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
+pipeline.scheduler = LCMScheduler.from_config(pipeline.scheduler.config)
 pipeline.enable_model_cpu_offload()
 ```
 
@@ -455,16 +489,95 @@ Pass the depth map and IP-Adapter image to the pipeline to generate an image.
 ```py
 generator = torch.Generator(device="cpu").manual_seed(33)
 image = pipeline(
-    prompt="best quality, high quality", 
+    prompt="best quality, high quality",
     image=depth_map,
     ip_adapter_image=ip_adapter_image,
-    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality",
     num_inference_steps=50,
     generator=generator,
-).image[0]
+).images[0]
 image
 ```
 
 <div class="flex justify-center">
     <img src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ipa-controlnet-out.png" />
+</div>
+
+### IP-Adapter masking
+
+Binary masks can be used to specify which portion of the output image should be assigned to an IP-Adapter.
+For each input IP-Adapter image, a binary mask and an IP-Adapter must be provided.
+
+Before passing the masks to the pipeline, it's essential to preprocess them using [`IPAdapterMaskProcessor.preprocess()`].
+
+> [!TIP]
+> For optimal results, provide the output height and width to [`IPAdapterMaskProcessor.preprocess()`]. This ensures that masks with differing aspect ratios are appropriately stretched. If the input masks already match the aspect ratio of the generated image, specifying height and width can be omitted.
+
+Here an example with two masks:
+
+```py
+from diffusers.image_processor import IPAdapterMaskProcessor
+
+mask1 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask1.png")
+mask2 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask2.png")
+
+output_height = 1024
+output_width = 1024
+
+processor = IPAdapterMaskProcessor()
+masks = processor.preprocess([mask1, mask2], height=output_height, width=output_width)
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask1.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">mask one</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask2.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">mask two</figcaption>
+  </div>
+</div>
+
+If you have more than one IP-Adapter image, load them into a list, ensuring each image is assigned to a different IP-Adapter.
+
+```py
+face_image1 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl1.png")
+face_image2 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl2.png")
+
+ip_images = [[face_image1], [face_image2]]
+```
+
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl1.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">ip adapter image one</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl2.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">ip adapter image two</figcaption>
+  </div>
+</div>
+
+Pass preprocessed masks to the pipeline using `cross_attention_kwargs` as shown below:
+
+```py
+pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2)
+pipeline.set_ip_adapter_scale([0.7] * 2)
+generator = torch.Generator(device="cpu").manual_seed(0)
+num_images = 1
+
+image = pipeline(
+    prompt="2 girls",
+    ip_adapter_image=ip_images,
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality",
+    num_inference_steps=20, num_images_per_prompt=num_images,
+    generator=generator, cross_attention_kwargs={"ip_adapter_masks": masks}
+).images[0]
+image
+```
+
+<div class="flex justify-center">
+    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_attention_mask_result_seed_0.png" />
+   <figcaption class="mt-2 text-center text-sm text-gray-500">output image</figcaption>
 </div>
