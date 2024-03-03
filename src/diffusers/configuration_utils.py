@@ -259,6 +259,11 @@ class ConfigMixin:
         model = cls(**init_dict)
 
         # make sure to also save config parameters that might be used for compatible classes
+        # update _class_name and _diffusers_versionl
+        if "_class_name" in hidden_dict:
+            hidden_dict["_class_name"] = cls.__name__
+        if "_diffusers_version" in hidden_dict:
+            hidden_dict["_diffusers_version"] = __version__
         model.register_to_config(**hidden_dict)
 
         # add hidden kwargs of compatible classes to unused_kwargs
