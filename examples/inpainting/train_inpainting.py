@@ -55,7 +55,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -314,7 +314,18 @@ More information on all the CLI arguments and the environment are available on y
     model_card.save(os.path.join(repo_folder, "README.md"))
 
 
-def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, epoch):
+def log_validation(
+    validation_dataloader,
+    vae,
+    text_encoder,
+    tokenizer,
+    unet,
+    args,
+    accelerator,
+    weight_dtype,
+    epoch,
+    is_final_validation=False,
+):
     logger.info("Running validation... ")
 
     pipeline = StableDiffusionInpaintPipeline.from_pretrained(
@@ -350,7 +361,6 @@ def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, ar
         prompt = batch["prompts"][0]
 
         with torch.autocast("cuda"):
-            #### UPDATE PIPELINE HERE
             image = pipeline(
                 prompt, image=init_image, mask_image=mask, num_inference_steps=20, generator=generator
             ).images[0]
@@ -360,13 +370,14 @@ def log_validation(validation_dataloader, vae, text_encoder, tokenizer, unet, ar
         masks.append(mask)
 
     for tracker in accelerator.trackers:
+        phase_name = "test" if is_final_validation else "validation"
         if tracker.name == "tensorboard":
             np_images = np.stack([np.asarray(img) for img in images])
-            tracker.writer.add_images("validation", np_images, epoch, dataformats="NHWC")
+            tracker.writer.add_images(phase_name, np_images, epoch, dataformats="NHWC")
         elif tracker.name == "wandb":
             tracker.log(
                 {
-                    "validation": [
+                    phase_name: [
                         wandb.Image(make_image_grid([image, masks[i]], 1, 2), caption=f"{i}: {prompts[i]}")
                         for i, image in enumerate(images)
                     ]
@@ -1280,15 +1291,7 @@ def main():
                     ema_unet.store(unet.parameters())
                     ema_unet.copy_to(unet.parameters())
                 log_validation(
-                    val_dataloader,
-                    vae,
-                    text_encoder,
-                    tokenizer,
-                    unet,
-                    args,
-                    accelerator,
-                    weight_dtype,
-                    global_step,
+                    val_dataloader, vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, global_step
                 )
                 if args.use_ema:
                     # Switch back to the original UNet parameters.
@@ -1315,15 +1318,7 @@ def main():
         if args.validation_size > 0:
             logger.info("Running inference for collecting generated images...")
             images, prompts, masks = log_validation(
-                val_dataloader,
-                vae,
-                text_encoder,
-                tokenizer,
-                unet,
-                args,
-                accelerator,
-                weight_dtype,
-                global_step,
+                val_dataloader, vae, text_encoder, tokenizer, unet, args, accelerator, weight_dtype, global_step, True
             )
 
         if args.push_to_hub:

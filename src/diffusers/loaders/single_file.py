@@ -51,7 +51,6 @@ def build_sub_model_components(
     torch_dtype=None,
     **kwargs,
 ):
-    
     if component_name in pipeline_components:
         return {}
 
