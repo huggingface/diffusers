@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -77,7 +77,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -873,6 +873,12 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -980,10 +986,12 @@ def main(args):
 
     # 7. Create online student U-Net. This will be updated by the optimizer (e.g. via backpropagation.)
     # Add `time_cond_proj_dim` to the student U-Net if `teacher_unet.config.time_cond_proj_dim` is None
-    if teacher_unet.config.time_cond_proj_dim is None:
-        teacher_unet.config["time_cond_proj_dim"] = args.unet_time_cond_proj_dim
-    time_cond_proj_dim = teacher_unet.config.time_cond_proj_dim
-    unet = UNet2DConditionModel(**teacher_unet.config)
+    time_cond_proj_dim = (
+        teacher_unet.config.time_cond_proj_dim
+        if teacher_unet.config.time_cond_proj_dim is not None
+        else args.unet_time_cond_proj_dim
+    )
+    unet = UNet2DConditionModel.from_config(teacher_unet.config, time_cond_proj_dim=time_cond_proj_dim)
     # load teacher_unet weights into unet
     unet.load_state_dict(teacher_unet.state_dict(), strict=False)
     unet.train()

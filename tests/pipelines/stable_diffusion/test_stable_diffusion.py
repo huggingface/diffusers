@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,11 @@ import unittest
 import numpy as np
 import torch
 from huggingface_hub import hf_hub_download
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import (
+    CLIPTextConfig,
+    CLIPTextModel,
+    CLIPTokenizer,
+)
 
 from diffusers import (
     AutoencoderKL,
@@ -60,7 +64,12 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -100,7 +109,11 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
 
 
 class StableDiffusionPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -177,7 +190,7 @@ class StableDiffusionPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -836,7 +849,10 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 
     def test_stable_diffusion_dpm(self):
         sd_pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", safety_checker=None)
-        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(sd_pipe.scheduler.config)
+        sd_pipe.scheduler = DPMSolverMultistepScheduler.from_config(
+            sd_pipe.scheduler.config,
+            final_sigmas_type="sigma_min",
+        )
         sd_pipe = sd_pipe.to(torch_device)
         sd_pipe.set_progress_bar_config(disable=None)
 
@@ -1243,9 +1259,12 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         assert image_out.shape == (512, 512, 3)
 
     def test_download_local(self):
-        filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
+        ckpt_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-5-pruned-emaonly.ckpt")
+        config_filename = hf_hub_download("runwayml/stable-diffusion-v1-5", filename="v1-inference.yaml")
 
-        pipe = StableDiffusionPipeline.from_single_file(filename, torch_dtype=torch.float16)
+        pipe = StableDiffusionPipeline.from_single_file(
+            ckpt_filename, config_files={"v1": config_filename}, torch_dtype=torch.float16
+        )
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.to("cuda")
 
@@ -1256,13 +1275,13 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
     def test_download_ckpt_diff_format_is_same(self):
         ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
 
-        pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
-        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
-        pipe.unet.set_attn_processor(AttnProcessor())
-        pipe.to("cuda")
+        sf_pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
+        sf_pipe.scheduler = DDIMScheduler.from_config(sf_pipe.scheduler.config)
+        sf_pipe.unet.set_attn_processor(AttnProcessor())
+        sf_pipe.to("cuda")
 
         generator = torch.Generator(device="cpu").manual_seed(0)
-        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
+        image_single_file = sf_pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
         pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
@@ -1272,9 +1291,42 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_single_file.flatten())
 
         assert max_diff < 1e-3
+
+    def test_single_file_component_configs(self):
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+
+        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
+        single_file_pipe = StableDiffusionPipeline.from_single_file(ckpt_path, load_safety_checker=True)
+
+        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
+            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
+                continue
+            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        for param_name, param_value in single_file_pipe.unet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.unet.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.vae.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.vae.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.safety_checker.config.to_dict().items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.safety_checker.config.to_dict()[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
 
 
 @nightly

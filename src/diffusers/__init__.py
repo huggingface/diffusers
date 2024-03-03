@@ -1,4 +1,4 @@
-__version__ = "0.26.0.dev0"
+__version__ = "0.27.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -80,6 +80,7 @@ else:
             "AutoencoderTiny",
             "ConsistencyDecoderVAE",
             "ControlNetModel",
+            "I2VGenXLUNet",
             "Kandinsky3UNet",
             "ModelMixin",
             "MotionAdapter",
@@ -127,6 +128,7 @@ else:
             "PNDMPipeline",
             "RePaintPipeline",
             "ScoreSdeVePipeline",
+            "StableDiffusionMixin",
         ]
     )
     _import_structure["schedulers"].extend(
@@ -143,6 +145,8 @@ else:
             "DPMSolverMultistepInverseScheduler",
             "DPMSolverMultistepScheduler",
             "DPMSolverSinglestepScheduler",
+            "EDMDPMSolverMultistepScheduler",
+            "EDMEulerScheduler",
             "EulerAncestralDiscreteScheduler",
             "EulerDiscreteScheduler",
             "HeunDiscreteScheduler",
@@ -153,6 +157,7 @@ else:
             "LCMScheduler",
             "PNDMScheduler",
             "RePaintScheduler",
+            "SASolverScheduler",
             "SchedulerMixin",
             "ScoreSdeVeScheduler",
             "UnCLIPScheduler",
@@ -207,6 +212,7 @@ else:
             "AmusedInpaintPipeline",
             "AmusedPipeline",
             "AnimateDiffPipeline",
+            "AnimateDiffVideoToVideoPipeline",
             "AudioLDM2Pipeline",
             "AudioLDM2ProjectionModel",
             "AudioLDM2UNet2DConditionModel",
@@ -215,6 +221,7 @@ else:
             "BlipDiffusionPipeline",
             "CLIPImageProjection",
             "CycleDiffusionPipeline",
+            "I2VGenXLPipeline",
             "IFImg2ImgPipeline",
             "IFImg2ImgSuperResolutionPipeline",
             "IFInpaintingPipeline",
@@ -246,6 +253,7 @@ else:
             "LDMTextToImagePipeline",
             "MusicLDMPipeline",
             "PaintByExamplePipeline",
+            "PIAPipeline",
             "PixArtAlphaPipeline",
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
@@ -381,7 +389,7 @@ except OptionalDependencyNotAvailable:
 else:
     _import_structure["models.controlnet_flax"] = ["FlaxControlNetModel"]
     _import_structure["models.modeling_flax_utils"] = ["FlaxModelMixin"]
-    _import_structure["models.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
+    _import_structure["models.unets.unet_2d_condition_flax"] = ["FlaxUNet2DConditionModel"]
     _import_structure["models.vae_flax"] = ["FlaxAutoencoderKL"]
     _import_structure["pipelines"].extend(["FlaxDiffusionPipeline"])
     _import_structure["schedulers"].extend(
@@ -459,6 +467,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AutoencoderTiny,
             ConsistencyDecoderVAE,
             ControlNetModel,
+            I2VGenXLUNet,
             Kandinsky3UNet,
             ModelMixin,
             MotionAdapter,
@@ -506,6 +515,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PNDMPipeline,
             RePaintPipeline,
             ScoreSdeVePipeline,
+            StableDiffusionMixin,
         )
         from .schedulers import (
             AmusedScheduler,
@@ -520,6 +530,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DPMSolverMultistepInverseScheduler,
             DPMSolverMultistepScheduler,
             DPMSolverSinglestepScheduler,
+            EDMDPMSolverMultistepScheduler,
+            EDMEulerScheduler,
             EulerAncestralDiscreteScheduler,
             EulerDiscreteScheduler,
             HeunDiscreteScheduler,
@@ -530,6 +542,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LCMScheduler,
             PNDMScheduler,
             RePaintScheduler,
+            SASolverScheduler,
             SchedulerMixin,
             ScoreSdeVeScheduler,
             UnCLIPScheduler,
@@ -567,12 +580,14 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             AmusedInpaintPipeline,
             AmusedPipeline,
             AnimateDiffPipeline,
+            AnimateDiffVideoToVideoPipeline,
             AudioLDM2Pipeline,
             AudioLDM2ProjectionModel,
             AudioLDM2UNet2DConditionModel,
             AudioLDMPipeline,
             CLIPImageProjection,
             CycleDiffusionPipeline,
+            I2VGenXLPipeline,
             IFImg2ImgPipeline,
             IFImg2ImgSuperResolutionPipeline,
             IFInpaintingPipeline,
@@ -604,6 +619,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LDMTextToImagePipeline,
             MusicLDMPipeline,
             PaintByExamplePipeline,
+            PIAPipeline,
             PixArtAlphaPipeline,
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
@@ -709,7 +725,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     else:
         from .models.controlnet_flax import FlaxControlNetModel
         from .models.modeling_flax_utils import FlaxModelMixin
-        from .models.unet_2d_condition_flax import FlaxUNet2DConditionModel
+        from .models.unets.unet_2d_condition_flax import FlaxUNet2DConditionModel
         from .models.vae_flax import FlaxAutoencoderKL
         from .pipelines import FlaxDiffusionPipeline
         from .schedulers import (

@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 from importlib import import_module
 from typing import Callable, Optional, Union
 
@@ -18,6 +19,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..image_processor import IPAdapterMaskProcessor
 from ..utils import USE_PEFT_BACKEND, deprecate, logging
 from ..utils.import_utils import is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
@@ -114,6 +116,8 @@ class Attention(nn.Module):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.query_dim = query_dim
+        self.use_bias = bias
+        self.is_cross_attention = cross_attention_dim is not None
         self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
@@ -509,6 +513,15 @@ class Attention(nn.Module):
         # The `Attention` class can call different attention processors / attention functions
         # here we simply pass along all tensors to the selected processor class
         # For standard processors that are defined here, `**cross_attention_kwargs` is empty
+
+        attn_parameters = set(inspect.signature(self.processor.__call__).parameters.keys())
+        unused_kwargs = [k for k, _ in cross_attention_kwargs.items() if k not in attn_parameters]
+        if len(unused_kwargs) > 0:
+            logger.warning(
+                f"cross_attention_kwargs {unused_kwargs} are not expected by {self.processor.__class__.__name__} and will be ignored."
+            )
+        cross_attention_kwargs = {k: w for k, w in cross_attention_kwargs.items() if k in attn_parameters}
+
         return self.processor(
             self,
             hidden_states,
@@ -548,12 +561,16 @@ class Attention(nn.Module):
             `torch.Tensor`: The reshaped tensor.
         """
         head_size = self.heads
-        batch_size, seq_len, dim = tensor.shape
-        tensor = tensor.reshape(batch_size, seq_len, head_size, dim // head_size)
+        if tensor.ndim == 3:
+            batch_size, seq_len, dim = tensor.shape
+            extra_dim = 1
+        else:
+            batch_size, extra_dim, seq_len, dim = tensor.shape
+        tensor = tensor.reshape(batch_size, seq_len * extra_dim, head_size, dim // head_size)
         tensor = tensor.permute(0, 2, 1, 3)
 
         if out_dim == 3:
-            tensor = tensor.reshape(batch_size * head_size, seq_len, dim // head_size)
+            tensor = tensor.reshape(batch_size * head_size, seq_len * extra_dim, dim // head_size)
 
         return tensor
 
@@ -682,27 +699,32 @@ class Attention(nn.Module):
 
     @torch.no_grad()
     def fuse_projections(self, fuse=True):
-        is_cross_attention = self.cross_attention_dim != self.query_dim
         device = self.to_q.weight.data.device
         dtype = self.to_q.weight.data.dtype
 
-        if not is_cross_attention:
+        if not self.is_cross_attention:
             # fetch weight matrices.
             concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
             # create a new single projection layer and copy over the weights.
-            self.to_qkv = self.linear_cls(in_features, out_features, bias=False, device=device, dtype=dtype)
+            self.to_qkv = self.linear_cls(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_qkv.weight.copy_(concatenated_weights)
+            if self.use_bias:
+                concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
+                self.to_qkv.bias.copy_(concatenated_bias)
 
         else:
             concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
-            self.to_kv = self.linear_cls(in_features, out_features, bias=False, device=device, dtype=dtype)
+            self.to_kv = self.linear_cls(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_kv.weight.copy_(concatenated_weights)
+            if self.use_bias:
+                concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
+                self.to_kv.bias.copy_(concatenated_bias)
 
         self.fused_projections = fuse
 
@@ -1799,24 +1821,7 @@ class SpatialNorm(nn.Module):
         return new_f
 
 
-## Deprecated
 class LoRAAttnProcessor(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism.
-
-    Args:
-        hidden_size (`int`, *optional*):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-        network_alpha (`int`, *optional*):
-            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
-        kwargs (`dict`):
-            Additional keyword arguments to pass to the `LoRALinearLayer` layers.
-    """
-
     def __init__(
         self,
         hidden_size: int,
@@ -1825,6 +1830,9 @@ class LoRAAttnProcessor(nn.Module):
         network_alpha: Optional[int] = None,
         **kwargs,
     ):
+        deprecation_message = "Using LoRAAttnProcessor is deprecated. Please use the PEFT backend for all things LoRA. You can install PEFT by running `pip install peft`."
+        deprecate("LoRAAttnProcessor", "0.30.0", deprecation_message, standard_warn=False)
+
         super().__init__()
 
         self.hidden_size = hidden_size
@@ -1873,23 +1881,6 @@ class LoRAAttnProcessor(nn.Module):
 
 
 class LoRAAttnProcessor2_0(nn.Module):
-    r"""
-    Processor for implementing the LoRA attention mechanism using PyTorch 2.0's memory-efficient scaled dot-product
-    attention.
-
-    Args:
-        hidden_size (`int`):
-            The hidden size of the attention layer.
-        cross_attention_dim (`int`, *optional*):
-            The number of channels in the `encoder_hidden_states`.
-        rank (`int`, defaults to 4):
-            The dimension of the LoRA update matrices.
-        network_alpha (`int`, *optional*):
-            Equivalent to `alpha` but it's usage is specific to Kohya (A1111) style LoRAs.
-        kwargs (`dict`):
-            Additional keyword arguments to pass to the `LoRALinearLayer` layers.
-    """
-
     def __init__(
         self,
         hidden_size: int,
@@ -1898,6 +1889,9 @@ class LoRAAttnProcessor2_0(nn.Module):
         network_alpha: Optional[int] = None,
         **kwargs,
     ):
+        deprecation_message = "Using LoRAAttnProcessor is deprecated. Please use the PEFT backend for all things LoRA. You can install PEFT by running `pip install peft`."
+        deprecate("LoRAAttnProcessor2_0", "0.30.0", deprecation_message, standard_warn=False)
+
         super().__init__()
         if not hasattr(F, "scaled_dot_product_attention"):
             raise ImportError("AttnProcessor2_0 requires PyTorch 2.0, to use it, please upgrade PyTorch to 2.0.")
@@ -2087,42 +2081,69 @@ class LoRAAttnAddedKVProcessor(nn.Module):
 
 class IPAdapterAttnProcessor(nn.Module):
     r"""
-    Attention processor for IP-Adapater.
+    Attention processor for Multiple IP-Adapater.
 
     Args:
         hidden_size (`int`):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, defaults to 4):
+        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float`, defaults to 1.0):
+        scale (`float` or List[`float`], defaults to 1.0):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=4, scale=1.0):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0):
         super().__init__()
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
+
+        if not isinstance(num_tokens, (tuple, list)):
+            num_tokens = [num_tokens]
         self.num_tokens = num_tokens
+
+        if not isinstance(scale, list):
+            scale = [scale] * len(num_tokens)
+        if len(scale) != len(num_tokens):
+            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
 
-        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_k_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
+        self.to_v_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
 
     def __call__(
         self,
-        attn,
-        hidden_states,
-        encoder_hidden_states=None,
-        attention_mask=None,
-        temb=None,
-        scale=1.0,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        temb: Optional[torch.FloatTensor] = None,
+        scale: float = 1.0,
+        ip_adapter_masks: Optional[torch.FloatTensor] = None,
     ):
-        if scale != 1.0:
-            logger.warning("`scale` of IPAttnProcessor should be set with `set_ip_adapter_scale`.")
         residual = hidden_states
+
+        # separate ip_hidden_states from encoder_hidden_states
+        if encoder_hidden_states is not None:
+            if isinstance(encoder_hidden_states, tuple):
+                encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+            else:
+                deprecation_message = (
+                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                )
+                deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+                end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
+                encoder_hidden_states, ip_hidden_states = (
+                    encoder_hidden_states[:, :end_pos, :],
+                    [encoder_hidden_states[:, end_pos:, :]],
+                )
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2148,13 +2169,6 @@ class IPAdapterAttnProcessor(nn.Module):
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        # split hidden states
-        end_pos = encoder_hidden_states.shape[1] - self.num_tokens
-        encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, :end_pos, :],
-            encoder_hidden_states[:, end_pos:, :],
-        )
-
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -2166,18 +2180,43 @@ class IPAdapterAttnProcessor(nn.Module):
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
+        if ip_adapter_masks is not None:
+            if not isinstance(ip_adapter_masks, torch.Tensor) or ip_adapter_masks.ndim != 4:
+                raise ValueError(
+                    " ip_adapter_mask should be a tensor with shape [num_ip_adapter, 1, height, width]."
+                    " Please use `IPAdapterMaskProcessor` to preprocess your mask"
+                )
+            if len(ip_adapter_masks) != len(self.scale):
+                raise ValueError(
+                    f"Number of ip_adapter_masks ({len(ip_adapter_masks)}) must match number of IP-Adapters ({len(self.scale)})"
+                )
+        else:
+            ip_adapter_masks = [None] * len(self.scale)
+
         # for ip-adapter
-        ip_key = self.to_k_ip(ip_hidden_states)
-        ip_value = self.to_v_ip(ip_hidden_states)
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
+        ):
+            ip_key = to_k_ip(current_ip_hidden_states)
+            ip_value = to_v_ip(current_ip_hidden_states)
 
-        ip_key = attn.head_to_batch_dim(ip_key)
-        ip_value = attn.head_to_batch_dim(ip_value)
+            ip_key = attn.head_to_batch_dim(ip_key)
+            ip_value = attn.head_to_batch_dim(ip_value)
 
-        ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
-        ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
-        ip_hidden_states = attn.batch_to_head_dim(ip_hidden_states)
+            ip_attention_probs = attn.get_attention_scores(query, ip_key, None)
+            current_ip_hidden_states = torch.bmm(ip_attention_probs, ip_value)
+            current_ip_hidden_states = attn.batch_to_head_dim(current_ip_hidden_states)
 
-        hidden_states = hidden_states + self.scale * ip_hidden_states
+            if mask is not None:
+                mask_downsample = IPAdapterMaskProcessor.downsample(
+                    mask, batch_size, current_ip_hidden_states.shape[1], current_ip_hidden_states.shape[2]
+                )
+
+                mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
+
+                current_ip_hidden_states = current_ip_hidden_states * mask_downsample
+
+            hidden_states = hidden_states + scale * current_ip_hidden_states
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)
@@ -2204,13 +2243,13 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
             The hidden size of the attention layer.
         cross_attention_dim (`int`):
             The number of channels in the `encoder_hidden_states`.
-        num_tokens (`int`, defaults to 4):
+        num_tokens (`int`, `Tuple[int]` or `List[int]`, defaults to `(4,)`):
             The context length of the image features.
-        scale (`float`, defaults to 1.0):
+        scale (`float` or `List[float]`, defaults to 1.0):
             the weight scale of image prompt.
     """
 
-    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=4, scale=1.0):
+    def __init__(self, hidden_size, cross_attention_dim=None, num_tokens=(4,), scale=1.0):
         super().__init__()
 
         if not hasattr(F, "scaled_dot_product_attention"):
@@ -2220,24 +2259,51 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
 
         self.hidden_size = hidden_size
         self.cross_attention_dim = cross_attention_dim
+
+        if not isinstance(num_tokens, (tuple, list)):
+            num_tokens = [num_tokens]
         self.num_tokens = num_tokens
+
+        if not isinstance(scale, list):
+            scale = [scale] * len(num_tokens)
+        if len(scale) != len(num_tokens):
+            raise ValueError("`scale` should be a list of integers with the same length as `num_tokens`.")
         self.scale = scale
 
-        self.to_k_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
-        self.to_v_ip = nn.Linear(cross_attention_dim or hidden_size, hidden_size, bias=False)
+        self.to_k_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
+        self.to_v_ip = nn.ModuleList(
+            [nn.Linear(cross_attention_dim, hidden_size, bias=False) for _ in range(len(num_tokens))]
+        )
 
     def __call__(
         self,
-        attn,
-        hidden_states,
-        encoder_hidden_states=None,
-        attention_mask=None,
-        temb=None,
-        scale=1.0,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        temb: Optional[torch.FloatTensor] = None,
+        scale: float = 1.0,
+        ip_adapter_masks: Optional[torch.FloatTensor] = None,
     ):
-        if scale != 1.0:
-            logger.warning("`scale` of IPAttnProcessor should be set by `set_ip_adapter_scale`.")
         residual = hidden_states
+
+        # separate ip_hidden_states from encoder_hidden_states
+        if encoder_hidden_states is not None:
+            if isinstance(encoder_hidden_states, tuple):
+                encoder_hidden_states, ip_hidden_states = encoder_hidden_states
+            else:
+                deprecation_message = (
+                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                )
+                deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
+                end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
+                encoder_hidden_states, ip_hidden_states = (
+                    encoder_hidden_states[:, :end_pos, :],
+                    [encoder_hidden_states[:, end_pos:, :]],
+                )
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -2268,13 +2334,6 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        # split hidden states
-        end_pos = encoder_hidden_states.shape[1] - self.num_tokens
-        encoder_hidden_states, ip_hidden_states = (
-            encoder_hidden_states[:, :end_pos, :],
-            encoder_hidden_states[:, end_pos:, :],
-        )
-
         key = attn.to_k(encoder_hidden_states)
         value = attn.to_v(encoder_hidden_states)
 
@@ -2295,23 +2354,50 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states = hidden_states.to(query.dtype)
 
+        if ip_adapter_masks is not None:
+            if not isinstance(ip_adapter_masks, torch.Tensor) or ip_adapter_masks.ndim != 4:
+                raise ValueError(
+                    " ip_adapter_mask should be a tensor with shape [num_ip_adapter, 1, height, width]."
+                    " Please use `IPAdapterMaskProcessor` to preprocess your mask"
+                )
+            if len(ip_adapter_masks) != len(self.scale):
+                raise ValueError(
+                    f"Number of ip_adapter_masks ({len(ip_adapter_masks)}) must match number of IP-Adapters ({len(self.scale)})"
+                )
+        else:
+            ip_adapter_masks = [None] * len(self.scale)
+
         # for ip-adapter
-        ip_key = self.to_k_ip(ip_hidden_states)
-        ip_value = self.to_v_ip(ip_hidden_states)
+        for current_ip_hidden_states, scale, to_k_ip, to_v_ip, mask in zip(
+            ip_hidden_states, self.scale, self.to_k_ip, self.to_v_ip, ip_adapter_masks
+        ):
+            ip_key = to_k_ip(current_ip_hidden_states)
+            ip_value = to_v_ip(current_ip_hidden_states)
 
-        ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
-        ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            ip_key = ip_key.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
+            ip_value = ip_value.view(batch_size, -1, attn.heads, head_dim).transpose(1, 2)
 
-        # the output of sdp = (batch, num_heads, seq_len, head_dim)
-        # TODO: add support for attn.scale when we move to Torch 2.1
-        ip_hidden_states = F.scaled_dot_product_attention(
-            query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
-        )
+            # the output of sdp = (batch, num_heads, seq_len, head_dim)
+            # TODO: add support for attn.scale when we move to Torch 2.1
+            current_ip_hidden_states = F.scaled_dot_product_attention(
+                query, ip_key, ip_value, attn_mask=None, dropout_p=0.0, is_causal=False
+            )
 
-        ip_hidden_states = ip_hidden_states.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
-        ip_hidden_states = ip_hidden_states.to(query.dtype)
+            current_ip_hidden_states = current_ip_hidden_states.transpose(1, 2).reshape(
+                batch_size, -1, attn.heads * head_dim
+            )
+            current_ip_hidden_states = current_ip_hidden_states.to(query.dtype)
 
-        hidden_states = hidden_states + self.scale * ip_hidden_states
+            if mask is not None:
+                mask_downsample = IPAdapterMaskProcessor.downsample(
+                    mask, batch_size, current_ip_hidden_states.shape[1], current_ip_hidden_states.shape[2]
+                )
+
+                mask_downsample = mask_downsample.to(dtype=query.dtype, device=query.device)
+
+                current_ip_hidden_states = current_ip_hidden_states * mask_downsample
+
+            hidden_states = hidden_states + scale * current_ip_hidden_states
 
         # linear proj
         hidden_states = attn.to_out[0](hidden_states)

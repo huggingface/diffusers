@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,6 +52,8 @@ else:
     _import_structure["scheduling_dpmsolver_multistep"] = ["DPMSolverMultistepScheduler"]
     _import_structure["scheduling_dpmsolver_multistep_inverse"] = ["DPMSolverMultistepInverseScheduler"]
     _import_structure["scheduling_dpmsolver_singlestep"] = ["DPMSolverSinglestepScheduler"]
+    _import_structure["scheduling_edm_dpmsolver_multistep"] = ["EDMDPMSolverMultistepScheduler"]
+    _import_structure["scheduling_edm_euler"] = ["EDMEulerScheduler"]
     _import_structure["scheduling_euler_ancestral_discrete"] = ["EulerAncestralDiscreteScheduler"]
     _import_structure["scheduling_euler_discrete"] = ["EulerDiscreteScheduler"]
     _import_structure["scheduling_heun_discrete"] = ["HeunDiscreteScheduler"]
@@ -61,6 +63,7 @@ else:
     _import_structure["scheduling_lcm"] = ["LCMScheduler"]
     _import_structure["scheduling_pndm"] = ["PNDMScheduler"]
     _import_structure["scheduling_repaint"] = ["RePaintScheduler"]
+    _import_structure["scheduling_sasolver"] = ["SASolverScheduler"]
     _import_structure["scheduling_sde_ve"] = ["ScoreSdeVeScheduler"]
     _import_structure["scheduling_unclip"] = ["UnCLIPScheduler"]
     _import_structure["scheduling_unipc_multistep"] = ["UniPCMultistepScheduler"]
@@ -143,6 +146,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_dpmsolver_multistep import DPMSolverMultistepScheduler
         from .scheduling_dpmsolver_multistep_inverse import DPMSolverMultistepInverseScheduler
         from .scheduling_dpmsolver_singlestep import DPMSolverSinglestepScheduler
+        from .scheduling_edm_dpmsolver_multistep import EDMDPMSolverMultistepScheduler
+        from .scheduling_edm_euler import EDMEulerScheduler
         from .scheduling_euler_ancestral_discrete import EulerAncestralDiscreteScheduler
         from .scheduling_euler_discrete import EulerDiscreteScheduler
         from .scheduling_heun_discrete import HeunDiscreteScheduler
@@ -152,6 +157,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .scheduling_lcm import LCMScheduler
         from .scheduling_pndm import PNDMScheduler
         from .scheduling_repaint import RePaintScheduler
+        from .scheduling_sasolver import SASolverScheduler
         from .scheduling_sde_ve import ScoreSdeVeScheduler
         from .scheduling_unclip import UnCLIPScheduler
         from .scheduling_unipc_multistep import UniPCMultistepScheduler

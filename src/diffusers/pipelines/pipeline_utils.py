@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -42,6 +42,8 @@ from tqdm.auto import tqdm
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..models import AutoencoderKL
+from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
@@ -60,6 +62,7 @@ from ..utils import (
     logging,
     numpy_to_pil,
 )
+from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
 
 
@@ -169,7 +172,7 @@ def is_safetensors_compatible(filenames, variant=None, passed_components=None) -
             sf_filenames.add(os.path.normpath(filename))
 
     for filename in pt_filenames:
-        #  filename = 'foo/bar/baz.bam' -> path = 'foo/bar', filename = 'baz', extention = '.bam'
+        #  filename = 'foo/bar/baz.bam' -> path = 'foo/bar', filename = 'baz', extension = '.bam'
         path, filename = os.path.split(filename)
         filename, extension = os.path.splitext(filename)
 
@@ -351,7 +354,7 @@ def get_class_obj_and_candidates(
 
 def _get_pipeline_class(
     class_obj,
-    config,
+    config=None,
     load_connected_pipeline=False,
     custom_pipeline=None,
     repo_id=None,
@@ -374,7 +377,7 @@ def _get_pipeline_class(
 
         if repo_id is not None and hub_revision is not None:
             # if we load the pipeline code from the Hub
-            # make sure to overwrite the `revison`
+            # make sure to overwrite the `revision`
             revision = hub_revision
 
         return get_class_from_dynamic_module(
@@ -389,7 +392,12 @@ def _get_pipeline_class(
         return class_obj
 
     diffusers_module = importlib.import_module(class_obj.__module__.split(".")[0])
-    class_name = config["_class_name"]
+    class_name = class_name or config["_class_name"]
+    if not class_name:
+        raise ValueError(
+            "The class name could not be found in the configuration file. Please make sure to pass the correct `class_name`."
+        )
+
     class_name = class_name[4:] if class_name.startswith("Flax") else class_name
 
     pipeline_cls = getattr(diffusers_module, class_name)
@@ -430,7 +438,6 @@ def load_sub_model(
     variant: str,
     low_cpu_mem_usage: bool,
     cached_folder: Union[str, os.PathLike],
-    revision: str = None,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     # retrieve class candidates
@@ -445,7 +452,7 @@ def load_sub_model(
     )
 
     load_method_name = None
-    # retrive load method name
+    # retrieve load method name
     for class_name, class_candidate in class_candidates.items():
         if class_candidate is not None and issubclass(class_obj, class_candidate):
             load_method_name = importable_classes[class_name][1]
@@ -498,6 +505,7 @@ def load_sub_model(
         loading_kwargs["offload_folder"] = offload_folder
         loading_kwargs["offload_state_dict"] = offload_state_dict
         loading_kwargs["variant"] = model_variants.pop(name, None)
+
         if from_flax:
             loading_kwargs["from_flax"] = True
 
@@ -720,6 +728,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self.save_config(save_directory)
 
         if push_to_hub:
+            # Create a new empty model card and eventually tag it
+            model_card = load_or_create_model_card(repo_id, token=token, is_pipeline=True)
+            model_card = populate_model_card(model_card)
+            model_card.save(os.path.join(save_directory, "README.md"))
+
             self._upload_folder(
                 save_directory,
                 repo_id,
@@ -764,31 +777,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Returns:
             [`DiffusionPipeline`]: The pipeline converted to specified `dtype` and/or `dtype`.
         """
-
-        torch_dtype = kwargs.pop("torch_dtype", None)
-        if torch_dtype is not None:
-            deprecate("torch_dtype", "0.27.0", "")
-        torch_device = kwargs.pop("torch_device", None)
-        if torch_device is not None:
-            deprecate("torch_device", "0.27.0", "")
-
-        dtype_kwarg = kwargs.pop("dtype", None)
-        device_kwarg = kwargs.pop("device", None)
+        dtype = kwargs.pop("dtype", None)
+        device = kwargs.pop("device", None)
         silence_dtype_warnings = kwargs.pop("silence_dtype_warnings", False)
-
-        if torch_dtype is not None and dtype_kwarg is not None:
-            raise ValueError(
-                "You have passed both `torch_dtype` and `dtype` as a keyword argument. Please make sure to only pass `dtype`."
-            )
-
-        dtype = torch_dtype or dtype_kwarg
-
-        if torch_device is not None and device_kwarg is not None:
-            raise ValueError(
-                "You have passed both `torch_device` and `device` as a keyword argument. Please make sure to only pass `device`."
-            )
-
-        device = torch_device or device_kwarg
 
         dtype_arg = None
         device_arg = None
@@ -862,12 +853,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             if is_loaded_in_8bit and dtype is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {torch_dtype} is not yet supported. Module is still in 8bit precision."
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and conversion to {dtype} is not yet supported. Module is still in 8bit precision."
                 )
 
             if is_loaded_in_8bit and device is not None:
                 logger.warning(
-                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {torch_dtype} via `.to()` is not yet supported. Module is still on {module.device}."
+                    f"The module '{module.__class__.__name__}' has been loaded in 8bit and moving it to {dtype} via `.to()` is not yet supported. Module is still on {module.device}."
                 )
             else:
                 module.to(device, dtype)
@@ -992,10 +983,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            custom_revision (`str`, *optional*, defaults to `"main"`):
+            custom_revision (`str`, *optional*):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
-                `revision` when loading a custom pipeline from the Hub. It can be a 🤗 Diffusers version when loading a
-                custom pipeline from GitHub, otherwise it defaults to `"main"` when loading from the Hub.
+                `revision` when loading a custom pipeline from the Hub. Defaults to the latest stable 🤗 Diffusers version.
             mirror (`str`, *optional*):
                 Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
@@ -1292,7 +1282,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     variant=variant,
                     low_cpu_mem_usage=low_cpu_mem_usage,
                     cached_folder=cached_folder,
-                    revision=revision,
                 )
                 logger.info(
                     f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -1434,6 +1423,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
+        self._offload_device = device
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
@@ -1483,7 +1473,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             hook.remove()
 
         # make sure the model is in the same state as before calling it
-        self.enable_model_cpu_offload()
+        self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
     def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
@@ -1519,6 +1509,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         device_type = torch_device.type
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
+        self._offload_device = device
 
         if self.device.type != "cpu":
             self.to("cpu", silence_dtype_warnings=True)
@@ -1907,7 +1898,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             else:
                 # 2. we forced `local_files_only=True` when `model_info` failed
                 raise EnvironmentError(
-                    f"Cannot load model {pretrained_model_name}: model is not cached locally and an error occured"
+                    f"Cannot load model {pretrained_model_name}: model is not cached locally and an error occurred"
                     " while trying to fetch metadata from the Hub. Please check out the root cause in the stacktrace"
                     " above."
                 ) from model_info_call_error
@@ -2104,3 +2095,123 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for module in modules:
             module.set_attention_slice(slice_size)
+
+
+class StableDiffusionMixin:
+    r"""
+    Helper for DiffusionPipeline with vae and unet.(mainly for LDM such as stable diffusion)
+    """
+
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
+
+    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
+        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
+
+        The suffixes after the scaling factors represent the stages where they are being applied.
+
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
+        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
+
+        Args:
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
+        """
+        if not hasattr(self, "unet"):
+            raise ValueError("The pipeline must have `unet` for using FreeU.")
+        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
+
+    def disable_freeu(self):
+        """Disables the FreeU mechanism if enabled."""
+        self.unet.disable_freeu()
+
+    def fuse_qkv_projections(self, unet: bool = True, vae: bool = True):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        Args:
+            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
+        """
+        self.fusing_unet = False
+        self.fusing_vae = False
+
+        if unet:
+            self.fusing_unet = True
+            self.unet.fuse_qkv_projections()
+            self.unet.set_attn_processor(FusedAttnProcessor2_0())
+
+        if vae:
+            if not isinstance(self.vae, AutoencoderKL):
+                raise ValueError("`fuse_qkv_projections()` is only supported for the VAE of type `AutoencoderKL`.")
+
+            self.fusing_vae = True
+            self.vae.fuse_qkv_projections()
+            self.vae.set_attn_processor(FusedAttnProcessor2_0())
+
+    def unfuse_qkv_projections(self, unet: bool = True, vae: bool = True):
+        """Disable QKV projection fusion if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        Args:
+            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
+
+        """
+        if unet:
+            if not self.fusing_unet:
+                logger.warning("The UNet was not initially fused for QKV projections. Doing nothing.")
+            else:
+                self.unet.unfuse_qkv_projections()
+                self.fusing_unet = False
+
+        if vae:
+            if not self.fusing_vae:
+                logger.warning("The VAE was not initially fused for QKV projections. Doing nothing.")
+            else:
+                self.vae.unfuse_qkv_projections()
+                self.fusing_vae = False

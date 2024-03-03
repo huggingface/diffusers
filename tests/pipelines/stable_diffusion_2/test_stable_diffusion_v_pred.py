@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -323,7 +323,9 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         TODO: update this test after making DPM compatible with V-prediction!
         """
         scheduler = DPMSolverMultistepScheduler.from_pretrained(
-            "stabilityai/stable-diffusion-2", subfolder="scheduler"
+            "stabilityai/stable-diffusion-2",
+            subfolder="scheduler",
+            final_sigmas_type="sigma_min",
         )
         sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2", scheduler=scheduler)
         sd_pipe = sd_pipe.to(torch_device)

@@ -18,7 +18,7 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import numpy_cosine_similarity_distance, require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin, SDFunctionTesterMixin
 
 
 def to_np(tensor):
@@ -28,7 +28,9 @@ def to_np(tensor):
     return tensor
 
 
-class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class AnimateDiffPipelineFastTests(
+    IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, unittest.TestCase
+):
     pipeline_class = AnimateDiffPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -38,8 +40,8 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "generator",
             "latents",
             "return_dict",
-            "callback",
-            "callback_steps",
+            "callback_on_step_end",
+            "callback_on_step_end_tensor_inputs",
         ]
     )
 
@@ -218,7 +220,7 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
@@ -232,6 +234,41 @@ class AnimateDiffPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs.pop("prompt")
         inputs["prompt_embeds"] = torch.randn((1, 4, 32), device=torch_device)
         pipe(**inputs)
+
+    def test_free_init(self):
+        components = self.get_dummy_components()
+        pipe: AnimateDiffPipeline = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+        pipe.to(torch_device)
+
+        inputs_normal = self.get_dummy_inputs(torch_device)
+        frames_normal = pipe(**inputs_normal).frames[0]
+
+        pipe.enable_free_init(
+            num_iters=2,
+            use_fast_sampling=True,
+            method="butterworth",
+            order=4,
+            spatial_stop_frequency=0.25,
+            temporal_stop_frequency=0.25,
+        )
+        inputs_enable_free_init = self.get_dummy_inputs(torch_device)
+        frames_enable_free_init = pipe(**inputs_enable_free_init).frames[0]
+
+        pipe.disable_free_init()
+        inputs_disable_free_init = self.get_dummy_inputs(torch_device)
+        frames_disable_free_init = pipe(**inputs_disable_free_init).frames[0]
+
+        sum_enabled = np.abs(to_np(frames_normal) - to_np(frames_enable_free_init)).sum()
+        max_diff_disabled = np.abs(to_np(frames_normal) - to_np(frames_disable_free_init)).max()
+        self.assertGreater(
+            sum_enabled, 1e1, "Enabling of FreeInit should lead to results different from the default pipeline results"
+        )
+        self.assertLess(
+            max_diff_disabled,
+            1e-4,
+            "Disabling of FreeInit should lead to results similar to the default pipeline results",
+        )
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
