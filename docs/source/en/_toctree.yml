@@ -129,6 +129,8 @@
         title: T2I-Adapters
       - local: training/instructpix2pix
         title: InstructPix2Pix
+      - local: training/ip_adapter
+        title: IP-Adapter
       title: Models
     - sections:
       - local: training/text_inversion
