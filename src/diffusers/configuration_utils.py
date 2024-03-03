@@ -259,7 +259,7 @@ class ConfigMixin:
         model = cls(**init_dict)
 
         # make sure to also save config parameters that might be used for compatible classes
-        # update _class_name and _diffusers_versionl
+        # update _class_name
         if "_class_name" in hidden_dict:
             hidden_dict["_class_name"] = cls.__name__
 
