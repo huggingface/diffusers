@@ -727,14 +727,21 @@ class UNet2DConditionLoadersMixin:
                 diffusers_name = key.replace("proj", "image_embeds")
                 updated_state_dict[diffusers_name] = value
 
-        elif "proj.3.weight" in state_dict:
-            # IP-Adapter Full
-            clip_embeddings_dim = state_dict["proj.0.weight"].shape[0]
-            cross_attention_dim = state_dict["proj.3.weight"].shape[0]
+        elif "proj.0.weight" in state_dict:
+            # IP-Adapter Full and Face ID
+            clip_embeddings_dim_in = state_dict["proj.0.weight"].shape[1]
+            clip_embeddings_dim_out = state_dict["proj.0.weight"].shape[0]
+            multiplier = clip_embeddings_dim_out // clip_embeddings_dim_in
+            norm_layer = "norm.weight"
+            cross_attention_dim = state_dict[norm_layer].shape[0]
+            num_tokens = state_dict["proj.2.weight"].shape[0] // cross_attention_dim
 
             with init_context():
                 image_projection = IPAdapterFullImageProjection(
-                    cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+                    cross_attention_dim=cross_attention_dim,
+                    image_embed_dim=clip_embeddings_dim_in,
+                    mult=multiplier,
+                    num_tokens=num_tokens,
                 )
 
             for key, value in state_dict.items():
@@ -816,7 +823,11 @@ class UNet2DConditionLoadersMixin:
 
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
+        lora_dict = {}
         key_id = 1
+        for state_dict in state_dicts:
+            if "0.to_k_lora.down.weight" in state_dict["ip_adapter"]:
+                key_id = 0
         init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
         for name in self.attn_processors.keys():
             cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
@@ -834,6 +845,19 @@ class UNet2DConditionLoadersMixin:
                     AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
                 )
                 attn_procs[name] = attn_processor_class()
+
+                for state_dict in state_dicts:
+                    if f"{key_id}.to_k_lora.down.weight" in state_dict["ip_adapter"]:
+                        lora_dict.update({f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.down.weight"]})
+                        lora_dict.update({f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"]})
+                        lora_dict.update({f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.down.weight"]})
+                        lora_dict.update({f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.down.weight"]})
+                        lora_dict.update({f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]})
+                        lora_dict.update({f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]})
+                        lora_dict.update({f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]})
+                        lora_dict.update({f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.up.weight"]})
+                        key_id += 1
+                        break
             else:
                 attn_processor_class = (
                     IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
@@ -843,9 +867,12 @@ class UNet2DConditionLoadersMixin:
                     if "proj.weight" in state_dict["image_proj"]:
                         # IP-Adapter
                         num_image_text_embeds += [4]
-                    elif "proj.3.weight" in state_dict["image_proj"]:
-                        # IP-Adapter Full Face
-                        num_image_text_embeds += [257]  # 256 CLIP tokens + 1 CLS token
+                    elif "proj.0.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Full Face and Face ID
+                        if f"{key_id}.to_k_lora.down.weight" in state_dict["ip_adapter"]:
+                            num_image_text_embeds += [4]
+                        else:
+                            num_image_text_embeds += [257]  # 256 CLIP tokens + 1 CLS token
                     else:
                         # IP-Adapter Plus
                         num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
@@ -862,6 +889,15 @@ class UNet2DConditionLoadersMixin:
                 for i, state_dict in enumerate(state_dicts):
                     value_dict.update({f"to_k_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_k_ip.weight"]})
                     value_dict.update({f"to_v_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_v_ip.weight"]})
+                    if f"{key_id}.to_k_lora.down.weight" in state_dict["ip_adapter"]:
+                        lora_dict.update({f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.down.weight"]})
+                        lora_dict.update({f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"]})
+                        lora_dict.update({f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.down.weight"]})
+                        lora_dict.update({f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.down.weight"]})
+                        lora_dict.update({f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]})
+                        lora_dict.update({f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]})
+                        lora_dict.update({f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]})
+                        lora_dict.update({f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.up.weight"]})
 
                 if not low_cpu_mem_usage:
                     attn_procs[name].load_state_dict(value_dict)
@@ -870,9 +906,9 @@ class UNet2DConditionLoadersMixin:
                     dtype = next(iter(value_dict.values())).dtype
                     load_model_dict_into_meta(attn_procs[name], value_dict, device=device, dtype=dtype)
 
-                key_id += 2
+                key_id += 2 if "0.to_k_lora.down.weight" not in state_dict["ip_adapter"] else 1
 
-        return attn_procs
+        return attn_procs, lora_dict
 
     def _load_ip_adapter_weights(self, state_dicts, low_cpu_mem_usage=False):
         if not isinstance(state_dicts, list):
@@ -881,7 +917,7 @@ class UNet2DConditionLoadersMixin:
         # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None
 
-        attn_procs = self._convert_ip_adapter_attn_to_diffusers(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
+        attn_procs, lora_dict = self._convert_ip_adapter_attn_to_diffusers(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
         self.set_attn_processor(attn_procs)
 
         # convert IP-Adapter Image Projection layers to diffusers
@@ -896,3 +932,5 @@ class UNet2DConditionLoadersMixin:
         self.config.encoder_hid_dim_type = "ip_image_proj"
 
         self.to(dtype=self.dtype, device=self.device)
+
+        return lora_dict

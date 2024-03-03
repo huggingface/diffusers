@@ -225,7 +225,11 @@ class IPAdapterMixin:
 
         # load ip-adapter into unet
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
+        extra_lora = unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
+
+        if extra_lora != {}:
+            self.load_lora_weights(extra_lora, adapter_name="faceid")
+            self.set_adapters(["faceid"], adapter_weights=[1.0])
 
     def set_ip_adapter_scale(self, scale):
         """
