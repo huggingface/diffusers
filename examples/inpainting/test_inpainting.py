@@ -208,7 +208,9 @@ class Inpainting(ExamplesTestsAccelerate):
 
             # check can run an intermediate checkpoint
             unet = UNet2DConditionModel.from_pretrained(tmpdir, subfolder="checkpoint-2/unet")
-            pipe = StableDiffusionInpaintPipeline.from_pretrained(pretrained_model_name_or_path, unet=unet, safety_checker=None)
+            pipe = StableDiffusionInpaintPipeline.from_pretrained(
+                pretrained_model_name_or_path, unet=unet, safety_checker=None
+            )
             pipe(prompt, image=init_image, mask_image=mask, num_inference_steps=1)
 
             # Remove checkpoint 2 so that we can check only later checkpoints exist after resuming
