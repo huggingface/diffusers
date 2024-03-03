@@ -19,9 +19,10 @@ import gc
 import os
 from collections import OrderedDict
 from copy import copy
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Tuple
 
 import numpy as np
+import PIL.Image
 import onnx
 import onnx_graphsurgeon as gs
 import tensorrt as trt
@@ -40,17 +41,17 @@ from polygraphy.backend.trt import (
     network_from_onnx_path,
     save_engine,
 )
-from ...utils.torch_utils import randn_tensor
-from ...image_processor import PipelineImageInput, VaeImageProcessor
+from diffusers.utils.torch_utils import randn_tensor
+from diffusers.image_processor import VaeImageProcessor
 from polygraphy.backend.trt import util as trt_util
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.pipelines.stable_diffusion import (
-    StableDiffusionPipeline,
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
 )
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import logging
