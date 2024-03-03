@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -215,7 +215,7 @@ class TextualInversionLoaderMixin:
                 embedding = state_dict["string_to_param"]["*"]
             else:
                 raise ValueError(
-                    f"Loaded state dictonary is incorrect: {state_dict}. \n\n"
+                    f"Loaded state dictionary is incorrect: {state_dict}. \n\n"
                     "Please verify that the loaded state dictionary of the textual embedding either only has a single key or includes the `string_to_param`"
                     " input key."
                 )
@@ -457,6 +457,8 @@ class TextualInversionLoaderMixin:
     def unload_textual_inversion(
         self,
         tokens: Optional[Union[str, List[str]]] = None,
+        tokenizer: Optional["PreTrainedTokenizer"] = None,
+        text_encoder: Optional["PreTrainedModel"] = None,
     ):
         r"""
         Unload Textual Inversion embeddings from the text encoder of [`StableDiffusionPipeline`]
@@ -481,11 +483,28 @@ class TextualInversionLoaderMixin:
 
         # Remove just one token
         pipeline.unload_textual_inversion("<moe-bius>")
+
+        # Example 3: unload from SDXL
+        pipeline = AutoPipelineForText2Image.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0")
+        embedding_path = hf_hub_download(repo_id="linoyts/web_y2k", filename="web_y2k_emb.safetensors", repo_type="model")
+
+        # load embeddings to the text encoders
+        state_dict = load_file(embedding_path)
+
+        # load embeddings of text_encoder 1 (CLIP ViT-L/14)
+        pipeline.load_textual_inversion(state_dict["clip_l"], token=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+        # load embeddings of text_encoder 2 (CLIP ViT-G/14)
+        pipeline.load_textual_inversion(state_dict["clip_g"], token=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
+
+        # Unload explicitly from both text encoders abd tokenizers
+        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
+        pipeline.unload_textual_inversion(tokens=["<s0>", "<s1>"], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
+
         ```
         """
 
-        tokenizer = getattr(self, "tokenizer", None)
-        text_encoder = getattr(self, "text_encoder", None)
+        tokenizer = tokenizer or getattr(self, "tokenizer", None)
+        text_encoder = text_encoder or getattr(self, "text_encoder", None)
 
         # Get textual inversion tokens and ids
         token_ids = []

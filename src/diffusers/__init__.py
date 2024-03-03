@@ -1,4 +1,4 @@
-__version__ = "0.26.0.dev0"
+__version__ = "0.27.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -128,6 +128,7 @@ else:
             "PNDMPipeline",
             "RePaintPipeline",
             "ScoreSdeVePipeline",
+            "StableDiffusionMixin",
         ]
     )
     _import_structure["schedulers"].extend(
@@ -144,6 +145,8 @@ else:
             "DPMSolverMultistepInverseScheduler",
             "DPMSolverMultistepScheduler",
             "DPMSolverSinglestepScheduler",
+            "EDMDPMSolverMultistepScheduler",
+            "EDMEulerScheduler",
             "EulerAncestralDiscreteScheduler",
             "EulerDiscreteScheduler",
             "HeunDiscreteScheduler",
@@ -512,6 +515,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PNDMPipeline,
             RePaintPipeline,
             ScoreSdeVePipeline,
+            StableDiffusionMixin,
         )
         from .schedulers import (
             AmusedScheduler,
@@ -526,6 +530,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DPMSolverMultistepInverseScheduler,
             DPMSolverMultistepScheduler,
             DPMSolverSinglestepScheduler,
+            EDMDPMSolverMultistepScheduler,
+            EDMEulerScheduler,
             EulerAncestralDiscreteScheduler,
             EulerDiscreteScheduler,
             HeunDiscreteScheduler,
