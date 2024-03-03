@@ -7,6 +7,10 @@ on:
       - doc-builder*
       - v*-release
       - v*-patch
+    paths:
+      - "src/diffusers/**.py"
+      - "examples/**"
+      - "docs/**"
 
 jobs:
   build:
