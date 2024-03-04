@@ -41,6 +41,6 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
         scipy \
         tensorboard \
         transformers \
-        pandas matplotlib scikit-learn
+        pandas matplotlib scikit-learn trl
 
 CMD ["/bin/bash"]
