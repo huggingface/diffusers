@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
 import flax
+import jax
 import jax.numpy as jnp
 from scipy import integrate
 
@@ -206,6 +207,7 @@ class FlaxLMSDiscreteScheduler(FlaxSchedulerMixin, ConfigMixin):
         model_output: jnp.ndarray,
         timestep: int,
         sample: jnp.ndarray,
+        key: Optional[jax.Array] = None,
         order: int = 4,
         return_dict: bool = True,
     ) -> Union[FlaxLMSSchedulerOutput, Tuple]:
