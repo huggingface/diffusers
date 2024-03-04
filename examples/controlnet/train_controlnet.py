@@ -242,6 +242,7 @@ These are controlnet weights trained on {base_model} with new type of conditioni
         "text-to-image",
         "diffusers",
         "controlnet",
+        "diffusers-training"
     ]
     model_card = populate_model_card(model_card, tags=tags)
 
