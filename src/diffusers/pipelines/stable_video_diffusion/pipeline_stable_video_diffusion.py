@@ -353,7 +353,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         return_dict: bool = True,
     ):
         r"""
-        Function invoked when calling the pipeline for generation.
+        The call function to the pipeline for generation.
 
         Args:
             image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
