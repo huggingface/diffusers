@@ -381,8 +381,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             noise_aug_strength (`float`, *optional*, defaults to 0.02):
                 The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
             decode_chunk_size (`int`, *optional*):
-                The number of frames to decode at a time. Higher chunk size will lead to better temporal consistency but
-                at the cost of more memory consumption. By default, the decoder will decode all frames at once for maximal
+                The number of frames to decode at a time. Higher chunk size leads to better temporal consistency at the expense of more memory usage. By default, the decoder decodes all frames at once for maximal
                 quality. For lower memory usage, reduce `decode_chunk_size`.
             num_videos_per_prompt (`int`, *optional*, defaults to 1):
                 The number of videos to generate per prompt.
