@@ -1,12 +1,3 @@
-docs/source/en/api/utilities.md
-docs/source/en/api/logging.md
-docs/source/en/api/activations.md
-docs/source/en/api/image_processor.md
-docs/source/en/api/outputs.md
-docs/source/en/api/attnprocessor.md
-docs/source/en/api/internal_classes_overview.md
-docs/source/en/api/configuration.md
-docs/source/en/api/normalization.md
 docs/source/en/training/create_dataset.md
 docs/source/en/training/wuerstchen.md
 docs/source/en/training/adapt_a_model.md
