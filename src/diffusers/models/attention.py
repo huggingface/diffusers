@@ -644,7 +644,7 @@ class FeedForward(nn.Module):
         if inner_dim is None:
             inner_dim = int(dim * mult)
         dim_out = dim_out if dim_out is not None else dim
-        linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
+        linear_cls = nn.Linear
 
         if activation_fn == "gelu":
             act_fn = GELU(dim, inner_dim, bias=bias)
