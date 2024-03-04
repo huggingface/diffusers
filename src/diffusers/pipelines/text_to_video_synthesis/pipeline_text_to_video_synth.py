@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "Spiderman is surfing"
-        >>> video_frames = pipe(prompt).frames
+        >>> video_frames = pipe(prompt).frames[0]
         >>> video_path = export_to_video(video_frames)
         >>> video_path
         ```

@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> prompt = "spiderman running in the desert"
-        >>> video_frames = pipe(prompt, num_inference_steps=40, height=320, width=576, num_frames=24).frames
+        >>> video_frames = pipe(prompt, num_inference_steps=40, height=320, width=576, num_frames=24).frames[0]
         >>> # safe low-res video
         >>> video_path = export_to_video(video_frames, output_video_path="./video_576_spiderman.mp4")
 
@@ -73,7 +73,7 @@ EXAMPLE_DOC_STRING = """
         >>> video = [Image.fromarray(frame).resize((1024, 576)) for frame in video_frames]
 
         >>> # and denoise it
-        >>> video_frames = pipe(prompt, video=video, strength=0.6).frames
+        >>> video_frames = pipe(prompt, video=video, strength=0.6).frames[0]
         >>> video_path = export_to_video(video_frames, output_video_path="./video_1024_spiderman.mp4")
         >>> video_path
         ```
