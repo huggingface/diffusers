@@ -1,0 +1,347 @@
+diff --git a/src/diffusers/pipelines/pipeline_utils.py b/src/diffusers/pipelines/pipeline_utils.py
+index 0a399d209..8d9584fab 100644
+--- a/src/diffusers/pipelines/pipeline_utils.py
++++ b/src/diffusers/pipelines/pipeline_utils.py
+@@ -14,6 +14,7 @@
+ # See the License for the specific language governing permissions and
+ # limitations under the License.
+ import fnmatch
++import copy
+ import importlib
+ import inspect
+ import os
+@@ -82,6 +83,7 @@ if is_accelerate_available():
+     from accelerate.utils import compute_module_sizes, get_max_memory
+ 
+ 
++
+ INDEX_FILE = "diffusion_pytorch_model.bin"
+ CUSTOM_PIPELINE_FILE_NAME = "pipeline.py"
+ DUMMY_MODULES_FOLDER = "diffusers.utils"
+@@ -431,6 +433,8 @@ def load_sub_model(
+     provider: Any,
+     sess_options: Any,
+     device_map: Optional[Union[Dict[str, torch.device], str]],
++    needs_offloading: Optional[bool],
++    device_map_strategy: Optional[str],
+     max_memory: Optional[Dict[Union[int, str], Union[int, str]]],
+     offload_folder: Optional[Union[str, os.PathLike]],
+     offload_state_dict: bool,
+@@ -537,8 +541,11 @@ def load_sub_model(
+         # else load from the root directory
+         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+ 
+-    if is_transformers_model and device_map is not None and isinstance(device_map, dict):
+-        dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
++    if isinstance(loaded_sub_model, torch.nn.Module) and device_map_strategy == "balanced":
++        if needs_offloading:
++            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, main_device=0)
++        else:
++            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
+ 
+     return loaded_sub_model
+ 
+@@ -549,14 +556,13 @@ def _load_empty_model(
+     importable_classes: List[Any],
+     pipelines: Any,
+     is_pipeline_module: bool,
+-    pipeline_class: Any,
+     name: str,
+     torch_dtype: Union[str, torch.dtype],
+     cached_folder: Union[str, os.PathLike],
+     **kwargs,
+ ):
+-    # retrieve class candidates
+-    class_obj, class_candidates = get_class_obj_and_candidates(
++    # retrieve class objects.
++    class_obj, _ = get_class_obj_and_candidates(
+         library_name,
+         class_name,
+         importable_classes,
+@@ -632,38 +638,35 @@ def _load_empty_model(
+ 
+ 
+ def _assign_components_to_devices(
+-    module_sizes: Dict[str, float], device_memory: Dict[str, float], torch_dtype: torch.dtype
++    module_sizes: Dict[str, float], device_memory: Dict[str, float], device_mapping_strategy: str = "balanced"
+ ):
+-    reverse_module_sizes = {v: k for k, v in module_sizes.items()}
+-    max_module_size = max(list(module_sizes.values()))
+-    max_device_memory = max(list(device_memory.values()))
+-
+     device_ids = list(device_memory.keys())
+     device_cycle = device_ids + device_ids[::-1]
+ 
+-    mapping = {}
++    deivce_id_component_mapping = {}
++    needs_offloading_mapping = {}
+     current_device_index = 0
+     for component in module_sizes:
+         device_id = device_cycle[current_device_index % len(device_cycle)]
+ 
+         component_memory = module_sizes[component]
+         curr_device_memory = device_memory[device_id]
++        
++        # If the GPU doesn't fit the current component offload to the CPU.
+         if component_memory > curr_device_memory:
+-            # TODO (sayakpaul, SunMarc): explore the possibility of offloading.
+-            # https://github.com/huggingface/diffusers/pull/6857#discussion_r1489544130
+-            raise ValueError(
+-                f"{reverse_module_sizes[component_memory]} cannot fit in {device_id} device."
+-                f" Maximum device memory available: {max_device_memory} while the component with"
+-                f" the maximum size (with appropriate `torch_dtype` ({torch_dtype})) is {max_module_size}."
+-            )
+-
+-        if device_id not in mapping:
+-            mapping[device_id] = [component]
++            needs_offloading_mapping[component] = True
++            if device_mapping_strategy != "balanced":
++                deivce_id_component_mapping[device_id] = [component]
++            else:
++                deivce_id_component_mapping["cpu"] = [component]
+         else:
+-            mapping[device_id].append(component)
++            if device_id not in deivce_id_component_mapping:
++                deivce_id_component_mapping[device_id] = [component]
++            else:
++                deivce_id_component_mapping[device_id].append(component)
+         current_device_index += 1
+ 
+-    return mapping
++    return deivce_id_component_mapping, needs_offloading_mapping
+ 
+ 
+ def _fetch_class_library_tuple(module):
+@@ -1348,34 +1351,41 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+                 " install accelerate\n```\n."
+             )
+ 
+-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
+-            raise NotImplementedError(
+-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+-                " `device_map=None`."
+-            )
+-
+         if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+             raise NotImplementedError(
+                 "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                 " `low_cpu_mem_usage=False`."
+             )
+ 
++        if device_map is not None and not is_accelerate_available():
++            raise NotImplementedError("Using `device_map` requires the `accelerate` library. Please install it using: `pip install accelerate`.")
++
++        if device_map is not None and not is_torch_version(">=", "1.9.0"):
++            raise NotImplementedError(
++                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
++                " `device_map=None`."
++            )
++
+         if low_cpu_mem_usage is False and device_map is not None:
+             raise ValueError(
+                 f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                 " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+             )
+ 
++        if device_map is not None and pipeline_class._load_connected_pipes:
++            raise NotImplementedError("`device_map` is not yet supported for connected pipelines.")
++
+         # import it here to avoid circular import
+         from diffusers import pipelines
+ 
++        ###### 6. device map delegation ######
+         final_device_map = None
+-        if device_map is not None and device_map == "auto":
++        if device_map is not None:
+             # Load each module in the pipeline on a meta device so that we can derive the device map.
+             init_empty_modules = {}
+             for name, (library_name, class_name) in init_dict.items():
+                 if class_name.startswith("Flax"):
+-                    raise ValueError("Flax pipelines are not supported for `device_map`.")
++                    raise ValueError("Flax pipelines are not supported with `device_map`.")
+ 
+                 # Define all importable classes
+                 is_pipeline_module = hasattr(pipelines, library_name)
+@@ -1439,34 +1449,37 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+ 
+             # Obtain a dictionary mapping the model-level components to the available
+             # devices based on the maximum memory and the model sizes.
+-            result_mapping = _assign_components_to_devices(module_sizes, max_memory, torch_dtype)
+-            print(result_mapping)
++            device_id_component_mapping, needs_offloading_mapping = _assign_components_to_devices(module_sizes, max_memory, device_mapping_strategy=device_map)
++            print(device_id_component_mapping, needs_offloading_mapping)
+ 
+             # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
+             final_device_map = {}
+-            for device_id, components in result_mapping.items():
++            for device_id, components in device_id_component_mapping.items():
+                 for component in components:
+                     final_device_map[component] = device_id
+             print(final_device_map)
++        
++        ###### End: device map delegation ######
+ 
+-        # 6. Load each module in the pipeline
++        # 7. Load each module in the pipeline
+         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
+             if final_device_map is not None and len(final_device_map) > 0:
+                 component_device = final_device_map.get(name, None)
+-                if component_device is not None:
+-                    device_map = {"": component_device}
++                needs_offloading = needs_offloading_mapping.get(name, False)
++                if component_device is not None and not needs_offloading:
++                    current_device_map = {"": component_device}
+                 else:
+-                    device_map = None
++                    current_device_map = None
+ 
+-            # 6.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
++            # 7.1 - now that JAX/Flax is an official framework of the library, we might load from Flax names
+             class_name = class_name[4:] if class_name.startswith("Flax") else class_name
+ 
+-            # 6.2 Define all importable classes
++            # 7.2 Define all importable classes
+             is_pipeline_module = hasattr(pipelines, library_name)
+             importable_classes = ALL_IMPORTABLE_CLASSES
+             loaded_sub_model = None
+ 
+-            # 6.3 Use passed sub model or load class_name from library_name
++            # 7.3 Use passed sub model or load class_name from library_name
+             if name in passed_class_obj:
+                 # if the model is in a pipeline module, then we load it from the pipeline
+                 # check that passed_class_obj has correct parent class
+@@ -1487,7 +1500,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+                     torch_dtype=torch_dtype,
+                     provider=provider,
+                     sess_options=sess_options,
+-                    device_map=device_map,
++                    device_map=current_device_map,
++                    needs_offloading=needs_offloading,
++                    device_map_strategy=device_map,
+                     max_memory=max_memory,
+                     offload_folder=offload_folder,
+                     offload_state_dict=offload_state_dict,
+@@ -1554,7 +1569,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+                     {"_".join([prefix, name]): component for name, component in connected_pipe.components.items()}
+                 )
+ 
+-        # 7. Potentially add passed objects if expected
++        # 8. Potentially add passed objects if expected
+         missing_modules = set(expected_modules) - set(init_kwargs.keys())
+         passed_modules = list(passed_class_obj.keys())
+         optional_modules = pipeline_class._optional_components
+@@ -1567,10 +1582,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+             )
+ 
+-        # 8. Instantiate the pipeline
++        # 10. Instantiate the pipeline
+         model = pipeline_class(**init_kwargs)
+ 
+-        # 9. Save where the model was instantiated from
++        # 11. Handle cases where device map strategy is not "balanced".
++        if device_map == "balanced_ultra_low_memory":
++            model.enable_sequential_cpu_offload(component_device_mapping=final_device_map)
++        elif device_map == "balanced_low_memory":
++            model.enable_model_cpu_offload(component_device_mapping=final_device_map)
++
++        # 12. Save where the model was instantiated from
+         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
+         return model
+ 
+@@ -1600,7 +1621,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+                     return torch.device(module._hf_hook.execution_device)
+         return self.device
+ 
+-    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
++    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda", component_device_mapping: Dict[str, int] = None):
+         r"""
+         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
+         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
+@@ -1654,8 +1675,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+             model = all_model_components.pop(model_str, None)
+             if not isinstance(model, torch.nn.Module):
+                 continue
+-
+-            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
++            
++            if component_device_mapping is None:
++                _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)                
++            else:
++                component_device_id = component_device_mapping.get(name)
++                component_device = f"cuda:{component_device_id}"
++                _, hook = cpu_offload_with_hook(model, component_device, prev_module_hook=hook) 
+             self._all_hooks.append(hook)
+ 
+         # CPU offload models that are not in the seq chain unless they are explicitly excluded
+@@ -1666,9 +1692,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+                 continue
+ 
+             if name in self._exclude_from_cpu_offload:
+-                model.to(device)
++                if component_device_mapping is None:
++                    model.to(device)
++                else:
++                    component_device_id = component_device_id.get(name)
++                    model.to(f"cuda:{component_device_id}")
+             else:
+-                _, hook = cpu_offload_with_hook(model, device)
++                if component_device_mapping is None:
++                    _, hook = cpu_offload_with_hook(model, device)
++                else:
++                    component_device_id = component_device_id.get(name)
++                    component_device = f"cuda:{component_device_id}"
++                    _, hook = cpu_offload_with_hook(model, component_device)
+                 self._all_hooks.append(hook)
+ 
+     def maybe_free_model_hooks(self):
+@@ -1690,7 +1725,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+         # make sure the model is in the same state as before calling it
+         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
+ 
+-    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
++    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda", component_device_mapping: Dict[str, int] = None):
+         r"""
+         Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
+         dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
+@@ -1709,7 +1744,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+             from accelerate import cpu_offload
+         else:
+             raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+-
++        
+         torch_device = torch.device(device)
+         device_index = torch_device.index
+ 
+@@ -1735,14 +1770,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
+         for name, model in self.components.items():
+             if not isinstance(model, torch.nn.Module):
+                 continue
+-
+-            if name in self._exclude_from_cpu_offload:
+-                model.to(device)
+-            else:
+-                # make sure to offload buffers if not all high level weights
+-                # are of type nn.Module
+-                offload_buffers = len(model._parameters) > 0
+-                cpu_offload(model, device, offload_buffers=offload_buffers)
++            
++            if component_device_mapping is None:
++                if name in self._exclude_from_cpu_offload :
++                    if component_device_mapping is None:
++                        model.to(device)
++                    else:
++                        component_device_id = component_device_mapping.get(name)
++                        model.to(f"cuda:{component_device_id}")
++                else:
++                    # make sure to offload buffers if not all high level weights
++                    # are of type nn.Module
++                    offload_buffers = len(model._parameters) > 0
++                    if component_device_mapping is None:
++                        cpu_offload(model, device, offload_buffers=offload_buffers)
++                    else:
++                        component_device_id = component_device_mapping.get(name)
++                        cpu_offload(model, f"cuda:{component_device_id}", offload_buffers=offload_buffers)
+ 
+     @classmethod
+     @validate_hf_hub_args
