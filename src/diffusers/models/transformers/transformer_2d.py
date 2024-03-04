@@ -100,6 +100,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         interpolation_scale: float = None,
     ):
         super().__init__()
+        if patch_size is not None and norm_type == "layer_norm":
+            raise NotImplementedError(
+                "Forward pass is not implemented when `patch_size` is not None and `norm_type` is 'layer_norm'."
+            )
+
         self.use_linear_projection = use_linear_projection
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
