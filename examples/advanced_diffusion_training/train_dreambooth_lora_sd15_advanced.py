@@ -139,6 +139,7 @@ to trigger concept `{key}` → use `{tokens}` in your prompt \n
 tags:
 - stable-diffusion
 - stable-diffusion-diffusers
+- diffusers-training
 - text-to-image
 - diffusers
 - lora

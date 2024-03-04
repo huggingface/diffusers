@@ -156,6 +156,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     tags = [
         "text-to-image",
         "text-to-image",
+        "diffusers-training",
         "diffusers",
         "lora",
         "template:sd-lora",
