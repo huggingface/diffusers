@@ -2,6 +2,8 @@ name: Test, build, and push Docker images
 
 on:
   pull_request: # During PRs, we just check if the changes Dockerfiles can be successfully built
+    branches:
+      - main
     paths:
       - "docker/**"
   workflow_dispatch:
