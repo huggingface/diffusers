@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,9 +11,12 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import inspect
 import os
-from collections import OrderedDict, defaultdict
+from collections import defaultdict
 from contextlib import nullcontext
+from functools import partial
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
@@ -22,13 +25,19 @@ import torch.nn.functional as F
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
-from ..models.embeddings import ImageProjection, MLPProjection, Resampler
+from ..models.embeddings import (
+    ImageProjection,
+    IPAdapterFullImageProjection,
+    IPAdapterPlusImageProjection,
+    MultiIPAdapterImageProjection,
+)
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
     delete_adapter_layers,
     is_accelerate_available,
+    is_torch_version,
     logging,
     set_adapter_layers,
     set_weights_and_activate_adapters,
@@ -159,15 +168,6 @@ class UNet2DConditionLoadersMixin:
             "file_type": "attn_procs_weights",
             "framework": "pytorch",
         }
-
-        if low_cpu_mem_usage and not is_accelerate_available():
-            low_cpu_mem_usage = False
-            logger.warning(
-                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                " install accelerate\n```\n."
-            )
 
         model_file = None
         if not isinstance(pretrained_model_name_or_path_or_dict, dict):
@@ -501,25 +501,47 @@ class UNet2DConditionLoadersMixin:
                 weight_name = CUSTOM_DIFFUSION_WEIGHT_NAME if is_custom_diffusion else LORA_WEIGHT_NAME
 
         # Save the model
-        save_function(state_dict, os.path.join(save_directory, weight_name))
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weight_name)}")
+        save_path = Path(save_directory, weight_name).as_posix()
+        save_function(state_dict, save_path)
+        logger.info(f"Model weights saved in {save_path}")
 
-    def fuse_lora(self, lora_scale=1.0, safe_fusing=False):
+    def fuse_lora(self, lora_scale=1.0, safe_fusing=False, adapter_names=None):
         self.lora_scale = lora_scale
         self._safe_fusing = safe_fusing
-        self.apply(self._fuse_lora_apply)
+        self.apply(partial(self._fuse_lora_apply, adapter_names=adapter_names))
 
-    def _fuse_lora_apply(self, module):
+    def _fuse_lora_apply(self, module, adapter_names=None):
         if not USE_PEFT_BACKEND:
             if hasattr(module, "_fuse_lora"):
                 module._fuse_lora(self.lora_scale, self._safe_fusing)
+
+            if adapter_names is not None:
+                raise ValueError(
+                    "The `adapter_names` argument is not supported in your environment. Please switch"
+                    " to PEFT backend to use this argument by installing latest PEFT and transformers."
+                    " `pip install -U peft transformers`"
+                )
         else:
             from peft.tuners.tuners_utils import BaseTunerLayer
+
+            merge_kwargs = {"safe_merge": self._safe_fusing}
 
             if isinstance(module, BaseTunerLayer):
                 if self.lora_scale != 1.0:
                     module.scale_layer(self.lora_scale)
-                module.merge(safe_merge=self._safe_fusing)
+
+                # For BC with prevous PEFT versions, we need to check the signature
+                # of the `merge` method to see if it supports the `adapter_names` argument.
+                supported_merge_kwargs = list(inspect.signature(module.merge).parameters)
+                if "adapter_names" in supported_merge_kwargs:
+                    merge_kwargs["adapter_names"] = adapter_names
+                elif "adapter_names" not in supported_merge_kwargs and adapter_names is not None:
+                    raise ValueError(
+                        "The `adapter_names` argument is not supported with your PEFT version. Please upgrade"
+                        " to the latest version of PEFT. `pip install -U peft`"
+                    )
+
+                module.merge(**merge_kwargs)
 
     def unfuse_lora(self):
         self.apply(self._unfuse_lora_apply)
@@ -664,7 +686,108 @@ class UNet2DConditionLoadersMixin:
             if hasattr(self, "peft_config"):
                 self.peft_config.pop(adapter_name, None)
 
-    def _load_ip_adapter_weights(self, state_dict):
+    def _convert_ip_adapter_image_proj_to_diffusers(self, state_dict, low_cpu_mem_usage=False):
+        if low_cpu_mem_usage:
+            if is_accelerate_available():
+                from accelerate import init_empty_weights
+
+            else:
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
+
+        updated_state_dict = {}
+        image_projection = None
+        init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
+
+        if "proj.weight" in state_dict:
+            # IP-Adapter
+            num_image_text_embeds = 4
+            clip_embeddings_dim = state_dict["proj.weight"].shape[-1]
+            cross_attention_dim = state_dict["proj.weight"].shape[0] // 4
+
+            with init_context():
+                image_projection = ImageProjection(
+                    cross_attention_dim=cross_attention_dim,
+                    image_embed_dim=clip_embeddings_dim,
+                    num_image_text_embeds=num_image_text_embeds,
+                )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("proj", "image_embeds")
+                updated_state_dict[diffusers_name] = value
+
+        elif "proj.3.weight" in state_dict:
+            # IP-Adapter Full
+            clip_embeddings_dim = state_dict["proj.0.weight"].shape[0]
+            cross_attention_dim = state_dict["proj.3.weight"].shape[0]
+
+            with init_context():
+                image_projection = IPAdapterFullImageProjection(
+                    cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+                )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("proj.0", "ff.net.0.proj")
+                diffusers_name = diffusers_name.replace("proj.2", "ff.net.2")
+                diffusers_name = diffusers_name.replace("proj.3", "norm")
+                updated_state_dict[diffusers_name] = value
+
+        else:
+            # IP-Adapter Plus
+            num_image_text_embeds = state_dict["latents"].shape[1]
+            embed_dims = state_dict["proj_in.weight"].shape[1]
+            output_dims = state_dict["proj_out.weight"].shape[0]
+            hidden_dims = state_dict["latents"].shape[2]
+            heads = state_dict["layers.0.0.to_q.weight"].shape[0] // 64
+
+            with init_context():
+                image_projection = IPAdapterPlusImageProjection(
+                    embed_dims=embed_dims,
+                    output_dims=output_dims,
+                    hidden_dims=hidden_dims,
+                    heads=heads,
+                    num_queries=num_image_text_embeds,
+                )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("0.to", "2.to")
+                diffusers_name = diffusers_name.replace("1.0.weight", "3.0.weight")
+                diffusers_name = diffusers_name.replace("1.0.bias", "3.0.bias")
+                diffusers_name = diffusers_name.replace("1.1.weight", "3.1.net.0.proj.weight")
+                diffusers_name = diffusers_name.replace("1.3.weight", "3.1.net.2.weight")
+
+                if "norm1" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm1", "0")] = value
+                elif "norm2" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm2", "1")] = value
+                elif "to_kv" in diffusers_name:
+                    v_chunk = value.chunk(2, dim=0)
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_k")] = v_chunk[0]
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_v")] = v_chunk[1]
+                elif "to_out" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("to_out", "to_out.0")] = value
+                else:
+                    updated_state_dict[diffusers_name] = value
+
+        if not low_cpu_mem_usage:
+            image_projection.load_state_dict(updated_state_dict)
+        else:
+            load_model_dict_into_meta(image_projection, updated_state_dict, device=self.device, dtype=self.dtype)
+
+        return image_projection
+
+    def _convert_ip_adapter_attn_to_diffusers(self, state_dicts, low_cpu_mem_usage=False):
         from ..models.attention_processor import (
             AttnProcessor,
             AttnProcessor2_0,
@@ -672,23 +795,29 @@ class UNet2DConditionLoadersMixin:
             IPAdapterAttnProcessor2_0,
         )
 
-        if "proj.weight" in state_dict["image_proj"]:
-            # IP-Adapter
-            num_image_text_embeds = 4
-        elif "proj.3.weight" in state_dict["image_proj"]:
-            # IP-Adapter Full Face
-            num_image_text_embeds = 257  # 256 CLIP tokens + 1 CLS token
-        else:
-            # IP-Adapter Plus
-            num_image_text_embeds = state_dict["image_proj"]["latents"].shape[1]
+        if low_cpu_mem_usage:
+            if is_accelerate_available():
+                from accelerate import init_empty_weights
 
-        # Set encoder_hid_proj after loading ip_adapter weights,
-        # because `Resampler` also has `attn_processors`.
-        self.encoder_hid_proj = None
+            else:
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
 
         # set ip-adapter cross-attention processors & load state_dict
         attn_procs = {}
         key_id = 1
+        init_context = init_empty_weights if low_cpu_mem_usage else nullcontext
         for name in self.attn_processors.keys():
             cross_attention_dim = None if name.endswith("attn1.processor") else self.config.cross_attention_dim
             if name.startswith("mid_block"):
@@ -699,6 +828,7 @@ class UNet2DConditionLoadersMixin:
             elif name.startswith("down_blocks"):
                 block_id = int(name[len("down_blocks.")])
                 hidden_size = self.config.block_out_channels[block_id]
+
             if cross_attention_dim is None or "motion_modules" in name:
                 attn_processor_class = (
                     AttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else AttnProcessor
@@ -708,119 +838,61 @@ class UNet2DConditionLoadersMixin:
                 attn_processor_class = (
                     IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
                 )
-                attn_procs[name] = attn_processor_class(
-                    hidden_size=hidden_size,
-                    cross_attention_dim=cross_attention_dim,
-                    scale=1.0,
-                    num_tokens=num_image_text_embeds,
-                ).to(dtype=self.dtype, device=self.device)
+                num_image_text_embeds = []
+                for state_dict in state_dicts:
+                    if "proj.weight" in state_dict["image_proj"]:
+                        # IP-Adapter
+                        num_image_text_embeds += [4]
+                    elif "proj.3.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Full Face
+                        num_image_text_embeds += [257]  # 256 CLIP tokens + 1 CLS token
+                    else:
+                        # IP-Adapter Plus
+                        num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
+
+                with init_context():
+                    attn_procs[name] = attn_processor_class(
+                        hidden_size=hidden_size,
+                        cross_attention_dim=cross_attention_dim,
+                        scale=1.0,
+                        num_tokens=num_image_text_embeds,
+                    )
 
                 value_dict = {}
-                for k, w in attn_procs[name].state_dict().items():
-                    value_dict.update({f"{k}": state_dict["ip_adapter"][f"{key_id}.{k}"]})
+                for i, state_dict in enumerate(state_dicts):
+                    value_dict.update({f"to_k_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_k_ip.weight"]})
+                    value_dict.update({f"to_v_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_v_ip.weight"]})
 
-                attn_procs[name].load_state_dict(value_dict)
+                if not low_cpu_mem_usage:
+                    attn_procs[name].load_state_dict(value_dict)
+                else:
+                    device = next(iter(value_dict.values())).device
+                    dtype = next(iter(value_dict.values())).dtype
+                    load_model_dict_into_meta(attn_procs[name], value_dict, device=device, dtype=dtype)
+
                 key_id += 2
 
+        return attn_procs
+
+    def _load_ip_adapter_weights(self, state_dicts, low_cpu_mem_usage=False):
+        if not isinstance(state_dicts, list):
+            state_dicts = [state_dicts]
+        # Set encoder_hid_proj after loading ip_adapter weights,
+        # because `IPAdapterPlusImageProjection` also has `attn_processors`.
+        self.encoder_hid_proj = None
+
+        attn_procs = self._convert_ip_adapter_attn_to_diffusers(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
         self.set_attn_processor(attn_procs)
 
-        # create image projection layers.
-        if "proj.weight" in state_dict["image_proj"]:
-            # IP-Adapter
-            clip_embeddings_dim = state_dict["image_proj"]["proj.weight"].shape[-1]
-            cross_attention_dim = state_dict["image_proj"]["proj.weight"].shape[0] // 4
-
-            image_projection = ImageProjection(
-                cross_attention_dim=cross_attention_dim,
-                image_embed_dim=clip_embeddings_dim,
-                num_image_text_embeds=num_image_text_embeds,
+        # convert IP-Adapter Image Projection layers to diffusers
+        image_projection_layers = []
+        for state_dict in state_dicts:
+            image_projection_layer = self._convert_ip_adapter_image_proj_to_diffusers(
+                state_dict["image_proj"], low_cpu_mem_usage=low_cpu_mem_usage
             )
-            image_projection.to(dtype=self.dtype, device=self.device)
+            image_projection_layers.append(image_projection_layer)
 
-            # load image projection layer weights
-            image_proj_state_dict = {}
-            image_proj_state_dict.update(
-                {
-                    "image_embeds.weight": state_dict["image_proj"]["proj.weight"],
-                    "image_embeds.bias": state_dict["image_proj"]["proj.bias"],
-                    "norm.weight": state_dict["image_proj"]["norm.weight"],
-                    "norm.bias": state_dict["image_proj"]["norm.bias"],
-                }
-            )
-            image_projection.load_state_dict(image_proj_state_dict)
-            del image_proj_state_dict
-
-        elif "proj.3.weight" in state_dict["image_proj"]:
-            clip_embeddings_dim = state_dict["image_proj"]["proj.0.weight"].shape[0]
-            cross_attention_dim = state_dict["image_proj"]["proj.3.weight"].shape[0]
-
-            image_projection = MLPProjection(
-                cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
-            )
-            image_projection.to(dtype=self.dtype, device=self.device)
-
-            # load image projection layer weights
-            image_proj_state_dict = {}
-            image_proj_state_dict.update(
-                {
-                    "ff.net.0.proj.weight": state_dict["image_proj"]["proj.0.weight"],
-                    "ff.net.0.proj.bias": state_dict["image_proj"]["proj.0.bias"],
-                    "ff.net.2.weight": state_dict["image_proj"]["proj.2.weight"],
-                    "ff.net.2.bias": state_dict["image_proj"]["proj.2.bias"],
-                    "norm.weight": state_dict["image_proj"]["proj.3.weight"],
-                    "norm.bias": state_dict["image_proj"]["proj.3.bias"],
-                }
-            )
-            image_projection.load_state_dict(image_proj_state_dict)
-            del image_proj_state_dict
-
-        else:
-            # IP-Adapter Plus
-            embed_dims = state_dict["image_proj"]["proj_in.weight"].shape[1]
-            output_dims = state_dict["image_proj"]["proj_out.weight"].shape[0]
-            hidden_dims = state_dict["image_proj"]["latents"].shape[2]
-            heads = state_dict["image_proj"]["layers.0.0.to_q.weight"].shape[0] // 64
-
-            image_projection = Resampler(
-                embed_dims=embed_dims,
-                output_dims=output_dims,
-                hidden_dims=hidden_dims,
-                heads=heads,
-                num_queries=num_image_text_embeds,
-            )
-
-            image_proj_state_dict = state_dict["image_proj"]
-
-            new_sd = OrderedDict()
-            for k, v in image_proj_state_dict.items():
-                if "0.to" in k:
-                    k = k.replace("0.to", "2.to")
-                elif "1.0.weight" in k:
-                    k = k.replace("1.0.weight", "3.0.weight")
-                elif "1.0.bias" in k:
-                    k = k.replace("1.0.bias", "3.0.bias")
-                elif "1.1.weight" in k:
-                    k = k.replace("1.1.weight", "3.1.net.0.proj.weight")
-                elif "1.3.weight" in k:
-                    k = k.replace("1.3.weight", "3.1.net.2.weight")
-
-                if "norm1" in k:
-                    new_sd[k.replace("0.norm1", "0")] = v
-                elif "norm2" in k:
-                    new_sd[k.replace("0.norm2", "1")] = v
-                elif "to_kv" in k:
-                    v_chunk = v.chunk(2, dim=0)
-                    new_sd[k.replace("to_kv", "to_k")] = v_chunk[0]
-                    new_sd[k.replace("to_kv", "to_v")] = v_chunk[1]
-                elif "to_out" in k:
-                    new_sd[k.replace("to_out", "to_out.0")] = v
-                else:
-                    new_sd[k] = v
-
-            image_projection.load_state_dict(new_sd)
-            del image_proj_state_dict
-
-        self.encoder_hid_proj = image_projection.to(device=self.device, dtype=self.dtype)
+        self.encoder_hid_proj = MultiIPAdapterImageProjection(image_projection_layers)
         self.config.encoder_hid_dim_type = "ip_image_proj"
 
-    delete_adapter_layers
+        self.to(dtype=self.dtype, device=self.device)

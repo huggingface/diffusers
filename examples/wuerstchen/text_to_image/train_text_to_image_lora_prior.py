@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -50,7 +50,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.25.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -442,6 +442,12 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(
         total_limit=args.checkpoints_total_limit, project_dir=args.output_dir, logging_dir=logging_dir
@@ -527,9 +533,17 @@ def main():
 
     # lora attn processor
     prior_lora_config = LoraConfig(
-        r=args.rank, target_modules=["to_k", "to_q", "to_v", "to_out.0", "add_k_proj", "add_v_proj"]
+        r=args.rank,
+        lora_alpha=args.rank,
+        target_modules=["to_k", "to_q", "to_v", "to_out.0", "add_k_proj", "add_v_proj"],
     )
+    # Add adapter and make sure the trainable params are in float32.
     prior.add_adapter(prior_lora_config)
+    if args.mixed_precision == "fp16":
+        for param in prior.parameters():
+            # only upcast trainable parameters (LoRA) into fp32
+            if param.requires_grad:
+                param.data = param.to(torch.float32)
 
     # create custom saving & loading hooks so that `accelerator.save_state(...)` serializes in a nice format
     def save_model_hook(models, weights, output_dir):

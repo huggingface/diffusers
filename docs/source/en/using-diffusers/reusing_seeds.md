@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -40,6 +40,20 @@ Now, define four different `Generator`s and assign each `Generator` a seed (`0` 
 ```python
 generator = [torch.Generator(device="cuda").manual_seed(i) for i in range(4)]
 ```
+
+<Tip warning={true}>
+
+To create a batched seed, you should use a list comprehension that iterates over the length specified in `range()`. This creates a unique `Generator` object for each image in the batch. If you only multiply the `Generator` by the batch size, this only creates one `Generator` object that is used sequentially for each image in the batch.
+
+For example, if you want to use the same seed to create 4 identical images:
+
+```py
+❌ [torch.Generator().manual_seed(seed)] * 4
+
+✅ [torch.Generator().manual_seed(seed) for _ in range(4)]
+```
+
+</Tip>
 
 Generate the images and have a look:
 

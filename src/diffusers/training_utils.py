@@ -1,17 +1,30 @@
 import contextlib
 import copy
 import random
-from typing import Any, Dict, Iterable, Optional, Union
+from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 import torch
 
 from .models import UNet2DConditionModel
-from .utils import deprecate, is_transformers_available
+from .utils import (
+    convert_state_dict_to_diffusers,
+    convert_state_dict_to_peft,
+    deprecate,
+    is_peft_available,
+    is_torchvision_available,
+    is_transformers_available,
+)
 
 
 if is_transformers_available():
     import transformers
+
+if is_peft_available():
+    from peft import set_peft_model_state_dict
+
+if is_torchvision_available():
+    from torchvision import transforms
 
 
 def set_seed(seed: int):
@@ -53,6 +66,50 @@ def compute_snr(noise_scheduler, timesteps):
     return snr
 
 
+def resolve_interpolation_mode(interpolation_type: str):
+    """
+    Maps a string describing an interpolation function to the corresponding torchvision `InterpolationMode` enum. The
+    full list of supported enums is documented at
+    https://pytorch.org/vision/0.9/transforms.html#torchvision.transforms.functional.InterpolationMode.
+
+    Args:
+        interpolation_type (`str`):
+            A string describing an interpolation method. Currently, `bilinear`, `bicubic`, `box`, `nearest`,
+            `nearest_exact`, `hamming`, and `lanczos` are supported, corresponding to the supported interpolation modes
+            in torchvision.
+
+    Returns:
+        `torchvision.transforms.InterpolationMode`: an `InterpolationMode` enum used by torchvision's `resize`
+        transform.
+    """
+    if not is_torchvision_available():
+        raise ImportError(
+            "Please make sure to install `torchvision` to be able to use the `resolve_interpolation_mode()` function."
+        )
+
+    if interpolation_type == "bilinear":
+        interpolation_mode = transforms.InterpolationMode.BILINEAR
+    elif interpolation_type == "bicubic":
+        interpolation_mode = transforms.InterpolationMode.BICUBIC
+    elif interpolation_type == "box":
+        interpolation_mode = transforms.InterpolationMode.BOX
+    elif interpolation_type == "nearest":
+        interpolation_mode = transforms.InterpolationMode.NEAREST
+    elif interpolation_type == "nearest_exact":
+        interpolation_mode = transforms.InterpolationMode.NEAREST_EXACT
+    elif interpolation_type == "hamming":
+        interpolation_mode = transforms.InterpolationMode.HAMMING
+    elif interpolation_type == "lanczos":
+        interpolation_mode = transforms.InterpolationMode.LANCZOS
+    else:
+        raise ValueError(
+            f"The given interpolation mode {interpolation_type} is not supported. Currently supported interpolation"
+            f" modes are `bilinear`, `bicubic`, `box`, `nearest`, `nearest_exact`, `hamming`, and `lanczos`."
+        )
+
+    return interpolation_mode
+
+
 def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
     r"""
     Returns:
@@ -70,6 +127,35 @@ def unet_lora_state_dict(unet: UNet2DConditionModel) -> Dict[str, torch.Tensor]:
                     lora_state_dict[f"{name}.lora.{lora_layer_matrix_name}"] = lora_param
 
     return lora_state_dict
+
+
+def cast_training_params(model: Union[torch.nn.Module, List[torch.nn.Module]], dtype=torch.float32):
+    if not isinstance(model, list):
+        model = [model]
+    for m in model:
+        for param in m.parameters():
+            # only upcast trainable parameters into fp32
+            if param.requires_grad:
+                param.data = param.to(dtype)
+
+
+def _set_state_dict_into_text_encoder(
+    lora_state_dict: Dict[str, torch.Tensor], prefix: str, text_encoder: torch.nn.Module
+):
+    """
+    Sets the `lora_state_dict` into `text_encoder` coming from `transformers`.
+
+    Args:
+        lora_state_dict: The state dictionary to be set.
+        prefix: String identifier to retrieve the portion of the state dict that belongs to `text_encoder`.
+        text_encoder: Where the `lora_state_dict` is to be set.
+    """
+
+    text_encoder_state_dict = {
+        f'{k.replace(prefix, "")}': v for k, v in lora_state_dict.items() if k.startswith(prefix)
+    }
+    text_encoder_state_dict = convert_state_dict_to_peft(convert_state_dict_to_diffusers(text_encoder_state_dict))
+    set_peft_model_state_dict(text_encoder, text_encoder_state_dict, adapter_name="default")
 
 
 # Adapted from torch-ema https://github.com/fadel/pytorch_ema/blob/master/torch_ema/ema.py#L14

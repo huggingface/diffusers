@@ -1,4 +1,4 @@
-<!--Copyright 2023 The Intel Labs Team Authors and HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The Intel Labs Team Authors and HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -31,14 +31,14 @@ Make sure to check out the Stable Diffusion [Tips](overview#tips) section to lea
 
 ## StableDiffusionLDM3DPipeline
 
-[[autodoc]] pipelines.stable_diffusion.pipeline_stable_diffusion_ldm3d.StableDiffusionLDM3DPipeline
+[[autodoc]] pipelines.stable_diffusion_ldm3d.pipeline_stable_diffusion_ldm3d.StableDiffusionLDM3DPipeline
 	- all
 	- __call__
 
 
 ## LDM3DPipelineOutput
 
-[[autodoc]] pipelines.stable_diffusion.pipeline_stable_diffusion_ldm3d.LDM3DPipelineOutput
+[[autodoc]] pipelines.stable_diffusion_ldm3d.pipeline_stable_diffusion_ldm3d.LDM3DPipelineOutput
 	- all
 	- __call__
 

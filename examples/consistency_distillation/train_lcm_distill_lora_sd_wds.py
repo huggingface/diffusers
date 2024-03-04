@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -38,7 +38,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from braceexpand import braceexpand
-from huggingface_hub import create_repo
+from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from peft import LoraConfig, get_peft_model, get_peft_model_state_dict
 from torch.utils.data import default_collate
@@ -61,6 +61,7 @@ from diffusers import (
     UNet2DConditionModel,
 )
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import resolve_interpolation_mode
 from diffusers.utils import check_min_version, is_wandb_available
 from diffusers.utils.import_utils import is_xformers_available
 
@@ -71,7 +72,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.25.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -156,7 +157,7 @@ class WebdatasetFilter:
             return False
 
 
-class Text2ImageDataset:
+class SDText2ImageDataset:
     def __init__(
         self,
         train_shards_path_or_url: Union[str, List[str]],
@@ -165,6 +166,7 @@ class Text2ImageDataset:
         global_batch_size: int,
         num_workers: int,
         resolution: int = 512,
+        interpolation_type: str = "bilinear",
         shuffle_buffer_size: int = 1000,
         pin_memory: bool = False,
         persistent_workers: bool = False,
@@ -174,10 +176,12 @@ class Text2ImageDataset:
             # flatten list using itertools
             train_shards_path_or_url = list(itertools.chain.from_iterable(train_shards_path_or_url))
 
+        interpolation_mode = resolve_interpolation_mode(interpolation_type)
+
         def transform(example):
             # resize image
             image = example["image"]
-            image = TF.resize(image, resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+            image = TF.resize(image, resolution, interpolation=interpolation_mode)
 
             # get crop coordinates and crop image
             c_top, c_left, _, _ = transforms.RandomCrop.get_params(image, output_size=(resolution, resolution))
@@ -353,23 +357,48 @@ def append_dims(x, target_dims):
 
 # From LCMScheduler.get_scalings_for_boundary_condition_discrete
 def scalings_for_boundary_conditions(timestep, sigma_data=0.5, timestep_scaling=10.0):
-    c_skip = sigma_data**2 / ((timestep / 0.1) ** 2 + sigma_data**2)
-    c_out = (timestep / 0.1) / ((timestep / 0.1) ** 2 + sigma_data**2) ** 0.5
+    scaled_timestep = timestep_scaling * timestep
+    c_skip = sigma_data**2 / (scaled_timestep**2 + sigma_data**2)
+    c_out = scaled_timestep / (scaled_timestep**2 + sigma_data**2) ** 0.5
     return c_skip, c_out
 
 
 # Compare LCMScheduler.step, Step 4
-def predicted_origin(model_output, timesteps, sample, prediction_type, alphas, sigmas):
+def get_predicted_original_sample(model_output, timesteps, sample, prediction_type, alphas, sigmas):
+    alphas = extract_into_tensor(alphas, timesteps, sample.shape)
+    sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
     if prediction_type == "epsilon":
-        sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
-        alphas = extract_into_tensor(alphas, timesteps, sample.shape)
         pred_x_0 = (sample - sigmas * model_output) / alphas
+    elif prediction_type == "sample":
+        pred_x_0 = model_output
     elif prediction_type == "v_prediction":
-        pred_x_0 = alphas[timesteps] * sample - sigmas[timesteps] * model_output
+        pred_x_0 = alphas * sample - sigmas * model_output
     else:
-        raise ValueError(f"Prediction type {prediction_type} currently not supported.")
+        raise ValueError(
+            f"Prediction type {prediction_type} is not supported; currently, `epsilon`, `sample`, and `v_prediction`"
+            f" are supported."
+        )
 
     return pred_x_0
+
+
+# Based on step 4 in DDIMScheduler.step
+def get_predicted_noise(model_output, timesteps, sample, prediction_type, alphas, sigmas):
+    alphas = extract_into_tensor(alphas, timesteps, sample.shape)
+    sigmas = extract_into_tensor(sigmas, timesteps, sample.shape)
+    if prediction_type == "epsilon":
+        pred_epsilon = model_output
+    elif prediction_type == "sample":
+        pred_epsilon = (sample - alphas * model_output) / sigmas
+    elif prediction_type == "v_prediction":
+        pred_epsilon = alphas * model_output + sigmas * sample
+    else:
+        raise ValueError(
+            f"Prediction type {prediction_type} is not supported; currently, `epsilon`, `sample`, and `v_prediction`"
+            f" are supported."
+        )
+
+    return pred_epsilon
 
 
 def extract_into_tensor(a, t, x_shape):
@@ -549,6 +578,15 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--interpolation_type",
+        type=str,
+        default="bilinear",
+        help=(
+            "The interpolation function used when resizing images to the desired resolution. Choose between `bilinear`,"
+            " `bicubic`, `box`, `nearest`, `nearest_exact`, `hamming`, and `lanczos`."
+        ),
+    )
+    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -686,6 +724,50 @@ def parse_args():
         default=64,
         help="The rank of the LoRA projection matrix.",
     )
+    parser.add_argument(
+        "--lora_alpha",
+        type=int,
+        default=64,
+        help=(
+            "The value of the LoRA alpha parameter, which controls the scaling factor in front of the LoRA weight"
+            " update delta_W. No scaling will be performed if this value is equal to `lora_rank`."
+        ),
+    )
+    parser.add_argument(
+        "--lora_dropout",
+        type=float,
+        default=0.0,
+        help="The dropout probability for the dropout layer added before applying the LoRA to each layer input.",
+    )
+    parser.add_argument(
+        "--lora_target_modules",
+        type=str,
+        default=None,
+        help=(
+            "A comma-separated string of target module keys to add LoRA to. If not set, a default list of modules will"
+            " be used. By default, LoRA will be applied to all conv and linear layers."
+        ),
+    )
+    parser.add_argument(
+        "--vae_encode_batch_size",
+        type=int,
+        default=32,
+        required=False,
+        help=(
+            "The batch size used when encoding (and decoding) images to latents (and vice versa) using the VAE."
+            " Encoding or decoding the whole batch at once may run into OOM issues."
+        ),
+    )
+    parser.add_argument(
+        "--timestep_scaling_factor",
+        type=float,
+        default=10.0,
+        help=(
+            "The multiplicative timestep scaling factor used when calculating the boundary scalings for LCM. The"
+            " higher the scaling is, the lower the approximation error, but the default value of 10.0 should typically"
+            " suffice."
+        ),
+    )
     # ----Mixed Precision----
     parser.add_argument(
         "--mixed_precision",
@@ -787,6 +869,12 @@ def encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompt
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -823,7 +911,7 @@ def main(args):
             os.makedirs(args.output_dir, exist_ok=True)
 
         if args.push_to_hub:
-            create_repo(
+            repo_id = create_repo(
                 repo_id=args.hub_model_id or Path(args.output_dir).name,
                 exist_ok=True,
                 token=args.hub_token,
@@ -835,34 +923,35 @@ def main(args):
         args.pretrained_teacher_model, subfolder="scheduler", revision=args.teacher_revision
     )
 
-    # The scheduler calculates the alpha and sigma schedule for us
+    # DDPMScheduler calculates the alpha and sigma noise schedules (based on the alpha bars) for us
     alpha_schedule = torch.sqrt(noise_scheduler.alphas_cumprod)
     sigma_schedule = torch.sqrt(1 - noise_scheduler.alphas_cumprod)
+    # Initialize the DDIM ODE solver for distillation.
     solver = DDIMSolver(
         noise_scheduler.alphas_cumprod.numpy(),
         timesteps=noise_scheduler.config.num_train_timesteps,
         ddim_timesteps=args.num_ddim_timesteps,
     )
 
-    # 2. Load tokenizers from SD-XL checkpoint.
+    # 2. Load tokenizers from SD 1.X/2.X checkpoint.
     tokenizer = AutoTokenizer.from_pretrained(
         args.pretrained_teacher_model, subfolder="tokenizer", revision=args.teacher_revision, use_fast=False
     )
 
-    # 3. Load text encoders from SD-1.5 checkpoint.
+    # 3. Load text encoders from SD 1.X/2.X checkpoint.
     # import correct text encoder classes
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_teacher_model, subfolder="text_encoder", revision=args.teacher_revision
     )
 
-    # 4. Load VAE from SD-XL checkpoint (or more stable VAE)
+    # 4. Load VAE from SD 1.X/2.X checkpoint
     vae = AutoencoderKL.from_pretrained(
         args.pretrained_teacher_model,
         subfolder="vae",
         revision=args.teacher_revision,
     )
 
-    # 5. Load teacher U-Net from SD-XL checkpoint
+    # 5. Load teacher U-Net from SD 1.X/2.X checkpoint
     teacher_unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
     )
@@ -872,7 +961,7 @@ def main(args):
     text_encoder.requires_grad_(False)
     teacher_unet.requires_grad_(False)
 
-    # 7. Create online (`unet`) student U-Nets.
+    # 7. Create online student U-Net.
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_teacher_model, subfolder="unet", revision=args.teacher_revision
     )
@@ -890,9 +979,10 @@ def main(args):
         )
 
     # 8. Add LoRA to the student U-Net, only the LoRA projection matrix will be updated by the optimizer.
-    lora_config = LoraConfig(
-        r=args.lora_rank,
-        target_modules=[
+    if args.lora_target_modules is not None:
+        lora_target_modules = [module_key.strip() for module_key in args.lora_target_modules.split(",")]
+    else:
+        lora_target_modules = [
             "to_q",
             "to_k",
             "to_v",
@@ -907,7 +997,12 @@ def main(args):
             "downsamplers.0.conv",
             "upsamplers.0.conv",
             "time_emb_proj",
-        ],
+        ]
+    lora_config = LoraConfig(
+        r=args.lora_rank,
+        target_modules=lora_target_modules,
+        lora_alpha=args.lora_alpha,
+        lora_dropout=args.lora_dropout,
     )
     unet = get_peft_model(unet, lora_config)
 
@@ -935,6 +1030,7 @@ def main(args):
     # Also move the alpha and sigma noise schedules to accelerator.device.
     alpha_schedule = alpha_schedule.to(accelerator.device)
     sigma_schedule = sigma_schedule.to(accelerator.device)
+    # Move the ODE solver to accelerator.device.
     solver = solver.to(accelerator.device)
 
     # 10. Handle saving and loading of checkpoints
@@ -1011,19 +1107,21 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
+    # 13. Dataset creation and data processing
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
     def compute_embeddings(prompt_batch, proportion_empty_prompts, text_encoder, tokenizer, is_train=True):
         prompt_embeds = encode_prompt(prompt_batch, text_encoder, tokenizer, proportion_empty_prompts, is_train)
         return {"prompt_embeds": prompt_embeds}
 
-    dataset = Text2ImageDataset(
+    dataset = SDText2ImageDataset(
         train_shards_path_or_url=args.train_shards_path_or_url,
         num_train_examples=args.max_train_samples,
         per_gpu_batch_size=args.train_batch_size,
         global_batch_size=args.train_batch_size * accelerator.num_processes,
         num_workers=args.dataloader_num_workers,
         resolution=args.resolution,
+        interpolation_type=args.interpolation_type,
         shuffle_buffer_size=1000,
         pin_memory=True,
         persistent_workers=True,
@@ -1037,6 +1135,7 @@ def main(args):
         tokenizer=tokenizer,
     )
 
+    # 14. LR Scheduler creation
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
     num_update_steps_per_epoch = math.ceil(train_dataloader.num_batches / args.gradient_accumulation_steps)
@@ -1051,6 +1150,7 @@ def main(args):
         num_training_steps=args.max_train_steps,
     )
 
+    # 15. Prepare for training
     # Prepare everything with our `accelerator`.
     unet, optimizer, lr_scheduler = accelerator.prepare(unet, optimizer, lr_scheduler)
 
@@ -1072,7 +1172,7 @@ def main(args):
     ).input_ids.to(accelerator.device)
     uncond_prompt_embeds = text_encoder(uncond_input_ids)[0]
 
-    # Train!
+    # 16. Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
@@ -1123,6 +1223,7 @@ def main(args):
     for epoch in range(first_epoch, args.num_train_epochs):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
+                # 1. Load and process the image and text conditioning
                 image, text = batch
 
                 image = image.to(accelerator.device, non_blocking=True)
@@ -1132,45 +1233,49 @@ def main(args):
                 if vae.dtype != weight_dtype:
                     vae.to(dtype=weight_dtype)
 
-                # encode pixel values with batch size of at most 32
+                # encode pixel values with batch size of at most args.vae_encode_batch_size
                 latents = []
-                for i in range(0, pixel_values.shape[0], 32):
-                    latents.append(vae.encode(pixel_values[i : i + 32]).latent_dist.sample())
+                for i in range(0, pixel_values.shape[0], args.vae_encode_batch_size):
+                    latents.append(vae.encode(pixel_values[i : i + args.vae_encode_batch_size]).latent_dist.sample())
                 latents = torch.cat(latents, dim=0)
 
                 latents = latents * vae.config.scaling_factor
                 latents = latents.to(weight_dtype)
-
-                # Sample noise that we'll add to the latents
-                noise = torch.randn_like(latents)
                 bsz = latents.shape[0]
 
-                # Sample a random timestep for each image t_n ~ U[0, N - k - 1] without bias.
+                # 2. Sample a random timestep for each image t_n from the ODE solver timesteps without bias.
+                # For the DDIM solver, the timestep schedule is [T - 1, T - k - 1, T - 2 * k - 1, ...]
                 topk = noise_scheduler.config.num_train_timesteps // args.num_ddim_timesteps
                 index = torch.randint(0, args.num_ddim_timesteps, (bsz,), device=latents.device).long()
                 start_timesteps = solver.ddim_timesteps[index]
                 timesteps = start_timesteps - topk
                 timesteps = torch.where(timesteps < 0, torch.zeros_like(timesteps), timesteps)
 
-                # 20.4.4. Get boundary scalings for start_timesteps and (end) timesteps.
-                c_skip_start, c_out_start = scalings_for_boundary_conditions(start_timesteps)
+                # 3. Get boundary scalings for start_timesteps and (end) timesteps.
+                c_skip_start, c_out_start = scalings_for_boundary_conditions(
+                    start_timesteps, timestep_scaling=args.timestep_scaling_factor
+                )
                 c_skip_start, c_out_start = [append_dims(x, latents.ndim) for x in [c_skip_start, c_out_start]]
-                c_skip, c_out = scalings_for_boundary_conditions(timesteps)
+                c_skip, c_out = scalings_for_boundary_conditions(
+                    timesteps, timestep_scaling=args.timestep_scaling_factor
+                )
                 c_skip, c_out = [append_dims(x, latents.ndim) for x in [c_skip, c_out]]
 
-                # 20.4.5. Add noise to the latents according to the noise magnitude at each timestep
-                # (this is the forward diffusion process) [z_{t_{n + k}} in Algorithm 1]
+                # 4. Sample noise from the prior and add it to the latents according to the noise magnitude at each
+                # timestep (this is the forward diffusion process) [z_{t_{n + k}} in Algorithm 1]
+                noise = torch.randn_like(latents)
                 noisy_model_input = noise_scheduler.add_noise(latents, noise, start_timesteps)
 
-                # 20.4.6. Sample a random guidance scale w from U[w_min, w_max] and embed it
+                # 5. Sample a random guidance scale w from U[w_min, w_max]
+                # Note that for LCM-LoRA distillation it is not necessary to use a guidance scale embedding
                 w = (args.w_max - args.w_min) * torch.rand((bsz,)) + args.w_min
                 w = w.reshape(bsz, 1, 1, 1)
                 w = w.to(device=latents.device, dtype=latents.dtype)
 
-                # 20.4.8. Prepare prompt embeds and unet_added_conditions
+                # 6. Prepare prompt embeds and unet_added_conditions
                 prompt_embeds = encoded_text.pop("prompt_embeds")
 
-                # 20.4.9. Get online LCM prediction on z_{t_{n + k}}, w, c, t_{n + k}
+                # 7. Get online LCM prediction on z_{t_{n + k}} (noisy_model_input), w, c, t_{n + k} (start_timesteps)
                 noise_pred = unet(
                     noisy_model_input,
                     start_timesteps,
@@ -1179,7 +1284,7 @@ def main(args):
                     added_cond_kwargs=encoded_text,
                 ).sample
 
-                pred_x_0 = predicted_origin(
+                pred_x_0 = get_predicted_original_sample(
                     noise_pred,
                     start_timesteps,
                     noisy_model_input,
@@ -1190,17 +1295,27 @@ def main(args):
 
                 model_pred = c_skip_start * noisy_model_input + c_out_start * pred_x_0
 
-                # 20.4.10. Use the ODE solver to predict the kth step in the augmented PF-ODE trajectory after
-                # noisy_latents with both the conditioning embedding c and unconditional embedding 0
-                # Get teacher model prediction on noisy_latents and conditional embedding
+                # 8. Compute the conditional and unconditional teacher model predictions to get CFG estimates of the
+                # predicted noise eps_0 and predicted original sample x_0, then run the ODE solver using these
+                # estimates to predict the data point in the augmented PF-ODE trajectory corresponding to the next ODE
+                # solver timestep.
                 with torch.no_grad():
                     with torch.autocast("cuda"):
+                        # 1. Get teacher model prediction on noisy_model_input z_{t_{n + k}} and conditional embedding c
                         cond_teacher_output = teacher_unet(
                             noisy_model_input.to(weight_dtype),
                             start_timesteps,
                             encoder_hidden_states=prompt_embeds.to(weight_dtype),
                         ).sample
-                        cond_pred_x0 = predicted_origin(
+                        cond_pred_x0 = get_predicted_original_sample(
+                            cond_teacher_output,
+                            start_timesteps,
+                            noisy_model_input,
+                            noise_scheduler.config.prediction_type,
+                            alpha_schedule,
+                            sigma_schedule,
+                        )
+                        cond_pred_noise = get_predicted_noise(
                             cond_teacher_output,
                             start_timesteps,
                             noisy_model_input,
@@ -1209,13 +1324,21 @@ def main(args):
                             sigma_schedule,
                         )
 
-                        # Get teacher model prediction on noisy_latents and unconditional embedding
+                        # 2. Get teacher model prediction on noisy_model_input z_{t_{n + k}} and unconditional embedding 0
                         uncond_teacher_output = teacher_unet(
                             noisy_model_input.to(weight_dtype),
                             start_timesteps,
                             encoder_hidden_states=uncond_prompt_embeds.to(weight_dtype),
                         ).sample
-                        uncond_pred_x0 = predicted_origin(
+                        uncond_pred_x0 = get_predicted_original_sample(
+                            uncond_teacher_output,
+                            start_timesteps,
+                            noisy_model_input,
+                            noise_scheduler.config.prediction_type,
+                            alpha_schedule,
+                            sigma_schedule,
+                        )
+                        uncond_pred_noise = get_predicted_noise(
                             uncond_teacher_output,
                             start_timesteps,
                             noisy_model_input,
@@ -1224,12 +1347,17 @@ def main(args):
                             sigma_schedule,
                         )
 
-                        # 20.4.11. Perform "CFG" to get x_prev estimate (using the LCM paper's CFG formulation)
+                        # 3. Calculate the CFG estimate of x_0 (pred_x0) and eps_0 (pred_noise)
+                        # Note that this uses the LCM paper's CFG formulation rather than the Imagen CFG formulation
                         pred_x0 = cond_pred_x0 + w * (cond_pred_x0 - uncond_pred_x0)
-                        pred_noise = cond_teacher_output + w * (cond_teacher_output - uncond_teacher_output)
+                        pred_noise = cond_pred_noise + w * (cond_pred_noise - uncond_pred_noise)
+                        # 4. Run one step of the ODE solver to estimate the next point x_prev on the
+                        # augmented PF-ODE trajectory (solving backward in time)
+                        # Note that the DDIM step depends on both the predicted x_0 and source noise eps_0.
                         x_prev = solver.ddim_step(pred_x0, pred_noise, index)
 
-                # 20.4.12. Get target LCM prediction on x_prev, w, c, t_n
+                # 9. Get target LCM prediction on x_prev, w, c, t_n (timesteps)
+                # Note that we do not use a separate target network for LCM-LoRA distillation.
                 with torch.no_grad():
                     with torch.autocast("cuda", dtype=weight_dtype):
                         target_noise_pred = unet(
@@ -1238,7 +1366,7 @@ def main(args):
                             timestep_cond=None,
                             encoder_hidden_states=prompt_embeds.float(),
                         ).sample
-                    pred_x_0 = predicted_origin(
+                    pred_x_0 = get_predicted_original_sample(
                         target_noise_pred,
                         timesteps,
                         x_prev,
@@ -1248,7 +1376,7 @@ def main(args):
                     )
                     target = c_skip * x_prev + c_out * pred_x_0
 
-                # 20.4.13. Calculate loss
+                # 10. Calculate loss
                 if args.loss_type == "l2":
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 elif args.loss_type == "huber":
@@ -1256,7 +1384,7 @@ def main(args):
                         torch.sqrt((model_pred.float() - target.float()) ** 2 + args.huber_c**2) - args.huber_c
                     )
 
-                # 20.4.14. Backpropagate on the online student model (`unet`)
+                # 11. Backpropagate on the online student model (`unet`)
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(unet.parameters(), args.max_grad_norm)
@@ -1312,6 +1440,14 @@ def main(args):
         unet.save_pretrained(args.output_dir)
         lora_state_dict = get_peft_model_state_dict(unet, adapter_name="default")
         StableDiffusionPipeline.save_lora_weights(os.path.join(args.output_dir, "unet_lora"), lora_state_dict)
+
+        if args.push_to_hub:
+            upload_folder(
+                repo_id=repo_id,
+                folder_path=args.output_dir,
+                commit_message="End of training",
+                ignore_patterns=["step_*", "epoch_*"],
+            )
 
     accelerator.end_training()
 

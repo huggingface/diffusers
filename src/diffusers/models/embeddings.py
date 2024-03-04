@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from torch import nn
 
-from ..utils import USE_PEFT_BACKEND
+from ..utils import USE_PEFT_BACKEND, deprecate
 from .activations import get_activation
 from .attention_processor import Attention
 from .lora import LoRACompatibleLinear
@@ -197,11 +197,12 @@ class TimestepEmbedding(nn.Module):
         out_dim: int = None,
         post_act_fn: Optional[str] = None,
         cond_proj_dim=None,
+        sample_proj_bias=True,
     ):
         super().__init__()
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
-        self.linear_1 = linear_cls(in_channels, time_embed_dim)
+        self.linear_1 = linear_cls(in_channels, time_embed_dim, sample_proj_bias)
 
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
@@ -214,7 +215,7 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = out_dim
         else:
             time_embed_dim_out = time_embed_dim
-        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out)
+        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out, sample_proj_bias)
 
         if post_act_fn is None:
             self.post_act = None
@@ -461,7 +462,7 @@ class ImageProjection(nn.Module):
         return image_embeds
 
 
-class MLPProjection(nn.Module):
+class IPAdapterFullImageProjection(nn.Module):
     def __init__(self, image_embed_dim=1024, cross_attention_dim=1024):
         super().__init__()
         from .attention import FeedForward
@@ -620,29 +621,34 @@ class AttentionPooling(nn.Module):
         return a[:, 0, :]  # cls_token
 
 
-class FourierEmbedder(nn.Module):
-    def __init__(self, num_freqs=64, temperature=100):
-        super().__init__()
+def get_fourier_embeds_from_boundingbox(embed_dim, box):
+    """
+    Args:
+        embed_dim: int
+        box: a 3-D tensor [B x N x 4] representing the bounding boxes for GLIGEN pipeline
+    Returns:
+        [B x N x embed_dim] tensor of positional embeddings
+    """
 
-        self.num_freqs = num_freqs
-        self.temperature = temperature
+    batch_size, num_boxes = box.shape[:2]
 
-        freq_bands = temperature ** (torch.arange(num_freqs) / num_freqs)
-        freq_bands = freq_bands[None, None, None]
-        self.register_buffer("freq_bands", freq_bands, persistent=False)
+    emb = 100 ** (torch.arange(embed_dim) / embed_dim)
+    emb = emb[None, None, None].to(device=box.device, dtype=box.dtype)
+    emb = emb * box.unsqueeze(-1)
 
-    def __call__(self, x):
-        x = self.freq_bands * x.unsqueeze(-1)
-        return torch.stack((x.sin(), x.cos()), dim=-1).permute(0, 1, 3, 4, 2).reshape(*x.shape[:2], -1)
+    emb = torch.stack((emb.sin(), emb.cos()), dim=-1)
+    emb = emb.permute(0, 1, 3, 4, 2).reshape(batch_size, num_boxes, embed_dim * 2 * 4)
+
+    return emb
 
 
-class PositionNet(nn.Module):
+class GLIGENTextBoundingboxProjection(nn.Module):
     def __init__(self, positive_len, out_dim, feature_type="text-only", fourier_freqs=8):
         super().__init__()
         self.positive_len = positive_len
         self.out_dim = out_dim
 
-        self.fourier_embedder = FourierEmbedder(num_freqs=fourier_freqs)
+        self.fourier_embedder_dim = fourier_freqs
         self.position_dim = fourier_freqs * 2 * 4  # 2: sin/cos, 4: xyxy
 
         if isinstance(out_dim, tuple):
@@ -691,7 +697,7 @@ class PositionNet(nn.Module):
         masks = masks.unsqueeze(-1)
 
         # embedding position (it may includes padding as placeholder)
-        xyxy_embedding = self.fourier_embedder(boxes)  # B*N*4 -> B*N*C
+        xyxy_embedding = get_fourier_embeds_from_boundingbox(self.fourier_embedder_dim, boxes)  # B*N*4 -> B*N*C
 
         # learnable null embedding
         xyxy_null = self.null_position_feature.view(1, 1, -1)
@@ -729,7 +735,7 @@ class PositionNet(nn.Module):
         return objs
 
 
-class CombinedTimestepSizeEmbeddings(nn.Module):
+class PixArtAlphaCombinedTimestepSizeEmbeddings(nn.Module):
     """
     For PixArt-Alpha.
 
@@ -746,45 +752,27 @@ class CombinedTimestepSizeEmbeddings(nn.Module):
 
         self.use_additional_conditions = use_additional_conditions
         if use_additional_conditions:
-            self.use_additional_conditions = True
             self.additional_condition_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
             self.resolution_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
             self.aspect_ratio_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
-
-    def apply_condition(self, size: torch.Tensor, batch_size: int, embedder: nn.Module):
-        if size.ndim == 1:
-            size = size[:, None]
-
-        if size.shape[0] != batch_size:
-            size = size.repeat(batch_size // size.shape[0], 1)
-            if size.shape[0] != batch_size:
-                raise ValueError(f"`batch_size` should be {size.shape[0]} but found {batch_size}.")
-
-        current_batch_size, dims = size.shape[0], size.shape[1]
-        size = size.reshape(-1)
-        size_freq = self.additional_condition_proj(size).to(size.dtype)
-
-        size_emb = embedder(size_freq)
-        size_emb = size_emb.reshape(current_batch_size, dims * self.outdim)
-        return size_emb
 
     def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
         timesteps_proj = self.time_proj(timestep)
         timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
 
         if self.use_additional_conditions:
-            resolution = self.apply_condition(resolution, batch_size=batch_size, embedder=self.resolution_embedder)
-            aspect_ratio = self.apply_condition(
-                aspect_ratio, batch_size=batch_size, embedder=self.aspect_ratio_embedder
-            )
-            conditioning = timesteps_emb + torch.cat([resolution, aspect_ratio], dim=1)
+            resolution_emb = self.additional_condition_proj(resolution.flatten()).to(hidden_dtype)
+            resolution_emb = self.resolution_embedder(resolution_emb).reshape(batch_size, -1)
+            aspect_ratio_emb = self.additional_condition_proj(aspect_ratio.flatten()).to(hidden_dtype)
+            aspect_ratio_emb = self.aspect_ratio_embedder(aspect_ratio_emb).reshape(batch_size, -1)
+            conditioning = timesteps_emb + torch.cat([resolution_emb, aspect_ratio_emb], dim=1)
         else:
             conditioning = timesteps_emb
 
         return conditioning
 
 
-class CaptionProjection(nn.Module):
+class PixArtAlphaTextProjection(nn.Module):
     """
     Projects caption embeddings. Also handles dropout for classifier-free guidance.
 
@@ -796,16 +784,15 @@ class CaptionProjection(nn.Module):
         self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
         self.act_1 = nn.GELU(approximate="tanh")
         self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
-        self.register_buffer("y_embedding", nn.Parameter(torch.randn(num_tokens, in_features) / in_features**0.5))
 
-    def forward(self, caption, force_drop_ids=None):
+    def forward(self, caption):
         hidden_states = self.linear_1(caption)
         hidden_states = self.act_1(hidden_states)
         hidden_states = self.linear_2(hidden_states)
         return hidden_states
 
 
-class Resampler(nn.Module):
+class IPAdapterPlusImageProjection(nn.Module):
     """Resampler of IP-Adapter Plus.
 
     Args:
@@ -891,3 +878,38 @@ class Resampler(nn.Module):
 
         latents = self.proj_out(latents)
         return self.norm_out(latents)
+
+
+class MultiIPAdapterImageProjection(nn.Module):
+    def __init__(self, IPAdapterImageProjectionLayers: Union[List[nn.Module], Tuple[nn.Module]]):
+        super().__init__()
+        self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
+
+    def forward(self, image_embeds: List[torch.FloatTensor]):
+        projected_image_embeds = []
+
+        # currently, we accept `image_embeds` as
+        #  1. a tensor (deprecated) with shape [batch_size, embed_dim] or [batch_size, sequence_length, embed_dim]
+        #  2. list of `n` tensors where `n` is number of ip-adapters, each tensor can hae shape [batch_size, num_images, embed_dim] or [batch_size, num_images, sequence_length, embed_dim]
+        if not isinstance(image_embeds, list):
+            deprecation_message = (
+                "You have passed a tensor as `image_embeds`.This is deprecated and will be removed in a future release."
+                " Please make sure to update your script to pass `image_embeds` as a list of tensors to supress this warning."
+            )
+            deprecate("image_embeds not a list", "1.0.0", deprecation_message, standard_warn=False)
+            image_embeds = [image_embeds.unsqueeze(1)]
+
+        if len(image_embeds) != len(self.image_projection_layers):
+            raise ValueError(
+                f"image_embeds must have the same length as image_projection_layers, got {len(image_embeds)} and {len(self.image_projection_layers)}"
+            )
+
+        for image_embed, image_projection_layer in zip(image_embeds, self.image_projection_layers):
+            batch_size, num_images = image_embed.shape[0], image_embed.shape[1]
+            image_embed = image_embed.reshape((batch_size * num_images,) + image_embed.shape[2:])
+            image_embed = image_projection_layer(image_embed)
+            image_embed = image_embed.reshape((batch_size, num_images) + image_embed.shape[1:])
+
+            projected_image_embeds.append(image_embed)
+
+        return projected_image_embeds

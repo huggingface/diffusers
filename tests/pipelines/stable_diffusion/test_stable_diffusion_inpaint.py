@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ from diffusers.utils.testing_utils import (
     load_image,
     load_numpy,
     nightly,
+    numpy_cosine_similarity_distance,
     require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
@@ -56,7 +57,12 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -97,7 +103,11 @@ def _test_inpaint_compile(in_queue, out_queue, timeout):
 
 
 class StableDiffusionInpaintPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionInpaintPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
@@ -318,6 +328,64 @@ class StableDiffusionInpaintPipelineFastTests(
         inputs["generator"] = generator
         out_1 = sd_pipe(**inputs).images
         assert np.abs(out_0 - out_1).max() < 1e-2
+
+    def test_pipeline_interrupt(self):
+        components = self.get_dummy_components()
+        sd_pipe = StableDiffusionInpaintPipeline(**components)
+        sd_pipe = sd_pipe.to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=None)
+
+        inputs = self.get_dummy_inputs(torch_device)
+
+        prompt = "hey"
+        num_inference_steps = 3
+
+        # store intermediate latents from the generation process
+        class PipelineState:
+            def __init__(self):
+                self.state = []
+
+            def apply(self, pipe, i, t, callback_kwargs):
+                self.state.append(callback_kwargs["latents"])
+                return callback_kwargs
+
+        pipe_state = PipelineState()
+        sd_pipe(
+            prompt,
+            image=inputs["image"],
+            mask_image=inputs["mask_image"],
+            num_inference_steps=num_inference_steps,
+            output_type="np",
+            generator=torch.Generator("cpu").manual_seed(0),
+            callback_on_step_end=pipe_state.apply,
+        ).images
+
+        # interrupt generation at step index
+        interrupt_step_idx = 1
+
+        def callback_on_step_end(pipe, i, t, callback_kwargs):
+            if i == interrupt_step_idx:
+                pipe._interrupt = True
+
+            return callback_kwargs
+
+        output_interrupted = sd_pipe(
+            prompt,
+            image=inputs["image"],
+            mask_image=inputs["mask_image"],
+            num_inference_steps=num_inference_steps,
+            output_type="latent",
+            generator=torch.Generator("cpu").manual_seed(0),
+            callback_on_step_end=callback_on_step_end,
+        ).images
+
+        # fetch intermediate latents at the interrupted step
+        # from the completed generation process
+        intermediate_latent = pipe_state.state[interrupt_step_idx]
+
+        # compare the intermediate latent to the output of the interrupted process
+        # they should be the same
+        assert torch.allclose(intermediate_latent, output_interrupted, atol=1e-4)
 
 
 class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipelineFastTests):
@@ -713,7 +781,42 @@ class StableDiffusionInpaintPipelineSlowTests(unittest.TestCase):
         inputs["num_inference_steps"] = 5
         image = pipe(**inputs).images[0]
 
-        assert np.max(np.abs(image - image_ckpt)) < 5e-4
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+
+        assert max_diff < 1e-4
+
+    def test_single_file_component_configs(self):
+        pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-inpainting", variant="fp16")
+
+        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/sd-v1-5-inpainting.ckpt"
+        single_file_pipe = StableDiffusionInpaintPipeline.from_single_file(ckpt_path, load_safety_checker=True)
+
+        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
+            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
+                continue
+            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        for param_name, param_value in single_file_pipe.unet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.unet.config[param_name] == param_value
+            ), f"{param_name} is differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.vae.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.vae.config[param_name] == param_value
+            ), f"{param_name} is differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.safety_checker.config.to_dict().items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.safety_checker.config.to_dict()[param_name] == param_value
+            ), f"{param_name} is differs between single file loading and pretrained loading"
 
 
 @slow

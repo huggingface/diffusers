@@ -19,6 +19,8 @@
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
     title: Inference with PEFT
+  - local: tutorials/fast_diffusion
+    title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
 - sections:
   - sections:
@@ -50,12 +52,16 @@
       title: Image-to-image
     - local: using-diffusers/inpaint
       title: Inpainting
+    - local: using-diffusers/text-img2vid
+      title: Text or image-to-video
     - local: using-diffusers/depth2img
       title: Depth-to-image
     title: Tasks
   - sections:
     - local: using-diffusers/textual_inversion_inference
       title: Textual inversion
+    - local: using-diffusers/ip_adapter
+      title: IP-Adapter
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
@@ -158,6 +164,8 @@
       title: xFormers
     - local: optimization/tome
       title: Token merging
+    - local: optimization/deepcache
+      title: DeepCache
     title: General optimizations
   - sections:
     - local: using-diffusers/stable_diffusion_jax_how_to
@@ -208,6 +216,8 @@
       title: Textual Inversion
     - local: api/loaders/unet
       title: UNet
+    - local: api/loaders/peft
+      title: PEFT
     title: Loaders
   - sections:
     - local: api/models/overview
@@ -222,6 +232,8 @@
       title: UNet3DConditionModel
     - local: api/models/unet-motion
       title: UNetMotionModel
+    - local: api/models/uvit2d
+      title: UViT2DModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
@@ -244,14 +256,12 @@
   - sections:
     - local: api/pipelines/overview
       title: Overview
-    - local: api/pipelines/alt_diffusion
-      title: AltDiffusion
+    - local: api/pipelines/amused
+      title: aMUSEd
     - local: api/pipelines/animatediff
       title: AnimateDiff
     - local: api/pipelines/attend_and_excite
       title: Attend-and-Excite
-    - local: api/pipelines/audio_diffusion
-      title: Audio Diffusion
     - local: api/pipelines/audioldm
       title: AudioLDM
     - local: api/pipelines/audioldm2
@@ -266,12 +276,6 @@
       title: ControlNet
     - local: api/pipelines/controlnet_sdxl
       title: ControlNet with Stable Diffusion XL
-    - local: api/pipelines/controlnetxs
-      title: ControlNet-XS
-    - local: api/pipelines/controlnetxs_sdxl
-      title: ControlNet-XS with Stable Diffusion XL
-    - local: api/pipelines/cycle_diffusion
-      title: Cycle Diffusion
     - local: api/pipelines/dance_diffusion
       title: Dance Diffusion
     - local: api/pipelines/ddim
@@ -284,6 +288,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/i2vgenxl
+      title: I2VGen-XL
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
@@ -302,26 +308,16 @@
       title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: Paint by Example
-    - local: api/pipelines/paradigms
-      title: Parallel Sampling of Diffusion Models
-    - local: api/pipelines/pix2pix_zero
-      title: Pix2Pix Zero
+    - local: api/pipelines/pia
+      title: Personalized Image Animator (PIA)
     - local: api/pipelines/pixart
       title: PixArt-α
-    - local: api/pipelines/pndm
-      title: PNDM
-    - local: api/pipelines/repaint
-      title: RePaint
-    - local: api/pipelines/score_sde_ve
-      title: Score SDE VE
     - local: api/pipelines/self_attention_guidance
       title: Self-Attention Guidance
     - local: api/pipelines/semantic_stable_diffusion
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
-    - local: api/pipelines/spectrogram_diffusion
-      title: Spectrogram Diffusion
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -329,6 +325,8 @@
         title: Text-to-image
       - local: api/pipelines/stable_diffusion/img2img
         title: Image-to-image
+      - local: api/pipelines/stable_diffusion/svd
+        title: Image-to-video
       - local: api/pipelines/stable_diffusion/inpaint
         title: Inpainting
       - local: api/pipelines/stable_diffusion/depth2img
@@ -347,6 +345,8 @@
         title: Latent upscaler
       - local: api/pipelines/stable_diffusion/upscale
         title: Super-resolution
+      - local: api/pipelines/stable_diffusion/k_diffusion
+        title: K-Diffusion
       - local: api/pipelines/stable_diffusion/ldm3d_diffusion
         title: LDM3D Text-to-(RGB, Depth), Text-to-(RGB-pano, Depth-pano), LDM3D Upscaler
       - local: api/pipelines/stable_diffusion/adapter
@@ -356,26 +356,16 @@
       title: Stable Diffusion
     - local: api/pipelines/stable_unclip
       title: Stable unCLIP
-    - local: api/pipelines/stochastic_karras_ve
-      title: Stochastic Karras VE
-    - local: api/pipelines/model_editing
-      title: Text-to-image model editing
     - local: api/pipelines/text_to_video
       title: Text-to-video
     - local: api/pipelines/text_to_video_zero
       title: Text2Video-Zero
     - local: api/pipelines/unclip
       title: unCLIP
-    - local: api/pipelines/latent_diffusion_uncond
-      title: Unconditional Latent Diffusion
     - local: api/pipelines/unidiffuser
       title: UniDiffuser
     - local: api/pipelines/value_guided_sampling
       title: Value-guided sampling
-    - local: api/pipelines/versatile_diffusion
-      title: Versatile Diffusion
-    - local: api/pipelines/vq_diffusion
-      title: VQ Diffusion
     - local: api/pipelines/wuerstchen
       title: Wuerstchen
     title: Pipelines

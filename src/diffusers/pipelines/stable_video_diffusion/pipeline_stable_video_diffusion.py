@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ from ...image_processor import VaeImageProcessor
 from ...models import AutoencoderKLTemporalDecoder, UNetSpatioTemporalConditionModel
 from ...schedulers import EulerDiscreteScheduler
 from ...utils import BaseOutput, logging
-from ...utils.torch_utils import randn_tensor
+from ...utils.torch_utils import is_compiled_module, randn_tensor
 from ..pipeline_utils import DiffusionPipeline
 
 
@@ -40,10 +40,8 @@ def _append_dims(x, target_dims):
     return x[(...,) + (None,) * dims_to_append]
 
 
-def tensor2vid(video: torch.Tensor, processor, output_type="np"):
-    # Based on:
-    # https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
-
+# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
+def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
     for batch_idx in range(batch_size):
@@ -51,6 +49,15 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         batch_output = processor.postprocess(batch_vid, output_type)
 
         outputs.append(batch_output)
+
+    if output_type == "np":
+        outputs = np.stack(outputs)
+
+    elif output_type == "pt":
+        outputs = torch.stack(outputs)
+
+    elif not output_type == "pil":
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
 
     return outputs
 
@@ -77,7 +84,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     implemented for all pipelines (downloading, saving, running on a particular device, etc.).
 
     Args:
-        vae ([`AutoencoderKL`]):
+        vae ([`AutoencoderKLTemporalDecoder`]):
             Variational Auto-Encoder (VAE) model to encode and decode images to and from latent representations.
         image_encoder ([`~transformers.CLIPVisionModelWithProjection`]):
             Frozen CLIP image-encoder ([laion/CLIP-ViT-H-14-laion2B-s32B-b79K](https://huggingface.co/laion/CLIP-ViT-H-14-laion2B-s32B-b79K)).
@@ -125,15 +132,15 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             image = _resize_with_antialiasing(image, (224, 224))
             image = (image + 1.0) / 2.0
 
-            # Normalize the image with for CLIP input
-            image = self.feature_extractor(
-                images=image,
-                do_normalize=True,
-                do_center_crop=False,
-                do_resize=False,
-                do_rescale=False,
-                return_tensors="pt",
-            ).pixel_values
+        # Normalize the image with for CLIP input
+        image = self.feature_extractor(
+            images=image,
+            do_normalize=True,
+            do_center_crop=False,
+            do_resize=False,
+            do_rescale=False,
+            return_tensors="pt",
+        ).pixel_values
 
         image = image.to(device=device, dtype=dtype)
         image_embeddings = self.image_encoder(image).image_embeds
@@ -211,7 +218,8 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         latents = 1 / self.vae.config.scaling_factor * latents
 
-        accepts_num_frames = "num_frames" in set(inspect.signature(self.vae.forward).parameters.keys())
+        forward_vae_fn = self.vae._orig_mod.forward if is_compiled_module(self.vae) else self.vae.forward
+        accepts_num_frames = "num_frames" in set(inspect.signature(forward_vae_fn).parameters.keys())
 
         # decode decode_chunk_size frames at a time to avoid OOM
         frames = []
@@ -290,7 +298,9 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1 and self.unet.config.time_cond_proj_dim is None
+        if isinstance(self.guidance_scale, (int, float)):
+            return self.guidance_scale
+        return self.guidance_scale.max() > 1
 
     @property
     def num_timesteps(self):
@@ -308,7 +318,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         max_guidance_scale: float = 3.0,
         fps: int = 7,
         motion_bucket_id: int = 127,
-        noise_aug_strength: int = 0.02,
+        noise_aug_strength: float = 0.02,
         decode_chunk_size: Optional[int] = None,
         num_videos_per_prompt: Optional[int] = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
@@ -323,8 +333,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
 
         Args:
             image (`PIL.Image.Image` or `List[PIL.Image.Image]` or `torch.FloatTensor`):
-                Image or images to guide image generation. If you provide a tensor, it needs to be compatible with
-                [`CLIPImageProcessor`](https://huggingface.co/lambdalabs/sd-image-variations-diffusers/blob/main/feature_extractor/preprocessor_config.json).
+                Image or images to guide image generation. If you provide a tensor, the expected value range is between `[0,1]`.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated image.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -343,7 +352,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 Note that Stable Diffusion Video's UNet was micro-conditioned on fps-1 during training.
             motion_bucket_id (`int`, *optional*, defaults to 127):
                 The motion bucket ID. Used as conditioning for the generation. The higher the number the more motion will be in the video.
-            noise_aug_strength (`int`, *optional*, defaults to 0.02):
+            noise_aug_strength (`float`, *optional*, defaults to 0.02):
                 The amount of noise added to the init image, the higher it is the less the video will look like the init image. Increase it for more motion.
             decode_chunk_size (`int`, *optional*):
                 The number of frames to decode at a time. The higher the chunk size, the higher the temporal consistency
@@ -415,10 +424,10 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
-        do_classifier_free_guidance = max_guidance_scale > 1.0
+        self._guidance_scale = max_guidance_scale
 
         # 3. Encode input image
-        image_embeddings = self._encode_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
+        image_embeddings = self._encode_image(image, device, num_videos_per_prompt, self.do_classifier_free_guidance)
 
         # NOTE: Stable Diffusion Video was conditioned on fps - 1, which
         # is why it is reduced here.
@@ -426,15 +435,20 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         fps = fps - 1
 
         # 4. Encode input image using VAE
-        image = self.image_processor.preprocess(image, height=height, width=width)
-        noise = randn_tensor(image.shape, generator=generator, device=image.device, dtype=image.dtype)
+        image = self.image_processor.preprocess(image, height=height, width=width).to(device)
+        noise = randn_tensor(image.shape, generator=generator, device=device, dtype=image.dtype)
         image = image + noise_aug_strength * noise
 
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
         if needs_upcasting:
             self.vae.to(dtype=torch.float32)
 
-        image_latents = self._encode_vae_image(image, device, num_videos_per_prompt, do_classifier_free_guidance)
+        image_latents = self._encode_vae_image(
+            image,
+            device=device,
+            num_videos_per_prompt=num_videos_per_prompt,
+            do_classifier_free_guidance=self.do_classifier_free_guidance,
+        )
         image_latents = image_latents.to(image_embeddings.dtype)
 
         # cast back to fp16 if needed
@@ -453,7 +467,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
             image_embeddings.dtype,
             batch_size,
             num_videos_per_prompt,
-            do_classifier_free_guidance,
+            self.do_classifier_free_guidance,
         )
         added_time_ids = added_time_ids.to(device)
 
@@ -489,7 +503,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
                 # Concatenate image_latents over channels dimention
@@ -505,7 +519,7 @@ class StableVideoDiffusionPipeline(DiffusionPipeline):
                 )[0]
 
                 # perform guidance
-                if do_classifier_free_guidance:
+                if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_cond = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_cond - noise_pred_uncond)
 

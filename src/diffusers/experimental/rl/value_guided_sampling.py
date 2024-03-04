@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@ import numpy as np
 import torch
 import tqdm
 
-from ...models.unet_1d import UNet1DModel
+from ...models.unets.unet_1d import UNet1DModel
 from ...pipelines import DiffusionPipeline
 from ...utils.dummy_pt_objects import DDPMScheduler
 from ...utils.torch_utils import randn_tensor
@@ -49,10 +49,9 @@ class ValueGuidedRLPipeline(DiffusionPipeline):
         env,
     ):
         super().__init__()
-        self.value_function = value_function
-        self.unet = unet
-        self.scheduler = scheduler
-        self.env = env
+
+        self.register_modules(value_function=value_function, unet=unet, scheduler=scheduler, env=env)
+
         self.data = env.get_dataset()
         self.means = {}
         for key in self.data.keys():

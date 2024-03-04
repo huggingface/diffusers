@@ -1,5 +1,5 @@
 #
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 # SPDX-FileCopyrightText: Copyright (c) 1993-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -50,6 +50,7 @@ from diffusers.pipelines.stable_diffusion import (
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
 )
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img import retrieve_latents
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import logging
 
@@ -608,7 +609,7 @@ class TorchVAEEncoder(torch.nn.Module):
         self.vae_encoder = model
 
     def forward(self, x):
-        return self.vae_encoder.encode(x).latent_dist.sample()
+        return retrieve_latents(self.vae_encoder.encode(x))
 
 
 class VAEEncoder(BaseModel):
@@ -1004,7 +1005,7 @@ class TensorRTStableDiffusionImg2ImgPipeline(StableDiffusionImg2ImgPipeline):
         """
         self.generator = generator
         self.denoising_steps = num_inference_steps
-        self.guidance_scale = guidance_scale
+        self._guidance_scale = guidance_scale
 
         # Pre-compute latent input scales and linear multistep coefficients
         self.scheduler.set_timesteps(self.denoising_steps, device=self.torch_device)

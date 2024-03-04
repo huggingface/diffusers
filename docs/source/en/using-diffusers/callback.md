@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -18,8 +18,8 @@ This guide will show you how to use the `callback_on_step_end` parameter to disa
 
 The callback function should have the following arguments:
 
-* `pipe` (or the pipeline instance) provides access to useful properties such as `num_timestep` and `guidance_scale`. You can modify these properties by updating the underlying attributes. For this example, you'll disable CFG by setting `pipe._guidance_scale=0.0`.
-* `step_index` and `timestep` tell you where you are in the denoising loop. Use `step_index` to turn off CFG after reaching 40% of `num_timestep`.
+* `pipe` (or the pipeline instance) provides access to useful properties such as `num_timesteps` and `guidance_scale`. You can modify these properties by updating the underlying attributes. For this example, you'll disable CFG by setting `pipe._guidance_scale=0.0`.
+* `step_index` and `timestep` tell you where you are in the denoising loop. Use `step_index` to turn off CFG after reaching 40% of `num_timesteps`.
 * `callback_kwargs` is a dict that contains tensor variables you can modify during the denoising loop. It only includes variables specified in the `callback_on_step_end_tensor_inputs` argument, which is passed to the pipeline's `__call__` method. Different pipelines may use different sets of variables, so please check a pipeline's `_callback_tensor_inputs` attribute for the list of variables you can modify. Some common variables include `latents` and `prompt_embeds`. For this function, change the batch size of `prompt_embeds` after setting `guidance_scale=0.0` in order for it to work properly.
 
 Your callback function should look something like this:
@@ -27,7 +27,7 @@ Your callback function should look something like this:
 ```python
 def callback_dynamic_cfg(pipe, step_index, timestep, callback_kwargs):
         # adjust the batch_size of prompt_embeds according to guidance_scale
-        if step_index == int(pipe.num_timestep * 0.4):
+        if step_index == int(pipe.num_timesteps * 0.4):
                 prompt_embeds = callback_kwargs["prompt_embeds"]
                 prompt_embeds = prompt_embeds.chunk(2)[-1]
 
@@ -49,7 +49,7 @@ pipe = pipe.to("cuda")
 prompt = "a photo of an astronaut riding a horse on mars"
 
 generator = torch.Generator(device="cuda").manual_seed(1)
-out = pipe(prompt, generator=generator, callback_on_step_end=callback_custom_cfg, callback_on_step_end_tensor_inputs=['prompt_embeds'])
+out = pipe(prompt, generator=generator, callback_on_step_end=callback_dynamic_cfg, callback_on_step_end_tensor_inputs=['prompt_embeds'])
 
 out.images[0].save("out_custom_cfg.png")
 ```
@@ -63,3 +63,38 @@ With callbacks, you can implement features such as dynamic CFG without having to
 🤗 Diffusers currently only supports `callback_on_step_end`, but feel free to open a [feature request](https://github.com/huggingface/diffusers/issues/new/choose) if you have a cool use-case and require a callback function with a different execution point!
 
 </Tip>
+
+## Interrupt the diffusion process
+
+Interrupting the diffusion process is particularly useful when building UIs that work with Diffusers because it allows users to stop the generation process if they're unhappy with the intermediate results. You can incorporate this into your pipeline with a callback.
+
+<Tip>
+
+The interruption callback is supported for text-to-image, image-to-image, and inpainting for the [StableDiffusionPipeline](../api/pipelines/stable_diffusion/overview) and [StableDiffusionXLPipeline](../api/pipelines/stable_diffusion/stable_diffusion_xl).
+
+</Tip>
+
+This callback function should take the following arguments: `pipe`, `i`, `t`, and `callback_kwargs` (this must be returned). Set the pipeline's `_interrupt` attribute to `True` to stop the diffusion process after a certain number of steps. You are also free to implement your own custom stopping logic inside the callback.
+
+In this example, the diffusion process is stopped after 10 steps even though `num_inference_steps` is set to 50.
+
+```python
+from diffusers import StableDiffusionPipeline
+
+pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe.enable_model_cpu_offload()
+num_inference_steps = 50
+
+def interrupt_callback(pipe, i, t, callback_kwargs):
+    stop_idx = 10
+    if i == stop_idx:
+        pipe._interrupt = True
+
+    return callback_kwargs
+
+pipe(
+    "A photo of a cat",
+    num_inference_steps=num_inference_steps,
+    callback_on_step_end=interrupt_callback,
+)
+```

@@ -137,7 +137,7 @@ def get_tests_dir(append_path=None):
         tests_dir = os.path.dirname(tests_dir)
 
     if append_path:
-        return os.path.join(tests_dir, append_path)
+        return Path(tests_dir, append_path).as_posix()
     else:
         return tests_dir
 
@@ -300,6 +300,23 @@ def require_peft_backend(test_case):
     return unittest.skipUnless(USE_PEFT_BACKEND, "test requires PEFT backend")(test_case)
 
 
+def require_peft_version_greater(peft_version):
+    """
+    Decorator marking a test that requires PEFT backend with a specific version, this would require some specific
+    versions of PEFT and transformers.
+    """
+
+    def decorator(test_case):
+        correct_peft_version = is_peft_available() and version.parse(
+            version.parse(importlib.metadata.version("peft")).base_version
+        ) > version.parse(peft_version)
+        return unittest.skipUnless(
+            correct_peft_version, f"test requires PEFT backend with the version greater than {peft_version}"
+        )(test_case)
+
+    return decorator
+
+
 def deprecate_after_peft_backend(test_case):
     """
     Decorator marking a test that will be skipped after PEFT backend
@@ -318,10 +335,9 @@ def require_python39_or_higher(test_case):
 
 def load_numpy(arry: Union[str, np.ndarray], local_path: Optional[str] = None) -> np.ndarray:
     if isinstance(arry, str):
-        # local_path = "/home/patrick_huggingface_co/"
         if local_path is not None:
             # local_path can be passed to correct images of tests
-            return os.path.join(local_path, "/".join([arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]]))
+            return Path(local_path, arry.split("/")[-5], arry.split("/")[-2], arry.split("/")[-1]).as_posix()
         elif arry.startswith("http://") or arry.startswith("https://"):
             response = requests.get(arry)
             response.raise_for_status()
@@ -503,10 +519,10 @@ def export_to_video(video_frames: List[np.ndarray], output_video_path: str = Non
 
 
 def load_hf_numpy(path) -> np.ndarray:
-    if not path.startswith("http://") or path.startswith("https://"):
-        path = os.path.join(
-            "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main", urllib.parse.quote(path)
-        )
+    base_url = "https://huggingface.co/datasets/fusing/diffusers-testing/resolve/main"
+
+    if not path.startswith("http://") and not path.startswith("https://"):
+        path = os.path.join(base_url, urllib.parse.quote(path))
 
     return load_numpy(path)
 
@@ -820,7 +836,9 @@ def _is_torch_fp16_available(device):
 
     try:
         x = torch.zeros((2, 2), dtype=torch.float16).to(device)
-        _ = x @ x
+        _ = torch.mul(x, x)
+        return True
+
     except Exception as e:
         if device.type == "cuda":
             raise ValueError(
@@ -836,9 +854,13 @@ def _is_torch_fp64_available(device):
 
     import torch
 
+    device = torch.device(device)
+
     try:
         x = torch.zeros((2, 2), dtype=torch.float64).to(device)
-        _ = x @ x
+        _ = torch.mul(x, x)
+        return True
+
     except Exception as e:
         if device.type == "cuda":
             raise ValueError(

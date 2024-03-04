@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -383,7 +383,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 class TextToVideoZeroSDXLPipelineSlowTests(unittest.TestCase):
     def test_full_model(self):
         model_id = "stabilityai/stable-diffusion-xl-base-1.0"
-        pipe = self.pipeline_class.from_pretrained(
+        pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
             model_id, torch_dtype=torch.float16, variant="fp16", use_safetensors=True
         )
         pipe.enable_model_cpu_offload()
