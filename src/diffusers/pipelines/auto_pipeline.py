@@ -343,7 +343,7 @@ class AutoPipelineForText2Image(ConfigMixin):
         pipeline linked to the pipeline class using pattern matching on pipeline class name.
 
         All the modules the pipeline contains will be used to initialize the new pipeline without reallocating
-        additional memoery.
+        additional memory.
 
         The pipeline is set in evaluation mode (`model.eval()`) by default.
 
@@ -616,7 +616,7 @@ class AutoPipelineForImage2Image(ConfigMixin):
         image-to-image pipeline linked to the pipeline class using pattern matching on pipeline class name.
 
         All the modules the pipeline contains will be used to initialize the new pipeline without reallocating
-        additional memoery.
+        additional memory.
 
         The pipeline is set in evaluation mode (`model.eval()`) by default.
 
@@ -892,7 +892,7 @@ class AutoPipelineForInpainting(ConfigMixin):
         pipeline linked to the pipeline class using pattern matching on pipeline class name.
 
         All the modules the pipeline class contain will be used to initialize the new pipeline without reallocating
-        additional memoery.
+        additional memory.
 
         The pipeline is set in evaluation mode (`model.eval()`) by default.
 
