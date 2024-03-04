@@ -11,8 +11,8 @@ on:
     - cron: "0 0 * * *" # every day at midnight
 
 concurrency:
-  group: docker-image-builds
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: diffusers
