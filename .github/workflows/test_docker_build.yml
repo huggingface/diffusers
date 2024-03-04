@@ -1,4 +1,4 @@
-name: Test Docker images (scheduled)
+name: Test Docker image builds 
 
 on:
   pull_request:
