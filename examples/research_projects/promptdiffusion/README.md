@@ -34,9 +34,9 @@ query = ImageOps.invert(load_image("https://github.com/Zhendong-Wang/Prompt-Diff
 
 # load prompt diffusion controlnet and prompt diffusion
 
-controlnet = PromptDiffusionControlNetModel.from_pretrained("path-to-promptdiffusion-controlnet", torch_dtype=torch.float16)
+controlnet = PromptDiffusionControlNetModel.from_pretrained("iczaw/prompt-diffusion-diffusers", subfolder="controlnet", torch_dtype=torch.float16)
 model_id = "path-to-model"
-pipe = PromptDiffusionPipeline.from_pretrained(model_id, controlnet=controlnet, torch_dtype=torch.float16, variant="fp16")
+pipe = PromptDiffusionPipeline.from_pretrained("iczaw/prompt-diffusion-diffusers", subfolder="base", controlnet=controlnet, torch_dtype=torch.float16, variant="fp16")
 
 # speed up diffusion process with faster scheduler and memory optimization
 pipe.scheduler = UniPCMultistepScheduler.from_config(pipe.scheduler.config)
