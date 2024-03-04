@@ -810,7 +810,6 @@ class StableDiffusionXLControlNetXSPipeline(
             control_guidance_end,
         )
 
-
         # 2. Define call parameters
         if prompt is not None and isinstance(prompt, str):
             batch_size = 1
@@ -824,7 +823,7 @@ class StableDiffusionXLControlNetXSPipeline(
         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
         # corresponds to doing no classifier free guidance.
         do_classifier_free_guidance = guidance_scale > 1.0
-        
+
         # 3. Encode input prompt
         text_encoder_lora_scale = (
             cross_attention_kwargs.get("scale", None) if cross_attention_kwargs is not None else None
@@ -971,7 +970,7 @@ class StableDiffusionXLControlNetXSPipeline(
                     ).sample
 
                 # perform guidance
-                if self.do_classifier_free_guidance:
+                if do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                     noise_pred = noise_pred_uncond + guidance_scale * (noise_pred_text - noise_pred_uncond)
 
