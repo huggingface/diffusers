@@ -1,13 +1,13 @@
-name: Links
+name: Check for Broken Links
 
 on:
   repository_dispatch:
   workflow_dispatch:
   schedule:
-    - cron: "00 18 * * *"
+    - cron: "0 0 * * *"
 
 jobs:
-  linkChecker:
+  check_for_broken_links:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
