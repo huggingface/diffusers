@@ -106,7 +106,7 @@ LoRA for the text encoder was enabled: {train_text_encoder}.
         model_description=model_description,
         inference=True,
     )
-    tags = ["text-to-image", "diffusers", "lora"]
+    tags = ["text-to-image", "diffusers", "lora", "diffusers-training"]
     if isinstance(pipeline, StableDiffusionPipeline):
         tags.extend(["stable-diffusion", "stable-diffusion-diffusers"])
     else:

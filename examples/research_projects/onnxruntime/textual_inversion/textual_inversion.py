@@ -100,6 +100,8 @@ tags:
 - text-to-image
 - diffusers
 - textual_inversion
+- diffusers-training
+- onxruntime
 inference: true
 ---
     """

@@ -69,6 +69,7 @@ tags:
 - stable-diffusion-diffusers
 - text-to-image
 - diffusers
+- diffusers-training
 - lora
 inference: true
 ---

@@ -82,6 +82,7 @@ tags:
 - wuerstchen
 - text-to-image
 - diffusers
+- diffusers-training
 inference: true
 ---
     """

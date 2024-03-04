@@ -96,6 +96,7 @@ def determine_scheduler_type(pretrained_model_name_or_path, revision):
 
 def save_model_card(
     repo_id: str,
+    use_dora: bool,
     images=None,
     base_model: str = None,
     train_text_encoder=False,
@@ -156,8 +157,9 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     tags = [
         "text-to-image",
         "text-to-image",
+        "diffusers-training",
         "diffusers",
-        "lora",
+        "lora" if not use_dora else "dora",
         "template:sd-lora",
     ]
     if "playgroundai" in base_model:
@@ -1912,6 +1914,7 @@ def main(args):
         if args.push_to_hub:
             save_model_card(
                 repo_id,
+                use_dora=args.use_dora,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
                 train_text_encoder=args.train_text_encoder,
