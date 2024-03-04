@@ -209,6 +209,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
             "KDPM2DiscreteScheduler",
             "KDPM2AncestralDiscreteScheduler",
             "DPMSolverSDEScheduler",
+            "EDMEulerScheduler",
         ]
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
