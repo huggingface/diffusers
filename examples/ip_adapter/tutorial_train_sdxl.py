@@ -409,7 +409,7 @@ def main():
                 # Convert images to latent space
                 with torch.no_grad():
                     # vae of sdxl should use fp32
-                    latents = vae.encode(batch["images"].to(accelerator.device, dtype=torch.float32)).latent_dist.sample()
+                    latents = vae.encode(batch["images"].to(accelerator.device, dtype=vae.dtype)).latent_dist.sample()
                     latents = latents * vae.config.scaling_factor
                     latents = latents.to(accelerator.device, dtype=weight_dtype)
 
