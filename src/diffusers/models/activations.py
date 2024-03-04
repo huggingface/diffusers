@@ -17,8 +17,6 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import USE_PEFT_BACKEND
-
 
 ACTIVATION_FUNCTIONS = {
     "swish": nn.SiLU(),
@@ -95,8 +93,7 @@ class GEGLU(nn.Module):
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
     def forward(self, hidden_states, scale: float = 1.0):
-        args = () if USE_PEFT_BACKEND else (scale,)
-        hidden_states, gate = self.proj(hidden_states, *args).chunk(2, dim=-1)
+        hidden_states, gate = self.proj(hidden_states).chunk(2, dim=-1)
         return hidden_states * self.gelu(gate)
 
 

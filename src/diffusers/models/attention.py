@@ -17,12 +17,10 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import USE_PEFT_BACKEND
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU
 from .attention_processor import Attention
 from .embeddings import SinusoidalPositionalEmbedding
-from .lora import LoRACompatibleLinear
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
 
 
@@ -667,10 +665,6 @@ class FeedForward(nn.Module):
             self.net.append(nn.Dropout(dropout))
 
     def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
-        compatible_cls = (GEGLU,) if USE_PEFT_BACKEND else (GEGLU, LoRACompatibleLinear)
         for module in self.net:
-            if isinstance(module, compatible_cls):
-                hidden_states = module(hidden_states, scale)
-            else:
-                hidden_states = module(hidden_states)
+            hidden_states = module(hidden_states)
         return hidden_states
