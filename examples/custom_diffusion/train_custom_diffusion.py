@@ -97,7 +97,14 @@ These are Custom Diffusion adaption weights for {base_model}. The weights were t
         inference=True,
     )
 
-    tags = ["text-to-image", "diffusers", "stable-diffusion", "stable-diffusion-diffusers", "custom-diffusion", "diffusers-training"]
+    tags = [
+        "text-to-image",
+        "diffusers",
+        "stable-diffusion",
+        "stable-diffusion-diffusers",
+        "custom-diffusion",
+        "diffusers-training",
+    ]
     model_card = populate_model_card(model_card, tags=tags)
 
     model_card.save(os.path.join(repo_folder, "README.md"))

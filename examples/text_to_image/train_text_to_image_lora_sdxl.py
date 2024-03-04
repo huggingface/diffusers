@@ -103,7 +103,14 @@ Special VAE used for training: {vae_path}.
         inference=True,
     )
 
-    tags = ["stable-diffusion-xl", "stable-diffusion-xl-diffusers", "text-to-image", "diffusers", "diffusers-training", "lora"]
+    tags = [
+        "stable-diffusion-xl",
+        "stable-diffusion-xl-diffusers",
+        "text-to-image",
+        "diffusers",
+        "diffusers-training",
+        "lora",
+    ]
     model_card = populate_model_card(model_card, tags=tags)
 
     model_card.save(os.path.join(repo_folder, "README.md"))

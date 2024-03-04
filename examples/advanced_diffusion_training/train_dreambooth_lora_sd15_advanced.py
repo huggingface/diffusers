@@ -1970,7 +1970,7 @@ def main(args):
 
         save_model_card(
             model_id if not args.push_to_hub else repo_id,
-            use_dora= args.use_dora,
+            use_dora=args.use_dora,
             images=images,
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,

@@ -169,7 +169,7 @@ These are controlnet weights trained on {base_model} with new type of conditioni
         "diffusers",
         "controlnet",
         "jax-diffusers-event",
-        "diffusers-training"
+        "diffusers-training",
     ]
     model_card = populate_model_card(model_card, tags=tags)
 
