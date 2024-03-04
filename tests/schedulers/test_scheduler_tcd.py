@@ -1,10 +1,6 @@
-import tempfile
-from typing import Dict, List, Tuple
-
 import torch
 
 from diffusers import TCDScheduler
-from diffusers.utils.testing_utils import torch_device
 
 from .test_schedulers import SchedulerCommonTest
 
@@ -24,6 +20,10 @@ class TCDSchedulerTest(SchedulerCommonTest):
 
         config.update(**kwargs)
         return config
+
+    @property
+    def default_num_inference_steps(self):
+        return 10
 
     @property
     def default_valid_timestep(self):
@@ -86,125 +86,6 @@ class TCDSchedulerTest(SchedulerCommonTest):
         # Hardcoded for now
         for t, num_inference_steps in zip([99, 39, 39, 19], [10, 25, 26, 50]):
             self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
-
-    # Override test_add_noise_device because the hardcoded num_inference_steps of 100 doesn't work
-    # for TCDScheduler under default settings
-    def test_add_noise_device(self, num_inference_steps=10):
-        for scheduler_class in self.scheduler_classes:
-            scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(**scheduler_config)
-            scheduler.set_timesteps(num_inference_steps)
-
-            sample = self.dummy_sample.to(torch_device)
-            scaled_sample = scheduler.scale_model_input(sample, 0.0)
-            self.assertEqual(sample.shape, scaled_sample.shape)
-
-            noise = torch.randn_like(scaled_sample).to(torch_device)
-            t = scheduler.timesteps[5][None]
-            noised = scheduler.add_noise(scaled_sample, noise, t)
-            self.assertEqual(noised.shape, scaled_sample.shape)
-
-    # Override test_from_save_pretrained because it hardcodes a timestep of 1
-    def test_from_save_pretrained(self):
-        kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
-
-        for scheduler_class in self.scheduler_classes:
-            timestep = self.default_valid_timestep
-
-            scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(**scheduler_config)
-
-            sample = self.dummy_sample
-            residual = 0.1 * sample
-
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                scheduler.save_config(tmpdirname)
-                new_scheduler = scheduler_class.from_pretrained(tmpdirname)
-
-            scheduler.set_timesteps(num_inference_steps)
-            new_scheduler.set_timesteps(num_inference_steps)
-
-            kwargs["generator"] = torch.manual_seed(0)
-            output = scheduler.step(residual, timestep, sample, **kwargs).prev_sample
-
-            kwargs["generator"] = torch.manual_seed(0)
-            new_output = new_scheduler.step(residual, timestep, sample, **kwargs).prev_sample
-
-            assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
-
-    # Override test_step_shape because uses 0 and 1 as hardcoded timesteps
-    def test_step_shape(self):
-        kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", None)
-
-        for scheduler_class in self.scheduler_classes:
-            scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(**scheduler_config)
-
-            sample = self.dummy_sample
-            residual = 0.1 * sample
-
-            scheduler.set_timesteps(num_inference_steps)
-
-            timestep_0 = scheduler.timesteps[-2]
-            timestep_1 = scheduler.timesteps[-1]
-
-            output_0 = scheduler.step(residual, timestep_0, sample, **kwargs).prev_sample
-            output_1 = scheduler.step(residual, timestep_1, sample, **kwargs).prev_sample
-
-            self.assertEqual(output_0.shape, sample.shape)
-            self.assertEqual(output_0.shape, output_1.shape)
-
-    # Override test_set_scheduler_outputs_equivalence since it uses 0 as a hardcoded timestep
-    def test_scheduler_outputs_equivalence(self):
-        def set_nan_tensor_to_zero(t):
-            t[t != t] = 0
-            return t
-
-        def recursive_check(tuple_object, dict_object):
-            if isinstance(tuple_object, (List, Tuple)):
-                for tuple_iterable_value, dict_iterable_value in zip(tuple_object, dict_object.values()):
-                    recursive_check(tuple_iterable_value, dict_iterable_value)
-            elif isinstance(tuple_object, Dict):
-                for tuple_iterable_value, dict_iterable_value in zip(tuple_object.values(), dict_object.values()):
-                    recursive_check(tuple_iterable_value, dict_iterable_value)
-            elif tuple_object is None:
-                return
-            else:
-                self.assertTrue(
-                    torch.allclose(
-                        set_nan_tensor_to_zero(tuple_object), set_nan_tensor_to_zero(dict_object), atol=1e-5
-                    ),
-                    msg=(
-                        "Tuple and dict output are not equal. Difference:"
-                        f" {torch.max(torch.abs(tuple_object - dict_object))}. Tuple has `nan`:"
-                        f" {torch.isnan(tuple_object).any()} and `inf`: {torch.isinf(tuple_object)}. Dict has"
-                        f" `nan`: {torch.isnan(dict_object).any()} and `inf`: {torch.isinf(dict_object)}."
-                    ),
-                )
-
-        kwargs = dict(self.forward_default_kwargs)
-        num_inference_steps = kwargs.pop("num_inference_steps", 50)
-
-        timestep = self.default_valid_timestep
-
-        for scheduler_class in self.scheduler_classes:
-            scheduler_config = self.get_scheduler_config()
-            scheduler = scheduler_class(**scheduler_config)
-
-            sample = self.dummy_sample
-            residual = 0.1 * sample
-
-            scheduler.set_timesteps(num_inference_steps)
-            kwargs["generator"] = torch.manual_seed(0)
-            outputs_dict = scheduler.step(residual, timestep, sample, **kwargs)
-
-            scheduler.set_timesteps(num_inference_steps)
-            kwargs["generator"] = torch.manual_seed(0)
-            outputs_tuple = scheduler.step(residual, timestep, sample, return_dict=False, **kwargs)
-
-            recursive_check(outputs_tuple, outputs_dict)
 
     def full_loop(self, num_inference_steps=10, seed=0, **config):
         scheduler_class = self.scheduler_classes[0]
