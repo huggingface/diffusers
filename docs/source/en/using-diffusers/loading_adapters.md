@@ -165,101 +165,14 @@ To unload the LoRA weights, use the [`~loaders.LoraLoaderMixin.unload_lora_weigh
 pipeline.unload_lora_weights()
 ```
 
-### Load multiple LoRAs
-
-It can be fun to use multiple LoRAs together to create something entirely new and unique. The [`~loaders.LoraLoaderMixin.fuse_lora`] method allows you to fuse the LoRA weights with the original weights of the underlying model.
-
-<Tip>
-
-Fusing the weights can lead to a speedup in inference latency because you don't need to separately load the base model and LoRA! You can save your fused pipeline with [`~DiffusionPipeline.save_pretrained`] to avoid loading and fusing the weights every time you want to use the model.
-
-</Tip>
-
-Load an initial model:
-
-```py
-from diffusers import StableDiffusionXLPipeline, AutoencoderKL
-import torch
-
-vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-pipeline = StableDiffusionXLPipeline.from_pretrained(
-    "stabilityai/stable-diffusion-xl-base-1.0",
-    vae=vae,
-    torch_dtype=torch.float16,
-).to("cuda")
-```
-
-Next, load the LoRA checkpoint and fuse it with the original weights. The `lora_scale` parameter controls how much to scale the output by with the LoRA weights. It is important to make the `lora_scale` adjustments in the [`~loaders.LoraLoaderMixin.fuse_lora`] method because it won't work if you try to pass `scale` to the `cross_attention_kwargs` in the pipeline.
-
-If you need to reset the original model weights for any reason (use a different `lora_scale`), you should use the [`~loaders.LoraLoaderMixin.unfuse_lora`] method.
-
-```py
-pipeline.load_lora_weights("ostris/ikea-instructions-lora-sdxl")
-pipeline.fuse_lora(lora_scale=0.7)
-
-# to unfuse the LoRA weights
-pipeline.unfuse_lora()
-```
-
-Then fuse this pipeline with the next set of LoRA weights:
-
-```py
-pipeline.load_lora_weights("ostris/super-cereal-sdxl-lora")
-pipeline.fuse_lora(lora_scale=0.7)
-```
-
-<Tip warning={true}>
-
-You can't unfuse multiple LoRA checkpoints, so if you need to reset the model to its original weights, you'll need to reload it.
-
-</Tip>
-
-Now you can generate an image that uses the weights from both LoRAs:
-
-```py
-prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
-image = pipeline(prompt).images[0]
-image
-```
-
-### 🤗 PEFT
-
-<Tip>
-
-Read the [Inference with 🤗 PEFT](../tutorials/using_peft_for_inference) tutorial to learn more about its integration with 🤗 Diffusers and how you can easily work with and juggle multiple adapters. You'll need to install 🤗 Diffusers and PEFT from source to run the example in this section.
-
-</Tip>
-
-Another way you can load and use multiple LoRAs is to specify the `adapter_name` parameter in [`~loaders.LoraLoaderMixin.load_lora_weights`]. This method takes advantage of the 🤗 PEFT integration. For example, load and name both LoRA weights:
-
-```py
-from diffusers import DiffusionPipeline
-import torch
-
-pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
-pipeline.load_lora_weights("ostris/ikea-instructions-lora-sdxl", weight_name="ikea_instructions_xl_v1_5.safetensors", adapter_name="ikea")
-pipeline.load_lora_weights("ostris/super-cereal-sdxl-lora", weight_name="cereal_box_sdxl_v1.safetensors", adapter_name="cereal")
-```
-
-Now use the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] to activate both LoRAs, and you can configure how much weight each LoRA should have on the output:
-
-```py
-pipeline.set_adapters(["ikea", "cereal"], adapter_weights=[0.7, 0.5])
-```
-
-Then, generate an image:
-
-```py
-prompt = "A cute brown bear eating a slice of pizza, stunning color scheme, masterpiece, illustration"
-image = pipeline(prompt, num_inference_steps=30, cross_attention_kwargs={"scale": 1.0}).images[0]
-image
-```
-
 ### Kohya and TheLastBen
 
 Other popular LoRA trainers from the community include those by [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). These trainers create different LoRA checkpoints than those trained by 🤗 Diffusers, but they can still be loaded in the same way.
 
-Let's download the [Blueprintify SD XL 1.0](https://civitai.com/models/150986/blueprintify-sd-xl-10) checkpoint from [Civitai](https://civitai.com/):
+<hfoptions id="other-trainers">
+<hfoption id="Kohya">
+
+To load a Kohya LoRA, let's download the [Blueprintify SD XL 1.0](https://civitai.com/models/150986/blueprintify-sd-xl-10) checkpoint from [Civitai](https://civitai.com/) as an example:
 
 ```sh
 !wget https://civitai.com/api/download/models/168776 -O blueprintify-sd-xl-10.safetensors
@@ -293,6 +206,9 @@ Some limitations of using Kohya LoRAs with 🤗 Diffusers include:
 
 </Tip>
 
+</hfoption>
+<hfoption id="TheLastBen">
+
 Loading a checkpoint from TheLastBen is very similar. For example, to load the [TheLastBen/William_Eggleston_Style_SDXL](https://huggingface.co/TheLastBen/William_Eggleston_Style_SDXL) checkpoint:
 
 ```py
@@ -307,6 +223,9 @@ prompt = "a house by william eggleston, sunrays, beautiful, sunlight, sunrays, b
 image = pipeline(prompt=prompt).images[0]
 image
 ```
+
+</hfoption>
+</hfoptions>
 
 ## IP-Adapter
 
