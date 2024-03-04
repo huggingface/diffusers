@@ -21,7 +21,7 @@ env:
 jobs:
   test-build-docker-images:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'pull_request' }}
+    if: github.event_name == 'pull_request'
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
@@ -51,7 +51,7 @@ jobs:
 
   build-and-push-docker-images:
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'pull_request' }}
+    if: github.event_name != 'pull_request'
     
     permissions:
       contents: read

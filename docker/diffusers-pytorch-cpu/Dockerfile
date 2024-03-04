@@ -41,6 +41,6 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
         scipy \
         tensorboard \
         transformers \
-        pandas
+        pandas matplotlib
 
 CMD ["/bin/bash"]
