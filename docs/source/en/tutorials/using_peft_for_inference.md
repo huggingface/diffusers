@@ -169,7 +169,7 @@ list_adapters_component_wise
 
 If you want to compile your model with `torch.compile` make sure to first fuse the LoRA weights into the base model and unload them.
 
-```py
+```diff
 pipe.load_lora_weights("nerijs/pixel-art-xl", weight_name="pixel-art-xl.safetensors", adapter_name="pixel")
 pipe.load_lora_weights("CiroN2022/toy-face", weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
 
@@ -178,11 +178,15 @@ pipe.set_adapters(["pixel", "toy"], adapter_weights=[0.5, 1.0])
 pipe.fuse_lora()
 pipe.unload_lora_weights()
 
-pipe = torch.compile(pipe)
++ pipe.unet.to(memory_format=torch.channels_last)
++ pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
 prompt = "toy_face of a hacker with a hoodie, pixel art"
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 ```
+
+> [!TIP]
+> You can refer to the `torch.compile()` section [here](https://huggingface.co/docs/diffusers/main/en/optimization/torch2.0#torchcompile) and [here](https://huggingface.co/docs/diffusers/main/en/tutorials/fast_diffusion#torchcompile) for more elaborate examples.
 
 ## Fusing adapters into the model
 
