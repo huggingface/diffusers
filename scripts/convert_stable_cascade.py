@@ -1,5 +1,9 @@
 # Run this script to convert the Stable Cascade model weights to a diffusers pipeline.
+import argparse
+
+import accelerate
 import torch
+from safetensors.torch import load_file
 from transformers import (
     AutoTokenizer,
     CLIPConfig,
@@ -18,12 +22,18 @@ from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 
 
+parser = argparse.ArgumentParser(description="Convert Stable Cascade model weights to a diffusers pipeline")
+parser.add_argument("--model_path", type=str, default="cpu", help="Device to use for conversion")
+parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
+
+args = parser.parse_args()
+model_path = args.model_path
+
 device = "cpu"
 
 # set paths to model weights
-model_path = "../StableCascade"
-prior_checkpoint_path = f"{model_path}/v1.pt"
-decoder_checkpoint_path = f"{model_path}/base_120k.pt"
+prior_checkpoint_path = f"{model_path}/stage_c.safetensors"
+decoder_checkpoint_path = f"{model_path}/stage_b.safetensors"
 
 # Clip Text encoder and tokenizer
 config = CLIPConfig.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
@@ -38,7 +48,11 @@ feature_extractor = CLIPImageProcessor()
 image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
 
 # Prior
-orig_state_dict = torch.load(prior_checkpoint_path, map_location=device)
+if args.use_safetensors:
+    orig_state_dict = load_file(prior_checkpoint_path, device=device)
+else:
+    orig_state_dict = torch.load(prior_checkpoint_path, map_location=device)
+
 state_dict = {}
 for key in orig_state_dict.keys():
     if key.endswith("in_proj_weight"):
@@ -59,28 +73,34 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
+
 prior_model = StableCascadeUNet(
     in_channels=16,
-    c_out=16,
-    c_r=64,
+    out_channels=16,
+    timestep_ratio_embedding_dim=64,
     patch_size=1,
-    c_cond=2048,
-    c_hidden=[2048, 2048],
-    nhead=[32, 32],
-    blocks=[[8, 24], [24, 8]],
-    block_repeat=[[1, 1], [1, 1]],
-    level_config=["CTA", "CTA"],
-    c_clip_text=1280,
-    c_clip_text_pooled=1280,
-    c_clip_img=768,
-    c_clip_seq=4,
+    conditioning_dim=2048,
+    block_out_channels=[2048, 2048],
+    num_attention_heads=[32, 32],
+    down_num_layers_per_block=[8, 24],
+    up_num_layers_per_block=[24, 8],
+    down_blocks_repeat_mappers=[1, 1],
+    up_blocks_repeat_mappers=[1, 1],
+    block_types_per_layer=[
+        ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+        ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+    ],
+    clip_text_in_channels=1280,
+    clip_text_pooled_in_channels=1280,
+    clip_image_in_channels=768,
+    clip_seq=4,
     kernel_size=3,
     dropout=[0.1, 0.1],
     self_attn=True,
-    t_conds=["sca", "crp"],
+    timestep_conditioning_type=["sca", "crp"],
     switch_level=[False],
-).to(device)
-prior_model.load_state_dict(state_dict)
+)
+prior_model.load_state_dict(state_dict, strict=True)
 
 # scheduler for prior and decoder
 scheduler = DDPMWuerstchenScheduler()
@@ -94,10 +114,14 @@ prior_pipeline = StableCascadePriorPipeline(
     scheduler=scheduler,
     feature_extractor=feature_extractor,
 )
-prior_pipeline.push_to_hub("diffusers/StableCascade-prior")
+prior_pipeline.save_pretrained("dn6/StableCascade-prior", push_to_hub=False)
 
 # Decoder
-orig_state_dict = torch.load(decoder_checkpoint_path, map_location=device)
+if args.use_safetensors:
+    orig_state_dict = load_file(decoder_checkpoint_path, device=device)
+else:
+    orig_state_dict = torch.load(decoder_checkpoint_path, map_location=device)
+
 state_dict = {}
 for key in orig_state_dict.keys():
     if key.endswith("in_proj_weight"):
@@ -125,26 +149,35 @@ for key in orig_state_dict.keys():
         state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
     else:
         state_dict[key] = orig_state_dict[key]
-decoder = StableCascadeUNet(
-    in_channels=4,
-    c_out=4,
-    c_r=64,
-    patch_size=2,
-    c_cond=1280,
-    c_hidden=[320, 640, 1280, 1280],
-    nhead=[-1, -1, 20, 20],
-    blocks=[[2, 6, 28, 6], [6, 28, 6, 2]],
-    block_repeat=[[1, 1, 1, 1], [3, 3, 2, 2]],
-    level_config=["CT", "CT", "CTA", "CTA"],
-    c_clip_text_pooled=1280,
-    c_clip_seq=4,
-    c_effnet=16,
-    c_pixels=3,
-    kernel_size=3,
-    dropout=[0, 0, 0.1, 0.1],
-    self_attn=True,
-    t_conds=["sca"],
-).to(device)
+
+with accelerate.init_empty_weights():
+    decoder = StableCascadeUNet(
+        in_channels=4,
+        out_channels=4,
+        timestep_ratio_embedding_dim=64,
+        patch_size=2,
+        conditioning_dim=1280,
+        block_out_channels=[320, 640, 1280, 1280],
+        down_num_layers_per_block=[2, 6, 28, 6],
+        up_num_layers_per_block=[6, 28, 6, 2],
+        down_blocks_repeat_mappers=[1, 1, 1, 1],
+        up_blocks_repeat_mappers=[3, 3, 2, 2],
+        num_attention_heads=[0, 0, 20, 20],
+        block_types_per_layer=[
+            ["ResBlockStageB", "TimestepBlock"],
+            ["ResBlockStageB", "TimestepBlock"],
+            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+        ],
+        clip_text_pooled_in_channels=1280,
+        clip_seq=4,
+        effnet_in_channels=16,
+        pixel_mapper_in_channels=3,
+        kernel_size=3,
+        dropout=[0, 0, 0.1, 0.1],
+        self_attn=True,
+        timestep_conditioning_type=["sca"],
+    )
 decoder.load_state_dict(state_dict)
 
 # VQGAN from Wuerstchen-V2
@@ -154,7 +187,7 @@ vqmodel = PaellaVQModel.from_pretrained("warp-ai/wuerstchen", subfolder="vqgan")
 decoder_pipeline = StableCascadeDecoderPipeline(
     decoder=decoder, text_encoder=text_encoder, tokenizer=tokenizer, vqgan=vqmodel, scheduler=scheduler
 )
-decoder_pipeline.push_to_hub("diffusers/StableCascade-decoder")
+decoder_pipeline.save_pretrained("dn6/StableCascade-decoder", push_to_hub=False)
 
 # Stable Cascade combined pipeline
 stable_cascade_pipeline = StableCascadeCombinedPipeline(

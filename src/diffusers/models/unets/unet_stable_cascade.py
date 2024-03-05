@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import numpy as np
 import torch
@@ -27,13 +27,8 @@ from ...utils import BaseOutput
 from ..modeling_utils import ModelMixin
 
 
-@dataclass
-class StableCascadeUNetOutput(BaseOutput):
-    sample: torch.FloatTensor = None
-
-
 class UpDownBlock2d(nn.Module):
-    def __init__(self, c_in, c_out, mode, enabled=True):
+    def __init__(self, in_channels, out_channels, mode, enabled=True):
         super().__init__()
         if mode not in ["up", "down"]:
             raise ValueError(f"{mode} not supported")
@@ -42,7 +37,7 @@ class UpDownBlock2d(nn.Module):
             if enabled
             else nn.Identity()
         )
-        mapping = nn.Conv2d(c_in, c_out, kernel_size=1)
+        mapping = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         self.blocks = nn.ModuleList([interpolation, mapping] if mode == "up" else [mapping, interpolation])
 
     def forward(self, x):
@@ -51,76 +46,116 @@ class UpDownBlock2d(nn.Module):
         return x
 
 
+@dataclass
+class StableCascadeUNetOutput(BaseOutput):
+    sample: torch.FloatTensor = None
+
+
 class StableCascadeUNet(ModelMixin, ConfigMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
     def __init__(
         self,
-        in_channels=16,
-        c_out=16,
-        c_r=64,
-        patch_size=1,
-        c_cond=2048,
-        c_hidden=[2048, 2048],
-        nhead=[32, 32],
-        blocks=[[8, 24], [24, 8]],
-        block_repeat=[[1, 1], [1, 1]],
-        level_config=["CTA", "CTA"],
-        c_clip_text: Optional[int] = None,
-        c_clip_text_pooled=1280,
-        c_clip_img: Optional[int] = None,
-        c_clip_seq=4,
-        c_effnet: Optional[int] = None,
-        c_pixels: Optional[int] = None,
+        in_channels: int = 16,
+        out_channels: int = 16,
+        timestep_ratio_embedding_dim: int = 64,
+        patch_size: int = 1,
+        conditioning_dim: int = 2048,
+        block_out_channels: List[int] = [2048, 2048],
+        num_attention_heads: List[int] = [32, 32],
+        down_num_layers_per_block: List[int] = [8, 24],
+        up_num_layers_per_block: List[int] = [24, 8],
+        block_repeat: List[List[int]] = [[1, 1], [1, 1]],
+        down_blocks_repeat_mappers: List[int] = [
+            1,
+            1,
+        ],
+        up_blocks_repeat_mappers: List[int] = [1, 1],
+        block_types_per_layer: List[List[str]] = [
+            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+        ],
+        clip_text_in_channels: Optional[int] = None,
+        clip_text_pooled_in_channels=1280,
+        clip_image_in_channels: Optional[int] = None,
+        clip_seq=4,
+        effnet_in_channels: Optional[int] = None,
+        pixel_mapper_in_channels: Optional[int] = None,
         kernel_size=3,
         dropout: List[float] = [0.1, 0.1],
-        self_attn: bool = True,
-        t_conds: List[str] = ["sca", "crp"],
+        self_attn: Union[bool, List[bool]] = True,
+        timestep_conditioning_type: List[str] = ["sca", "crp"],
         switch_level: Optional[List[bool]] = None,
     ):
         super().__init__()
+
+        if len(block_out_channels) != len(down_num_layers_per_block):
+            raise ValueError(
+                f"Number of elements in `down_num_layers_per_block` must match the length of `block_out_channels`: {len(block_out_channels)}"
+            )
+
+        elif len(block_out_channels) != len(up_num_layers_per_block):
+            raise ValueError(
+                f"Number of elements in `up_num_layers_per_block` must match the length of `block_out_channels`: {len(block_out_channels)}"
+            )
+
+        elif len(block_out_channels) != len(down_blocks_repeat_mappers):
+            raise ValueError(
+                f"Number of elements in `down_blocks_repeat_mappers` must match the length of `block_out_channels`: {len(block_out_channels)}"
+            )
+
+        elif len(block_out_channels) != len(up_blocks_repeat_mappers):
+            raise ValueError(
+                f"Number of elements in `up_blocks_repeat_mappers` must match the length of `block_out_channels`: {len(block_out_channels)}"
+            )
+
+        elif len(block_out_channels) != len(block_types_per_layer):
+            raise ValueError(
+                f"Number of elements in `block_types_per_layer` must match the length of `block_out_channels`: {len(block_out_channels)}"
+            )
+
         if not isinstance(dropout, list):
-            dropout = [dropout] * len(c_hidden)
+            dropout = [dropout] * len(block_out_channels)
         if not isinstance(self_attn, list):
-            self_attn = [self_attn] * len(c_hidden)
+            self_attn = [self_attn] * len(block_out_channels)
 
         # CONDITIONING
-        if c_effnet is not None:
+        if effnet_in_channels is not None:
             self.effnet_mapper = nn.Sequential(
-                nn.Conv2d(c_effnet, c_hidden[0] * 4, kernel_size=1),
+                nn.Conv2d(effnet_in_channels, block_out_channels[0] * 4, kernel_size=1),
                 nn.GELU(),
-                nn.Conv2d(c_hidden[0] * 4, c_hidden[0], kernel_size=1),
-                WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
+                nn.Conv2d(block_out_channels[0] * 4, block_out_channels[0], kernel_size=1),
+                WuerstchenLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
             )
-        if c_pixels is not None:
+        if pixel_mapper_in_channels is not None:
             self.pixels_mapper = nn.Sequential(
-                nn.Conv2d(c_pixels, c_hidden[0] * 4, kernel_size=1),
+                nn.Conv2d(pixel_mapper_in_channels, block_out_channels[0] * 4, kernel_size=1),
                 nn.GELU(),
-                nn.Conv2d(c_hidden[0] * 4, c_hidden[0], kernel_size=1),
-                WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
+                nn.Conv2d(block_out_channels[0] * 4, block_out_channels[0], kernel_size=1),
+                WuerstchenLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
             )
 
-        self.clip_txt_pooled_mapper = nn.Linear(c_clip_text_pooled, c_cond * c_clip_seq)
-        if c_clip_text is not None:
-            self.clip_txt_mapper = nn.Linear(c_clip_text, c_cond)
-        if c_clip_img is not None:
-            self.clip_img_mapper = nn.Linear(c_clip_img, c_cond * c_clip_seq)
-        self.clip_norm = nn.LayerNorm(c_cond, elementwise_affine=False, eps=1e-6)
+        self.clip_txt_pooled_mapper = nn.Linear(clip_text_pooled_in_channels, conditioning_dim * clip_seq)
+        if clip_text_in_channels is not None:
+            self.clip_txt_mapper = nn.Linear(clip_text_in_channels, conditioning_dim)
+        if clip_image_in_channels is not None:
+            self.clip_img_mapper = nn.Linear(clip_image_in_channels, conditioning_dim * clip_seq)
+        self.clip_norm = nn.LayerNorm(conditioning_dim, elementwise_affine=False, eps=1e-6)
 
         self.embedding = nn.Sequential(
             nn.PixelUnshuffle(patch_size),
-            nn.Conv2d(in_channels * (patch_size**2), c_hidden[0], kernel_size=1),
-            WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
+            nn.Conv2d(in_channels * (patch_size**2), block_out_channels[0], kernel_size=1),
+            WuerstchenLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
         )
 
-        def get_block(block_type, c_hidden, nhead, c_skip=0, dropout=0, self_attn=True):
-            if block_type == "C":
-                return ResBlockStageB(c_hidden, c_skip, kernel_size=kernel_size, dropout=dropout)
-            elif block_type == "A":
-                return AttnBlock(c_hidden, c_cond, nhead, self_attn=self_attn, dropout=dropout)
-            elif block_type == "T":
-                return TimestepBlock(c_hidden, c_r, conds=t_conds)
+        def get_block(block_type, in_channels, nhead, c_skip=0, dropout=0, self_attn=True):
+            if block_type == "ResBlockStageB":
+                return ResBlockStageB(in_channels, c_skip, kernel_size=kernel_size, dropout=dropout)
+            elif block_type == "AttnBlock":
+                return AttnBlock(in_channels, conditioning_dim, nhead, self_attn=self_attn, dropout=dropout)
+            elif block_type == "TimestepBlock":
+                return TimestepBlock(in_channels, timestep_ratio_embedding_dim, conds=timestep_conditioning_type)
             else:
                 raise ValueError(f"Block type {block_type} not supported")
 
@@ -129,65 +164,86 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         self.down_blocks = nn.ModuleList()
         self.down_downscalers = nn.ModuleList()
         self.down_repeat_mappers = nn.ModuleList()
-        for i in range(len(c_hidden)):
+        for i in range(len(block_out_channels)):
             if i > 0:
                 self.down_downscalers.append(
                     nn.Sequential(
-                        WuerstchenLayerNorm(c_hidden[i - 1], elementwise_affine=False, eps=1e-6),
-                        UpDownBlock2d(c_hidden[i - 1], c_hidden[i], mode="down", enabled=switch_level[i - 1])
+                        WuerstchenLayerNorm(block_out_channels[i - 1], elementwise_affine=False, eps=1e-6),
+                        UpDownBlock2d(
+                            block_out_channels[i - 1], block_out_channels[i], mode="down", enabled=switch_level[i - 1]
+                        )
                         if switch_level is not None
-                        else nn.Conv2d(c_hidden[i - 1], c_hidden[i], kernel_size=2, stride=2),
+                        else nn.Conv2d(block_out_channels[i - 1], block_out_channels[i], kernel_size=2, stride=2),
                     )
                 )
             else:
                 self.down_downscalers.append(nn.Identity())
+
             down_block = nn.ModuleList()
-            for _ in range(blocks[0][i]):
-                for block_type in level_config[i]:
-                    block = get_block(block_type, c_hidden[i], nhead[i], dropout=dropout[i], self_attn=self_attn[i])
+            for _ in range(down_num_layers_per_block[i]):
+                for block_type in block_types_per_layer[i]:
+                    block = get_block(
+                        block_type,
+                        block_out_channels[i],
+                        num_attention_heads[i],
+                        dropout=dropout[i],
+                        self_attn=self_attn[i],
+                    )
                     down_block.append(block)
             self.down_blocks.append(down_block)
+
             if block_repeat is not None:
                 block_repeat_mappers = nn.ModuleList()
-                for _ in range(block_repeat[0][i] - 1):
-                    block_repeat_mappers.append(nn.Conv2d(c_hidden[i], c_hidden[i], kernel_size=1))
+                for _ in range(down_blocks_repeat_mappers[i] - 1):
+                    block_repeat_mappers.append(nn.Conv2d(block_out_channels[i], block_out_channels[i], kernel_size=1))
                 self.down_repeat_mappers.append(block_repeat_mappers)
 
         # -- up blocks
         self.up_blocks = nn.ModuleList()
         self.up_upscalers = nn.ModuleList()
         self.up_repeat_mappers = nn.ModuleList()
-        for i in reversed(range(len(c_hidden))):
+        for i in reversed(range(len(block_out_channels))):
             if i > 0:
                 self.up_upscalers.append(
                     nn.Sequential(
-                        WuerstchenLayerNorm(c_hidden[i], elementwise_affine=False, eps=1e-6),
-                        UpDownBlock2d(c_hidden[i], c_hidden[i - 1], mode="up", enabled=switch_level[i - 1])
+                        WuerstchenLayerNorm(block_out_channels[i], elementwise_affine=False, eps=1e-6),
+                        UpDownBlock2d(
+                            block_out_channels[i], block_out_channels[i - 1], mode="up", enabled=switch_level[i - 1]
+                        )
                         if switch_level is not None
-                        else nn.ConvTranspose2d(c_hidden[i], c_hidden[i - 1], kernel_size=2, stride=2),
+                        else nn.ConvTranspose2d(
+                            block_out_channels[i], block_out_channels[i - 1], kernel_size=2, stride=2
+                        ),
                     )
                 )
             else:
                 self.up_upscalers.append(nn.Identity())
+
             up_block = nn.ModuleList()
-            for j in range(blocks[1][::-1][i]):
-                for k, block_type in enumerate(level_config[i]):
-                    c_skip = c_hidden[i] if i < len(c_hidden) - 1 and j == k == 0 else 0
+            for j in range(up_num_layers_per_block[::-1][i]):
+                for k, block_type in enumerate(block_types_per_layer[i]):
+                    c_skip = block_out_channels[i] if i < len(block_out_channels) - 1 and j == k == 0 else 0
                     block = get_block(
-                        block_type, c_hidden[i], nhead[i], c_skip=c_skip, dropout=dropout[i], self_attn=self_attn[i]
+                        block_type,
+                        block_out_channels[i],
+                        num_attention_heads[i],
+                        c_skip=c_skip,
+                        dropout=dropout[i],
+                        self_attn=self_attn[i],
                     )
                     up_block.append(block)
             self.up_blocks.append(up_block)
+
             if block_repeat is not None:
                 block_repeat_mappers = nn.ModuleList()
-                for _ in range(block_repeat[1][::-1][i] - 1):
-                    block_repeat_mappers.append(nn.Conv2d(c_hidden[i], c_hidden[i], kernel_size=1))
+                for _ in range(up_blocks_repeat_mappers[::-1][i] - 1):
+                    block_repeat_mappers.append(nn.Conv2d(block_out_channels[i], block_out_channels[i], kernel_size=1))
                 self.up_repeat_mappers.append(block_repeat_mappers)
 
         # OUTPUT
         self.clf = nn.Sequential(
-            WuerstchenLayerNorm(c_hidden[0], elementwise_affine=False, eps=1e-6),
-            nn.Conv2d(c_hidden[0], c_out * (patch_size**2), kernel_size=1),
+            WuerstchenLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
+            nn.Conv2d(block_out_channels[0], out_channels * (patch_size**2), kernel_size=1),
             nn.PixelShuffle(patch_size),
         )
 
@@ -225,18 +281,21 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                 elif isinstance(block, TimestepBlock):
                     nn.init.constant_(block.mapper.weight, 0)
 
-    def gen_r_embedding(self, ratio, max_positions=10000):
-        r = ratio * max_positions
-        half_dim = self.config.c_r // 2
+    def get_timestep_ratio_embedding(self, timestep_ratio, max_positions=10000):
+        r = timestep_ratio * max_positions
+        half_dim = self.config.timestep_ratio_embedding_dim // 2
+
         emb = math.log(max_positions) / (half_dim - 1)
         emb = torch.arange(half_dim, device=r.device).float().mul(-emb).exp()
         emb = r[:, None] * emb[None, :]
         emb = torch.cat([emb.sin(), emb.cos()], dim=1)
-        if self.config.c_r % 2 == 1:  # zero pad
+
+        if self.config.timestep_ratio_embedding_dim % 2 == 1:  # zero pad
             emb = nn.functional.pad(emb, (0, 1), mode="constant")
+
         return emb.to(dtype=r.dtype)
 
-    def gen_c_embeddings(self, clip_txt_pooled, clip_txt=None, clip_img=None):
+    def get_clip_embeddings(self, clip_txt_pooled, clip_txt=None, clip_img=None):
         if len(clip_txt_pooled.shape) == 2:
             clip_txt_pool = clip_txt_pooled.unsqueeze(1)
         clip_txt_pool = self.clip_txt_pooled_mapper(clip_txt_pooled).view(
@@ -367,7 +426,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
     def forward(
         self,
         sample,
-        ratio,
+        timestep_ratio,
         clip_text_pooled,
         clip_text=None,
         clip_img=None,
@@ -381,17 +440,17 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
             pixels = sample.new_zeros(sample.size(0), 3, 8, 8)
 
         # Process the conditioning embeddings
-        r_embed = self.gen_r_embedding(ratio)
-        for c in self.config.t_conds:
+        timestep_ratio_embed = self.get_timestep_ratio_embedding(timestep_ratio)
+        for c in self.config.timestep_conditioning_type:
             if c == "sca":
                 cond = sca
             elif c == "crp":
                 cond = crp
             else:
                 cond = None
-            t_cond = cond or torch.zeros_like(ratio)
-            r_embed = torch.cat([r_embed, self.gen_r_embedding(t_cond)], dim=1)
-        clip = self.gen_c_embeddings(clip_txt_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
+            t_cond = cond or torch.zeros_like(timestep_ratio)
+            timestep_ratio_embed = torch.cat([timestep_ratio_embed, self.get_timestep_ratio_embedding(t_cond)], dim=1)
+        clip = self.get_clip_embeddings(clip_txt_pooled=clip_text_pooled, clip_txt=clip_text, clip_img=clip_img)
 
         # Model Blocks
         x = self.embedding(sample)
@@ -403,8 +462,8 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
             x = x + nn.functional.interpolate(
                 self.pixels_mapper(pixels), size=x.shape[-2:], mode="bilinear", align_corners=True
             )
-        level_outputs = self._down_encode(x, r_embed, clip)
-        x = self._up_decode(level_outputs, r_embed, clip)
+        level_outputs = self._down_encode(x, timestep_ratio_embed, clip)
+        x = self._up_decode(level_outputs, timestep_ratio_embed, clip)
         sample = self.clf(x)
 
         if not return_dict:

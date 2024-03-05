@@ -91,7 +91,6 @@ class GlobalResponseNorm(nn.Module):
 class AttnBlock(nn.Module):
     def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
         super().__init__()
-
         linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
         self.self_attn = self_attn
