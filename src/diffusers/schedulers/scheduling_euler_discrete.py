@@ -214,10 +214,8 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
             # FP16 smallest positive subnormal works well here
             self.alphas_cumprod[-1] = 2**-24
 
-        sigmas = np.array(((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5)
+        sigmas = (((1 - self.alphas_cumprod) / self.alphas_cumprod) ** 0.5).flip(0)
         timesteps = np.linspace(0, num_train_timesteps - 1, num_train_timesteps, dtype=float)[::-1].copy()
-
-        sigmas = torch.from_numpy(sigmas[::-1].copy()).to(dtype=torch.float32)
         timesteps = torch.from_numpy(timesteps).to(dtype=torch.float32)
 
         # setable values
