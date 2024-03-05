@@ -92,7 +92,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         only_cross_attention: bool = False,
         double_self_attention: bool = False,
         upcast_attention: bool = False,
-        norm_type: str = "layer_norm",
+        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single', 'layer_norm_i2vgen'
         norm_elementwise_affine: bool = True,
         norm_eps: float = 1e-5,
         attention_type: str = "default",
