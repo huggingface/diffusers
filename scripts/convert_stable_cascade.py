@@ -24,12 +24,11 @@ from diffusers.pipelines.wuerstchen import PaellaVQModel
 
 
 parser = argparse.ArgumentParser(description="Convert Stable Cascade model weights to a diffusers pipeline")
-parser.add_argument("--model_path", type=str, help="Location of Stable Cascade weights")
+parser.add_argument("--model_path", type=str, default="../StableCascade", help="Location of Stable Cascade weights")
+parser.add_argument("--stage_c_name", type=str, default="stage_c.safetensors", help="Name of stage c checkpoint file")
+parser.add_argument("--stage_b_name", type=str, default="stage_b.safetensors", help="Name of stage b checkpoint file")
 parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
 parser.add_argument("--save_org", type=str, default="diffusers", help="Hub organization to save the pipelines to")
-parser.add_argument("--prior_filename", type=str, default="stage_c.safetensors", help="Prior filename")
-parser.add_argument("--decoder_filename", type=str, default="stage_b.safetensors", help="Decoder filename")
-parser.add_argument("--push_to_hub", action="store_true", help="Push to hub")
 
 args = parser.parse_args()
 model_path = args.model_path
@@ -37,8 +36,8 @@ model_path = args.model_path
 device = "cpu"
 
 # set paths to model weights
-prior_checkpoint_path = f"{model_path}/{args.prior_filename}"
-decoder_checkpoint_path = f"{model_path}/{args.decoder_filename}"
+prior_checkpoint_path = f"{model_path}/{args.stage_c_name}"
+decoder_checkpoint_path = f"{model_path}/{args.stage_b_name}"
 
 # Clip Text encoder and tokenizer
 config = CLIPConfig.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
@@ -121,7 +120,7 @@ prior_pipeline = StableCascadePriorPipeline(
     scheduler=scheduler,
     feature_extractor=feature_extractor,
 )
-prior_pipeline.save_pretrained(f"{args.save_org}/StableCascade-prior", push_to_hub=args.push_to_hub)
+prior_pipeline.save_pretrained(f"{args.save_org}/StableCascade-prior", push_to_hub=False)
 
 # Decoder
 if args.use_safetensors:
@@ -194,7 +193,7 @@ vqmodel = PaellaVQModel.from_pretrained("warp-ai/wuerstchen", subfolder="vqgan")
 decoder_pipeline = StableCascadeDecoderPipeline(
     decoder=decoder, text_encoder=text_encoder, tokenizer=tokenizer, vqgan=vqmodel, scheduler=scheduler
 )
-decoder_pipeline.save_pretrained(f"{args.save_org}/StableCascade-decoder", push_to_hub=args.push_to_hub)
+decoder_pipeline.save_pretrained(f"{args.save_org}/StableCascade-decoder", push_to_hub=False)
 
 # Stable Cascade combined pipeline
 stable_cascade_pipeline = StableCascadeCombinedPipeline(
@@ -212,4 +211,4 @@ stable_cascade_pipeline = StableCascadeCombinedPipeline(
     prior_image_encoder=image_encoder,
     prior_feature_extractor=feature_extractor,
 )
-stable_cascade_pipeline.save_pretrained(f"{args.save_org}/StableCascade", push_to_hub=args.push_to_hub)
+stable_cascade_pipeline.save_pretrained(f"{args.save_org}/StableCascade", push_to_hub=False)
