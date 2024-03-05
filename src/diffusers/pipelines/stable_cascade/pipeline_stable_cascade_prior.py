@@ -119,13 +119,21 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         )
         self.register_to_config(resolution_multiple=resolution_multiple)
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
-    def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
+    def prepare_latents(
+        self, batch_size, height, width, num_images_per_prompt, dtype, device, generator, latents, scheduler
+    ):
+        latent_shape = (
+            num_images_per_prompt * batch_size,
+            self.prior.config.in_channels,
+            ceil(height / self.config.resolution_multiple),
+            ceil(width / self.config.resolution_multiple),
+        )
+
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(latent_shape, generator=generator, device=device, dtype=dtype)
         else:
-            if latents.shape != shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+            if latents.shape != latent_shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latent_shape}")
             latents = latents.to(device)
 
         latents = latents * scheduler.init_noise_sigma
@@ -527,27 +535,14 @@ class StableCascadePriorPipeline(DiffusionPipeline):
             else prompt_embeds_pooled
         )
 
-        # 3. Determine latent shape of image embeddings
-        latent_height = ceil(height / self.config.resolution_multiple)
-        latent_width = ceil(width / self.config.resolution_multiple)
-        effnet_features_shape = (
-            num_images_per_prompt * batch_size,
-            self.prior.config.in_channels,
-            latent_height,
-            latent_width,
-        )
-
         # 4. Prepare and set timesteps
-        if timesteps is not None:
-            self.scheduler.set_timesteps(timesteps=timesteps, device=device)
-            timesteps = self.scheduler.timesteps
-            num_inference_steps = len(timesteps)
-        else:
-            self.scheduler.set_timesteps(num_inference_steps, device=device)
-            timesteps = self.scheduler.timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
 
         # 5. Prepare latents
-        latents = self.prepare_latents(effnet_features_shape, dtype, device, generator, latents, self.scheduler)
+        latents = self.prepare_latents(
+            batch_size, height, width, num_images_per_prompt, dtype, device, generator, latents, self.scheduler
+        )
 
         if isinstance(self.scheduler, DDPMWuerstchenScheduler):
             timesteps = timesteps[:-1]
@@ -610,11 +605,11 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         self.maybe_free_model_hooks()
 
         if output_type == "np":
-            latents = latents.cpu().float().numpy()
-            prompt_embeds = prompt_embeds.cpu().float().numpy()
+            latents = latents.cpu().float().numpy()  # float() as bfloat16-> numpy doesnt work
+            prompt_embeds = prompt_embeds.cpu().float().numpy()  # float() as bfloat16-> numpy doesnt work
             negative_prompt_embeds = (
                 negative_prompt_embeds.cpu().float().numpy() if negative_prompt_embeds is not None else None
-            )
+            )  # float() as bfloat16-> numpy doesnt work
 
         if not return_dict:
             return (latents, prompt_embeds, negative_prompt_embeds)
