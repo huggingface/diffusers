@@ -9,8 +9,8 @@ on:
       - v*-patch
     paths:
       - "src/diffusers/**.py"
-      - "examples/"
-      - "docs/"
+      - "examples/**"
+      - "docs/**"
 
 jobs:
   build:
