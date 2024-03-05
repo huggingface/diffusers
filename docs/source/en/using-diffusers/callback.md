@@ -31,9 +31,9 @@ def callback_dynamic_cfg(pipe, step_index, timestep, callback_kwargs):
                 prompt_embeds = callback_kwargs["prompt_embeds"]
                 prompt_embeds = prompt_embeds.chunk(2)[-1]
 
-        # update guidance_scale and prompt_embeds
-        pipe._guidance_scale = 0.0
-        callback_kwargs["prompt_embeds"] = prompt_embeds
+                # update guidance_scale and prompt_embeds
+                pipe._guidance_scale = 0.0
+                callback_kwargs["prompt_embeds"] = prompt_embeds
         return callback_kwargs
 ```
 
