@@ -496,10 +496,18 @@ class StableCascadePriorPipeline(DiffusionPipeline):
             uncond_image_embeds_pooled = torch.zeros_like(image_embeds_pooled)
         else:
             image_embeds_pooled = torch.zeros(
-                batch_size * num_images_per_prompt, 1, self.prior.config.c_clip_img, device=device, dtype=dtype
+                batch_size * num_images_per_prompt,
+                1,
+                self.prior.config.clip_image_in_channels,
+                device=device,
+                dtype=dtype,
             )
             uncond_image_embeds_pooled = torch.zeros(
-                batch_size * num_images_per_prompt, 1, self.prior.config.c_clip_img, device=device, dtype=dtype
+                batch_size * num_images_per_prompt,
+                1,
+                self.prior.config.clip_image_in_channels,
+                device=device,
+                dtype=dtype,
             )
 
         if self.do_classifier_free_guidance:
@@ -558,16 +566,16 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(timesteps)):
             if not isinstance(self.scheduler, DDPMWuerstchenScheduler):
                 if len(alphas_cumprod) > 0:
-                    ratio = self.get_t_condioning(t.long().cpu(), alphas_cumprod)
-                    ratio = ratio.expand(latents.size(0)).to(dtype).to(device)
+                    timestep_ratio = self.get_t_condioning(t.long().cpu(), alphas_cumprod)
+                    timestep_ratio = timestep_ratio.expand(latents.size(0)).to(dtype).to(device)
                 else:
-                    ratio = t.float().div(self.scheduler.timesteps[-1]).expand(latents.size(0)).to(dtype)
+                    timestep_ratio = t.float().div(self.scheduler.timesteps[-1]).expand(latents.size(0)).to(dtype)
             else:
-                ratio = t.expand(latents.size(0)).to(dtype)
+                timestep_ratio = t.expand(latents.size(0)).to(dtype)
             # 7. Denoise image embeddings
             predicted_image_embedding = self.prior(
                 sample=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
-                ratio=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
+                timestep_ratio=torch.cat([timestep_ratio] * 2) if self.do_classifier_free_guidance else timestep_ratio,
                 clip_text_pooled=text_encoder_pooled,
                 clip_text=text_encoder_hidden_states,
                 clip_img=image_embeds,
@@ -583,9 +591,9 @@ class StableCascadePriorPipeline(DiffusionPipeline):
 
             # 9. Renoise latents to next timestep
             if not isinstance(self.scheduler, DDPMWuerstchenScheduler):
-                ratio = t
+                timestep_ratio = t
             latents = self.scheduler.step(
-                model_output=predicted_image_embedding, timestep=ratio, sample=latents, generator=generator
+                model_output=predicted_image_embedding, timestep=timestep_ratio, sample=latents, generator=generator
             ).prev_sample
 
             if callback_on_step_end is not None:

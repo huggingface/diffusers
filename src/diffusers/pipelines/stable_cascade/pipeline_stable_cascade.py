@@ -100,13 +100,20 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         )
         self.register_to_config(latent_dim_scale=latent_dim_scale)
 
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.prepare_latents
-    def prepare_latents(self, shape, dtype, device, generator, latents, scheduler):
+    def prepare_latents(self, image_embeddings, num_images_per_prompt, dtype, device, generator, latents, scheduler):
+        batch_size, channels, height, width = image_embeddings.shape
+        latents_shape = (
+            batch_size * num_images_per_prompt,
+            4,
+            int(height * self.config.latent_dim_scale),
+            int(width * self.config.latent_dim_scale),
+        )
+
         if latents is None:
-            latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
+            latents = randn_tensor(latents_shape, generator=generator, device=device, dtype=dtype)
         else:
-            if latents.shape != shape:
-                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
+            if latents.shape != latents_shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
             latents = latents.to(device)
 
         latents = latents * scheduler.init_noise_sigma
@@ -279,7 +286,6 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         image_embeddings: Union[torch.FloatTensor, List[torch.FloatTensor]],
         prompt: Union[str, List[str]] = None,
         num_inference_steps: int = 10,
-        timesteps: Optional[List[float]] = None,
         guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -303,9 +309,6 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 12):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
-                timesteps are used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 0.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -392,32 +395,23 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             else image_embeddings
         )
 
-        # 3. Determine latent shape of latents
-        latent_height = int(image_embeddings.size(2) * self.config.latent_dim_scale)
-        latent_width = int(image_embeddings.size(3) * self.config.latent_dim_scale)
-        latent_features_shape = (image_embeddings.size(0) * num_images_per_prompt, 4, latent_height, latent_width)
-
-        # 4. Prepare and set timesteps
-        if timesteps is not None:
-            self.scheduler.set_timesteps(timesteps=timesteps, device=device)
-            timesteps = self.scheduler.timesteps
-            num_inference_steps = len(timesteps)
-        else:
-            self.scheduler.set_timesteps(num_inference_steps, device=device)
-            timesteps = self.scheduler.timesteps
+        self.scheduler.set_timesteps(num_inference_steps, device=device)
+        timesteps = self.scheduler.timesteps
 
         # 5. Prepare latents
-        latents = self.prepare_latents(latent_features_shape, dtype, device, generator, latents, self.scheduler)
+        latents = self.prepare_latents(
+            image_embeddings, num_images_per_prompt, dtype, device, generator, latents, self.scheduler
+        )
 
         # 6. Run denoising loop
         self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
-            ratio = t.expand(latents.size(0)).to(dtype)
+            timestep_ratio = t.expand(latents.size(0)).to(dtype)
 
             # 7. Denoise latents
             predicted_latents = self.decoder(
                 sample=torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
-                ratio=torch.cat([ratio] * 2) if self.do_classifier_free_guidance else ratio,
+                timestep_ratio=torch.cat([timestep_ratio] * 2) if self.do_classifier_free_guidance else timestep_ratio,
                 clip_text_pooled=prompt_embeds_pooled,
                 effnet=effnet,
                 return_dict=False,
@@ -431,7 +425,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             # 9. Renoise latents to next timestep
             latents = self.scheduler.step(
                 model_output=predicted_latents,
-                timestep=ratio,
+                timestep=timestep_ratio,
                 sample=latents,
                 generator=generator,
             ).prev_sample
