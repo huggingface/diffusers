@@ -74,32 +74,34 @@ for key in orig_state_dict.keys():
     else:
         state_dict[key] = orig_state_dict[key]
 
-prior_model = StableCascadeUNet(
-    in_channels=16,
-    out_channels=16,
-    timestep_ratio_embedding_dim=64,
-    patch_size=1,
-    conditioning_dim=2048,
-    block_out_channels=[2048, 2048],
-    num_attention_heads=[32, 32],
-    down_num_layers_per_block=[8, 24],
-    up_num_layers_per_block=[24, 8],
-    down_blocks_repeat_mappers=[1, 1],
-    up_blocks_repeat_mappers=[1, 1],
-    block_types_per_layer=[
-        ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
-        ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
-    ],
-    clip_text_in_channels=1280,
-    clip_text_pooled_in_channels=1280,
-    clip_image_in_channels=768,
-    clip_seq=4,
-    kernel_size=3,
-    dropout=[0.1, 0.1],
-    self_attn=True,
-    timestep_conditioning_type=["sca", "crp"],
-    switch_level=[False],
-)
+
+with accelerate.init_empty_weights():
+    prior_model = StableCascadeUNet(
+        in_channels=16,
+        out_channels=16,
+        timestep_ratio_embedding_dim=64,
+        patch_size=1,
+        conditioning_dim=2048,
+        block_out_channels=[2048, 2048],
+        num_attention_heads=[32, 32],
+        down_num_layers_per_block=[8, 24],
+        up_num_layers_per_block=[24, 8],
+        down_blocks_repeat_mappers=[1, 1],
+        up_blocks_repeat_mappers=[1, 1],
+        block_types_per_layer=[
+            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+        ],
+        clip_text_in_channels=1280,
+        clip_text_pooled_in_channels=1280,
+        clip_image_in_channels=768,
+        clip_seq=4,
+        kernel_size=3,
+        dropout=[0.1, 0.1],
+        self_attn=True,
+        timestep_conditioning_type=["sca", "crp"],
+        switch_level=[False],
+    )
 prior_model.load_state_dict(state_dict, strict=True)
 
 # scheduler for prior and decoder
@@ -114,7 +116,7 @@ prior_pipeline = StableCascadePriorPipeline(
     scheduler=scheduler,
     feature_extractor=feature_extractor,
 )
-prior_pipeline.save_pretrained("dn6/StableCascade-prior", push_to_hub=False)
+prior_pipeline.save_pretrained("StableCascade-prior", push_to_hub=False)
 
 # Decoder
 if args.use_safetensors:
@@ -187,7 +189,7 @@ vqmodel = PaellaVQModel.from_pretrained("warp-ai/wuerstchen", subfolder="vqgan")
 decoder_pipeline = StableCascadeDecoderPipeline(
     decoder=decoder, text_encoder=text_encoder, tokenizer=tokenizer, vqgan=vqmodel, scheduler=scheduler
 )
-decoder_pipeline.save_pretrained("dn6/StableCascade-decoder", push_to_hub=False)
+decoder_pipeline.save_pretrained("StableCascade-decoder", push_to_hub=False)
 
 # Stable Cascade combined pipeline
 stable_cascade_pipeline = StableCascadeCombinedPipeline(
