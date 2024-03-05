@@ -26,7 +26,7 @@ Let's take a look at how to use IP-Adapter's image prompting capabilities with t
 In all the following examples, you'll see the [`~loaders.IPAdapterMixin.set_ip_adapter_scale`] method. This method controls the amount of text or image conditioning to apply to the model. A value of `1.0` means the model is only conditioned on the image prompt. Lowering this value encourages the model to produce more diverse images, but they may not be as aligned with the image prompt. Typically, a value of `0.5` achieves a good balance between the two prompt types and produces good results.
 
 > [!TIP]
-> In the examples below, try adding `low_cpu_mem_usage=True` to the [`~loaders.IPAdapterMixin.load_ip_adapter`] method to speed up the loading time by only loading the pretrained weights and not initializing them.
+> In the examples below, try adding `low_cpu_mem_usage=True` to the [`~loaders.IPAdapterMixin.load_ip_adapter`] method to speed up the loading time.
 
 <hfoptions id="tasks">
 <hfoption id="Text-to-image">
@@ -236,7 +236,7 @@ export_to_gif(frames, "gummy_bear.gif")
 
 ## Configure parameters
 
-There are a couple IP-Adapter parameters that are useful to know about and can help you with your image generation tasks. These parameters can make your workflow more efficient or give you more control over image generation.
+There are a couple of IP-Adapter parameters that are useful to know about and can help you with your image generation tasks. These parameters can make your workflow more efficient or give you more control over image generation.
 
 ### Image embeddings
 
@@ -284,8 +284,8 @@ To start, preprocess the input IP-Adapter images with the [`~image_processor.IPA
 ```py
 from diffusers.image_processor import IPAdapterMaskProcessor
 
-mask1 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask1.png")
-mask2 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_mask2.png")
+mask1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_mask1.png")
+mask2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_mask2.png")
 
 output_height = 1024
 output_width = 1024
@@ -305,11 +305,11 @@ masks = processor.preprocess([mask1, mask2], height=output_height, width=output_
   </div>
 </div>
 
-When there is more than one input IP-Adapter image, load them as a list to ensure each image is assigned to a different IP-Adapter.
+When there is more than one input IP-Adapter image, load them as a list to ensure each image is assigned to a different IP-Adapter. Each of the input IP-Adapter images here correspond to the masks generated above.
 
 ```py
-face_image1 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl1.png")
-face_image2 = load_image("https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/ip_mask_girl2.png")
+face_image1 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl1.png")
+face_image2 = load_image("https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_mask_girl2.png")
 
 ip_images = [[face_image1], [face_image2]]
 ```
@@ -325,7 +325,7 @@ ip_images = [[face_image1], [face_image2]]
   </div>
 </div>
 
-Now pass the preprocessed masks to the pipelines `cross_attention_kwargs`.
+Now pass the preprocessed masks to `cross_attention_kwargs` in the pipeline call.
 
 ```py
 pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2)
@@ -337,8 +337,10 @@ image = pipeline(
     prompt="2 girls",
     ip_adapter_image=ip_images,
     negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality",
-    num_inference_steps=20, num_images_per_prompt=num_images,
-    generator=generator, cross_attention_kwargs={"ip_adapter_masks": masks}
+    num_inference_steps=20,
+    num_images_per_prompt=num_images,
+    generator=generator,
+    cross_attention_kwargs={"ip_adapter_masks": masks}
 ).images[0]
 image
 ```
