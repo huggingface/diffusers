@@ -24,6 +24,8 @@ from diffusers.pipelines.wuerstchen import PaellaVQModel
 
 parser = argparse.ArgumentParser(description="Convert Stable Cascade model weights to a diffusers pipeline")
 parser.add_argument("--model_path", type=str, default="../StableCascade", help="Location of Stable Cascade weights")
+parser.add_argument("--stage_c_name", type=str, default="stage_c.safetensors", help="Name of stage c checkpoint file")
+parser.add_argument("--stage_b_name", type=str, default="stage_b.safetensors", help="Name of stage b checkpoint file")
 parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
 parser.add_argument("--save_org", type=str, default="diffusers", help="Hub organization to save the pipelines to")
 parser.add_argument("--push_to_hub", action="store_true", help="Push to hub")
@@ -34,8 +36,8 @@ model_path = args.model_path
 device = "cpu"
 
 # set paths to model weights
-prior_checkpoint_path = f"{model_path}/stage_c.safetensors"
-decoder_checkpoint_path = f"{model_path}/stage_b.safetensors"
+prior_checkpoint_path = f"{model_path}/{args.stage_c_name}"
+decoder_checkpoint_path = f"{model_path}/{args.stage_b_name}"
 
 # Clip Text encoder and tokenizer
 config = CLIPConfig.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
