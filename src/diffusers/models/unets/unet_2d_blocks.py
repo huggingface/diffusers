@@ -1348,7 +1348,7 @@ class DownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = 1.0
+        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         output_states = ()
 
@@ -1447,7 +1447,7 @@ class DownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=None, scale=scale)
 
@@ -1545,7 +1545,7 @@ class AttnDownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb=None, scale=scale)
             cross_attention_kwargs = {"scale": scale}
@@ -1816,7 +1816,7 @@ class ResnetDownsampleBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = 1.0
+        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         output_states = ()
 
@@ -2058,7 +2058,7 @@ class KDownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = 1.0
+        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         output_states = ()
 
@@ -2684,7 +2684,7 @@ class UpDecoderBlock2D(nn.Module):
         self.resolution_idx = resolution_idx
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = 1.0
+        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None
     ) -> torch.FloatTensor:
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=temb, scale=scale)
@@ -2784,7 +2784,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         self.resolution_idx = resolution_idx
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = 1.0
+        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None
     ) -> torch.FloatTensor:
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb=temb, scale=scale)

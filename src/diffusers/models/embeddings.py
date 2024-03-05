@@ -257,7 +257,7 @@ class GaussianFourierProjection(nn.Module):
     """Gaussian Fourier embeddings for noise levels."""
 
     def __init__(
-        self, embedding_size: int = 256, scale: float = 1.0, set_W_to_weight=True, log=True, flip_sin_to_cos=False
+        self, embedding_size: int = 256, set_W_to_weight=True, log=True, flip_sin_to_cos=False
     ):
         super().__init__()
         self.weight = nn.Parameter(torch.randn(embedding_size) * scale, requires_grad=False)

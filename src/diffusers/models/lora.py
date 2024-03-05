@@ -366,7 +366,7 @@ class LoRACompatibleConv(nn.Conv2d):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.padding_mode != "zeros":
             hidden_states = F.pad(hidden_states, self._reversed_padding_repeated_twice, mode=self.padding_mode)
             padding = (0, 0)
@@ -448,7 +448,7 @@ class LoRACompatibleLinear(nn.Linear):
         self.w_up = None
         self.w_down = None
 
-    def forward(self, hidden_states: torch.Tensor, scale: float = 1.0) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
         if self.lora_layer is None:
             out = super().forward(hidden_states)
             return out

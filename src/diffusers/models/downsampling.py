@@ -131,7 +131,7 @@ class Downsample2D(nn.Module):
         else:
             self.conv = conv
 
-    def forward(self, hidden_states: torch.FloatTensor, scale: float = 1.0) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
         assert hidden_states.shape[1] == self.channels
 
         if self.norm is not None:
