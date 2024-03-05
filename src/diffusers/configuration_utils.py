@@ -127,7 +127,7 @@ class ConfigMixin:
         """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
         config attributes directly. See https://github.com/huggingface/diffusers/pull/3129
 
-        Tihs funtion is mostly copied from PyTorch's __getattr__ overwrite:
+        This function is mostly copied from PyTorch's __getattr__ overwrite:
         https://pytorch.org/docs/stable/_modules/torch/nn/modules/module.html#Module
         """
 
@@ -533,7 +533,7 @@ class ConfigMixin:
                 f"{cls.config_name} configuration file."
             )
 
-        # 5. Give nice info if config attributes are initiliazed to default because they have not been passed
+        # 5. Give nice info if config attributes are initialized to default because they have not been passed
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
             logger.info(
