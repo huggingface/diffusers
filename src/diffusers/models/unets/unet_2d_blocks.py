@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ...utils import is_torch_version, logging
+from ...utils import deprecate, is_torch_version, logging
 from ...utils.torch_utils import apply_freeu
 from ..activations import get_activation
 from ..attention_processor import Attention, AttnAddedKVProcessor, AttnAddedKVProcessor2_0
@@ -1341,8 +1341,12 @@ class DownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None
+        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = None
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         output_states = ()
 
         for resnet in self.resnets:
@@ -1440,7 +1444,11 @@ class DownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.FloatTensor, scale: float = None) -> torch.FloatTensor:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb=None)
 
@@ -1538,7 +1546,11 @@ class AttnDownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor) -> torch.FloatTensor:
+    def forward(self, hidden_states: torch.FloatTensor, scale: float = None) -> torch.FloatTensor:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         for resnet, attn in zip(self.resnets, self.attentions):
             hidden_states = resnet(hidden_states, temb=None)
             hidden_states = attn(hidden_states)
@@ -1638,16 +1650,19 @@ class AttnSkipDownBlock2D(nn.Module):
         skip_sample: Optional[torch.FloatTensor] = None,
         scale: float = 1.0,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...], torch.FloatTensor]:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         output_states = ()
 
         for resnet, attn in zip(self.resnets, self.attentions):
-            hidden_states = resnet(hidden_states, temb, scale=scale)
-            cross_attention_kwargs = {"scale": scale}
-            hidden_states = attn(hidden_states, **cross_attention_kwargs)
+            hidden_states = resnet(hidden_states, temb)
+            hidden_states = attn(hidden_states)
             output_states += (hidden_states,)
 
         if self.downsamplers is not None:
-            hidden_states = self.resnet_down(hidden_states, temb, scale=scale)
+            hidden_states = self.resnet_down(hidden_states, temb)
             for downsampler in self.downsamplers:
                 skip_sample = downsampler(skip_sample)
 
@@ -1723,16 +1738,20 @@ class SkipDownBlock2D(nn.Module):
         hidden_states: torch.FloatTensor,
         temb: Optional[torch.FloatTensor] = None,
         skip_sample: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        scale: float = None,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...], torch.FloatTensor]:
         output_states = ()
 
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         for resnet in self.resnets:
-            hidden_states = resnet(hidden_states, temb, scale)
+            hidden_states = resnet(hidden_states, temb)
             output_states += (hidden_states,)
 
         if self.downsamplers is not None:
-            hidden_states = self.resnet_down(hidden_states, temb, scale)
+            hidden_states = self.resnet_down(hidden_states, temb)
             for downsampler in self.downsamplers:
                 skip_sample = downsampler(skip_sample)
 
@@ -1808,8 +1827,12 @@ class ResnetDownsampleBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None
+        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = None
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         output_states = ()
 
         for resnet in self.resnets:
@@ -2305,24 +2328,27 @@ class AttnUpBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        scale: float = 1.0,
+        scale: float = None,
     ) -> torch.FloatTensor:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         for resnet, attn in zip(self.resnets, self.attentions):
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            hidden_states = resnet(hidden_states, temb, scale=scale)
-            cross_attention_kwargs = {"scale": scale}
-            hidden_states = attn(hidden_states, **cross_attention_kwargs)
+            hidden_states = resnet(hidden_states, temb)
+            hidden_states = attn(hidden_states)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
                 if self.upsample_type == "resnet":
-                    hidden_states = upsampler(hidden_states, temb=temb, scale=scale)
+                    hidden_states = upsampler(hidden_states, temb=temb)
                 else:
-                    hidden_states = upsampler(hidden_states, scale=scale)
+                    hidden_states = upsampler(hidden_states)
 
         return hidden_states
 
@@ -2555,8 +2581,12 @@ class UpBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        scale: float = 1.0,
+        scale: float = None,
     ) -> torch.FloatTensor:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -2600,11 +2630,11 @@ class UpBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb, scale=scale)
+                hidden_states = resnet(hidden_states, temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, upsample_size, scale=scale)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
@@ -2883,16 +2913,19 @@ class AttnSkipUpBlock2D(nn.Module):
         skip_sample=None,
         scale: float = 1.0,
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            hidden_states = resnet(hidden_states, temb, scale=scale)
+            hidden_states = resnet(hidden_states, temb)
 
-        cross_attention_kwargs = {"scale": scale}
-        hidden_states = self.attentions[0](hidden_states, **cross_attention_kwargs)
+        hidden_states = self.attentions[0](hidden_states)
 
         if skip_sample is not None:
             skip_sample = self.upsampler(skip_sample)
@@ -2906,7 +2939,7 @@ class AttnSkipUpBlock2D(nn.Module):
 
             skip_sample = skip_sample + skip_sample_states
 
-            hidden_states = self.resnet_up(hidden_states, temb, scale=scale)
+            hidden_states = self.resnet_up(hidden_states, temb)
 
         return hidden_states, skip_sample
 
@@ -2991,13 +3024,17 @@ class SkipUpBlock2D(nn.Module):
         skip_sample=None,
         scale: float = 1.0,
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
             res_hidden_states_tuple = res_hidden_states_tuple[:-1]
             hidden_states = torch.cat([hidden_states, res_hidden_states], dim=1)
 
-            hidden_states = resnet(hidden_states, temb, scale=scale)
+            hidden_states = resnet(hidden_states, temb)
 
         if skip_sample is not None:
             skip_sample = self.upsampler(skip_sample)
@@ -3011,7 +3048,7 @@ class SkipUpBlock2D(nn.Module):
 
             skip_sample = skip_sample + skip_sample_states
 
-            hidden_states = self.resnet_up(hidden_states, temb, scale=scale)
+            hidden_states = self.resnet_up(hidden_states, temb)
 
         return hidden_states, skip_sample
 
@@ -3091,8 +3128,12 @@ class ResnetUpsampleBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        scale: float = 1.0,
+        scale: float = None,
     ) -> torch.FloatTensor:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         for resnet in self.resnets:
             # pop res hidden states
             res_hidden_states = res_hidden_states_tuple[-1]
@@ -3116,11 +3157,11 @@ class ResnetUpsampleBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb, scale=scale)
+                hidden_states = resnet(hidden_states, temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, temb, scale=scale)
+                hidden_states = upsampler(hidden_states, temb)
 
         return hidden_states
 
@@ -3346,8 +3387,12 @@ class KUpBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        scale: float = 1.0,
+        scale: float = None,
     ) -> torch.FloatTensor:
+        if scale is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         res_hidden_states_tuple = res_hidden_states_tuple[-1]
         if res_hidden_states_tuple is not None:
             hidden_states = torch.cat([hidden_states, res_hidden_states_tuple], dim=1)
@@ -3370,7 +3415,7 @@ class KUpBlock2D(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb, scale=scale)
+                hidden_states = resnet(hidden_states, temb)
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
