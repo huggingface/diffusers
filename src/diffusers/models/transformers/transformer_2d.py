@@ -101,7 +101,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     ):
         super().__init__()
         if patch_size is not None:
-            if norm_type not in ["ada_norm", "ada_norm_zero"]:
+            if norm_type not in ["ada_norm", "ada_norm_zero", "ada_norm_single"]:
                 raise NotImplementedError(
                     f"Forward pass is not implemented when `patch_size` is not None and `norm_type` is '{norm_type}'."
                 )
