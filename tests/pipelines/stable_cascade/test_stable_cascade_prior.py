@@ -124,14 +124,15 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         torch.manual_seed(0)
 
         model_kwargs = {
-            "c_cond": 128,
-            "c_hidden": [128, 128],
-            "nhead": [2, 2],
-            "blocks": [[1, 1], [1, 1]],
+            "conditioning_dim": 128,
+            "block_out_channels": [128, 128],
+            "num_attention_heads": [2, 2],
+            "down_num_layers_per_block": [1, 1],
+            "up_num_layers_per_block": [1, 1],
             "switch_level": [False],
-            "c_clip_img": 768,
-            "c_clip_text": self.text_embedder_hidden_size,
-            "c_clip_text_pooled": self.text_embedder_hidden_size,
+            "clip_image_in_channels": 768,
+            "clip_text_in_channels": self.text_embedder_hidden_size,
+            "clip_text_pooled_in_channels": self.text_embedder_hidden_size,
         }
 
         model = StableCascadeUNet(**model_kwargs)

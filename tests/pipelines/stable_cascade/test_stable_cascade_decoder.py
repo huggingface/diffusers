@@ -109,19 +109,25 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
     def dummy_decoder(self):
         torch.manual_seed(0)
         model_kwargs = {
-            "c_cond": 128,
-            "block_repeat": [[1, 1, 1, 1], [3, 3, 2, 2]],
-            "c_hidden": [16, 32, 64, 128],
-            "dropout": [0.1, 0.1, 0.1, 0.1],
-            "nhead": [-1, -1, 1, 2],
-            "level_config": ["CT", "CT", "CTA", "CTA"],
-            "blocks": [[1, 1, 1, 1], [1, 1, 1, 1]],
-            "switch_level": None,
             "in_channels": 4,
-            "c_out": 4,
-            "c_clip_text_pooled": 32,
+            "out_channels": 4,
+            "conditioning_dim": 128,
+            "block_out_channels": [16, 32, 64, 128],
+            "num_attention_heads": [-1, -1, 1, 2],
+            "down_num_layers_per_block": [1, 1, 1, 1],
+            "up_num_layers_per_block": [1, 1, 1, 1],
+            "down_blocks_repeat_mappers": [1, 1, 1, 1],
+            "up_blocks_repeat_mappers": [3, 3, 2, 2],
+            "block_types_per_layer": [
+                ["SDCascadeResBlock", "SDCascadeTimestepBlock"],
+                ["SDCascadeResBlock", "SDCascadeTimestepBlock"],
+                ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
+                ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
+            ],
+            "switch_level": None,
+            "clip_text_pooled_in_channels": 32,
+            "dropout": [0.1, 0.1, 0.1, 0.1],
         }
-
         model = StableCascadeUNet(**model_kwargs)
         return model.eval()
 
