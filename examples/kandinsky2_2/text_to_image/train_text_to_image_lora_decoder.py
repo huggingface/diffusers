@@ -65,6 +65,7 @@ tags:
 - kandinsky
 - text-to-image
 - diffusers
+- diffusers-training
 - lora
 inference: true
 ---
