@@ -102,7 +102,7 @@ DreamBooth for the text encoder was enabled: {train_text_encoder}.
         inference=True,
     )
 
-    tags = ["text-to-image", "dreambooth"]
+    tags = ["text-to-image", "dreambooth", "diffusers-training"]
     if isinstance(pipeline, StableDiffusionPipeline):
         tags.extend(["stable-diffusion", "stable-diffusion-diffusers"])
     else:
