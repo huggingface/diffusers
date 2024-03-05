@@ -25,7 +25,7 @@ from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZer
 
 
 def _chunked_feed_forward(
-    ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int, lora_scale: Optional[float] = None
+    ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int
 ):
     # "feed_forward_chunk_size" can be used to save memory
     if hidden_states.shape[chunk_dim] % chunk_size != 0:
@@ -34,18 +34,10 @@ def _chunked_feed_forward(
         )
 
     num_chunks = hidden_states.shape[chunk_dim] // chunk_size
-    if lora_scale is None:
-        ff_output = torch.cat(
-            [ff(hid_slice) for hid_slice in hidden_states.chunk(num_chunks, dim=chunk_dim)],
-            dim=chunk_dim,
-        )
-    else:
-        # TOOD(Patrick): LoRA scale can be removed once PEFT refactor is complete
-        ff_output = torch.cat(
-            [ff(hid_slice, scale=lora_scale) for hid_slice in hidden_states.chunk(num_chunks, dim=chunk_dim)],
-            dim=chunk_dim,
-        )
-
+    ff_output = torch.cat(
+        [ff(hid_slice) for hid_slice in hidden_states.chunk(num_chunks, dim=chunk_dim)],
+        dim=chunk_dim,
+    )
     return ff_output
 
 
@@ -393,10 +385,10 @@ class BasicTransformerBlock(nn.Module):
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
             ff_output = _chunked_feed_forward(
-                self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size, lora_scale=lora_scale
+                self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size
             )
         else:
-            ff_output = self.ff(norm_hidden_states, scale=lora_scale)
+            ff_output = self.ff(norm_hidden_states)
 
         if self.norm_type == "ada_norm_zero":
             ff_output = gate_mlp.unsqueeze(1) * ff_output
