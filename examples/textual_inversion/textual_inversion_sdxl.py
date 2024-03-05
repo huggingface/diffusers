@@ -106,6 +106,7 @@ These are textual inversion adaption weights for {base_model}. You can find some
         "stable-diffusion-xl-diffusers",
         "text-to-image",
         "diffusers",
+        "diffusers-training",
         "textual_inversion",
     ]
 
