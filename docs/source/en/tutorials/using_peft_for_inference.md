@@ -105,6 +105,9 @@ image
 
 Impressive! As you can see, the model generated an image that mixed the characteristics of both adapters.
 
+> [!TIP]
+> Through its PEFT integration, Diffusers also offers more efficient merging methods which you can learn about in the [Merge LoRAs](../using-diffusers/merge_loras) guide!
+
 To return to only using one adapter, use the [`~diffusers.loaders.UNet2DConditionLoadersMixin.set_adapters`] method to activate the `"toy"` adapter:
 
 ```python
@@ -146,7 +149,3 @@ list_adapters_component_wise = pipe.get_list_adapters()
 list_adapters_component_wise
 {"text_encoder": ["toy", "pixel"], "unet": ["toy", "pixel"], "text_encoder_2": ["toy", "pixel"]}
 ```
-
-## Next steps
-
-Diffusers also offers more efficient merging methods which you can learn about in the [Merge LoRAs](../using-diffusers/merge_loras) guide!

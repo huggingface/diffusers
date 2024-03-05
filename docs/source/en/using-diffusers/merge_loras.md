@@ -44,16 +44,15 @@ image
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/lora_merge_set_adapters.png"/>
 </div>
 
-## add_weighted_adapters
+## add_weighted_adapter
 
 > [!WARNING]
 > This is an experimental method that adds PEFTs [`~peft.LoraModel.add_weighted_adapter`] method to Diffusers to enable more efficient merging methods. Check out this [issue](https://github.com/huggingface/diffusers/issues/6892) if you're interested in learning more about the motivation and design behind this integration.
 
-The [`~peft.LoraModel.add_weighted_adapter`] method provides access to more efficient merging method such as [TIES and DARE](https://huggingface.co/docs/peft/developer_guides/model_merging). To use these merging methods, make sure you install PEFT from source and have the latest stable version of Diffusers installed.
+The [`~peft.LoraModel.add_weighted_adapter`] method provides access to more efficient merging method such as [TIES and DARE](https://huggingface.co/docs/peft/developer_guides/model_merging). To use these merging methods, make sure you have the latest stable version of Diffusers and PEFT installed.
 
 ```bash
-pip install git+https://github.com/huggingface/peft.git
-pip install -U diffusers
+pip install -U diffusers peft
 ```
 
 There are three steps to merge LoRAs with the [`~peft.LoraModel.add_weighted_adapter`] method:
@@ -232,6 +231,24 @@ Call [`~loaders.LoraLoaderMixin.unfuse_lora`] to restore the original model's we
 ```py
 pipeline.unfuse_lora()
 ```
+
+### torch.compile
+
+[torch.compile](../optimization/torch2.0#torchcompile) can speed up your pipeline even more, but you have to make sure the LoRA weights are fused first and then unloaded.
+
+```py
+pipeline = DiffusionPipeline.from_pretrained(
+    "username/fused-ikea-feng", torch_dtype=torch.float16,
+).to("cuda")
+
+pipeline.unet.to(memory_format=torch.channels_last)
+pipeline.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+image = pipeline("A bowl of ramen shaped like a cute kawaii bear, by Feng Zikai", generator=torch.manual_seed(0)).images[0]
+image
+```
+
+Learn more about torch.compile in the [Accelerate inference of text-to-image diffusion models](../tutorials/fast_diffusion#torchcompile) guide.
 
 ## Next steps
 
