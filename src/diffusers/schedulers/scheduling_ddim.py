@@ -401,11 +401,18 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
         # - pred_prev_sample -> "x_t-1"
 
         # 1. get previous step value (=t-1)
-        prev_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        prev_timestep = timestep - 2 * (self.config.num_train_timesteps // self.num_inference_steps)
+        prev_timestep = max(prev_timestep, 0)
+        p1_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        p1_timestep = max(p1_timestep, 0)
+
+        print(f"current time step {timestep}, previous time step {prev_timestep}, num_inference_steps {self.num_inference_steps}")
 
         # 2. compute alphas, betas
         alpha_prod_t = self.alphas_cumprod[timestep]
+        alpha_prod_t_1 = self.alphas_cumprod[p1_timestep] if p1_timestep >= 0 else self.final_alpha_cumprod
         alpha_prod_t_prev = self.alphas_cumprod[prev_timestep] if prev_timestep >= 0 else self.final_alpha_cumprod
+        print(f"alpha_prod_t {alpha_prod_t}, alpha_prod_t_prev {alpha_prod_t_prev}, final_alpha_cumprod {self.final_alpha_cumprod}")
 
         beta_prod_t = 1 - alpha_prod_t
 
@@ -464,10 +471,21 @@ class DDIMScheduler(SchedulerMixin, ConfigMixin):
 
             prev_sample = prev_sample + variance
 
-        if not return_dict:
-            return (prev_sample,)
+        # 8. Add back gaussian noise
+        p1_timestep = timestep - self.config.num_train_timesteps // self.num_inference_steps
+        p1_timestep = max(p1_timestep, 0)
+        inter_alpha = self.alphas_cumprod[p1_timestep] / self.alphas_cumprod[prev_timestep]
+        inter_beta = 1 - inter_alpha
+        gaussian_noise = randn_tensor(
+            model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
+        )
+        curr_sample = inter_alpha ** (0.5) * prev_sample + inter_beta ** (0.5) * gaussian_noise
+        print(f"inter alpha {inter_alpha}, beta {inter_beta}, diff is {torch.sum(torch.abs(curr_sample - prev_sample))}, prev sample {prev_sample[0,0,0,0]}, curr sample {curr_sample[0,0,0,0]}")
 
-        return DDIMSchedulerOutput(prev_sample=prev_sample, pred_original_sample=pred_original_sample)
+        if not return_dict:
+            return (curr_sample,)
+
+        return DDIMSchedulerOutput(prev_sample=curr_sample, pred_original_sample=pred_original_sample)
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler.add_noise
     def add_noise(
