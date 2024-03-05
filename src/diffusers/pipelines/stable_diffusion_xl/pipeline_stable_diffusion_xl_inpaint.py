@@ -308,25 +308,6 @@ def retrieve_timesteps(
     return timesteps, num_inference_steps
 
 
-def requires_vae_latents_normalization(vae):
-    return hasattr(vae.config, "latents_mean") and vae.config.latents_mean is not None and \
-           hasattr(vae.config, "latents_std") and vae.config.latents_std is not None
-
-
-def normalize_vae_latents(latents, latents_mean, latents_std):
-    latents_mean = latents_mean.to(device=latents.device, dtype=latents.dtype)
-    latents_std = latents_std.to(device=latents.device, dtype=latents.dtype)
-    latents = (latents - latents_mean) / latents_std
-    return latents
-
-
-def denormalize_vae_latents(latents, latents_mean, latents_std):
-    latents_mean = latents_mean.to(device=latents.device, dtype=latents.dtype)
-    latents_std = latents_std.to(device=latents.device, dtype=latents.dtype)
-    latents = latents * latents_std + latents_mean
-    return latents
-
-
 class StableDiffusionXLInpaintPipeline(
     DiffusionPipeline,
     StableDiffusionMixin,
@@ -958,12 +939,15 @@ class StableDiffusionXLInpaintPipeline(
         else:
             image_latents = retrieve_latents(self.vae.encode(image), generator=generator)
 
-        if requires_vae_latents_normalization(self.vae):
-            image_latents = normalize_vae_latents(
-                image_latents,
-                latents_mean=torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1),
-                latents_std=torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1),
-            )
+        has_latents_mean = hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
+        has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
+        if has_latents_mean and has_latents_std:
+            latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
+            latents_mean.to(image_latents.device, image_latents.dtype)
+            latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1)
+            latents_std.to(image_latents.device, image_latents.dtype)
+            image_latents = (image_latents - latents_mean) / latents_std
+
         if self.vae.config.force_upcast:
             self.vae.to(dtype)
 
@@ -1788,12 +1772,14 @@ class StableDiffusionXLInpaintPipeline(
                 if XLA_AVAILABLE:
                     xm.mark_step()
 
-        if requires_vae_latents_normalization(self.vae):
-            latents = denormalize_vae_latents(
-                latents,
-                latents_mean=torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1),
-                latents_std=torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1),
-            )
+        has_latents_mean = hasattr(self.vae.config, "latents_mean") and self.vae.config.latents_mean is not None
+        has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
+        if has_latents_mean and has_latents_std:
+            latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
+            latents_mean.to(image_latents.device, image_latents.dtype)
+            latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1)
+            latents_std.to(image_latents.device, image_latents.dtype)
+            latents = latents * latents_std + latents_mean
 
         if not output_type == "latent":
             # make sure the VAE is in float32 mode, as it overflows in float16
