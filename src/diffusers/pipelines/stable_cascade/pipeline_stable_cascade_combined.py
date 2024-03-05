@@ -211,12 +211,6 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
                 The number of decoder denoising steps. More denoising steps usually lead to a higher quality image at
                 the expense of slower inference. For more specific timestep spacing, you can pass customized
                 `timesteps`
-            prior_timesteps (`List[float]`, *optional*):
-                Custom timesteps to use for the denoising process for the prior. If not defined, equal spaced
-                `prior_num_inference_steps` timesteps are used. Must be in descending order.
-            decoder_timesteps (`List[float]`, *optional*):
-                Custom timesteps to use for the denoising process for the decoder. If not defined, equal spaced
-                `num_inference_steps` timesteps are used. Must be in descending order.
             decoder_guidance_scale (`float`, *optional*, defaults to 0.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `guidance_scale` is defined as `w` of equation 2. of [Imagen
@@ -266,7 +260,6 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             height=height,
             width=width,
             num_inference_steps=prior_num_inference_steps,
-            timesteps=prior_timesteps,
             guidance_scale=prior_guidance_scale,
             negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
             prompt_embeds=prompt_embeds,
@@ -287,7 +280,6 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             image_embeddings=image_embeddings,
             prompt=prompt if prompt_embeds is None else None,
             num_inference_steps=num_inference_steps,
-            timesteps=decoder_timesteps,
             guidance_scale=decoder_guidance_scale,
             negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
             prompt_embeds=prompt_embeds,

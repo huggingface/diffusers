@@ -149,12 +149,11 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         num_attention_heads: List[int] = [32, 32],
         down_num_layers_per_block: List[int] = [8, 24],
         up_num_layers_per_block: List[int] = [24, 8],
-        block_repeat: List[List[int]] = [[1, 1], [1, 1]],
-        down_blocks_repeat_mappers: List[int] = [
+        down_blocks_repeat_mappers: Optional[List[int]] = [
             1,
             1,
         ],
-        up_blocks_repeat_mappers: List[int] = [1, 1],
+        up_blocks_repeat_mappers: Optional[List[int]] = [1, 1],
         block_types_per_layer: List[List[str]] = [
             ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
             ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
@@ -171,6 +170,50 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         timestep_conditioning_type: List[str] = ["sca", "crp"],
         switch_level: Optional[List[bool]] = None,
     ):
+        """
+
+        Parameters:
+            in_channels (`int`, defaults to 16):
+                Number of channels in the input sample.
+            out_channels (`int`, defaults to 16):
+                Number of channels in the output sample.
+            timestep_ratio_embedding_dim (`int`, defaults to 64):
+                Dimension of the projected time embedding.
+            patch_size (`int`, defaults to 1):
+                Patch size for the .
+            conditioning_dim (`int`, defaults to 2048):
+                Dimension of the image and text conditional embedding.
+            block_out_channels (List[int], defaults to [2048, 2048]):
+                List of output channels for each block.
+            num_attention_heads (List[int], defaults to [32, 32]):
+                Number of attention heads in each attention block. Set to -1 to if block types in a layer do not have attention.
+            down_num_layers_per_block (List[int], defaults to [8, 24]):
+                Number of layers in each down block.
+            up_num_layers_per_block (List[int], defaults to [24, 8]):
+                Number of layers in each up block.
+            down_blocks_repeat_mappers (List[int], optional, defaults to [1, 1]):
+            up_blocks_repeat_mappers (List[int], optional, defaults to [1, 1]):
+            block_types_per_layer (List[List[str]], optional, defaults to [["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"], ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"]]):
+                Block types used in each layer of the up/down blocks.
+            clip_text_in_channels (`int`, *optional*, defaults to `None`):
+                Number of input channels for CLIP based text conditioning.
+            clip_text_pooled_in_channels (`int`, *optional*, defaults to `None`): _description_. Defaults to 1280.
+            clip_image_in_channels (`int`, *optional*): _description_.
+                Number of input channels for CLIP based image conditioning.
+            clip_seq (`int`, *optional*, defaults to 4):
+            effnet_in_channels (`int`, *optional*, defaults to `None`):
+            pixel_mapper_in_channels (`int`, defaults to `None`):
+            kernel_size (`int`, *optional*, defaults to 3):
+            dropout (List[float], *optional*, defaults to [0.1, 0.1]):
+                Dropout to use per block.
+            self_attn (Union[bool, List[bool]]):
+                List of booleans that determine whether to use self attention in a block or not.
+            timestep_conditioning_type (List[str], defaults to ["sca", "crp"]):
+                Timestep conditioning type.
+            switch_level (Optional[List[bool]], *optional*, defaults to `None`): .
+
+        """
+
         super().__init__()
 
         if len(block_out_channels) != len(down_num_layers_per_block):
@@ -277,7 +320,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                     down_block.append(block)
             self.down_blocks.append(down_block)
 
-            if block_repeat is not None:
+            if down_blocks_repeat_mappers is not None:
                 block_repeat_mappers = nn.ModuleList()
                 for _ in range(down_blocks_repeat_mappers[i] - 1):
                     block_repeat_mappers.append(nn.Conv2d(block_out_channels[i], block_out_channels[i], kernel_size=1))
@@ -319,7 +362,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                     up_block.append(block)
             self.up_blocks.append(up_block)
 
-            if block_repeat is not None:
+            if up_blocks_repeat_mappers is not None:
                 block_repeat_mappers = nn.ModuleList()
                 for _ in range(up_blocks_repeat_mappers[::-1][i] - 1):
                     block_repeat_mappers.append(nn.Conv2d(block_out_channels[i], block_out_channels[i], kernel_size=1))

@@ -387,9 +387,6 @@ class StableCascadePriorPipeline(DiffusionPipeline):
             num_inference_steps (`int`, *optional*, defaults to 60):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
-            timesteps (`List[int]`, *optional*):
-                Custom timesteps to use for the denoising process. If not defined, equal spaced `num_inference_steps`
-                timesteps are used. Must be in descending order.
             guidance_scale (`float`, *optional*, defaults to 8.0):
                 Guidance scale as defined in [Classifier-Free Diffusion Guidance](https://arxiv.org/abs/2207.12598).
                 `decoder_guidance_scale` is defined as `w` of equation 2. of [Imagen
