@@ -165,12 +165,12 @@ class ResnetBlockCondNorm2D(nn.Module):
             if hidden_states.shape[0] >= 64:
                 input_tensor = input_tensor.contiguous()
                 hidden_states = hidden_states.contiguous()
-            input_tensor = self.upsample(input_tensor, scale=scale)
-            hidden_states = self.upsample(hidden_states, scale=scale)
+            input_tensor = self.upsample(input_tensor)
+            hidden_states = self.upsample(hidden_states)
 
         elif self.downsample is not None:
-            input_tensor = self.downsample(input_tensor, scale=scale)
-            hidden_states = self.downsample(hidden_states, scale=scale)
+            input_tensor = self.downsample(input_tensor)
+            hidden_states = self.downsample(hidden_states)
 
         hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
 
@@ -342,37 +342,29 @@ class ResnetBlock2D(nn.Module):
                 input_tensor = input_tensor.contiguous()
                 hidden_states = hidden_states.contiguous()
             input_tensor = (
-                self.upsample(input_tensor, scale=scale)
-                if isinstance(self.upsample, Upsample2D)
-                else self.upsample(input_tensor)
+                self.upsample(input_tensor) if isinstance(self.upsample, Upsample2D) else self.upsample(input_tensor)
             )
             hidden_states = (
-                self.upsample(hidden_states, scale=scale)
-                if isinstance(self.upsample, Upsample2D)
-                else self.upsample(hidden_states)
+                self.upsample(hidden_states) if isinstance(self.upsample, Upsample2D) else self.upsample(hidden_states)
             )
         elif self.downsample is not None:
             input_tensor = (
-                self.downsample(input_tensor, scale=scale)
+                self.downsample(input_tensor)
                 if isinstance(self.downsample, Downsample2D)
                 else self.downsample(input_tensor)
             )
             hidden_states = (
-                self.downsample(hidden_states, scale=scale)
+                self.downsample(hidden_states)
                 if isinstance(self.downsample, Downsample2D)
                 else self.downsample(hidden_states)
             )
 
-        hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
+        hidden_states = self.conv1(hidden_states)
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
                 temb = self.nonlinearity(temb)
-            temb = (
-                self.time_emb_proj(temb, scale)[:, :, None, None]
-                if not USE_PEFT_BACKEND
-                else self.time_emb_proj(temb)[:, :, None, None]
-            )
+            temb = self.time_emb_proj(temb)[:, :, None, None]
 
         if self.time_embedding_norm == "default":
             if temb is not None:
@@ -392,12 +384,10 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
+        hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
-            input_tensor = (
-                self.conv_shortcut(input_tensor, scale) if not USE_PEFT_BACKEND else self.conv_shortcut(input_tensor)
-            )
+            input_tensor = self.conv_shortcut(input_tensor)
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
