@@ -26,7 +26,7 @@ from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin
 
 
-# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm
+# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm with WuerstchenLayerNorm -> SDCascadeLayerNorm
 class SDCascadeLayerNorm(nn.LayerNorm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -37,7 +37,6 @@ class SDCascadeLayerNorm(nn.LayerNorm):
         return x.permute(0, 3, 1, 2)
 
 
-# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.TimestepBlock
 class SDCascadeTimestepBlock(nn.Module):
     def __init__(self, c, c_timestep, conds=[]):
         super().__init__()
@@ -56,7 +55,6 @@ class SDCascadeTimestepBlock(nn.Module):
         return x * (1 + a) + b
 
 
-# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_diffnext.ResBlockStageB
 class SDCascadeResBlock(nn.Module):
     def __init__(self, c, c_skip=0, kernel_size=3, dropout=0.0):
         super().__init__()
@@ -92,7 +90,6 @@ class GlobalResponseNorm(nn.Module):
         return self.gamma * (x * stand_div_norm) + self.beta + x
 
 
-# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.AttnBlock
 class SDCascadeAttnBlock(nn.Module):
     def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
         super().__init__()
