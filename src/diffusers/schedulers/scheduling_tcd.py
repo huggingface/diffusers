@@ -399,7 +399,8 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
             original_inference_steps if original_inference_steps is not None else self.config.original_inference_steps
         )
 
-        if original_steps is not None:
+        if original_inference_steps is None:
+            # default option, timesteps align with discrete inference steps
             if original_steps > self.config.num_train_timesteps:
                 raise ValueError(
                     f"`original_steps`: {original_steps} cannot be larger than `self.config.train_timesteps`:"
@@ -412,6 +413,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
             # TCD Training/Distillation Steps Schedule
             tcd_origin_timesteps = np.asarray(list(range(1, int(original_steps * strength) + 1))) * k - 1
         else:
+            # customised option, sampled timesteps can be any arbitrary value
             tcd_origin_timesteps = np.asarray(list(range(0, int(self.config.num_train_timesteps * strength))))
 
         # 2. Calculate the TCD inference timestep schedule.
