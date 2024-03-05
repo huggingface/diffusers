@@ -24,9 +24,7 @@ from .embeddings import SinusoidalPositionalEmbedding
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
 
 
-def _chunked_feed_forward(
-    ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int
-):
+def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int):
     # "feed_forward_chunk_size" can be used to save memory
     if hidden_states.shape[chunk_dim] % chunk_size != 0:
         raise ValueError(
@@ -316,10 +314,7 @@ class BasicTransformerBlock(nn.Module):
         if self.pos_embed is not None:
             norm_hidden_states = self.pos_embed(norm_hidden_states)
 
-        # 1. Retrieve lora scale.
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-
-        # 2. Prepare GLIGEN inputs
+        # 1. Prepare GLIGEN inputs
         cross_attention_kwargs = cross_attention_kwargs.copy() if cross_attention_kwargs is not None else {}
         gligen_kwargs = cross_attention_kwargs.pop("gligen", None)
 
@@ -338,7 +333,7 @@ class BasicTransformerBlock(nn.Module):
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
-        # 2.5 GLIGEN Control
+        # 1.2 GLIGEN Control
         if gligen_kwargs is not None:
             hidden_states = self.fuser(hidden_states, gligen_kwargs["objs"])
 
@@ -384,9 +379,7 @@ class BasicTransformerBlock(nn.Module):
 
         if self._chunk_size is not None:
             # "feed_forward_chunk_size" can be used to save memory
-            ff_output = _chunked_feed_forward(
-                self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size
-            )
+            ff_output = _chunked_feed_forward(self.ff, norm_hidden_states, self._chunk_dim, self._chunk_size)
         else:
             ff_output = self.ff(norm_hidden_states)
 
