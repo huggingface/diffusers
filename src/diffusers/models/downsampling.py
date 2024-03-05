@@ -103,7 +103,7 @@ class Downsample2D(nn.Module):
         self.padding = padding
         stride = 2
         self.name = name
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        conv_cls = nn.Conv2d
 
         if norm_type == "ln_norm":
             self.norm = nn.LayerNorm(channels, eps, elementwise_affine)

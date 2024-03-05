@@ -111,7 +111,7 @@ class Upsample2D(nn.Module):
         self.use_conv_transpose = use_conv_transpose
         self.name = name
         self.interpolate = interpolate
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        conv_cls = nn.Conv2d
 
         if norm_type == "ln_norm":
             self.norm = nn.LayerNorm(channels, eps, elementwise_affine)

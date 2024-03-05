@@ -30,7 +30,6 @@ from .downsampling import (  # noqa
     KDownsample2D,
     downsample_2d,
 )
-from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .normalization import AdaGroupNorm
 from .upsampling import (  # noqa
     FirUpsample2D,
@@ -102,7 +101,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         self.output_scale_factor = output_scale_factor
         self.time_embedding_norm = time_embedding_norm
 
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        conv_cls = nn.Conv2d
 
         if groups_out is None:
             groups_out = groups
@@ -267,8 +266,8 @@ class ResnetBlock2D(nn.Module):
         self.time_embedding_norm = time_embedding_norm
         self.skip_time_act = skip_time_act
 
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        linear_cls = nn.Linear
+        conv_cls = nn.Conv2d
 
         if groups_out is None:
             groups_out = groups

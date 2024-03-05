@@ -17,8 +17,6 @@ import torch
 import torch.nn as nn
 
 from ...models.attention_processor import Attention
-from ...models.lora import LoRACompatibleConv, LoRACompatibleLinear
-from ...utils import USE_PEFT_BACKEND
 
 
 class WuerstchenLayerNorm(nn.LayerNorm):
@@ -34,7 +32,7 @@ class WuerstchenLayerNorm(nn.LayerNorm):
 class TimestepBlock(nn.Module):
     def __init__(self, c, c_timestep):
         super().__init__()
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        linear_cls = nn.Linear
         self.mapper = linear_cls(c_timestep, c * 2)
 
     def forward(self, x, t):
@@ -46,8 +44,8 @@ class ResBlock(nn.Module):
     def __init__(self, c, c_skip=0, kernel_size=3, dropout=0.0):
         super().__init__()
 
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        conv_cls = nn.Conv2d
+        linear_cls = nn.Linear
 
         self.depthwise = conv_cls(c + c_skip, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
         self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
@@ -81,7 +79,7 @@ class AttnBlock(nn.Module):
     def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
         super().__init__()
 
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        linear_cls = nn.Linear
 
         self.self_attn = self_attn
         self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
