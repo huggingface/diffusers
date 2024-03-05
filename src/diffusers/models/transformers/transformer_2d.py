@@ -19,7 +19,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, is_torch_version
+from ...utils import BaseOutput, deprecate, is_torch_version
 from ..attention import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_utils import ModelMixin
@@ -316,9 +316,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
-        # Retrieve lora scale.
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-
         # 1. Input
         if self.is_input_continuous:
             batch, _, height, width = hidden_states.shape
@@ -326,21 +323,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
             hidden_states = self.norm(hidden_states)
             if not self.use_linear_projection:
-                hidden_states = (
-                    self.proj_in(hidden_states, scale=lora_scale)
-                    if not USE_PEFT_BACKEND
-                    else self.proj_in(hidden_states)
-                )
+                hidden_states = self.proj_in(hidden_states)
                 inner_dim = hidden_states.shape[1]
                 hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
             else:
                 inner_dim = hidden_states.shape[1]
                 hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-                hidden_states = (
-                    self.proj_in(hidden_states, scale=lora_scale)
-                    if not USE_PEFT_BACKEND
-                    else self.proj_in(hidden_states)
-                )
+                hidden_states = self.proj_in(hidden_states)
 
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
@@ -403,17 +392,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         if self.is_input_continuous:
             if not self.use_linear_projection:
                 hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-                hidden_states = (
-                    self.proj_out(hidden_states, scale=lora_scale)
-                    if not USE_PEFT_BACKEND
-                    else self.proj_out(hidden_states)
-                )
+                hidden_states = self.proj_out(hidden_states)
             else:
-                hidden_states = (
-                    self.proj_out(hidden_states, scale=lora_scale)
-                    if not USE_PEFT_BACKEND
-                    else self.proj_out(hidden_states)
-                )
+                hidden_states = self.proj_out(hidden_states)
                 hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
 
             output = hidden_states + residual

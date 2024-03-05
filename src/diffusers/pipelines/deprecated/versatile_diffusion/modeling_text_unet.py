@@ -1333,7 +1333,7 @@ class UNetFlatConditionModel(ModelMixin, ConfigMixin):
                     **additional_residuals,
                 )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
                     sample += down_intrablock_additional_residuals.pop(0)
 
@@ -1728,8 +1728,6 @@ class CrossAttnDownBlockFlat(nn.Module):
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         output_states = ()
 
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-
         blocks = list(zip(self.resnets, self.attentions))
 
         for i, (resnet, attn) in enumerate(blocks):
@@ -1760,7 +1758,7 @@ class CrossAttnDownBlockFlat(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
+                hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1778,7 +1776,7 @@ class CrossAttnDownBlockFlat(nn.Module):
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states, scale=lora_scale)
+                hidden_states = downsampler(hidden_states)
 
             output_states = output_states + (hidden_states,)
 

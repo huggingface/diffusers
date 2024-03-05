@@ -1175,8 +1175,6 @@ class CrossAttnDownBlockMotion(nn.Module):
     ):
         output_states = ()
 
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-
         blocks = list(zip(self.resnets, self.attentions, self.motion_modules))
         for i, (resnet, attn, motion_module) in enumerate(blocks):
             if self.training and self.gradient_checkpointing:
@@ -1206,7 +1204,7 @@ class CrossAttnDownBlockMotion(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
+                hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1228,7 +1226,7 @@ class CrossAttnDownBlockMotion(nn.Module):
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states, scale=lora_scale)
+                hidden_states = downsampler(hidden_states)
 
             output_states = output_states + (hidden_states,)
 
@@ -1355,7 +1353,6 @@ class CrossAttnUpBlockMotion(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
     ) -> torch.FloatTensor:
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -1410,7 +1407,7 @@ class CrossAttnUpBlockMotion(nn.Module):
                     return_dict=False,
                 )[0]
             else:
-                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
+                hidden_states = resnet(hidden_states, temb)
                 hidden_states = attn(
                     hidden_states,
                     encoder_hidden_states=encoder_hidden_states,
@@ -1426,7 +1423,7 @@ class CrossAttnUpBlockMotion(nn.Module):
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, upsample_size, scale=lora_scale)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
@@ -1687,8 +1684,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
     ) -> torch.FloatTensor:
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-        hidden_states = self.resnets[0](hidden_states, temb, scale=lora_scale)
+        hidden_states = self.resnets[0](hidden_states, temb)
 
         blocks = zip(self.attentions, self.resnets[1:], self.motion_modules)
         for attn, resnet, motion_module in blocks:
@@ -1737,7 +1733,7 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
                     hidden_states,
                     num_frames=num_frames,
                 )[0]
-                hidden_states = resnet(hidden_states, temb, scale=lora_scale)
+                hidden_states = resnet(hidden_states, temb)
 
         return hidden_states
 
