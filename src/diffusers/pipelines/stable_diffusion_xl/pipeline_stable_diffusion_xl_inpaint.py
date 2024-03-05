@@ -1776,9 +1776,9 @@ class StableDiffusionXLInpaintPipeline(
         has_latents_std = hasattr(self.vae.config, "latents_std") and self.vae.config.latents_std is not None
         if has_latents_mean and has_latents_std:
             latents_mean = torch.tensor(self.vae.config.latents_mean).view(1, 4, 1, 1)
-            latents_mean.to(image_latents.device, image_latents.dtype)
+            latents_mean.to(latents.device, latents.dtype)
             latents_std = torch.tensor(self.vae.config.latents_std).view(1, 4, 1, 1)
-            latents_std.to(image_latents.device, image_latents.dtype)
+            latents_std.to(latents.device, latents.dtype)
             latents = latents * latents_std + latents_mean
 
         if not output_type == "latent":
