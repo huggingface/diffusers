@@ -24,10 +24,11 @@ from diffusers.pipelines.wuerstchen import PaellaVQModel
 
 
 parser = argparse.ArgumentParser(description="Convert Stable Cascade model weights to a diffusers pipeline")
-parser.add_argument("--model_path", type=str, default="../StableCascade", help="Location of Stable Cascade weights")
+parser.add_argument("--model_path", type=str, help="Location of Stable Cascade weights")
 parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
-parser.add_argument("--variant", action="store_true", help="Can be one of `lite`, `bf16` or `lite_bf16`")
 parser.add_argument("--save_org", type=str, default="diffusers", help="Hub organization to save the pipelines to")
+parser.add_argument("--prior_filename", type=str, default="stage_c.safetensors", help="Prior filename")
+parser.add_argument("--decoder_filename", type=str, default="stage_b.safetensors", help="Decoder filename")
 parser.add_argument("--push_to_hub", action="store_true", help="Push to hub")
 
 args = parser.parse_args()
@@ -36,12 +37,8 @@ model_path = args.model_path
 device = "cpu"
 
 # set paths to model weights
-if args.variant:
-    prior_checkpoint_path = f"{model_path}/stage_c.safetensors"
-    decoder_checkpoint_path = f"{model_path}/stage_b.safetensors"
-else:
-    prior_checkpoint_path = f"{model_path}/stage_c_{args.variant}.safetensors"
-    decoder_checkpoint_path = f"{model_path}/stage_b_{args.variant}.safetensors"
+prior_checkpoint_path = f"{model_path}/{args.prior_filename}"
+decoder_checkpoint_path = f"{model_path}/{args.decoder_filename}"
 
 # Clip Text encoder and tokenizer
 config = CLIPConfig.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b160k")
