@@ -1611,13 +1611,13 @@ class DownBlockFlat(nn.Module):
                         create_custom_forward(resnet), hidden_states, temb
                     )
             else:
-                hidden_states = resnet(hidden_states, temb, scale=scale)
+                hidden_states = resnet(hidden_states, temb)
 
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states, scale=scale)
+                hidden_states = downsampler(hidden_states)
 
             output_states = output_states + (hidden_states,)
 

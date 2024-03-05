@@ -18,8 +18,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import USE_PEFT_BACKEND
-from .lora import LoRACompatibleConv
 from .normalization import RMSNorm
 from .upsampling import upfirdn2d_native
 
@@ -143,13 +141,7 @@ class Downsample2D(nn.Module):
 
         assert hidden_states.shape[1] == self.channels
 
-        if not USE_PEFT_BACKEND:
-            if isinstance(self.conv, LoRACompatibleConv):
-                hidden_states = self.conv(hidden_states, scale)
-            else:
-                hidden_states = self.conv(hidden_states)
-        else:
-            hidden_states = self.conv(hidden_states)
+        hidden_states = self.conv(hidden_states)
 
         return hidden_states
 
