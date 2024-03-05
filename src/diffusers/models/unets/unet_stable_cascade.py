@@ -21,10 +21,96 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...pipelines.wuerstchen.modeling_wuerstchen_common import AttnBlock, TimestepBlock, WuerstchenLayerNorm
-from ...pipelines.wuerstchen.modeling_wuerstchen_diffnext import ResBlockStageB
 from ...utils import BaseOutput
+from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin
+
+
+# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm
+class SDCascadeLayerNorm(nn.LayerNorm):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def forward(self, x):
+        x = x.permute(0, 2, 3, 1)
+        x = super().forward(x)
+        return x.permute(0, 3, 1, 2)
+
+
+# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.TimestepBlock
+class SDCascadeTimestepBlock(nn.Module):
+    def __init__(self, c, c_timestep, conds=[]):
+        super().__init__()
+        linear_cls = nn.Linear
+        self.mapper = linear_cls(c_timestep, c * 2)
+        self.conds = conds
+        for cname in conds:
+            setattr(self, f"mapper_{cname}", linear_cls(c_timestep, c * 2))
+
+    def forward(self, x, t):
+        t = t.chunk(len(self.conds) + 1, dim=1)
+        a, b = self.mapper(t[0])[:, :, None, None].chunk(2, dim=1)
+        for i, c in enumerate(self.conds):
+            ac, bc = getattr(self, f"mapper_{c}")(t[i + 1])[:, :, None, None].chunk(2, dim=1)
+            a, b = a + ac, b + bc
+        return x * (1 + a) + b
+
+
+# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_diffnext.ResBlockStageB
+class SDCascadeResBlock(nn.Module):
+    def __init__(self, c, c_skip=0, kernel_size=3, dropout=0.0):
+        super().__init__()
+        self.depthwise = nn.Conv2d(c, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
+        self.norm = SDCascadeLayerNorm(c, elementwise_affine=False, eps=1e-6)
+        self.channelwise = nn.Sequential(
+            nn.Linear(c + c_skip, c * 4),
+            nn.GELU(),
+            GlobalResponseNorm(c * 4),
+            nn.Dropout(dropout),
+            nn.Linear(c * 4, c),
+        )
+
+    def forward(self, x, x_skip=None):
+        x_res = x
+        x = self.norm(self.depthwise(x))
+        if x_skip is not None:
+            x = torch.cat([x, x_skip], dim=1)
+        x = self.channelwise(x.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        return x + x_res
+
+
+# from https://github.com/facebookresearch/ConvNeXt-V2/blob/3608f67cc1dae164790c5d0aead7bf2d73d9719b/models/utils.py#L105
+class GlobalResponseNorm(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.gamma = nn.Parameter(torch.zeros(1, 1, 1, dim))
+        self.beta = nn.Parameter(torch.zeros(1, 1, 1, dim))
+
+    def forward(self, x):
+        agg_norm = torch.norm(x, p=2, dim=(1, 2), keepdim=True)
+        stand_div_norm = agg_norm / (agg_norm.mean(dim=-1, keepdim=True) + 1e-6)
+        return self.gamma * (x * stand_div_norm) + self.beta + x
+
+
+# Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.AttnBlock
+class SDCascadeAttnBlock(nn.Module):
+    def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
+        super().__init__()
+        linear_cls = nn.Linear
+
+        self.self_attn = self_attn
+        self.norm = SDCascadeLayerNorm(c, elementwise_affine=False, eps=1e-6)
+        self.attention = Attention(query_dim=c, heads=nhead, dim_head=c // nhead, dropout=dropout, bias=True)
+        self.kv_mapper = nn.Sequential(nn.SiLU(), linear_cls(c_cond, c))
+
+    def forward(self, x, kv):
+        kv = self.kv_mapper(kv)
+        norm_x = self.norm(x)
+        if self.self_attn:
+            batch_size, channel, _, _ = x.shape
+            kv = torch.cat([norm_x.view(batch_size, channel, -1).transpose(1, 2), kv], dim=1)
+        x = x + self.attention(norm_x, encoder_hidden_states=kv)
+        return x
 
 
 class UpDownBlock2d(nn.Module):
@@ -73,8 +159,8 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         ],
         up_blocks_repeat_mappers: List[int] = [1, 1],
         block_types_per_layer: List[List[str]] = [
-            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
-            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+            ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
+            ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
         ],
         clip_text_in_channels: Optional[int] = None,
         clip_text_pooled_in_channels=1280,
@@ -126,14 +212,14 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                 nn.Conv2d(effnet_in_channels, block_out_channels[0] * 4, kernel_size=1),
                 nn.GELU(),
                 nn.Conv2d(block_out_channels[0] * 4, block_out_channels[0], kernel_size=1),
-                WuerstchenLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
+                SDCascadeLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
             )
         if pixel_mapper_in_channels is not None:
             self.pixels_mapper = nn.Sequential(
                 nn.Conv2d(pixel_mapper_in_channels, block_out_channels[0] * 4, kernel_size=1),
                 nn.GELU(),
                 nn.Conv2d(block_out_channels[0] * 4, block_out_channels[0], kernel_size=1),
-                WuerstchenLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
+                SDCascadeLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
             )
 
         self.clip_txt_pooled_mapper = nn.Linear(clip_text_pooled_in_channels, conditioning_dim * clip_seq)
@@ -146,16 +232,18 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         self.embedding = nn.Sequential(
             nn.PixelUnshuffle(patch_size),
             nn.Conv2d(in_channels * (patch_size**2), block_out_channels[0], kernel_size=1),
-            WuerstchenLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
+            SDCascadeLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
         )
 
         def get_block(block_type, in_channels, nhead, c_skip=0, dropout=0, self_attn=True):
-            if block_type == "ResBlockStageB":
-                return ResBlockStageB(in_channels, c_skip, kernel_size=kernel_size, dropout=dropout)
-            elif block_type == "AttnBlock":
-                return AttnBlock(in_channels, conditioning_dim, nhead, self_attn=self_attn, dropout=dropout)
-            elif block_type == "TimestepBlock":
-                return TimestepBlock(in_channels, timestep_ratio_embedding_dim, conds=timestep_conditioning_type)
+            if block_type == "SDCascadeResBlock":
+                return SDCascadeResBlock(in_channels, c_skip, kernel_size=kernel_size, dropout=dropout)
+            elif block_type == "SDCascadeAttnBlock":
+                return SDCascadeAttnBlock(in_channels, conditioning_dim, nhead, self_attn=self_attn, dropout=dropout)
+            elif block_type == "SDCascadeTimestepBlock":
+                return SDCascadeTimestepBlock(
+                    in_channels, timestep_ratio_embedding_dim, conds=timestep_conditioning_type
+                )
             else:
                 raise ValueError(f"Block type {block_type} not supported")
 
@@ -168,7 +256,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
             if i > 0:
                 self.down_downscalers.append(
                     nn.Sequential(
-                        WuerstchenLayerNorm(block_out_channels[i - 1], elementwise_affine=False, eps=1e-6),
+                        SDCascadeLayerNorm(block_out_channels[i - 1], elementwise_affine=False, eps=1e-6),
                         UpDownBlock2d(
                             block_out_channels[i - 1], block_out_channels[i], mode="down", enabled=switch_level[i - 1]
                         )
@@ -206,7 +294,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
             if i > 0:
                 self.up_upscalers.append(
                     nn.Sequential(
-                        WuerstchenLayerNorm(block_out_channels[i], elementwise_affine=False, eps=1e-6),
+                        SDCascadeLayerNorm(block_out_channels[i], elementwise_affine=False, eps=1e-6),
                         UpDownBlock2d(
                             block_out_channels[i], block_out_channels[i - 1], mode="up", enabled=switch_level[i - 1]
                         )
@@ -242,7 +330,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
 
         # OUTPUT
         self.clf = nn.Sequential(
-            WuerstchenLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
+            SDCascadeLayerNorm(block_out_channels[0], elementwise_affine=False, eps=1e-6),
             nn.Conv2d(block_out_channels[0], out_channels * (patch_size**2), kernel_size=1),
             nn.PixelShuffle(patch_size),
         )
@@ -276,9 +364,9 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         # blocks
         for level_block in self.down_blocks + self.up_blocks:
             for block in level_block:
-                if isinstance(block, ResBlockStageB):
+                if isinstance(block, SDCascadeResBlock):
                     block.channelwise[-1].weight.data *= np.sqrt(1 / sum(self.config.blocks[0]))
-                elif isinstance(block, TimestepBlock):
+                elif isinstance(block, SDCascadeTimestepBlock):
                     nn.init.constant_(block.mapper.weight, 0)
 
     def get_timestep_ratio_embedding(self, timestep_ratio, max_positions=10000):
@@ -329,13 +417,13 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                 x = downscaler(x)
                 for i in range(len(repmap) + 1):
                     for block in down_block:
-                        if isinstance(block, ResBlockStageB):
+                        if isinstance(block, SDCascadeResBlock):
                             x = torch.utils.checkpoint.checkpoint(create_custom_forward(block), x, use_reentrant=False)
-                        elif isinstance(block, AttnBlock):
+                        elif isinstance(block, SDCascadeAttnBlock):
                             x = torch.utils.checkpoint.checkpoint(
                                 create_custom_forward(block), x, clip, use_reentrant=False
                             )
-                        elif isinstance(block, TimestepBlock):
+                        elif isinstance(block, SDCascadeTimestepBlock):
                             x = torch.utils.checkpoint.checkpoint(
                                 create_custom_forward(block), x, r_embed, use_reentrant=False
                             )
@@ -351,11 +439,11 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                 x = downscaler(x)
                 for i in range(len(repmap) + 1):
                     for block in down_block:
-                        if isinstance(block, ResBlockStageB):
+                        if isinstance(block, SDCascadeResBlock):
                             x = block(x)
-                        elif isinstance(block, AttnBlock):
+                        elif isinstance(block, SDCascadeAttnBlock):
                             x = block(x, clip)
-                        elif isinstance(block, TimestepBlock):
+                        elif isinstance(block, SDCascadeTimestepBlock):
                             x = block(x, r_embed)
                         else:
                             x = block(x)
@@ -379,7 +467,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
             for i, (up_block, upscaler, repmap) in enumerate(block_group):
                 for j in range(len(repmap) + 1):
                     for k, block in enumerate(up_block):
-                        if isinstance(block, ResBlockStageB):
+                        if isinstance(block, SDCascadeResBlock):
                             skip = level_outputs[i] if k == 0 and i > 0 else None
                             if skip is not None and (x.size(-1) != skip.size(-1) or x.size(-2) != skip.size(-2)):
                                 x = torch.nn.functional.interpolate(
@@ -388,11 +476,11 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                             x = torch.utils.checkpoint.checkpoint(
                                 create_custom_forward(block), x, skip, use_reentrant=False
                             )
-                        elif isinstance(block, AttnBlock):
+                        elif isinstance(block, SDCascadeAttnBlock):
                             x = torch.utils.checkpoint.checkpoint(
                                 create_custom_forward(block), x, clip, use_reentrant=False
                             )
-                        elif isinstance(block, TimestepBlock):
+                        elif isinstance(block, SDCascadeTimestepBlock):
                             x = torch.utils.checkpoint.checkpoint(
                                 create_custom_forward(block), x, r_embed, use_reentrant=False
                             )
@@ -405,16 +493,16 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
             for i, (up_block, upscaler, repmap) in enumerate(block_group):
                 for j in range(len(repmap) + 1):
                     for k, block in enumerate(up_block):
-                        if isinstance(block, ResBlockStageB):
+                        if isinstance(block, SDCascadeResBlock):
                             skip = level_outputs[i] if k == 0 and i > 0 else None
                             if skip is not None and (x.size(-1) != skip.size(-1) or x.size(-2) != skip.size(-2)):
                                 x = torch.nn.functional.interpolate(
                                     x.float(), skip.shape[-2:], mode="bilinear", align_corners=True
                                 )
                             x = block(x, skip)
-                        elif isinstance(block, AttnBlock):
+                        elif isinstance(block, SDCascadeAttnBlock):
                             x = block(x, clip)
-                        elif isinstance(block, TimestepBlock):
+                        elif isinstance(block, SDCascadeTimestepBlock):
                             x = block(x, r_embed)
                         else:
                             x = block(x)

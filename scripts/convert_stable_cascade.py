@@ -29,7 +29,7 @@ parser.add_argument("--stage_c_name", type=str, default="stage_c.safetensors", h
 parser.add_argument("--stage_b_name", type=str, default="stage_b.safetensors", help="Name of stage b checkpoint file")
 parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
 parser.add_argument("--save_org", type=str, default="diffusers", help="Hub organization to save the pipelines to")
-parser.add_argument("--push_to_hub", type=str, default="diffusers", help="Push to hub")
+parser.add_argument("--push_to_hub", action="store_true", help="Push to hub")
 
 args = parser.parse_args()
 model_path = args.model_path
@@ -94,8 +94,8 @@ with accelerate.init_empty_weights():
         down_blocks_repeat_mappers=[1, 1],
         up_blocks_repeat_mappers=[1, 1],
         block_types_per_layer=[
-            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
-            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+            ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
+            ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
         ],
         clip_text_in_channels=1280,
         clip_text_pooled_in_channels=1280,
@@ -171,10 +171,10 @@ with accelerate.init_empty_weights():
         up_blocks_repeat_mappers=[3, 3, 2, 2],
         num_attention_heads=[0, 0, 20, 20],
         block_types_per_layer=[
-            ["ResBlockStageB", "TimestepBlock"],
-            ["ResBlockStageB", "TimestepBlock"],
-            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
-            ["ResBlockStageB", "TimestepBlock", "AttnBlock"],
+            ["SDCascadeResBlock", "SDCascadeTimestepBlock"],
+            ["SDCascadeResBlock", "SDCascadeTimestepBlock"],
+            ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
+            ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
         ],
         clip_text_pooled_in_channels=1280,
         clip_seq=4,
