@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -18,8 +18,8 @@ This guide will show you how to use the `callback_on_step_end` parameter to disa
 
 The callback function should have the following arguments:
 
-* `pipe` (or the pipeline instance) provides access to useful properties such as `num_timestep` and `guidance_scale`. You can modify these properties by updating the underlying attributes. For this example, you'll disable CFG by setting `pipe._guidance_scale=0.0`.
-* `step_index` and `timestep` tell you where you are in the denoising loop. Use `step_index` to turn off CFG after reaching 40% of `num_timestep`.
+* `pipe` (or the pipeline instance) provides access to useful properties such as `num_timesteps` and `guidance_scale`. You can modify these properties by updating the underlying attributes. For this example, you'll disable CFG by setting `pipe._guidance_scale=0.0`.
+* `step_index` and `timestep` tell you where you are in the denoising loop. Use `step_index` to turn off CFG after reaching 40% of `num_timesteps`.
 * `callback_kwargs` is a dict that contains tensor variables you can modify during the denoising loop. It only includes variables specified in the `callback_on_step_end_tensor_inputs` argument, which is passed to the pipeline's `__call__` method. Different pipelines may use different sets of variables, so please check a pipeline's `_callback_tensor_inputs` attribute for the list of variables you can modify. Some common variables include `latents` and `prompt_embeds`. For this function, change the batch size of `prompt_embeds` after setting `guidance_scale=0.0` in order for it to work properly.
 
 Your callback function should look something like this:
@@ -27,13 +27,13 @@ Your callback function should look something like this:
 ```python
 def callback_dynamic_cfg(pipe, step_index, timestep, callback_kwargs):
         # adjust the batch_size of prompt_embeds according to guidance_scale
-        if step_index == int(pipe.num_timestep * 0.4):
+        if step_index == int(pipe.num_timesteps * 0.4):
                 prompt_embeds = callback_kwargs["prompt_embeds"]
                 prompt_embeds = prompt_embeds.chunk(2)[-1]
 
-        # update guidance_scale and prompt_embeds
-        pipe._guidance_scale = 0.0
-        callback_kwargs["prompt_embeds"] = prompt_embeds
+                # update guidance_scale and prompt_embeds
+                pipe._guidance_scale = 0.0
+                callback_kwargs["prompt_embeds"] = prompt_embeds
         return callback_kwargs
 ```
 
@@ -49,7 +49,7 @@ pipe = pipe.to("cuda")
 prompt = "a photo of an astronaut riding a horse on mars"
 
 generator = torch.Generator(device="cuda").manual_seed(1)
-out = pipe(prompt, generator=generator, callback_on_step_end=callback_custom_cfg, callback_on_step_end_tensor_inputs=['prompt_embeds'])
+out = pipe(prompt, generator=generator, callback_on_step_end=callback_dynamic_cfg, callback_on_step_end_tensor_inputs=['prompt_embeds'])
 
 out.images[0].save("out_custom_cfg.png")
 ```

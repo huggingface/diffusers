@@ -1,4 +1,4 @@
-# Copyright 2023 PixArt-Alpha Authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 PixArt-Alpha Authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -133,6 +133,42 @@ ASPECT_RATIO_512_BIN = {
     "4.0": [1024.0, 256.0],
 }
 
+ASPECT_RATIO_256_BIN = {
+    "0.25": [128.0, 512.0],
+    "0.28": [128.0, 464.0],
+    "0.32": [144.0, 448.0],
+    "0.33": [144.0, 432.0],
+    "0.35": [144.0, 416.0],
+    "0.4": [160.0, 400.0],
+    "0.42": [160.0, 384.0],
+    "0.48": [176.0, 368.0],
+    "0.5": [176.0, 352.0],
+    "0.52": [176.0, 336.0],
+    "0.57": [192.0, 336.0],
+    "0.6": [192.0, 320.0],
+    "0.68": [208.0, 304.0],
+    "0.72": [208.0, 288.0],
+    "0.78": [224.0, 288.0],
+    "0.82": [224.0, 272.0],
+    "0.88": [240.0, 272.0],
+    "0.94": [240.0, 256.0],
+    "1.0": [256.0, 256.0],
+    "1.07": [256.0, 240.0],
+    "1.13": [272.0, 240.0],
+    "1.21": [272.0, 224.0],
+    "1.29": [288.0, 224.0],
+    "1.38": [288.0, 208.0],
+    "1.46": [304.0, 208.0],
+    "1.67": [320.0, 192.0],
+    "1.75": [336.0, 192.0],
+    "2.0": [352.0, 176.0],
+    "2.09": [368.0, 176.0],
+    "2.4": [384.0, 160.0],
+    "2.5": [400.0, 160.0],
+    "3.0": [432.0, 144.0],
+    "4.0": [512.0, 128.0],
+}
+
 
 # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.retrieve_timesteps
 def retrieve_timesteps(
@@ -260,6 +296,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         prompt_attention_mask: Optional[torch.FloatTensor] = None,
         negative_prompt_attention_mask: Optional[torch.FloatTensor] = None,
         clean_caption: bool = False,
+        max_sequence_length: int = 120,
         **kwargs,
     ):
         r"""
@@ -284,8 +321,9 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. For PixArt-Alpha, it's should be the embeddings of the ""
                 string.
-            clean_caption (bool, defaults to `False`):
+            clean_caption (`bool`, defaults to `False`):
                 If `True`, the function will preprocess and clean the provided caption before encoding.
+            max_sequence_length (`int`, defaults to 120): Maximum sequence length to use for the prompt.
         """
 
         if "mask_feature" in kwargs:
@@ -303,7 +341,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         # See Section 3.1. of the paper.
-        max_length = 120
+        max_length = max_sequence_length
 
         if prompt_embeds is None:
             prompt = self._text_preprocessing(prompt, clean_caption=clean_caption)
@@ -688,6 +726,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         clean_caption: bool = True,
         use_resolution_binning: bool = True,
+        max_sequence_length: int = 120,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -757,6 +796,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
                 If set to `True`, the requested height and width are first mapped to the closest resolutions using
                 `ASPECT_RATIO_1024_BIN`. After the produced latents are decoded into images, they are resized back to
                 the requested resolution. Useful for generating non-square images.
+            max_sequence_length (`int` defaults to 120): Maximum sequence length to use with the `prompt`.
 
         Examples:
 
@@ -772,9 +812,14 @@ class PixArtAlphaPipeline(DiffusionPipeline):
         height = height or self.transformer.config.sample_size * self.vae_scale_factor
         width = width or self.transformer.config.sample_size * self.vae_scale_factor
         if use_resolution_binning:
-            aspect_ratio_bin = (
-                ASPECT_RATIO_1024_BIN if self.transformer.config.sample_size == 128 else ASPECT_RATIO_512_BIN
-            )
+            if self.transformer.config.sample_size == 128:
+                aspect_ratio_bin = ASPECT_RATIO_1024_BIN
+            elif self.transformer.config.sample_size == 64:
+                aspect_ratio_bin = ASPECT_RATIO_512_BIN
+            elif self.transformer.config.sample_size == 32:
+                aspect_ratio_bin = ASPECT_RATIO_256_BIN
+            else:
+                raise ValueError("Invalid sample size")
             orig_height, orig_width = height, width
             height, width = self.classify_height_width_bin(height, width, ratios=aspect_ratio_bin)
 
@@ -822,6 +867,7 @@ class PixArtAlphaPipeline(DiffusionPipeline):
             prompt_attention_mask=prompt_attention_mask,
             negative_prompt_attention_mask=negative_prompt_attention_mask,
             clean_caption=clean_caption,
+            max_sequence_length=max_sequence_length,
         )
         if do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)

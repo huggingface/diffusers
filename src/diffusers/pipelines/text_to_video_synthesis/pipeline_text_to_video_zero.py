@@ -17,7 +17,7 @@ from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import USE_PEFT_BACKEND, BaseOutput, logging, scale_lora_layers, unscale_lora_layers
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ..stable_diffusion import StableDiffusionSafetyChecker
 
 
@@ -281,7 +281,7 @@ def create_motion_field_and_warp_latents(motion_field_strength_x, motion_field_s
     return warped_latents
 
 
-class TextToVideoZeroPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin):
+class TextToVideoZeroPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin):
     r"""
     Pipeline for zero-shot text-to-video generation using Stable Diffusion.
 
@@ -447,7 +447,6 @@ class TextToVideoZeroPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
                         callback(step_idx, t, latents)
         return latents.clone().detach()
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -839,7 +838,7 @@ class TextToVideoZeroPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
 
@@ -921,7 +920,7 @@ class TextToVideoZeroPipeline(DiffusionPipeline, TextualInversionLoaderMixin, Lo
             else:
                 uncond_tokens = negative_prompt
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             if isinstance(self, TextualInversionLoaderMixin):
                 uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
