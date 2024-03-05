@@ -1881,7 +1881,7 @@ class StableDiffusionXLInpaintPipeline(
             if needs_upcasting:
                 self.vae.to(dtype=torch.float16)
         else:
-            image = latents
+            return StableDiffusionXLPipelineOutput(images=latents)
 
         # apply watermark if available
         if self.watermark is not None:
