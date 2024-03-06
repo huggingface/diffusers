@@ -17,10 +17,11 @@ import unittest
 
 import numpy as np
 import torch
-from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
+from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
-from diffusers import DDPMWuerstchenScheduler, WuerstchenCombinedPipeline
-from diffusers.pipelines.wuerstchen import PaellaVQModel, WuerstchenDiffNeXt, WuerstchenPrior
+from diffusers import DDPMWuerstchenScheduler, StableCascadeCombinedPipeline
+from diffusers.models import StableCascadeUNet
+from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, torch_device
 
 from ..test_pipelines_common import PipelineTesterMixin
@@ -29,8 +30,8 @@ from ..test_pipelines_common import PipelineTesterMixin
 enable_full_determinism()
 
 
-class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
-    pipeline_class = WuerstchenCombinedPipeline
+class StableCascadeCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+    pipeline_class = StableCascadeCombinedPipeline
     params = ["prompt"]
     batch_params = ["prompt", "negative_prompt"]
     required_optional_params = [
@@ -56,30 +57,25 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     def dummy_prior(self):
         torch.manual_seed(0)
 
-        model_kwargs = {"c_in": 2, "c": 8, "depth": 2, "c_cond": 32, "c_r": 8, "nhead": 2}
-        model = WuerstchenPrior(**model_kwargs)
+        model_kwargs = {
+            "conditioning_dim": 128,
+            "block_out_channels": (128, 128),
+            "num_attention_heads": (2, 2),
+            "down_num_layers_per_block": (1, 1),
+            "up_num_layers_per_block": (1, 1),
+            "clip_image_in_channels": 768,
+            "switch_level": (False,),
+            "clip_text_in_channels": self.text_embedder_hidden_size,
+            "clip_text_pooled_in_channels": self.text_embedder_hidden_size,
+        }
+
+        model = StableCascadeUNet(**model_kwargs)
         return model.eval()
 
     @property
     def dummy_tokenizer(self):
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
         return tokenizer
-
-    @property
-    def dummy_prior_text_encoder(self):
-        torch.manual_seed(0)
-        config = CLIPTextConfig(
-            bos_token_id=0,
-            eos_token_id=2,
-            hidden_size=self.text_embedder_hidden_size,
-            intermediate_size=37,
-            layer_norm_eps=1e-05,
-            num_attention_heads=4,
-            num_hidden_layers=5,
-            pad_token_id=1,
-            vocab_size=1000,
-        )
-        return CLIPTextModel(config).eval()
 
     @property
     def dummy_text_encoder(self):
@@ -96,7 +92,7 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
             pad_token_id=1,
             vocab_size=1000,
         )
-        return CLIPTextModel(config).eval()
+        return CLIPTextModelWithProjection(config).eval()
 
     @property
     def dummy_vqgan(self):
@@ -112,40 +108,50 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
     @property
     def dummy_decoder(self):
         torch.manual_seed(0)
-
         model_kwargs = {
-            "c_cond": self.text_embedder_hidden_size,
-            "c_hidden": [320],
-            "nhead": [-1],
-            "blocks": [4],
-            "level_config": ["CT"],
-            "clip_embd": self.text_embedder_hidden_size,
-            "inject_effnet": [False],
+            "in_channels": 4,
+            "out_channels": 4,
+            "conditioning_dim": 128,
+            "block_out_channels": (16, 32, 64, 128),
+            "num_attention_heads": (-1, -1, 1, 2),
+            "down_num_layers_per_block": (1, 1, 1, 1),
+            "up_num_layers_per_block": (1, 1, 1, 1),
+            "down_blocks_repeat_mappers": (1, 1, 1, 1),
+            "up_blocks_repeat_mappers": (3, 3, 2, 2),
+            "block_types_per_layer": (
+                ("SDCascadeResBlock", "SDCascadeTimestepBlock"),
+                ("SDCascadeResBlock", "SDCascadeTimestepBlock"),
+                ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
+                ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
+            ),
+            "switch_level": None,
+            "clip_text_pooled_in_channels": 32,
+            "dropout": (0.1, 0.1, 0.1, 0.1),
         }
 
-        model = WuerstchenDiffNeXt(**model_kwargs)
+        model = StableCascadeUNet(**model_kwargs)
         return model.eval()
 
     def get_dummy_components(self):
         prior = self.dummy_prior
-        prior_text_encoder = self.dummy_prior_text_encoder
 
         scheduler = DDPMWuerstchenScheduler()
         tokenizer = self.dummy_tokenizer
-
         text_encoder = self.dummy_text_encoder
         decoder = self.dummy_decoder
         vqgan = self.dummy_vqgan
+        prior_text_encoder = self.dummy_text_encoder
+        prior_tokenizer = self.dummy_tokenizer
 
         components = {
-            "tokenizer": tokenizer,
             "text_encoder": text_encoder,
+            "tokenizer": tokenizer,
             "decoder": decoder,
-            "vqgan": vqgan,
             "scheduler": scheduler,
-            "prior_prior": prior,
+            "vqgan": vqgan,
             "prior_text_encoder": prior_text_encoder,
-            "prior_tokenizer": tokenizer,
+            "prior_tokenizer": prior_tokenizer,
+            "prior_prior": prior,
             "prior_scheduler": scheduler,
         }
 
@@ -169,7 +175,7 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         }
         return inputs
 
-    def test_wuerstchen(self):
+    def test_stable_cascade(self):
         device = "cpu"
 
         components = self.get_dummy_components()
@@ -189,8 +195,7 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         assert image.shape == (1, 128, 128, 3)
 
-        expected_slice = np.array([0.7616304, 0.0, 1.0, 0.0, 1.0, 0.0, 0.05925313, 0.0, 0.951898])
-
+        expected_slice = np.array([0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0, 0.0])
         assert (
             np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
         ), f" expected_slice {expected_slice}, but got {image_slice.flatten()}"
@@ -226,14 +231,16 @@ class WuerstchenCombinedPipelineFastTests(PipelineTesterMixin, unittest.TestCase
         assert np.abs(image_slices[0] - image_slices[2]).max() < 1e-3
 
     def test_inference_batch_single_identical(self):
-        super().test_inference_batch_single_identical(expected_max_diff=1e-2)
+        super().test_inference_batch_single_identical(expected_max_diff=2e-2)
 
-    @unittest.skip(reason="flakey and float16 requires CUDA")
+    @unittest.skip(reason="fp16 not supported")
     def test_float16_inference(self):
         super().test_float16_inference()
 
+    @unittest.skip(reason="no callback test for combined pipeline")
     def test_callback_inputs(self):
-        pass
+        super().test_callback_inputs()
 
-    def test_callback_cfg(self):
-        pass
+    # def test_callback_cfg(self):
+    #     pass
+    #     pass
