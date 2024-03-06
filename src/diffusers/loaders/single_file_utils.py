@@ -345,7 +345,6 @@ def set_image_size(pipeline_class_name, original_config, checkpoint, image_size=
     if image_size:
         return image_size
 
-    print(f"set_image_size: {image_size}")
     global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
     model_type = infer_model_type(original_config, model_type)
 
@@ -355,7 +354,6 @@ def set_image_size(pipeline_class_name, original_config, checkpoint, image_size=
 
     elif model_type in ["SDXL", "SDXL-Refiner", "Playground"]:
         image_size = 1024
-        print(f"image size: {image_size}")
         return image_size
 
     elif (
@@ -515,7 +513,11 @@ def create_vae_diffusers_config(original_config, image_size, scaling_factor=None
     Creates a config for the diffusers based on the config of the LDM model.
     """
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
-    if scaling_factor is None and "scale_factor" in original_config["model"]["params"]:
+    if (
+        scaling_factor is None
+        and "scale_factor" in original_config["model"]["params"]
+        and not (latents_mean and latents_std)
+    ):
         scaling_factor = original_config["model"]["params"]["scale_factor"]
     elif latents_mean and latents_std:
         scaling_factor = PLAYGROUND_VAE_SCALING_FACTOR
@@ -1199,7 +1201,6 @@ def create_diffusers_unet_model_from_ldm(
         else:
             num_in_channels = 4
 
-    print(f"From unet: {image_size} (image_size)")
     image_size = set_image_size(
         pipeline_class_name, original_config, checkpoint, image_size=image_size, model_type=model_type
     )
@@ -1298,7 +1299,6 @@ def create_text_encoders_and_tokenizers_from_ldm(
     torch_dtype=None,
 ):
     model_type = infer_model_type(original_config, model_type=model_type)
-    print(f"From text encoder: {model_type}")
 
     if model_type == "FrozenOpenCLIPEmbedder":
         config_name = "stabilityai/stable-diffusion-2"

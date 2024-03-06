@@ -254,8 +254,6 @@ class FromSingleFileMixin:
         )
         model_type = "Playground" if "edm_mean" in checkpoint and "edm_std" in checkpoint else model_type
 
-        print(f"Model type: {model_type}")
-
         init_kwargs = {}
         for name in expected_modules:
             if name in passed_class_obj:
