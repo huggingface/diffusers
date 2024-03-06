@@ -37,7 +37,7 @@ EXAMPLE_DOC_STRING = """
         ...     "stabilityai/stable-cascade-prior", torch_dtype=torch.bfloat16
         ... ).to("cuda")
         >>> gen_pipe = StableCascadeDecoderPipeline.from_pretrain(
-        ...     "stabilityai/stable-cascade", torch_dtype=torch.bfloat16
+        ...     "stabilityai/stable-cascade", torch_dtype=torch.float16
         ... ).to("cuda")
 
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
