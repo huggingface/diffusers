@@ -1242,7 +1242,7 @@ def create_diffusers_vae_model_from_ldm(
     image_size = set_image_size(pipeline_class_name, original_config, checkpoint, image_size=image_size)
 
     if "edm_mean" in checkpoint and "edm_std" in checkpoint:
-        if checkpoint["edm"] is not None and checkpoint["edm_std"] is not None:
+        if checkpoint["edm_mean"] is not None and checkpoint["edm_std"] is not None:
             vae_config = create_vae_diffusers_config(
                 original_config,
                 image_size=image_size,
