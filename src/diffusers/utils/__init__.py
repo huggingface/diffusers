@@ -19,6 +19,7 @@ from packaging import version
 
 from .. import __version__
 from .constants import (
+    _ACCEPTED_SINGLE_FILE_FORMATS,
     CONFIG_NAME,
     DEPRECATED_REVISION_ARGS,
     DIFFUSERS_DYNAMIC_MODULE_NAME,
@@ -83,7 +84,7 @@ from .import_utils import (
     is_xformers_available,
     requires_backends,
 )
-from .loading_utils import load_image
+from .loading_utils import is_single_file_checkpoint, load_image
 from .logging import get_logger
 from .outputs import BaseOutput
 from .peft_utils import (

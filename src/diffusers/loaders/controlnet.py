@@ -133,4 +133,5 @@ class FromOriginalControlNetMixin:
         if torch_dtype is not None:
             controlnet = controlnet.to(torch_dtype)
 
+        controlnet.eval()
         return controlnet
