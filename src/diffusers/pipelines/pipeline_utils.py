@@ -1791,22 +1791,21 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not isinstance(model, torch.nn.Module):
                 continue
 
-            if component_device_mapping is None:
-                if name in self._exclude_from_cpu_offload:
-                    if component_device_mapping is None:
-                        model.to(device)
-                    else:
-                        component_device_id = component_device_mapping.get(name)
-                        model.to(f"cuda:{component_device_id}")
+            if name in self._exclude_from_cpu_offload:
+                if component_device_mapping is None:
+                    model.to(device)
                 else:
-                    # make sure to offload buffers if not all high level weights
-                    # are of type nn.Module
-                    offload_buffers = len(model._parameters) > 0
-                    if component_device_mapping is None:
-                        cpu_offload(model, device, offload_buffers=offload_buffers)
-                    else:
-                        component_device_id = component_device_mapping.get(name)
-                        cpu_offload(model, f"cuda:{component_device_id}", offload_buffers=offload_buffers)
+                    component_device_id = component_device_mapping.get(name)
+                    model.to(f"cuda:{component_device_id}")
+            else:
+                # make sure to offload buffers if not all high level weights
+                # are of type nn.Module
+                offload_buffers = len(model._parameters) > 0
+                if component_device_mapping is None:
+                    cpu_offload(model, device, offload_buffers=offload_buffers)
+                else:
+                    component_device_id = component_device_mapping.get(name)
+                    cpu_offload(model, f"cuda:{component_device_id}", offload_buffers=offload_buffers)
 
     @classmethod
     @validate_hf_hub_args
