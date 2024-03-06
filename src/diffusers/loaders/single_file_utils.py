@@ -520,10 +520,10 @@ def create_vae_diffusers_config(original_config, image_size, scaling_factor=None
     if (
         scaling_factor is None
         and "scale_factor" in original_config["model"]["params"]
-        and not (latents_mean and latents_std)
+        and not (latents_mean is not None and latents_std is not None)
     ):
         scaling_factor = original_config["model"]["params"]["scale_factor"]
-    elif latents_mean and latents_std:
+    elif latents_mean is not None and latents_std is not None:
         scaling_factor = PLAYGROUND_VAE_SCALING_FACTOR
     elif scaling_factor is None:
         scaling_factor = LDM_VAE_DEFAULT_SCALING_FACTOR
@@ -543,7 +543,7 @@ def create_vae_diffusers_config(original_config, image_size, scaling_factor=None
         "layers_per_block": vae_params["num_res_blocks"],
         "scaling_factor": scaling_factor,
     }
-    if latents_mean and latents_std:
+    if latents_mean is not None and latents_std is not None:
         config.update({"latents_mean": latents_mean, "latents_std": latents_std})
 
     return config
@@ -1257,8 +1257,12 @@ def create_diffusers_vae_model_from_ldm(
     model_type = infer_model_type(original_config, checkpoint, model_type)
 
     if model_type == "Playground":
-        edm_mean = checkpoint["edm_mean"].to(dtype=torch_dtype) if torch_dtype else checkpoint["edm_mean"]
-        edm_std = checkpoint["edm_std"].to(dtype=torch_dtype) if torch_dtype else checkpoint["edm_std"]
+        edm_mean = (
+            checkpoint["edm_mean"].to(dtype=torch_dtype).tolist() if torch_dtype else checkpoint["edm_mean"].tolist()
+        )
+        edm_std = (
+            checkpoint["edm_std"].to(dtype=torch_dtype).tolist() if torch_dtype else checkpoint["edm_std"].tolist()
+        )
     else:
         edm_mean = None
         edm_std = None
