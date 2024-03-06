@@ -14,7 +14,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import List, Optional, Union
+from typing import Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -145,19 +145,19 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         timestep_ratio_embedding_dim: int = 64,
         patch_size: int = 1,
         conditioning_dim: int = 2048,
-        block_out_channels: List[int] = [2048, 2048],
-        num_attention_heads: List[int] = [32, 32],
-        down_num_layers_per_block: List[int] = [8, 24],
-        up_num_layers_per_block: List[int] = [24, 8],
-        down_blocks_repeat_mappers: Optional[List[int]] = [
+        block_out_channels: Tuple[int] = (2048, 2048),
+        num_attention_heads: Tuple[int] = (32, 32),
+        down_num_layers_per_block: Tuple[int] = (8, 24),
+        up_num_layers_per_block: Tuple[int] = (24, 8),
+        down_blocks_repeat_mappers: Optional[Tuple[int]] = (
             1,
             1,
-        ],
-        up_blocks_repeat_mappers: Optional[List[int]] = [1, 1],
-        block_types_per_layer: List[List[str]] = [
-            ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
-            ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"],
-        ],
+        ),
+        up_blocks_repeat_mappers: Optional[Tuple[int]] = (1, 1),
+        block_types_per_layer: Tuple[Tuple[str]] = (
+            ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
+            ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
+        ),
         clip_text_in_channels: Optional[int] = None,
         clip_text_pooled_in_channels=1280,
         clip_image_in_channels: Optional[int] = None,
@@ -165,10 +165,10 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         effnet_in_channels: Optional[int] = None,
         pixel_mapper_in_channels: Optional[int] = None,
         kernel_size=3,
-        dropout: List[float] = [0.1, 0.1],
-        self_attn: Union[bool, List[bool]] = True,
-        timestep_conditioning_type: List[str] = ["sca", "crp"],
-        switch_level: Optional[List[bool]] = None,
+        dropout: Tuple[float] = (0.1, 0.1),
+        self_attn: Union[bool, Tuple[bool]] = True,
+        timestep_conditioning_type: Tuple[str] = ("sca", "crp"),
+        switch_level: Optional[Tuple[bool]] = None,
     ):
         """
 
@@ -180,38 +180,44 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
             timestep_ratio_embedding_dim (`int`, defaults to 64):
                 Dimension of the projected time embedding.
             patch_size (`int`, defaults to 1):
-                Patch size for the .
+                Patch size to use for pixel unshuffling layer
             conditioning_dim (`int`, defaults to 2048):
                 Dimension of the image and text conditional embedding.
-            block_out_channels (List[int], defaults to [2048, 2048]):
-                List of output channels for each block.
-            num_attention_heads (List[int], defaults to [32, 32]):
+            block_out_channels (Tuple[int], defaults to (2048, 2048)):
+                Tuple of output channels for each block.
+            num_attention_heads (Tuple[int], defaults to (32, 32)):
                 Number of attention heads in each attention block. Set to -1 to if block types in a layer do not have attention.
-            down_num_layers_per_block (List[int], defaults to [8, 24]):
+            down_num_layers_per_block (Tuple[int], defaults to [8, 24]):
                 Number of layers in each down block.
-            up_num_layers_per_block (List[int], defaults to [24, 8]):
+            up_num_layers_per_block (Tuple[int], defaults to [24, 8]):
                 Number of layers in each up block.
-            down_blocks_repeat_mappers (List[int], optional, defaults to [1, 1]):
-            up_blocks_repeat_mappers (List[int], optional, defaults to [1, 1]):
-            block_types_per_layer (List[List[str]], optional, defaults to [["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"], ["SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"]]):
+            down_blocks_repeat_mappers (Tuple[int], optional, defaults to [1, 1]):
+                Number of 1x1 Convolutional layers to repeat in each down block.
+            up_blocks_repeat_mappers (Tuple[int], optional, defaults to [1, 1]):
+                Number of 1x1 Convolutional layers to repeat in each up block.
+            block_types_per_layer (Tuple[Tuple[str]], optional, defaults to (("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"), ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock")):
                 Block types used in each layer of the up/down blocks.
             clip_text_in_channels (`int`, *optional*, defaults to `None`):
                 Number of input channels for CLIP based text conditioning.
-            clip_text_pooled_in_channels (`int`, *optional*, defaults to `None`): _description_. Defaults to 1280.
-            clip_image_in_channels (`int`, *optional*): _description_.
+            clip_text_pooled_in_channels (`int`, *optional*, defaults to 1280):
+                Number of input channels for pooled CLIP text embeddings.
+            clip_image_in_channels (`int`, *optional*):
                 Number of input channels for CLIP based image conditioning.
             clip_seq (`int`, *optional*, defaults to 4):
             effnet_in_channels (`int`, *optional*, defaults to `None`):
+                Number of input channels for effnet conditioning.
             pixel_mapper_in_channels (`int`, defaults to `None`):
+                Number of input channels for pixel mapper conditioning.
             kernel_size (`int`, *optional*, defaults to 3):
-            dropout (List[float], *optional*, defaults to [0.1, 0.1]):
+                Kernel size to use in the block convolutional layers.
+            dropout (Tuple[float], *optional*, defaults to (0.1, 0.1)):
                 Dropout to use per block.
-            self_attn (Union[bool, List[bool]]):
-                List of booleans that determine whether to use self attention in a block or not.
-            timestep_conditioning_type (List[str], defaults to ["sca", "crp"]):
+            self_attn (Union[bool, Tuple[bool]]):
+                Tuple of booleans that determine whether to use self attention in a block or not.
+            timestep_conditioning_type (Tuple[str], defaults to ("sca", "crp")):
                 Timestep conditioning type.
-            switch_level (Optional[List[bool]], *optional*, defaults to `None`): .
-
+            switch_level (Optional[Tuple[bool]], *optional*, defaults to `None`):
+                Tuple that indicates whether upsampling or downsampling should be applied in a block
         """
 
         super().__init__()
