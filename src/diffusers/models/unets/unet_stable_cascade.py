@@ -195,7 +195,11 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                 Number of 1x1 Convolutional layers to repeat in each down block.
             up_blocks_repeat_mappers (Tuple[int], optional, defaults to [1, 1]):
                 Number of 1x1 Convolutional layers to repeat in each up block.
-            block_types_per_layer (Tuple[Tuple[str]], optional, defaults to (("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"), ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock")):
+            block_types_per_layer (Tuple[Tuple[str]], optional,
+                defaults to (
+                    ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
+                    ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock")
+                ):
                 Block types used in each layer of the up/down blocks.
             clip_text_in_channels (`int`, *optional*, defaults to `None`):
                 Number of input channels for CLIP based text conditioning.
