@@ -438,6 +438,7 @@ class StableDiffusionLongPromptWeightingPipeline(
         feature_extractor ([`CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+
     model_cpu_offload_seq = "text_encoder-->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]

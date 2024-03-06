@@ -22,7 +22,7 @@ import sys
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union, get_origin, get_args
+from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
 
 import numpy as np
 import PIL.Image
@@ -351,6 +351,7 @@ def get_class_obj_and_candidates(
 
     return class_obj, class_candidates
 
+
 def _get_custom_pipeline_class(
     custom_pipeline,
     repo_id=None,
@@ -396,7 +397,7 @@ def _get_pipeline_class(
     revision=None,
 ):
     if custom_pipeline is not None:
-        return self._get_custom_pipeline_class(
+        return _get_custom_pipeline_class(
             custom_pipeline,
             repo_id=repo_id,
             hub_revision=hub_revision,
@@ -2112,7 +2113,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for module in modules:
             module.set_attention_slice(slice_size)
-    
+
     @classmethod
     def from_pipe(cls, pipeline: "DiffusionPipeline", **kwargs) -> "DiffusionPipeline":
         r"""
@@ -2138,14 +2139,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         """
 
         if hasattr(pipeline, "_all_hooks") and len(pipeline._all_hooks) > 0:
-            # `enable_model_cpu_offload` has be called on the pipeline, offload model and remove hook from model     
+            # `enable_model_cpu_offload` has be called on the pipeline, offload model and remove hook from model
             for hook in pipeline._all_hooks:
                 # offload model and remove hook from model
                 hook.offload()
                 hook.remove()
         original_config = dict(pipeline.config)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        
+
         # derive the pipeline class to instantiate
         custom_pipeline = kwargs.pop("custom_pipeline", None)
         custom_revision = kwargs.pop("custom_revision", None)
@@ -2158,7 +2159,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
         # true_optional_modules are optional components with default value in signature so it is ok not to pass them to `__init__`
         # e.g. `image_encoder` for StableDiffusionPipeline
-        true_optional_modules = set({k for k, v in inspect.signature(cls.__init__).parameters.items() if v.default != inspect._empty and k in expected_modules})
+        true_optional_modules = set(
+            {
+                k
+                for k, v in inspect.signature(cls.__init__).parameters.items()
+                if v.default != inspect._empty and k in expected_modules
+            }
+        )
 
         def get_signature_types(cls):
             signature_types = {}
@@ -2186,8 +2193,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     logger.warn(
                         f"component {k} is not switched over to new pipeline because type does not match the expected."
                         f" k is {type(v)} while the new pipeline expect {signature_types[k]}."
-                        f" please pass the correct type of component to the new pipeline. `from_pipe(..., {k}={k})`")
-        
+                        f" please pass the correct type of component to the new pipeline. `from_pipe(..., {k}={k})`"
+                    )
+
         # allow users pass optional kwargs to override the original pipelines config attribute
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
         original_pipe_kwargs = {
@@ -2207,7 +2215,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         for k in additional_pipe_kwargs:
             original_pipe_kwargs[k] = original_config.pop(f"_{k}")
 
-        pipeline_kwargs = {**passed_class_obj, **original_class_obj, **passed_pipe_kwargs, **original_pipe_kwargs, **kwargs}
+        pipeline_kwargs = {
+            **passed_class_obj,
+            **original_class_obj,
+            **passed_pipe_kwargs,
+            **original_pipe_kwargs,
+            **kwargs,
+        }
 
         # store unused config as private attribute in the new pipeline
         unused_original_config = {
@@ -2215,8 +2229,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             for k, v in original_config.items()
             if k not in pipeline_kwargs
         }
-        
-        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(pipeline_kwargs.keys()) - set(true_optional_modules)
+
+        missing_modules = (
+            set(expected_modules)
+            - set(pipeline._optional_components)
+            - set(pipeline_kwargs.keys())
+            - set(true_optional_modules)
+        )
 
         if len(missing_modules) > 0:
             raise ValueError(
@@ -2230,8 +2249,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             new_pipeline.to(dtype=torch_dtype)
 
         return new_pipeline
-
-
 
 
 class StableDiffusionMixin:

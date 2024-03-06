@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from ...configuration_utils import ConfigMixin, register_to_config, FrozenDict
+from ...configuration_utils import ConfigMixin, FrozenDict, register_to_config
 from ...loaders import UNet2DConditionLoadersMixin
 from ...utils import logging
 from ..attention_processor import (
