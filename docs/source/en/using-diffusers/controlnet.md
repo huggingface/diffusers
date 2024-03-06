@@ -435,7 +435,7 @@ You can use a refiner model with `StableDiffusionXLControlNetPipeline` to improv
 See the [Refine image quality](./sdxl#refine-image-quality) section to learn how to use the refiner model.
 Make sure to use `StableDiffusionXLControlNetPipeline` and pass `image` and `controlnet_conditioning_scale`.
 
-```
+```py
 base = StableDiffusionXLControlNetPipeline(...)
 image = base(
     prompt=prompt,
