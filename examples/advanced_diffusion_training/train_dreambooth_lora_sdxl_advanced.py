@@ -1416,7 +1416,9 @@ def main(args):
                 text_encoder_2_lora_layers=text_encoder_two_lora_layers_to_save,
             )
         if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(f"{output_dir}/{args.output_dir}_emb.safetensors")
+            modelname = args.output_dir.split("/")[-1]
+            embeddings_path = f"{args.output_dir}/{modelname}_emb.safetensors"
+            embedding_handler.save_embeddings(embeddings_path)
 
     def load_model_hook(models, input_dir):
         unet_ = None
@@ -2119,7 +2121,8 @@ def main(args):
         )
 
         if args.train_text_encoder_ti:
-            embeddings_path = f"{args.output_dir}/{args.output_dir}_emb.safetensors"
+            modelname = args.output_dir.split("/")[-1]
+            embeddings_path = f"{args.output_dir}/{modelname}_emb.safetensors"
             embedding_handler.save_embeddings(embeddings_path)
 
         images = []
