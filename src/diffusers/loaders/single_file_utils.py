@@ -312,6 +312,8 @@ def infer_model_type(original_config, checkpoint=None, model_type=None):
         if "edm_mean" in checkpoint and "edm_std" in checkpoint:
             return "Playground"
         return model_type
+    elif "edm_mean" in checkpoint and "edm_std" in checkpoint:
+        return "Playground"
 
     has_cond_stage_config = (
         "cond_stage_config" in original_config["model"]["params"]
@@ -1252,20 +1254,18 @@ def create_diffusers_vae_model_from_ldm(
     image_size = set_image_size(
         pipeline_class_name, original_config, checkpoint, image_size=image_size, model_type=model_type
     )
+    model_type = infer_model_type(original_config, checkpoint, model_type)
 
-    if "edm_mean" in checkpoint and "edm_std" in checkpoint:
-        if checkpoint["edm_mean"] is not None and checkpoint["edm_std"] is not None:
-            edm_mean = checkpoint["edm_mean"].to(dtype=torch_dtype) if torch_dtype else checkpoint["edm_mean"]
-            edm_std = checkpoint["edm_std"].to(dtype=torch_dtype) if torch_dtype else checkpoint["edm_std"]
-            vae_config = create_vae_diffusers_config(
-                original_config,
-                image_size=image_size,
-                scaling_factor=scaling_factor,
-                latents_mean=edm_mean.flatten().tolist(),
-                latents_std=edm_std.flatten().tolist(),
-            )
+    if model_type == "Playground":
+        edm_mean = checkpoint["edm_mean"].to(dtype=torch_dtype) if torch_dtype else checkpoint["edm_mean"]
+        edm_std = checkpoint["edm_std"].to(dtype=torch_dtype) if torch_dtype else checkpoint["edm_std"]
     else:
-        vae_config = create_vae_diffusers_config(original_config, image_size=image_size, scaling_factor=scaling_factor)
+        edm_mean = None
+        edm_std = None
+
+    vae_config = create_vae_diffusers_config(
+        original_config, image_size=image_size, scaling_factor=scaling_factor, edm_mean=edm_mean, edm_std=edm_std
+    )
     diffusers_format_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
 
