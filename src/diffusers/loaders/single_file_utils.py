@@ -308,11 +308,9 @@ def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=
 
 
 def infer_model_type(original_config, checkpoint=None, model_type=None):
-    if checkpoint is not None:
-        if "edm_mean" in checkpoint and "edm_std":
-            return "Playground"
-
     if model_type is not None:
+        if "edm_mean" in checkpoint and "edm_std" in checkpoint:
+            return "Playground"
         return model_type
 
     has_cond_stage_config = (
