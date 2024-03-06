@@ -14,7 +14,7 @@ specific language governing permissions and limitations under the License.
 
 It can be fun and creative to use multiple [LoRAs]((https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora)) together to generate something entirely new and unique. This works by merging multiple LoRA weights together to produce images that are a blend of different styles. Diffusers provides a few methods to merge LoRAs depending on *how* you want to merge their weights, which can affect image quality.
 
-This guide will show you how to merge LoRAs using the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] and [`~peft.LoraModel.add_weighted_adapter`] methods. To improve inference speed and reduce memory-usage of merged LoRAs, you'll also see how to use the [`~loaders.LoraLoaderMixin.fuse_lora] method to fuse the LoRA weights with the original weights of the underlying model.
+This guide will show you how to merge LoRAs using the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] and [`~peft.LoraModel.add_weighted_adapter`] methods. To improve inference speed and reduce memory-usage of merged LoRAs, you'll also see how to use the [`~loaders.LoraLoaderMixin.fuse_lora`] method to fuse the LoRA weights with the original weights of the underlying model.
 
 For this guide, load a Stable Diffusion XL (SDXL) checkpoint and the [KappaNeuro/studio-ghibli-style]() and [Norod78/sdxl-chalkboarddrawing-lora]() LoRAs with the [`~loaders.LoraLoaderMixin.load_lora_weights`] method. You'll need to assign each LoRA an `adapter_name` to combine them later.
 
@@ -110,7 +110,7 @@ ikea_peft_model.load_state_dict(original_state_dict, strict=True)
 ```
 
 > [!TIP]
-> You can optionally push the toy_peft_model to the Hub using: `toy_peft_model.push_to_hub("toy_peft_model", token=TOKEN)`.
+> You can optionally push the ikea_peft_model to the Hub by calling `ikea_peft_model.push_to_hub("ikea_peft_model", token=TOKEN)`.
 
 Repeat this process to create a [`~peft.PeftModel`] from the [lordjia/by-feng-zikai](https://huggingface.co/lordjia/by-feng-zikai) LoRA.
 
@@ -184,7 +184,7 @@ image
 
 Both the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] and [`~peft.LoraModel.add_weighted_adapter`] methods require loading the base model and the LoRA adapters separately which incurs some overhead. The [`~loaders.LoraLoaderMixin.fuse_lora`] method allows you to fuse the LoRA weights directly with the original weights of the underlying model. This way, you're only loading the model once which can increase inference and lower memory-usage.
 
-You can use PEFT to easily fuse/unfuse multiple adapters directly into the model weights (both UNet and text encoder) using the fuse_lora() method, which can lead to a speed-up in inference and lower VRAM usage.
+You can use PEFT to easily fuse/unfuse multiple adapters directly into the model weights (both UNet and text encoder) using the [`~loaders.LoraLoaderMixin.fuse_lora`] method, which can lead to a speed-up in inference and lower VRAM usage.
 
 For example, if you have a base model and adapters loaded and set as active with the following adapter weights:
 
@@ -234,19 +234,39 @@ pipeline.unfuse_lora()
 
 ### torch.compile
 
-[torch.compile](../optimization/torch2.0#torchcompile) can speed up your pipeline even more, but you have to make sure the LoRA weights are fused first and then unloaded.
+[torch.compile](../optimization/torch2.0#torchcompile) can speed up your pipeline even more, but the LoRA weights must be fused first and then unloaded. Make sure you read the [fuse_lora](#fuse_lora) section above before compiling.
 
 ```py
 pipeline = DiffusionPipeline.from_pretrained(
     "username/fused-ikea-feng", torch_dtype=torch.float16,
 ).to("cuda")
+```
 
-pipeline.unet.to(memory_format=torch.channels_last)
-pipeline.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+<hfoptions id="compile">
+<hfoption id="no compilation">
+
+```py
+%%timeit
 
 image = pipeline("A bowl of ramen shaped like a cute kawaii bear, by Feng Zikai", generator=torch.manual_seed(0)).images[0]
-image
+"13.4 s ± 24.7 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)"
 ```
+
+</hfoption>
+<hfoption id="torch.compile">
+
+```py
+%%timeit
+
+pipeline.unet.to(memory_format=torch.channels_last)
+pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
+
+image = pipeline("A bowl of ramen shaped like a cute kawaii bear, by Feng Zikai", generator=torch.manual_seed(0)).images[0]
+"12.2 s ± 37.9 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)"
+```
+
+</hfoption>
+</hfoptions>
 
 Learn more about torch.compile in the [Accelerate inference of text-to-image diffusion models](../tutorials/fast_diffusion#torchcompile) guide.
 
