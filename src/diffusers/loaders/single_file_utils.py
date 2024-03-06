@@ -1264,7 +1264,11 @@ def create_diffusers_vae_model_from_ldm(
         edm_std = None
 
     vae_config = create_vae_diffusers_config(
-        original_config, image_size=image_size, scaling_factor=scaling_factor, edm_mean=edm_mean, edm_std=edm_std
+        original_config,
+        image_size=image_size,
+        scaling_factor=scaling_factor,
+        latents_mean=edm_mean,
+        latents_std=edm_std,
     )
     diffusers_format_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
