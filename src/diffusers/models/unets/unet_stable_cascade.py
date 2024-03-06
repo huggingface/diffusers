@@ -165,7 +165,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         effnet_in_channels: Optional[int] = None,
         pixel_mapper_in_channels: Optional[int] = None,
         kernel_size=3,
-        dropout: Tuple[float] = (0.1, 0.1),
+        dropout: Union[float, Tuple[float]] = (0.1, 0.1),
         self_attn: Union[bool, Tuple[bool]] = True,
         timestep_conditioning_type: Tuple[str] = ("sca", "crp"),
         switch_level: Optional[Tuple[bool]] = None,
@@ -251,10 +251,10 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                 f"Number of elements in `block_types_per_layer` must match the length of `block_out_channels`: {len(block_out_channels)}"
             )
 
-        if not isinstance(dropout, list):
-            dropout = [dropout] * len(block_out_channels)
-        if not isinstance(self_attn, list):
-            self_attn = [self_attn] * len(block_out_channels)
+        if isinstance(dropout, float):
+            dropout = (dropout,) * len(block_out_channels)
+        if isinstance(self_attn, bool):
+            self_attn = (self_attn,) * len(block_out_channels)
 
         # CONDITIONING
         if effnet_in_channels is not None:

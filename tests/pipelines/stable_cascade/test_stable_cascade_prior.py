@@ -25,10 +25,7 @@ from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokeni
 from diffusers import DDPMWuerstchenScheduler, StableCascadePriorPipeline
 from diffusers.loaders import AttnProcsLayers
 from diffusers.models import StableCascadeUNet
-from diffusers.models.attention_processor import (
-    LoRAAttnProcessor,
-    LoRAAttnProcessor2_0,
-)
+from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProcessor2_0
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
@@ -125,14 +122,15 @@ class StableCascadePriorPipelineFastTests(PipelineTesterMixin, unittest.TestCase
 
         model_kwargs = {
             "conditioning_dim": 128,
-            "block_out_channels": [128, 128],
-            "num_attention_heads": [2, 2],
-            "down_num_layers_per_block": [1, 1],
-            "up_num_layers_per_block": [1, 1],
-            "switch_level": [False],
+            "block_out_channels": (128, 128),
+            "num_attention_heads": (2, 2),
+            "down_num_layers_per_block": (1, 1),
+            "up_num_layers_per_block": (1, 1),
+            "switch_level": (False,),
             "clip_image_in_channels": 768,
             "clip_text_in_channels": self.text_embedder_hidden_size,
             "clip_text_pooled_in_channels": self.text_embedder_hidden_size,
+            "dropout": (0.1, 0.1),
         }
 
         model = StableCascadeUNet(**model_kwargs)
