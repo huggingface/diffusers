@@ -189,8 +189,7 @@ class FromSingleFileMixin:
             image_size (`int`, *optional*):
                 The size of the image output. It's used to configure the `sample_size` parameter of the UNet and VAE model.
             load_safety_checker (`bool`, *optional*, defaults to `False`):
-                Whether to load the safety checker model or not. By default, the safety checker is not loaded unless user pass
-                a `safety_checker` component in the `kwargs`.
+                Whether to load the safety checker model or not. By default, the safety checker is not loaded unless a `safety_checker` component is passed to the `kwargs`.
             num_in_channels (`int`, *optional*):
                 Specify the number of input channels for the UNet model. Read more about how to configure UNet model with this parameter
                 here https://huggingface.co/docs/diffusers/training/adapt_a_model#configure-unet2dconditionmodel-parameters
