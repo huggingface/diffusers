@@ -429,6 +429,27 @@ image = pipe(
 make_image_grid([original_image, canny_image, image], rows=1, cols=3)
 ```
 
+<Tip>
+
+You can use a refiner model with `StableDiffusionXLControlNetPipeline` to improve image quality, just like you can with a regular `StableDiffusionXLPipeline`.
+See [section `Refine image quality` on the `StableDiffusionXL` page](https://huggingface.co/docs/diffusers/using-diffusers/sdxl#refine-image-quality) for how to do it.
+Make sure to use `StableDiffusionXLControlNetPipeline` and pass `image` and `controlnet_conditioning_scale`.
+
+```
+base = StableDiffusionXLControlNetPipeline(...)
+image = base(
+    prompt=prompt,
+    controlnet_conditioning_scale=0.5,
+    image=canny_image,
+    num_inference_steps=40,
+    denoising_end=0.8,
+    output_type="latent",
+).images
+# rest exactly as with StableDiffusionXLPipeline
+```
+
+</Tip>
+
 ## MultiControlNet
 
 <Tip>
