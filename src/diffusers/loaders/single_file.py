@@ -49,7 +49,6 @@ def build_sub_model_components(
     model_type=None,
     image_size=None,
     torch_dtype=None,
-    is_playground_model=False,
     **kwargs,
 ):
     if component_name in pipeline_components:
@@ -85,7 +84,6 @@ def build_sub_model_components(
             scheduler_type=scheduler_type,
             prediction_type=prediction_type,
             model_type=model_type,
-            is_playground_model=is_playground_model,
         )
 
         return scheduler_components
@@ -230,9 +228,6 @@ class FromSingleFileMixin:
             cache_dir=cache_dir,
         )
 
-        # For now, we determine if the input checkpoint is from Playground like this.
-        is_playground_model = "edm_mean" in checkpoint and "edm_std" in checkpoint
-
         from ..pipelines.pipeline_utils import _get_pipeline_class
 
         pipeline_class = _get_pipeline_class(
@@ -267,7 +262,6 @@ class FromSingleFileMixin:
                     load_safety_checker=load_safety_checker,
                     local_files_only=local_files_only,
                     torch_dtype=torch_dtype,
-                    is_playground_model=is_playground_model,
                     **kwargs,
                 )
                 if not components:

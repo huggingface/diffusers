@@ -1235,21 +1235,21 @@ def create_diffusers_vae_model_from_ldm(
     image_size=None,
     scaling_factor=None,
     torch_dtype=None,
-    is_playground_model=False,
 ):
     # import here to avoid circular imports
     from ..models import AutoencoderKL
 
     image_size = set_image_size(pipeline_class_name, original_config, checkpoint, image_size=image_size)
 
-    if is_playground_model:
-        vae_config = create_vae_diffusers_config(
-            original_config,
-            image_size=image_size,
-            scaling_factor=scaling_factor,
-            latents_mean=checkpoint["edm_mean"].flatten().tolist(),
-            latents_std=checkpoint["edm_std"].flatten().tolist(),
-        )
+    if "edm_mean" in checkpoint and "edm_std" in checkpoint:
+        if checkpoint["edm"] is not None and checkpoint["edm_std"] is not None:
+            vae_config = create_vae_diffusers_config(
+                original_config,
+                image_size=image_size,
+                scaling_factor=scaling_factor,
+                latents_mean=checkpoint["edm_mean"].flatten().tolist(),
+                latents_std=checkpoint["edm_std"].flatten().tolist(),
+            )
     else:
         vae_config = create_vae_diffusers_config(original_config, image_size=image_size, scaling_factor=scaling_factor)
     diffusers_format_vae_checkpoint = convert_ldm_vae_checkpoint(checkpoint, vae_config)
@@ -1402,10 +1402,34 @@ def create_scheduler_from_ldm(
     prediction_type=None,
     scheduler_type="ddim",
     model_type=None,
-    is_playground_model=False,
 ):
-    if is_playground_model:
-        scheduler_kwargs = {
+    scheduler_config = get_default_scheduler_config()
+    model_type = infer_model_type(original_config, model_type=model_type)
+
+    global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
+
+    num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", None) or 1000
+    scheduler_config["num_train_timesteps"] = num_train_timesteps
+
+    if (
+        "parameterization" in original_config["model"]["params"]
+        and original_config["model"]["params"]["parameterization"] == "v"
+    ):
+        if prediction_type is None:
+            # NOTE: For stable diffusion 2 base it is recommended to pass `prediction_type=="epsilon"`
+            # as it relies on a brittle global step parameter here
+            prediction_type = "epsilon" if global_step == 875000 else "v_prediction"
+
+    else:
+        prediction_type = prediction_type or "epsilon"
+
+    scheduler_config["prediction_type"] = prediction_type
+
+    if model_type in ["SDXL", "SDXL-Refiner"]:
+        scheduler_type = "euler"
+
+    elif model_type == "Playground":
+        scheduler_config = {
             "algorithm_type": "dpmsolver++",
             "dynamic_thresholding_ratio": 0.995,
             "euler_at_final": False,
@@ -1422,66 +1446,41 @@ def create_scheduler_from_ldm(
             "solver_type": "midpoint",
             "thresholding": False,
         }
-        scheduler = EDMDPMSolverMultistepScheduler(**scheduler_kwargs)
+        scheduler = EDMDPMSolverMultistepScheduler(**scheduler_config)
+
     else:
-        scheduler_config = get_default_scheduler_config()
-        model_type = infer_model_type(original_config, model_type=model_type)
+        beta_start = original_config["model"]["params"].get("linear_start", 0.02)
+        beta_end = original_config["model"]["params"].get("linear_end", 0.085)
+        scheduler_config["beta_start"] = beta_start
+        scheduler_config["beta_end"] = beta_end
+        scheduler_config["beta_schedule"] = "scaled_linear"
+        scheduler_config["clip_sample"] = False
+        scheduler_config["set_alpha_to_one"] = False
 
-        global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
+    if scheduler_type == "pndm":
+        scheduler_config["skip_prk_steps"] = True
+        scheduler = PNDMScheduler.from_config(scheduler_config)
 
-        num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", None) or 1000
-        scheduler_config["num_train_timesteps"] = num_train_timesteps
+    elif scheduler_type == "lms":
+        scheduler = LMSDiscreteScheduler.from_config(scheduler_config)
 
-        if (
-            "parameterization" in original_config["model"]["params"]
-            and original_config["model"]["params"]["parameterization"] == "v"
-        ):
-            if prediction_type is None:
-                # NOTE: For stable diffusion 2 base it is recommended to pass `prediction_type=="epsilon"`
-                # as it relies on a brittle global step parameter here
-                prediction_type = "epsilon" if global_step == 875000 else "v_prediction"
+    elif scheduler_type == "heun":
+        scheduler = HeunDiscreteScheduler.from_config(scheduler_config)
 
-        else:
-            prediction_type = prediction_type or "epsilon"
+    elif scheduler_type == "euler":
+        scheduler = EulerDiscreteScheduler.from_config(scheduler_config)
 
-        scheduler_config["prediction_type"] = prediction_type
+    elif scheduler_type == "euler-ancestral":
+        scheduler = EulerAncestralDiscreteScheduler.from_config(scheduler_config)
 
-        if model_type in ["SDXL", "SDXL-Refiner"]:
-            scheduler_type = "euler"
+    elif scheduler_type == "dpm":
+        scheduler = DPMSolverMultistepScheduler.from_config(scheduler_config)
 
-        else:
-            beta_start = original_config["model"]["params"].get("linear_start", 0.02)
-            beta_end = original_config["model"]["params"].get("linear_end", 0.085)
-            scheduler_config["beta_start"] = beta_start
-            scheduler_config["beta_end"] = beta_end
-            scheduler_config["beta_schedule"] = "scaled_linear"
-            scheduler_config["clip_sample"] = False
-            scheduler_config["set_alpha_to_one"] = False
+    elif scheduler_type == "ddim":
+        scheduler = DDIMScheduler.from_config(scheduler_config)
 
-        if scheduler_type == "pndm":
-            scheduler_config["skip_prk_steps"] = True
-            scheduler = PNDMScheduler.from_config(scheduler_config)
-
-        elif scheduler_type == "lms":
-            scheduler = LMSDiscreteScheduler.from_config(scheduler_config)
-
-        elif scheduler_type == "heun":
-            scheduler = HeunDiscreteScheduler.from_config(scheduler_config)
-
-        elif scheduler_type == "euler":
-            scheduler = EulerDiscreteScheduler.from_config(scheduler_config)
-
-        elif scheduler_type == "euler-ancestral":
-            scheduler = EulerAncestralDiscreteScheduler.from_config(scheduler_config)
-
-        elif scheduler_type == "dpm":
-            scheduler = DPMSolverMultistepScheduler.from_config(scheduler_config)
-
-        elif scheduler_type == "ddim":
-            scheduler = DDIMScheduler.from_config(scheduler_config)
-
-        else:
-            raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
+    else:
+        raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")
 
     if pipeline_class_name == "StableDiffusionUpscalePipeline":
         scheduler = DDIMScheduler.from_pretrained("stabilityai/stable-diffusion-x4-upscaler", subfolder="scheduler")
