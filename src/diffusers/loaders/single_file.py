@@ -194,8 +194,8 @@ class FromSingleFileMixin:
                 Specify the number of input channels for the UNet model. Read more about how to configure UNet model with this parameter
                 here https://huggingface.co/docs/diffusers/training/adapt_a_model#configure-unet2dconditionmodel-parameters
             scaling_factor (`float`, *optional*):
-                The scaling factor to use for the VAE model. If not provided, It will first try to infer from the config file.
-                If the scaling factor is not found in the config file, the defaut value 0.18215 is used
+                The scaling factor to use for the VAE model. If not provided, it is inferred from the config file first.
+                If the scaling factor is not found in the config file, the default value 0.18215 is used.
             scheduler_type (`str`, *optional*):
                 The type of scheduler to load. If not provided, the scheduler type will be inferred from the checkpoint file.
             prediction_type (`str`, *optional*):
