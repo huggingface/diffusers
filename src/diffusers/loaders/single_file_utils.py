@@ -307,7 +307,11 @@ def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=
     return original_config
 
 
-def infer_model_type(original_config, model_type=None):
+def infer_model_type(original_config, checkpoint=None, model_type=None):
+    if checkpoint is not None:
+        if "edm_mean" in checkpoint and "edm_std":
+            return "Playground"
+
     if model_type is not None:
         return model_type
 
@@ -346,7 +350,7 @@ def set_image_size(pipeline_class_name, original_config, checkpoint, image_size=
         return image_size
 
     global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
-    model_type = infer_model_type(original_config, model_type)
+    model_type = infer_model_type(original_config, checkpoint, model_type)
 
     if pipeline_class_name == "StableDiffusionUpscalePipeline":
         image_size = original_config["model"]["params"]["unet_config"]["params"]["image_size"]
@@ -1298,7 +1302,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
     local_files_only=False,
     torch_dtype=None,
 ):
-    model_type = infer_model_type(original_config, model_type=model_type)
+    model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
 
     if model_type == "FrozenOpenCLIPEmbedder":
         config_name = "stabilityai/stable-diffusion-2"
@@ -1416,7 +1420,7 @@ def create_scheduler_from_ldm(
     model_type=None,
 ):
     scheduler_config = get_default_scheduler_config()
-    model_type = infer_model_type(original_config, model_type=model_type)
+    model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
 
     global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
 

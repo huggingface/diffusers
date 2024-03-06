@@ -131,11 +131,12 @@ def build_sub_model_components(
 def set_additional_components(
     pipeline_class_name,
     original_config,
+    checkpoint=None,
     model_type=None,
 ):
     components = {}
     if pipeline_class_name in REFINER_PIPELINES:
-        model_type = infer_model_type(original_config, model_type=model_type)
+        model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
         is_refiner = model_type == "SDXL-Refiner"
         components.update(
             {
@@ -252,7 +253,6 @@ class FromSingleFileMixin:
         load_safety_checker = (kwargs.pop("load_safety_checker", False)) or (
             passed_class_obj.get("safety_checker", None) is not None
         )
-        model_type = "Playground" if "edm_mean" in checkpoint and "edm_std" in checkpoint else model_type
 
         init_kwargs = {}
         for name in expected_modules:
