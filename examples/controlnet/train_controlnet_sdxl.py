@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import contextlib
 import functools
 import gc
 import logging
@@ -60,25 +61,43 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
 
-def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step):
+def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step, is_final_validation=False):
     logger.info("Running validation... ")
 
-    controlnet = accelerator.unwrap_model(controlnet)
+    if not is_final_validation:
+        controlnet = accelerator.unwrap_model(controlnet)
+        pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            vae=vae,
+            unet=unet,
+            controlnet=controlnet,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
+        )
+    else:
+        controlnet = ControlNetModel.from_pretrained(args.output_dir, torch_dtype=weight_dtype)
+        if args.pretrained_vae_model_name_or_path is not None:
+            vae = AutoencoderKL.from_pretrained(args.pretrained_vae_model_name_or_path, torch_dtype=weight_dtype)
+        else:
+            vae = AutoencoderKL.from_pretrained(
+                args.pretrained_model_name_or_path, subfolder="vae", torch_dtype=weight_dtype
+            )
 
-    pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
-        args.pretrained_model_name_or_path,
-        vae=vae,
-        unet=unet,
-        controlnet=controlnet,
-        revision=args.revision,
-        variant=args.variant,
-        torch_dtype=weight_dtype,
-    )
+        pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
+            args.pretrained_model_name_or_path,
+            vae=vae,
+            controlnet=controlnet,
+            revision=args.revision,
+            variant=args.variant,
+            torch_dtype=weight_dtype,
+        )
+
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
@@ -106,6 +125,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         )
 
     image_logs = []
+    inference_ctx = contextlib.nullcontext() if is_final_validation else torch.autocast("cuda")
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
@@ -114,7 +134,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
         images = []
 
         for _ in range(args.num_validation_images):
-            with torch.autocast("cuda"):
+            with inference_ctx:
                 image = pipeline(
                     prompt=validation_prompt, image=validation_image, num_inference_steps=20, generator=generator
                 ).images[0]
@@ -124,6 +144,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
             {"validation_image": validation_image, "images": images, "validation_prompt": validation_prompt}
         )
 
+    tracker_key = "test" if is_final_validation else "validation"
     for tracker in accelerator.trackers:
         if tracker.name == "tensorboard":
             for log in image_logs:
@@ -155,7 +176,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
                     image = wandb.Image(image, caption=validation_prompt)
                     formatted_images.append(image)
 
-            tracker.log({"validation": formatted_images})
+            tracker.log({tracker_key: formatted_images})
         else:
             logger.warn(f"image logging not implemented for {tracker.name}")
 
@@ -189,7 +210,7 @@ def import_model_class_from_model_name_or_path(
 def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=None):
     img_str = ""
     if image_logs is not None:
-        img_str = "You can find some example images below.\n"
+        img_str = "You can find some example images below.\n\n"
         for i, log in enumerate(image_logs):
             images = log["images"]
             validation_prompt = log["validation_prompt"]
@@ -222,6 +243,7 @@ These are controlnet weights trained on {base_model} with new type of conditioni
         "text-to-image",
         "diffusers",
         "controlnet",
+        "diffusers-training",
     ]
     model_card = populate_model_card(model_card, tags=tags)
 
@@ -1228,7 +1250,13 @@ def main(args):
 
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         image_logs = log_validation(
-                            vae, unet, controlnet, args, accelerator, weight_dtype, global_step
+                            vae=vae,
+                            unet=unet,
+                            controlnet=controlnet,
+                            args=args,
+                            accelerator=accelerator,
+                            weight_dtype=weight_dtype,
+                            step=global_step,
                         )
 
             logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
@@ -1243,6 +1271,21 @@ def main(args):
     if accelerator.is_main_process:
         controlnet = unwrap_model(controlnet)
         controlnet.save_pretrained(args.output_dir)
+
+        # Run a final round of validation.
+        # Setting `vae`, `unet`, and `controlnet` to None to load automatically from `args.output_dir`.
+        image_logs = None
+        if args.validation_prompt is not None:
+            image_logs = log_validation(
+                vae=None,
+                unet=None,
+                controlnet=None,
+                args=args,
+                accelerator=accelerator,
+                weight_dtype=weight_dtype,
+                step=global_step,
+                is_final_validation=True,
+            )
 
         if args.push_to_hub:
             save_model_card(

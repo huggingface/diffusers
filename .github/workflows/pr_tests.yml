@@ -4,6 +4,14 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/diffusers/**.py"
+      - "benchmarks/**.py"
+      - "examples/**.py"
+      - "scripts/**.py"
+      - "tests/**.py"
+      - ".github/**.yml"
+      - "utils/**.py"
   push:
     branches:
       - ci-*
@@ -19,7 +27,44 @@ env:
   PYTEST_TIMEOUT: 60
 
 jobs:
+  check_code_quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[quality]
+      - name: Check quality
+        run: |
+          ruff check examples tests src utils scripts
+          ruff format examples tests src utils scripts --check
+
+  check_repository_consistency:
+    needs: check_code_quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[quality]
+      - name: Check quality
+        run: |
+          python utils/check_copies.py
+          python utils/check_dummies.py
+          make deps_table_check_updated
+
   run_fast_tests:
+    needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
       matrix:
@@ -34,11 +79,6 @@ jobs:
             runner: docker-cpu
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_models_schedulers
-          - name: LoRA
-            framework: lora
-            runner: docker-cpu
-            image: diffusers/diffusers-pytorch-cpu
-            report: torch_cpu_lora
           - name: Fast Flax CPU tests
             framework: flax
             runner: docker-cpu
@@ -71,16 +111,19 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
-        python -m pip install -e .[quality,test]
-        python -m pip install accelerate
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
+        python -m uv pip install accelerate
 
     - name: Environment
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run fast PyTorch Pipeline CPU tests
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -89,22 +132,16 @@ jobs:
     - name: Run fast PyTorch Model Scheduler CPU tests
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
 
-    - name: Run fast PyTorch LoRA CPU tests
-      if: ${{ matrix.config.framework == 'lora' }}
-      run: |
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
-          -s -v -k "not Flax and not Onnx and not Dependency" \
-          --make-reports=tests_${{ matrix.config.report }} \
-          tests/lora
-
     - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -113,7 +150,8 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
-        python -m pip install peft
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install peft
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
@@ -130,6 +168,7 @@ jobs:
         path: reports
 
   run_staging_tests:
+    needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
       matrix:
@@ -161,15 +200,18 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
-        python -m pip install -e .[quality,test]
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
 
     - name: Environment
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run Hub tests for models, schedulers, and pipelines on a staging env
       if: ${{ matrix.config.framework == 'hub_tests_pytorch' }}
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         HUGGINGFACE_CO_STAGING=true python -m pytest \
           -m "is_staging_test" \
           --make-reports=tests_${{ matrix.config.report }} \

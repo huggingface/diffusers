@@ -60,7 +60,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +169,7 @@ These are controlnet weights trained on {base_model} with new type of conditioni
         "diffusers",
         "controlnet",
         "jax-diffusers-event",
+        "diffusers-training",
     ]
     model_card = populate_model_card(model_card, tags=tags)
 

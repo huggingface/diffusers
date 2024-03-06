@@ -63,7 +63,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -97,7 +97,14 @@ These are Custom Diffusion adaption weights for {base_model}. The weights were t
         inference=True,
     )
 
-    tags = ["text-to-image", "diffusers", "stable-diffusion", "stable-diffusion-diffusers", "custom-diffusion"]
+    tags = [
+        "text-to-image",
+        "diffusers",
+        "stable-diffusion",
+        "stable-diffusion-diffusers",
+        "custom-diffusion",
+        "diffusers-training",
+    ]
     model_card = populate_model_card(model_card, tags=tags)
 
     model_card.save(os.path.join(repo_folder, "README.md"))

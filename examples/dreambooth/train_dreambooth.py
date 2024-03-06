@@ -63,7 +63,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -102,7 +102,7 @@ DreamBooth for the text encoder was enabled: {train_text_encoder}.
         inference=True,
     )
 
-    tags = ["text-to-image", "dreambooth"]
+    tags = ["text-to-image", "dreambooth", "diffusers-training"]
     if isinstance(pipeline, StableDiffusionPipeline):
         tags.extend(["stable-diffusion", "stable-diffusion-diffusers"])
     else:

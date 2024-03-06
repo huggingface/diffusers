@@ -13,14 +13,17 @@
 # limitations under the License.
 
 from pathlib import Path
-from typing import Dict, List, Union
+from typing import Dict, List, Optional, Union
 
 import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..utils import (
     _get_model_file,
+    is_accelerate_available,
+    is_torch_version,
     is_transformers_available,
     logging,
 )
@@ -49,11 +52,12 @@ class IPAdapterMixin:
         pretrained_model_name_or_path_or_dict: Union[str, List[str], Dict[str, torch.Tensor]],
         subfolder: Union[str, List[str]],
         weight_name: Union[str, List[str]],
+        image_encoder_folder: Optional[str] = "image_encoder",
         **kwargs,
     ):
         """
         Parameters:
-            pretrained_model_name_or_path_or_dict (`str` or `os.PathLike` or `dict`):
+            pretrained_model_name_or_path_or_dict (`str` or `List[str]` or `os.PathLike` or `List[os.PathLike]` or `dict` or `List[dict]`):
                 Can be either:
 
                     - A string, the *model id* (for example `google/ddpm-celebahq-256`) of a pretrained model hosted on
@@ -62,7 +66,18 @@ class IPAdapterMixin:
                       with [`ModelMixin.save_pretrained`].
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
-
+            subfolder (`str` or `List[str]`):
+                The subfolder location of a model file within a larger model repository on the Hub or locally.
+                If a list is passed, it should have the same length as `weight_name`.
+            weight_name (`str` or `List[str]`):
+                The name of the weight file to load. If a list is passed, it should have the same length as
+                `weight_name`.
+            image_encoder_folder (`str`, *optional*, defaults to `image_encoder`):
+                The subfolder location of the image encoder within a larger model repository on the Hub or locally.
+                Pass `None` to not load the image encoder. If the image encoder is located in a folder inside `subfolder`,
+                you only need to pass the name of the folder that contains image encoder weights, e.g. `image_encoder_folder="image_encoder"`.
+                If the image encoder is located in a folder other than `subfolder`, you should pass the path to the folder that contains image encoder weights,
+                for example, `image_encoder_folder="different_subfolder/image_encoder"`.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.
@@ -84,8 +99,11 @@ class IPAdapterMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            subfolder (`str`, *optional*, defaults to `""`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
+            low_cpu_mem_usage (`bool`, *optional*, defaults to `True` if torch version >= 1.9.0 else `False`):
+                Speed up model loading only loading the pretrained weights and not initializing the weights. This also
+                tries to not use more than 1x model size in CPU memory (including peak memory) while loading the model.
+                Only supported for PyTorch >= 1.9.0. If you are using an older version of PyTorch, setting this
+                argument to `True` will raise an error.
         """
 
         # handle the list inputs for multiple IP Adapters
@@ -116,6 +134,22 @@ class IPAdapterMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         token = kwargs.pop("token", None)
         revision = kwargs.pop("revision", None)
+        low_cpu_mem_usage = kwargs.pop("low_cpu_mem_usage", _LOW_CPU_MEM_USAGE_DEFAULT)
+
+        if low_cpu_mem_usage and not is_accelerate_available():
+            low_cpu_mem_usage = False
+            logger.warning(
+                "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                " install accelerate\n```\n."
+            )
+
+        if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+            raise NotImplementedError(
+                "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                " `low_cpu_mem_usage=False`."
+            )
 
         user_agent = {
             "file_type": "attn_procs_weights",
@@ -160,27 +194,49 @@ class IPAdapterMixin:
 
             # load CLIP image encoder here if it has not been registered to the pipeline yet
             if hasattr(self, "image_encoder") and getattr(self, "image_encoder", None) is None:
-                if not isinstance(pretrained_model_name_or_path_or_dict, dict):
-                    logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
-                    image_encoder = CLIPVisionModelWithProjection.from_pretrained(
-                        pretrained_model_name_or_path_or_dict,
-                        subfolder=Path(subfolder, "image_encoder").as_posix(),
-                    ).to(self.device, dtype=self.dtype)
-                    self.image_encoder = image_encoder
-                    self.register_to_config(image_encoder=["transformers", "CLIPVisionModelWithProjection"])
+                if image_encoder_folder is not None:
+                    if not isinstance(pretrained_model_name_or_path_or_dict, dict):
+                        logger.info(f"loading image_encoder from {pretrained_model_name_or_path_or_dict}")
+                        if image_encoder_folder.count("/") == 0:
+                            image_encoder_subfolder = Path(subfolder, image_encoder_folder).as_posix()
+                        else:
+                            image_encoder_subfolder = Path(image_encoder_folder).as_posix()
+
+                        image_encoder = CLIPVisionModelWithProjection.from_pretrained(
+                            pretrained_model_name_or_path_or_dict,
+                            subfolder=image_encoder_subfolder,
+                            low_cpu_mem_usage=low_cpu_mem_usage,
+                        ).to(self.device, dtype=self.dtype)
+                        self.register_modules(image_encoder=image_encoder)
+                    else:
+                        raise ValueError(
+                            "`image_encoder` cannot be loaded because `pretrained_model_name_or_path_or_dict` is a state dict."
+                        )
                 else:
-                    raise ValueError("`image_encoder` cannot be None when using IP Adapters.")
+                    logger.warning(
+                        "image_encoder is not loaded since `image_encoder_folder=None` passed. You will not be able to use `ip_adapter_image` when calling the pipeline with IP-Adapter."
+                        "Use `ip_adapter_image_embedding` to pass pre-geneated image embedding instead."
+                    )
 
             # create feature extractor if it has not been registered to the pipeline yet
             if hasattr(self, "feature_extractor") and getattr(self, "feature_extractor", None) is None:
                 feature_extractor = CLIPImageProcessor()
                 self.register_modules(feature_extractor=feature_extractor)
 
-            # load ip-adapter into unet
+        # load ip-adapter into unet
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
-        unet._load_ip_adapter_weights(state_dicts)
+        unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
     def set_ip_adapter_scale(self, scale):
+        """
+        Sets the conditioning scale between text and image.
+
+        Example:
+
+        ```py
+        pipeline.set_ip_adapter_scale(0.5)
+        ```
+        """
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         for attn_processor in unet.attn_processors.values():
             if isinstance(attn_processor, (IPAdapterAttnProcessor, IPAdapterAttnProcessor2_0)):

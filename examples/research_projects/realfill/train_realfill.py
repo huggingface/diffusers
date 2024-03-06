@@ -87,6 +87,7 @@ tags:
 - text-to-image
 - diffusers
 - realfill
+- diffusers-training
 inference: true
 ---
     """
