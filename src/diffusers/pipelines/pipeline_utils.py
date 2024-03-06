@@ -2143,7 +2143,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 else:
                     logger.warn(f"cannot get type annotation for Parameter {k} of {cls}.")
             return signature_types
-        
+
         signature_types = get_signature_types(pipeline_class)
 
         pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
@@ -2153,7 +2153,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         original_class_obj = {}
         for k, v in pipeline.components.items():
             if k in expected_modules and k not in passed_class_obj:
-                if k == "scheduler" or type(v) in signature_types[k]:
+                if type(v) in signature_types[k] or k == "scheduler" or (v is None and k in cls._optional_components):
                     original_class_obj[k] = v
                 else:
                     logger.warn(
