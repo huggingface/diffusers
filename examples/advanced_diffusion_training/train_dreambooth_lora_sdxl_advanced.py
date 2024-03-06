@@ -81,6 +81,7 @@ logger = get_logger(__name__)
 
 def save_model_card(
     repo_id: str,
+    use_dora: bool,
     images=None,
     base_model=str,
     train_text_encoder=False,
@@ -92,6 +93,7 @@ def save_model_card(
     vae_path=None,
 ):
     img_str = "widget:\n"
+    lora = "lora" if not use_dora else "dora"
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"""
@@ -144,9 +146,10 @@ to trigger concept `{key}` → use `{tokens}` in your prompt \n
 tags:
 - stable-diffusion-xl
 - stable-diffusion-xl-diffusers
+- diffusers-training
 - text-to-image
 - diffusers
-- lora
+- {lora}
 - template:sd-lora
 {img_str}
 base_model: {base_model}
@@ -663,7 +666,6 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--use_dora",
-        type=bool,
         action="store_true",
         default=False,
         help=(
@@ -2204,6 +2206,7 @@ def main(args):
 
         save_model_card(
             model_id if not args.push_to_hub else repo_id,
+            use_dora=args.use_dora,
             images=images,
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,
