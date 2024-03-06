@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint
 
-from ...configuration_utils import ConfigMixin, register_to_config
+from ...configuration_utils import ConfigMixin, register_to_config, FrozenDict
 from ...loaders import UNet2DConditionLoadersMixin
 from ...utils import logging
 from ..attention_processor import (
@@ -394,7 +394,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         has_motion_adapter = motion_adapter is not None
 
         # based on https://github.com/guoyww/AnimateDiff/blob/895f3220c06318ea0760131ec70408b466c49333/animatediff/models/unet.py#L459
-        config = unet.config
+        config = dict(unet.config)
         config["_class_name"] = cls.__name__
 
         down_blocks = []
@@ -427,6 +427,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         if not config.get("num_attention_heads"):
             config["num_attention_heads"] = config["attention_head_dim"]
 
+        config = FrozenDict(config)
         model = cls.from_config(config)
 
         if not load_weights:

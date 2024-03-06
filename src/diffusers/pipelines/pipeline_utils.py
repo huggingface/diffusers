@@ -351,6 +351,38 @@ def get_class_obj_and_candidates(
 
     return class_obj, class_candidates
 
+def _get_custom_pipeline_class(
+    custom_pipeline,
+    repo_id=None,
+    hub_revision=None,
+    class_name=None,
+    cache_dir=None,
+    revision=None,
+):
+    if custom_pipeline.endswith(".py"):
+        path = Path(custom_pipeline)
+        # decompose into folder & file
+        file_name = path.name
+        custom_pipeline = path.parent.absolute()
+    elif repo_id is not None:
+        file_name = f"{custom_pipeline}.py"
+        custom_pipeline = repo_id
+    else:
+        file_name = CUSTOM_PIPELINE_FILE_NAME
+
+    if repo_id is not None and hub_revision is not None:
+        # if we load the pipeline code from the Hub
+        # make sure to overwrite the `revision`
+        revision = hub_revision
+
+    return get_class_from_dynamic_module(
+        custom_pipeline,
+        module_file=file_name,
+        class_name=class_name,
+        cache_dir=cache_dir,
+        revision=revision,
+    )
+
 
 def _get_pipeline_class(
     class_obj,
@@ -364,25 +396,10 @@ def _get_pipeline_class(
     revision=None,
 ):
     if custom_pipeline is not None:
-        if custom_pipeline.endswith(".py"):
-            path = Path(custom_pipeline)
-            # decompose into folder & file
-            file_name = path.name
-            custom_pipeline = path.parent.absolute()
-        elif repo_id is not None:
-            file_name = f"{custom_pipeline}.py"
-            custom_pipeline = repo_id
-        else:
-            file_name = CUSTOM_PIPELINE_FILE_NAME
-
-        if repo_id is not None and hub_revision is not None:
-            # if we load the pipeline code from the Hub
-            # make sure to overwrite the `revision`
-            revision = hub_revision
-
-        return get_class_from_dynamic_module(
+        return self._get_custom_pipeline_class(
             custom_pipeline,
-            module_file=file_name,
+            repo_id=repo_id,
+            hub_revision=hub_revision,
             class_name=class_name,
             cache_dir=cache_dir,
             revision=revision,
@@ -2119,20 +2136,30 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         >>> new_pipe = StableDiffusionPipeline.from_pipe(pipe)
         ```
         """
+
+        if hasattr(pipeline, "_all_hooks") and len(pipeline._all_hooks) > 0:
+            # `enable_model_cpu_offload` has be called on the pipeline, offload model and remove hook from model     
+            for hook in pipeline._all_hooks:
+                # offload model and remove hook from model
+                hook.offload()
+                hook.remove()
         original_config = dict(pipeline.config)
         torch_dtype = kwargs.pop("torch_dtype", None)
         
         # derive the pipeline class to instantiate
-        from .pipeline_utils import get_class_from_dynamic_module
         custom_pipeline = kwargs.pop("custom_pipeline", None)
+        custom_revision = kwargs.pop("custom_revision", None)
 
         if custom_pipeline is not None:
-            pipeline_class = get_class_from_dynamic_module(custom_pipeline, module_file=f"{custom_pipeline}.py")
+            pipeline_class = _get_custom_pipeline_class(custom_pipeline, revision=custom_revision)
         else:
             pipeline_class = cls
 
         expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
-        
+        # true_optional_modules are optional components with default value in signature so it is ok not to pass them to `__init__`
+        # e.g. `image_encoder` for StableDiffusionPipeline
+        true_optional_modules = set({k for k, v in inspect.signature(cls.__init__).parameters.items() if v.default != inspect._empty and k in expected_modules})
+
         def get_signature_types(cls):
             signature_types = {}
             for k, v in inspect.signature(cls.__init__).parameters.items():
@@ -2189,7 +2216,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if k not in pipeline_kwargs
         }
         
-        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(pipeline_kwargs.keys())
+        missing_modules = set(expected_modules) - set(pipeline._optional_components) - set(pipeline_kwargs.keys()) - set(true_optional_modules)
 
         if len(missing_modules) > 0:
             raise ValueError(
@@ -2201,9 +2228,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         if torch_dtype is not None:
             new_pipeline.to(dtype=torch_dtype)
-
-        if hasattr(pipeline, "_offload_device"):
-            new_pipeline.enable_model_cpu_offload(device=pipeline._offload_device)
 
         return new_pipeline
 
