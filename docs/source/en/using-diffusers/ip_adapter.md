@@ -345,8 +345,15 @@ image = pipeline(
 image
 ```
 
-<div class="flex justify-center">
-    <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_attention_mask_result_seed_0.png" />
+<div class="flex flex-row gap-4">
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_attention_mask_result_seed_0.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">IP-Adapter masking applied</figcaption>
+  </div>
+  <div class="flex-1">
+    <img class="rounded-xl" src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/ip_adapter_no_attention_mask_result_seed_0.png"/>
+    <figcaption class="mt-2 text-center text-sm text-gray-500">no IP-Adapter masking applied</figcaption>
+  </div>
 </div>
 
 ## Specific use cases
