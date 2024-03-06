@@ -42,6 +42,8 @@ from tqdm.auto import tqdm
 
 from .. import __version__
 from ..configuration_utils import ConfigMixin
+from ..models import AutoencoderKL
+from ..models.attention_processor import FusedAttnProcessor2_0
 from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
@@ -451,7 +453,6 @@ def load_sub_model(
     variant: str,
     low_cpu_mem_usage: bool,
     cached_folder: Union[str, os.PathLike],
-    revision: str = None,
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     # retrieve class candidates
@@ -519,6 +520,7 @@ def load_sub_model(
         loading_kwargs["offload_folder"] = offload_folder
         loading_kwargs["offload_state_dict"] = offload_state_dict
         loading_kwargs["variant"] = model_variants.pop(name, None)
+
         if from_flax:
             loading_kwargs["from_flax"] = True
 
@@ -1072,6 +1074,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if is_single_file_checkpoint(pretrained_model_name_or_path):
             if cls.__name__ not in SINGLE_FILE_LOADABLE_CLASSES:
                 raise ValueError(
+                    f'The provided pretrained_model_name_or_path "{pretrained_model_name_or_path}"'
+                    " is neither a valid local path nor a valid repo id. Please check the parameter."
                     f"{cls.__name__} is not supported. Supported classes are: {' '.join(list(SINGLE_FILE_LOADABLE_CLASSES))}."
                 )
             logger.info("Single file checkpoint detected...")
@@ -1101,6 +1105,33 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             use_safetensors = kwargs.pop("use_safetensors", None)
             use_onnx = kwargs.pop("use_onnx", None)
             load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
+
+            if low_cpu_mem_usage and not is_accelerate_available():
+                low_cpu_mem_usage = False
+                logger.warning(
+                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
+                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
+                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
+                    " install accelerate\n```\n."
+                )
+
+            if device_map is not None and not is_torch_version(">=", "1.9.0"):
+                raise NotImplementedError(
+                    "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                    " `device_map=None`."
+                )
+
+            if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
+                raise NotImplementedError(
+                    "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
+                    " `low_cpu_mem_usage=False`."
+                )
+
+            if low_cpu_mem_usage is False and device_map is not None:
+                raise ValueError(
+                    f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
+                    " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
+                )
 
             # 1. Download the checkpoints and configs
             # use snapshot download here to get it working from from_pretrained
@@ -1234,33 +1265,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f"Keyword arguments {unused_kwargs} are not expected by {pipeline_class.__name__} and will be ignored."
                 )
 
-            if low_cpu_mem_usage and not is_accelerate_available():
-                low_cpu_mem_usage = False
-                logger.warning(
-                    "Cannot initialize model with low cpu memory usage because `accelerate` was not found in the"
-                    " environment. Defaulting to `low_cpu_mem_usage=False`. It is strongly recommended to install"
-                    " `accelerate` for faster and less memory-intense model loading. You can do so with: \n```\npip"
-                    " install accelerate\n```\n."
-                )
-
-            if device_map is not None and not is_torch_version(">=", "1.9.0"):
-                raise NotImplementedError(
-                    "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                    " `device_map=None`."
-                )
-
-            if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
-                raise NotImplementedError(
-                    "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                    " `low_cpu_mem_usage=False`."
-                )
-
-            if low_cpu_mem_usage is False and device_map is not None:
-                raise ValueError(
-                    f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
-                    " dispatching. Please make sure to set `low_cpu_mem_usage=True`."
-                )
-
             # import it here to avoid circular import
             from diffusers import pipelines
 
@@ -1313,7 +1317,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                         variant=variant,
                         low_cpu_mem_usage=low_cpu_mem_usage,
                         cached_folder=cached_folder,
-                        revision=revision,
                     )
                     logger.info(
                         f"Loaded {name} as {class_name} from `{name}` subfolder of {pretrained_model_name_or_path}."
@@ -2133,3 +2136,123 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for module in modules:
             module.set_attention_slice(slice_size)
+
+
+class StableDiffusionMixin:
+    r"""
+    Helper for DiffusionPipeline with vae and unet.(mainly for LDM such as stable diffusion)
+    """
+
+    def enable_vae_slicing(self):
+        r"""
+        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
+        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
+        """
+        self.vae.enable_slicing()
+
+    def disable_vae_slicing(self):
+        r"""
+        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_slicing()
+
+    def enable_vae_tiling(self):
+        r"""
+        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
+        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
+        processing larger images.
+        """
+        self.vae.enable_tiling()
+
+    def disable_vae_tiling(self):
+        r"""
+        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
+        computing decoding in one step.
+        """
+        self.vae.disable_tiling()
+
+    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
+        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
+
+        The suffixes after the scaling factors represent the stages where they are being applied.
+
+        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
+        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
+
+        Args:
+            s1 (`float`):
+                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            s2 (`float`):
+                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
+                mitigate "oversmoothing effect" in the enhanced denoising process.
+            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
+            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
+        """
+        if not hasattr(self, "unet"):
+            raise ValueError("The pipeline must have `unet` for using FreeU.")
+        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
+
+    def disable_freeu(self):
+        """Disables the FreeU mechanism if enabled."""
+        self.unet.disable_freeu()
+
+    def fuse_qkv_projections(self, unet: bool = True, vae: bool = True):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        Args:
+            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
+        """
+        self.fusing_unet = False
+        self.fusing_vae = False
+
+        if unet:
+            self.fusing_unet = True
+            self.unet.fuse_qkv_projections()
+            self.unet.set_attn_processor(FusedAttnProcessor2_0())
+
+        if vae:
+            if not isinstance(self.vae, AutoencoderKL):
+                raise ValueError("`fuse_qkv_projections()` is only supported for the VAE of type `AutoencoderKL`.")
+
+            self.fusing_vae = True
+            self.vae.fuse_qkv_projections()
+            self.vae.set_attn_processor(FusedAttnProcessor2_0())
+
+    def unfuse_qkv_projections(self, unet: bool = True, vae: bool = True):
+        """Disable QKV projection fusion if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        Args:
+            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
+            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
+
+        """
+        if unet:
+            if not self.fusing_unet:
+                logger.warning("The UNet was not initially fused for QKV projections. Doing nothing.")
+            else:
+                self.unet.unfuse_qkv_projections()
+                self.fusing_unet = False
+
+        if vae:
+            if not self.fusing_vae:
+                logger.warning("The VAE was not initially fused for QKV projections. Doing nothing.")
+            else:
+                self.vae.unfuse_qkv_projections()
+                self.fusing_vae = False
