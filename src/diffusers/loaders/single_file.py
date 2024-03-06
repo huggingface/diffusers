@@ -192,7 +192,7 @@ class FromSingleFileMixin:
                 Whether to load the safety checker model or not. By default, the safety checker is not loaded unless a `safety_checker` component is passed to the `kwargs`.
             num_in_channels (`int`, *optional*):
                 Specify the number of input channels for the UNet model. Read more about how to configure UNet model with this parameter
-                here https://huggingface.co/docs/diffusers/training/adapt_a_model#configure-unet2dconditionmodel-parameters
+                [here](https://huggingface.co/docs/diffusers/training/adapt_a_model#configure-unet2dconditionmodel-parameters).
             scaling_factor (`float`, *optional*):
                 The scaling factor to use for the VAE model. If not provided, it is inferred from the config file first.
                 If the scaling factor is not found in the config file, the default value 0.18215 is used.
