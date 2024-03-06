@@ -1386,7 +1386,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         ###### 6. device map delegation ######
         final_device_map = None
-        if device_map is not None:
+        if device_map is not None and device_map.startswith("balanced"):
             # Load each module in the pipeline on a meta device so that we can derive the device map.
             init_empty_modules = {}
             for name, (library_name, class_name) in init_dict.items():
