@@ -345,6 +345,7 @@ def set_image_size(pipeline_class_name, original_config, checkpoint, image_size=
     if image_size:
         return image_size
 
+    print(f"set_image_size: {image_size}")
     global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
     model_type = infer_model_type(original_config, model_type)
 
@@ -352,8 +353,9 @@ def set_image_size(pipeline_class_name, original_config, checkpoint, image_size=
         image_size = original_config["model"]["params"]["unet_config"]["params"]["image_size"]
         return image_size
 
-    elif model_type in ["SDXL", "SDXL-Refiner"]:
+    elif model_type in ["SDXL", "SDXL-Refiner", "Playground"]:
         image_size = 1024
+        print(f"image size: {image_size}")
         return image_size
 
     elif (
@@ -1178,6 +1180,7 @@ def create_diffusers_unet_model_from_ldm(
     extract_ema=False,
     image_size=None,
     torch_dtype=None,
+    model_type=None,
 ):
     from ..models import UNet2DConditionModel
 
@@ -1196,7 +1199,10 @@ def create_diffusers_unet_model_from_ldm(
         else:
             num_in_channels = 4
 
-    image_size = set_image_size(pipeline_class_name, original_config, checkpoint, image_size=image_size)
+    print(f"From unet: {image_size} (image_size)")
+    image_size = set_image_size(
+        pipeline_class_name, original_config, checkpoint, image_size=image_size, model_type=model_type
+    )
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
     unet_config["in_channels"] = num_in_channels
     unet_config["upcast_attention"] = upcast_attention
@@ -1235,20 +1241,25 @@ def create_diffusers_vae_model_from_ldm(
     image_size=None,
     scaling_factor=None,
     torch_dtype=None,
+    model_type=None,
 ):
     # import here to avoid circular imports
     from ..models import AutoencoderKL
 
-    image_size = set_image_size(pipeline_class_name, original_config, checkpoint, image_size=image_size)
+    image_size = set_image_size(
+        pipeline_class_name, original_config, checkpoint, image_size=image_size, model_type=model_type
+    )
 
     if "edm_mean" in checkpoint and "edm_std" in checkpoint:
         if checkpoint["edm_mean"] is not None and checkpoint["edm_std"] is not None:
+            edm_mean = checkpoint["edm_mean"].to(dtype=torch_dtype) if torch_dtype else checkpoint["edm_mean"]
+            edm_std = checkpoint["edm_std"].to(dtype=torch_dtype) if torch_dtype else checkpoint["edm_std"]
             vae_config = create_vae_diffusers_config(
                 original_config,
                 image_size=image_size,
                 scaling_factor=scaling_factor,
-                latents_mean=checkpoint["edm_mean"].flatten().tolist(),
-                latents_std=checkpoint["edm_std"].flatten().tolist(),
+                latents_mean=edm_mean.flatten().tolist(),
+                latents_std=edm_std.flatten().tolist(),
             )
     else:
         vae_config = create_vae_diffusers_config(original_config, image_size=image_size, scaling_factor=scaling_factor)
@@ -1287,6 +1298,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
     torch_dtype=None,
 ):
     model_type = infer_model_type(original_config, model_type=model_type)
+    print(f"From text encoder: {model_type}")
 
     if model_type == "FrozenOpenCLIPEmbedder":
         config_name = "stabilityai/stable-diffusion-2"
@@ -1353,7 +1365,7 @@ def create_text_encoders_and_tokenizers_from_ldm(
                 "text_encoder_2": text_encoder_2,
             }
 
-    elif model_type == "SDXL":
+    elif model_type in ["SDXL", "Playground"]:
         try:
             config_name = "openai/clip-vit-large-patch14"
             tokenizer = CLIPTokenizer.from_pretrained(config_name, local_files_only=local_files_only)
@@ -1427,27 +1439,8 @@ def create_scheduler_from_ldm(
 
     if model_type in ["SDXL", "SDXL-Refiner"]:
         scheduler_type = "euler"
-
     elif model_type == "Playground":
-        scheduler_config = {
-            "algorithm_type": "dpmsolver++",
-            "dynamic_thresholding_ratio": 0.995,
-            "euler_at_final": False,
-            "final_sigmas_type": "zero",
-            "lower_order_final": True,
-            "num_train_timesteps": 1000,
-            "prediction_type": "epsilon",
-            "rho": 7.0,
-            "sample_max_value": 1.0,
-            "sigma_data": 0.5,
-            "sigma_max": 80.0,
-            "sigma_min": 0.002,
-            "solver_order": 2,
-            "solver_type": "midpoint",
-            "thresholding": False,
-        }
-        scheduler = EDMDPMSolverMultistepScheduler(**scheduler_config)
-
+        scheduler_type = "edm_dpm_solver_multistep"
     else:
         beta_start = original_config["model"]["params"].get("linear_start", 0.02)
         beta_end = original_config["model"]["params"].get("linear_end", 0.085)
@@ -1478,6 +1471,26 @@ def create_scheduler_from_ldm(
 
     elif scheduler_type == "ddim":
         scheduler = DDIMScheduler.from_config(scheduler_config)
+
+    elif scheduler_type == "edm_dpm_solver_multistep":
+        scheduler_config = {
+            "algorithm_type": "dpmsolver++",
+            "dynamic_thresholding_ratio": 0.995,
+            "euler_at_final": False,
+            "final_sigmas_type": "zero",
+            "lower_order_final": True,
+            "num_train_timesteps": 1000,
+            "prediction_type": "epsilon",
+            "rho": 7.0,
+            "sample_max_value": 1.0,
+            "sigma_data": 0.5,
+            "sigma_max": 80.0,
+            "sigma_min": 0.002,
+            "solver_order": 2,
+            "solver_type": "midpoint",
+            "thresholding": False,
+        }
+        scheduler = EDMDPMSolverMultistepScheduler(**scheduler_config)
 
     else:
         raise ValueError(f"Scheduler of type {scheduler_type} doesn't exist!")

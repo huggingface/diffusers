@@ -63,13 +63,20 @@ def build_sub_model_components(
             num_in_channels=num_in_channels,
             image_size=image_size,
             torch_dtype=torch_dtype,
+            model_type=model_type,
         )
         return unet_components
 
     if component_name == "vae":
         scaling_factor = kwargs.get("scaling_factor", None)
         vae_components = create_diffusers_vae_model_from_ldm(
-            pipeline_class_name, original_config, checkpoint, image_size, scaling_factor, torch_dtype
+            pipeline_class_name,
+            original_config,
+            checkpoint,
+            image_size,
+            scaling_factor,
+            torch_dtype,
+            model_type=model_type,
         )
         return vae_components
 
@@ -245,6 +252,9 @@ class FromSingleFileMixin:
         load_safety_checker = (kwargs.pop("load_safety_checker", False)) or (
             passed_class_obj.get("safety_checker", None) is not None
         )
+        model_type = "Playground" if "edm_mean" in checkpoint and "edm_std" in checkpoint else model_type
+
+        print(f"Model type: {model_type}")
 
         init_kwargs = {}
         for name in expected_modules:
