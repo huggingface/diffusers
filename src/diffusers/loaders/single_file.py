@@ -187,7 +187,7 @@ class FromSingleFileMixin:
             model_type (`str`, *optional*):
                 The type of model to load. If not provided, the model type will be inferred from the checkpoint file.
             image_size (`int`, *optional*):
-                The size of the image output. It's used to configure the `simple_size` parameter of the UNet and VAE model.
+                The size of the image output. It's used to configure the `sample_size` parameter of the UNet and VAE model.
             load_safety_checker (`bool`, *optional*, defaults to `False`):
                 Whether to load the safety checker model or not. By default, the safety checker is not loaded unless user pass
                 a `safety_checker` component in the `kwargs`.
