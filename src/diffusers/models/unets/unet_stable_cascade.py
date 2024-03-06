@@ -387,7 +387,7 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
 
         self.gradient_checkpointing = False
 
-    def _set_gradient_checkpointing(self, module, value=False):
+    def _set_gradient_checkpointing(self, value=False):
         self.gradient_checkpointing = value
 
     def _init_weights(self, m):
