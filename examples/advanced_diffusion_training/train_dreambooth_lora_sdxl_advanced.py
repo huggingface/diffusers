@@ -1289,7 +1289,12 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    vae_scaling_factor = vae.config.scaling_factor
+    latents_mean = latents_std = None
+    if hasattr(vae.config, "latents_mean") and vae.config.latents_mean is not None:
+        latents_mean = torch.tensor(vae.config.latents_mean).view(1, 4, 1, 1)
+    if hasattr(vae.config, "latents_std") and vae.config.latents_std is not None:
+        latents_std = torch.tensor(vae.config.latents_std).view(1, 4, 1, 1)
+
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
