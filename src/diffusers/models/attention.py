@@ -440,7 +440,6 @@ class TemporalBasicTransformerBlock(nn.Module):
 
         # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
-        self.norm_in = nn.LayerNorm(dim)
         self.ff_in = FeedForward(
             dim,
             dim_out=time_mix_inner_dim,
