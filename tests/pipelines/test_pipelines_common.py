@@ -106,7 +106,7 @@ class SDFunctionTesterMixin:
         if "safety_checker" in components:
             components["safety_checker"] = None
         pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
