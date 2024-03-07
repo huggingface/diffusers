@@ -99,7 +99,6 @@ class SDFunctionTesterMixin:
         assert np.abs(output_2[0].flatten() - output_1[0].flatten()).max() < 1e-2
 
     def test_vae_tiling(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
 
         # make sure here that pndm scheduler skips prk
