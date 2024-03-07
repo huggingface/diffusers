@@ -30,6 +30,7 @@ if is_torchvision_available():
 if is_torch_npu_available():
     import torch_npu  # noqa: F401
 
+
 def set_seed(seed: int):
     """
     Args:
@@ -44,6 +45,7 @@ def set_seed(seed: int):
     else:
         torch.cuda.manual_seed_all(seed)
         # ^^ safe to call this function even if cuda is not available
+
 
 def compute_snr(noise_scheduler, timesteps):
     """
