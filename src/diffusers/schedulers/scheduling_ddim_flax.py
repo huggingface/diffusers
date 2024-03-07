@@ -85,7 +85,7 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
         trained_betas (`jnp.ndarray`, optional):
             option to pass an array of betas directly to the constructor to bypass `beta_start`, `beta_end` etc.
         clip_sample (`bool`, default `True`):
-            option to clip predicted sample between -1 and 1 for numerical stability.
+            option to clip predicted sample between for numerical stability. The clip range is determined by `clip_sample_range`.
         clip_sample_range (`float`, default `1.0`):
             the maximum magnitude for sample clipping. Valid only when `clip_sample=True`.
         set_alpha_to_one (`bool`, default `True`):
