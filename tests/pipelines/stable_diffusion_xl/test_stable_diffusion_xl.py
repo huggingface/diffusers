@@ -1100,6 +1100,8 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         for param_name, param_value in single_file_pipe.vae.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
+            if isinstance(param_value, tuple):
+                param_value = list(param_value)
             assert (
                 pipe.vae.config[param_name] == param_value
             ), f"{param_name} is differs between single file loading and pretrained loading"
