@@ -226,7 +226,7 @@ image = pipeline("A bowl of ramen shaped like a cute kawaii bear, by Feng Zikai"
 image
 ```
 
-Call [`~loaders.LoraLoaderMixin.unfuse_lora`] to restore the original model's weights (for example, if you want to use a different `lora_scale` value). However, this only works if you've only fused one LoRA adapter to the original model. If you've fused multiple LoRAs, you'll need to reload the model.
+You can call [`~loaders.LoraLoaderMixin.unfuse_lora`] to restore the original model's weights (for example, if you want to use a different `lora_scale` value). However, this only works if you've only fused one LoRA adapter to the original model. If you've fused multiple LoRAs, you'll need to reload the model.
 
 ```py
 pipeline.unfuse_lora()
@@ -234,39 +234,30 @@ pipeline.unfuse_lora()
 
 ### torch.compile
 
-[torch.compile](../optimization/torch2.0#torchcompile) can speed up your pipeline even more, but the LoRA weights must be fused first and then unloaded. Make sure you read the [fuse_lora](#fuse_lora) section above before compiling.
+[torch.compile](../optimization/torch2.0#torchcompile) can speed up your pipeline even more, but the LoRA weights must be fused first and then unloaded. Typically, the UNet is compiled because it is such a computationally intensive component of the pipeline.
 
 ```py
-pipeline = DiffusionPipeline.from_pretrained(
-    "username/fused-ikea-feng", torch_dtype=torch.float16,
-).to("cuda")
-```
+from diffusers import DiffusionPipeline
+import torch
 
-<hfoptions id="compile">
-<hfoption id="no compilation">
+# load base model and LoRAs
+pipeline = DiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16).to("cuda")
+pipeline.load_lora_weights("ostris/ikea-instructions-lora-sdxl", weight_name="ikea_instructions_xl_v1_5.safetensors", adapter_name="ikea")
+pipeline.load_lora_weights("lordjia/by-feng-zikai", weight_name="fengzikai_v1.0_XL.safetensors", adapter_name="feng")
 
-```py
-%%timeit
+# activate both LoRAs and set adapter weights
+pipeline.set_adapters(["ikea", "feng"], adapter_weights=[0.7, 0.8])
 
-image = pipeline("A bowl of ramen shaped like a cute kawaii bear, by Feng Zikai", generator=torch.manual_seed(0)).images[0]
-"13.4 s ± 24.7 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)"
-```
+# fuse LoRAs and unload weights
+pipeline.fuse_lora(adapter_names=["ikea", "feng"], lora_scale=1.0)
+pipeline.unload_lora_weights()
 
-</hfoption>
-<hfoption id="torch.compile">
-
-```py
-%%timeit
-
+# torch.compile
 pipeline.unet.to(memory_format=torch.channels_last)
 pipeline.unet = torch.compile(pipeline.unet, mode="reduce-overhead", fullgraph=True)
 
 image = pipeline("A bowl of ramen shaped like a cute kawaii bear, by Feng Zikai", generator=torch.manual_seed(0)).images[0]
-"12.2 s ± 37.9 ms per loop (mean ± std. dev. of 7 runs, 1 loop each)"
 ```
-
-</hfoption>
-</hfoptions>
 
 Learn more about torch.compile in the [Accelerate inference of text-to-image diffusion models](../tutorials/fast_diffusion#torchcompile) guide.
 
