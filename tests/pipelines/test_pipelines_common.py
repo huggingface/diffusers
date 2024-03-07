@@ -126,7 +126,7 @@ class SDFunctionTesterMixin:
         # test that tiled decode works with various shapes
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
         for shape in shapes:
-            zeros = torch.zeros(shape).to(device)
+            zeros = torch.zeros(shape).to(torch_device)
             pipe.vae.decode(zeros)
 
     def test_freeu_enabled(self):
