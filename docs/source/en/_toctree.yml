@@ -74,8 +74,6 @@
       title: Prompt weighting
     - local: using-diffusers/freeu
       title: Improve generation quality with FreeU
-    - local: using-diffusers/tips
-      title: Community tips and tricks
     title: Techniques
   - sections:
     - local: using-diffusers/pipeline_overview
