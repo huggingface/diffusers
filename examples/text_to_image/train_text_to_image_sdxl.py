@@ -35,7 +35,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
@@ -101,6 +101,7 @@ Special VAE used for training: {vae_path}.
         "stable-diffusion-xl",
         "stable-diffusion-xl-diffusers",
         "text-to-image",
+        "diffusers-training",
         "diffusers",
     ]
     model_card = populate_model_card(model_card, tags=tags)
@@ -895,14 +896,20 @@ def main(args):
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
-        new_fingerprint_for_vae = Hasher.hash("vae")
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
-        train_dataset = train_dataset.map(
+        new_fingerprint_for_vae = Hasher.hash(vae_path)
+        train_dataset_with_embeddings = train_dataset.map(
+            compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint
+        )
+        train_dataset_with_vae = train_dataset.map(
             compute_vae_encodings_fn,
             batched=True,
             batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
             new_fingerprint=new_fingerprint_for_vae,
         )
+        precomputed_dataset = concatenate_datasets(
+            [train_dataset_with_embeddings, train_dataset_with_vae.remove_columns(["image", "text"])], axis=1
+        )
+        precomputed_dataset = precomputed_dataset.with_transform(preprocess_train)
 
     del text_encoders, tokenizers, vae
     gc.collect()
@@ -925,7 +932,7 @@ def main(args):
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
+        precomputed_dataset,
         shuffle=True,
         collate_fn=collate_fn,
         batch_size=args.train_batch_size,
@@ -951,6 +958,9 @@ def main(args):
         unet, optimizer, train_dataloader, lr_scheduler
     )
 
+    if args.use_ema:
+        ema_unet.to(accelerator.device)
+
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -973,7 +983,7 @@ def main(args):
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
+    logger.info(f"  Num examples = {len(precomputed_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -1126,6 +1136,8 @@ def main(args):
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)

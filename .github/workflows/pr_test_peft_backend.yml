@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - main
+    paths:
+      - "src/diffusers/**.py"
+      - "tests/**.py"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -16,7 +19,44 @@ env:
   PYTEST_TIMEOUT: 60
 
 jobs:
+  check_code_quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[quality]
+      - name: Check quality
+        run: |
+          ruff check examples tests src utils scripts
+          ruff format examples tests src utils scripts --check
+
+  check_repository_consistency:
+    needs: check_code_quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install .[quality]
+      - name: Check quality
+        run: |
+          python utils/check_copies.py
+          python utils/check_dummies.py
+          make deps_table_check_updated
+
   run_fast_tests:
+    needs: [check_code_quality, check_repository_consistency]
     strategy:
       fail-fast: false
       matrix:
@@ -44,21 +84,24 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
-        python -m pip install -e .[quality,test]
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
         if [ "${{ matrix.lib-versions }}" == "main" ]; then
-            python -m pip install -U git+https://github.com/huggingface/peft.git
-            python -m pip install -U git+https://github.com/huggingface/transformers.git
-            python -m pip install -U git+https://github.com/huggingface/accelerate.git
+            python -m uv pip install -U peft@git+https://github.com/huggingface/peft.git
+            python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers.git
+            python -m uv pip install -U accelerate@git+https://github.com/huggingface/accelerate.git
         else
-            python -m pip install -U peft transformers accelerate
+            python -m uv pip install -U peft transformers accelerate
         fi
 
     - name: Environment
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run fast PyTorch LoRA CPU tests with PEFT backend
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_${{ matrix.config.report }} \
