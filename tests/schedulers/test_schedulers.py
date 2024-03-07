@@ -30,6 +30,7 @@ from diffusers import (
     DDIMScheduler,
     DEISMultistepScheduler,
     DiffusionPipeline,
+    EDMEulerScheduler,
     EulerAncestralDiscreteScheduler,
     EulerDiscreteScheduler,
     IPNDMScheduler,
@@ -385,6 +386,9 @@ class SchedulerCommonTest(unittest.TestCase):
                 scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
                 time_step = scaled_sigma_max
 
+            if scheduler_class == EDMEulerScheduler:
+                time_step = scheduler.timesteps[-1]
+
             if scheduler_class == VQDiffusionScheduler:
                 num_vec_classes = scheduler_config["num_vec_classes"]
                 sample = self.dummy_sample(num_vec_classes)
@@ -693,6 +697,8 @@ class SchedulerCommonTest(unittest.TestCase):
                     # Get valid timestep based on sigma_max, which should always be in timestep schedule.
                     scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
                     scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
+                elif scheduler_class == EDMEulerScheduler:
+                    scaled_sample = scheduler.scale_model_input(sample, scheduler.timesteps[-1])
                 else:
                     scaled_sample = scheduler.scale_model_input(sample, 0.0)
                 self.assertEqual(sample.shape, scaled_sample.shape)
@@ -710,6 +716,8 @@ class SchedulerCommonTest(unittest.TestCase):
                 # Get valid timestep based on sigma_max, which should always be in timestep schedule.
                 scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
                 scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
+            if scheduler_class == EDMEulerScheduler:
+                scaled_sample = scheduler.scale_model_input(sample, scheduler.timesteps[-1])
             else:
                 scaled_sample = scheduler.scale_model_input(sample, 0.0)
             self.assertEqual(sample.shape, scaled_sample.shape)
