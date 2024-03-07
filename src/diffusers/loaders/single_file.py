@@ -63,13 +63,20 @@ def build_sub_model_components(
             num_in_channels=num_in_channels,
             image_size=image_size,
             torch_dtype=torch_dtype,
+            model_type=model_type,
         )
         return unet_components
 
     if component_name == "vae":
         scaling_factor = kwargs.get("scaling_factor", None)
         vae_components = create_diffusers_vae_model_from_ldm(
-            pipeline_class_name, original_config, checkpoint, image_size, scaling_factor, torch_dtype
+            pipeline_class_name,
+            original_config,
+            checkpoint,
+            image_size,
+            scaling_factor,
+            torch_dtype,
+            model_type=model_type,
         )
         return vae_components
 
@@ -124,11 +131,12 @@ def build_sub_model_components(
 def set_additional_components(
     pipeline_class_name,
     original_config,
+    checkpoint=None,
     model_type=None,
 ):
     components = {}
     if pipeline_class_name in REFINER_PIPELINES:
-        model_type = infer_model_type(original_config, model_type=model_type)
+        model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
         is_refiner = model_type == "SDXL-Refiner"
         components.update(
             {
