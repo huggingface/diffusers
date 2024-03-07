@@ -161,10 +161,9 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing (`str`, defaults to `"linspace"`):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
-        steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+        steps_offset (`int`, defaults to 1):
+            This is outdated. `steps_offset` should be set to 1 instead of 0. Please make sure to update the
+            config accordingly as leaving `steps_offset` might led to incorrect results in future versions.
         rescale_betas_zero_snr (`bool`, defaults to `False`):
             Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
             dark samples instead of limiting it to samples with medium brightness. Loosely related to
@@ -189,7 +188,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
         sigma_max: Optional[float] = None,
         timestep_spacing: str = "linspace",
         timestep_type: str = "discrete",  # can be "discrete" or "continuous"
-        steps_offset: int = 0,
+        steps_offset: int = 1,
         rescale_betas_zero_snr: bool = False,
     ):
         if trained_betas is not None:
