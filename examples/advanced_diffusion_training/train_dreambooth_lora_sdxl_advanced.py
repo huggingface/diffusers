@@ -386,6 +386,12 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--do_edm_style_training",
+        default=False,
+        action="store_true",
+        help="Flag to conduct training using the EDM formulation as introduced in https://arxiv.org/abs/2206.00364.",
+    )
+    parser.add_argument(
         "--with_prior_preservation",
         default=False,
         action="store_true",
@@ -1132,6 +1138,8 @@ def main(args):
             "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
             " Please use `huggingface-cli login` to authenticate with the Hub."
         )
+    if args.do_edm_style_training and args.snr_gamma is not None:
+        raise ValueError("Min-SNR formulation is not supported when conducting EDM-style training.")
 
     logging_dir = Path(args.output_dir, args.logging_dir)
 
@@ -1249,7 +1257,19 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    scheduler_type = determine_scheduler_type(args.pretrained_model_name_or_path, args.revision)
+    if "EDM" in scheduler_type:
+        args.do_edm_style_training = True
+        noise_scheduler = EDMEulerScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+        logger.info("Performing EDM-style training!")
+    elif args.do_edm_style_training:
+        noise_scheduler = EulerDiscreteScheduler.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="scheduler"
+        )
+        logger.info("Performing EDM-style training!")
+    else:
+        noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
@@ -2001,10 +2021,28 @@ def main(args):
                     target, target_prior = torch.chunk(target, 2, dim=0)
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+                    if weighting is not None:
+                        prior_loss = torch.mean(
+                            (weighting.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                                target_prior.shape[0], -1
+                            ),
+                            1,
+                        )
+                        prior_loss = prior_loss.mean()
+                    else:
+                        prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
                 if args.snr_gamma is None:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    if weighting is not None:
+                        loss = torch.mean(
+                            (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(
+                                target.shape[0], -1
+                            ),
+                            1,
+                        )
+                        loss = loss.mean()
+                    else:
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
