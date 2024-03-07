@@ -269,7 +269,7 @@ class FlaxUNet2DConditionModel(nn.Module, FlaxModelMixin, ConfigMixin):
         elif self.config.mid_block_type is None:
             self.mid_block = None
         else:
-            raise ValueError(f'Unexpected mid_block_type {self.config.mid_block_type}')
+            raise ValueError(f"Unexpected mid_block_type {self.config.mid_block_type}")
 
         # up
         up_blocks = []
