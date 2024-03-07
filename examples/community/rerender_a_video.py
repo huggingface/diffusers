@@ -307,6 +307,7 @@ class RerenderAVideoPipeline(StableDiffusionControlNetImg2ImgPipeline):
         feature_extractor: CLIPImageProcessor,
         image_encoder=None,
         requires_safety_checker: bool = True,
+        device=None,
     ):
         super().__init__(
             vae,
