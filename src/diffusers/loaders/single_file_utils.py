@@ -309,11 +309,7 @@ def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=
 
 def infer_model_type(original_config, checkpoint=None, model_type=None):
     if model_type is not None:
-        if "edm_mean" in checkpoint and "edm_std" in checkpoint:
-            return "Playground"
         return model_type
-    elif "edm_mean" in checkpoint and "edm_std" in checkpoint:
-        return "Playground"
 
     has_cond_stage_config = (
         "cond_stage_config" in original_config["model"]["params"]
@@ -329,7 +325,9 @@ def infer_model_type(original_config, checkpoint=None, model_type=None):
 
     elif has_network_config:
         context_dim = original_config["model"]["params"]["network_config"]["params"]["context_dim"]
-        if context_dim == 2048:
+        if "edm_mean" in checkpoint and "edm_std" in checkpoint:
+            model_type = "Playground"
+        elif context_dim == 2048:
             model_type = "SDXL"
         else:
             model_type = "SDXL-Refiner"
@@ -517,14 +515,10 @@ def create_vae_diffusers_config(original_config, image_size, scaling_factor=None
     Creates a config for the diffusers based on the config of the LDM model.
     """
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
-    if (
-        scaling_factor is None
-        and "scale_factor" in original_config["model"]["params"]
-        and not (latents_mean is not None and latents_std is not None)
-    ):
-        scaling_factor = original_config["model"]["params"]["scale_factor"]
-    elif latents_mean is not None and latents_std is not None:
+    if (scaling_factor is None) and (latents_mean is not None) and (latents_std is not None):
         scaling_factor = PLAYGROUND_VAE_SCALING_FACTOR
+    elif (scaling_factor is None) and ("scale_factor" in original_config["model"]["params"]):
+        scaling_factor = original_config["model"]["params"]["scale_factor"]
     elif scaling_factor is None:
         scaling_factor = LDM_VAE_DEFAULT_SCALING_FACTOR
 
