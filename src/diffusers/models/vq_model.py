@@ -153,10 +153,7 @@ class VQModel(ModelMixin, ConfigMixin):
         dec = self.decoder(quant2, quant if self.config.norm_type == "spatial" else None)
 
         if not return_dict:
-            return (
-                dec,
-                commit_loss,
-            )
+            return dec, commit_loss
 
         return DecoderOutput(sample=dec, commit_loss=commit_loss)
 
