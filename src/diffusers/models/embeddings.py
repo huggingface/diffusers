@@ -59,7 +59,7 @@ def get_timestep_embedding(
 
     # flip sine and cosine embeddings
     if flip_sin_to_cos:
-        emb = torch.cat([emb[:, half_dim:], emb[:, :half_dim]], dim=-1)
+        emb = torch.cat([emb[:, half_dim:], emb[:, :half_dim]], dim=-1)  
 
     # zero pad
     if embedding_dim % 2 == 1:

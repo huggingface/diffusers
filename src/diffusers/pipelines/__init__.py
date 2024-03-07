@@ -170,6 +170,7 @@ else:
         "LatentConsistencyModelPipeline",
     ]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
+    _import_structure["latent_diffusion"].extend(["LDMClassToImagePipeline"])
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
@@ -417,7 +418,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
         )
-        from .latent_diffusion import LDMTextToImagePipeline
+        from .latent_diffusion import LDMTextToImagePipeline, LDMClassToImagePipeline
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline

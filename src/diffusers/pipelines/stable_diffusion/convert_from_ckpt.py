@@ -347,7 +347,11 @@ def create_vae_diffusers_config(original_config, image_size: int):
     """
     vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
     _ = original_config["model"]["params"]["first_stage_config"]["params"]["embed_dim"]
-
+    if 'n_embed' in original_config["model"]["params"]["first_stage_config"]["params"]:
+        n_embed = original_config["model"]["params"]["first_stage_config"]["params"]['n_embed']
+    else:
+        n_embed = None 
+        
     block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
@@ -362,6 +366,10 @@ def create_vae_diffusers_config(original_config, image_size: int):
         "latent_channels": vae_params["z_channels"],
         "layers_per_block": vae_params["num_res_blocks"],
     }
+    
+    if n_embed is not None:
+        config['num_vq_embeddings'] = n_embed
+    
     return config
 
 
@@ -662,6 +670,8 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     new_checkpoint["quant_conv.bias"] = vae_state_dict["quant_conv.bias"]
     new_checkpoint["post_quant_conv.weight"] = vae_state_dict["post_quant_conv.weight"]
     new_checkpoint["post_quant_conv.bias"] = vae_state_dict["post_quant_conv.bias"]
+    if "quantize.embedding.weight" in vae_state_dict:
+        new_checkpoint["quantize.embedding.weight"] = vae_state_dict["quantize.embedding.weight"]
 
     # Retrieves the keys for the encoder down blocks only
     num_down_blocks = len({".".join(layer.split(".")[:3]) for layer in vae_state_dict if "encoder.down" in layer})

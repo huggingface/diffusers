@@ -251,6 +251,7 @@ else:
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
             "LDMTextToImagePipeline",
+            "LDMClassToImagePipeline",
             "MusicLDMPipeline",
             "PaintByExamplePipeline",
             "PIAPipeline",
