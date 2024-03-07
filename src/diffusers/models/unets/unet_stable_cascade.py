@@ -596,11 +596,11 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         # Interpolate operations are always run in fp32 in the original implementation
         if hasattr(self, "effnet_mapper") and effnet is not None:
             x = x + self.effnet_mapper(
-                nn.functional.interpolate(effnet, size=x.shape[-2:], mode="bilinear", align_corners=True)
+                nn.functional.interpolate(effnet.float(), size=x.shape[-2:], mode="bilinear", align_corners=True)
             )
         if hasattr(self, "pixels_mapper"):
             x = x + nn.functional.interpolate(
-                self.pixels_mapper(pixels), size=x.shape[-2:], mode="bilinear", align_corners=True
+                self.pixels_mapper(pixels).float(), size=x.shape[-2:], mode="bilinear", align_corners=True
             )
         level_outputs = self._down_encode(x, timestep_ratio_embed, clip)
         x = self._up_decode(level_outputs, timestep_ratio_embed, clip)
