@@ -12,9 +12,9 @@ from .utils import (
     convert_state_dict_to_peft,
     deprecate,
     is_peft_available,
+    is_torch_npu_available,
     is_torchvision_available,
     is_transformers_available,
-    is_torch_npu_available,
 )
 
 
@@ -28,7 +28,7 @@ if is_torchvision_available():
     from torchvision import transforms
 
 if is_torch_npu_available():
-    import torch_npu
+    import torch_npu  # noqa: F401
 
 def set_seed(seed: int):
     """

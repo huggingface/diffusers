@@ -14,6 +14,7 @@
 """
 Import utilities: Utilities related to imports and our lazy inits.
 """
+
 import importlib.util
 import operator as op
 import os
@@ -302,8 +303,10 @@ def is_torch_available():
 def is_torch_xla_available():
     return _torch_xla_available
 
+
 def is_torch_npu_available():
     return _torch_npu_available
+
 
 def is_flax_available():
     return _flax_available
