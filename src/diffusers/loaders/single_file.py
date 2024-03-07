@@ -63,13 +63,20 @@ def build_sub_model_components(
             num_in_channels=num_in_channels,
             image_size=image_size,
             torch_dtype=torch_dtype,
+            model_type=model_type,
         )
         return unet_components
 
     if component_name == "vae":
         scaling_factor = kwargs.get("scaling_factor", None)
         vae_components = create_diffusers_vae_model_from_ldm(
-            pipeline_class_name, original_config, checkpoint, image_size, scaling_factor, torch_dtype
+            pipeline_class_name,
+            original_config,
+            checkpoint,
+            image_size,
+            scaling_factor,
+            torch_dtype,
+            model_type=model_type,
         )
         return vae_components
 
@@ -124,11 +131,12 @@ def build_sub_model_components(
 def set_additional_components(
     pipeline_class_name,
     original_config,
+    checkpoint=None,
     model_type=None,
 ):
     components = {}
     if pipeline_class_name in REFINER_PIPELINES:
-        model_type = infer_model_type(original_config, model_type=model_type)
+        model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
         is_refiner = model_type == "SDXL-Refiner"
         components.update(
             {
@@ -181,10 +189,6 @@ class FromSingleFileMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
-                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
-                weights. If set to `False`, safetensors weights are not loaded.
         Examples:
 
         ```py
@@ -216,7 +220,6 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        use_safetensors = kwargs.pop("use_safetensors", True)
 
         class_name = cls.__name__
 
@@ -230,7 +233,6 @@ class FromSingleFileMixin:
             token=token,
             revision=revision,
             local_files_only=local_files_only,
-            use_safetensors=use_safetensors,
             cache_dir=cache_dir,
         )
 

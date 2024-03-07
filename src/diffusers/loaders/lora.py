@@ -106,6 +106,10 @@ class LoraLoaderMixin:
         if not USE_PEFT_BACKEND:
             raise ValueError("PEFT backend is required for this method.")
 
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
+
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(pretrained_model_name_or_path_or_dict, **kwargs)
 
@@ -1192,7 +1196,7 @@ class LoraLoaderMixin:
 class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
     """This class overrides `LoraLoaderMixin` with LoRA loading/saving code that's specific to SDXL"""
 
-    # Overrride to properly handle the loading and unloading of the additional text encoder.
+    # Override to properly handle the loading and unloading of the additional text encoder.
     def load_lora_weights(
         self,
         pretrained_model_name_or_path_or_dict: Union[str, Dict[str, torch.Tensor]],
@@ -1228,6 +1232,10 @@ class StableDiffusionXLLoraLoaderMixin(LoraLoaderMixin):
         # We could have accessed the unet config from `lora_state_dict()` too. We pass
         # it here explicitly to be able to tell that it's coming from an SDXL
         # pipeline.
+
+        # if a dict is passed, copy it instead of modifying it inplace
+        if isinstance(pretrained_model_name_or_path_or_dict, dict):
+            pretrained_model_name_or_path_or_dict = pretrained_model_name_or_path_or_dict.copy()
 
         # First, ensure that the checkpoint is a compatible one and can be successfully loaded.
         state_dict, network_alphas = self.lora_state_dict(

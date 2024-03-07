@@ -116,6 +116,8 @@ class Attention(nn.Module):
         super().__init__()
         self.inner_dim = out_dim if out_dim is not None else dim_head * heads
         self.query_dim = query_dim
+        self.use_bias = bias
+        self.is_cross_attention = cross_attention_dim is not None
         self.cross_attention_dim = cross_attention_dim if cross_attention_dim is not None else query_dim
         self.upcast_attention = upcast_attention
         self.upcast_softmax = upcast_softmax
@@ -559,12 +561,16 @@ class Attention(nn.Module):
             `torch.Tensor`: The reshaped tensor.
         """
         head_size = self.heads
-        batch_size, seq_len, dim = tensor.shape
-        tensor = tensor.reshape(batch_size, seq_len, head_size, dim // head_size)
+        if tensor.ndim == 3:
+            batch_size, seq_len, dim = tensor.shape
+            extra_dim = 1
+        else:
+            batch_size, extra_dim, seq_len, dim = tensor.shape
+        tensor = tensor.reshape(batch_size, seq_len * extra_dim, head_size, dim // head_size)
         tensor = tensor.permute(0, 2, 1, 3)
 
         if out_dim == 3:
-            tensor = tensor.reshape(batch_size * head_size, seq_len, dim // head_size)
+            tensor = tensor.reshape(batch_size * head_size, seq_len * extra_dim, dim // head_size)
 
         return tensor
 
@@ -693,27 +699,32 @@ class Attention(nn.Module):
 
     @torch.no_grad()
     def fuse_projections(self, fuse=True):
-        is_cross_attention = self.cross_attention_dim != self.query_dim
         device = self.to_q.weight.data.device
         dtype = self.to_q.weight.data.dtype
 
-        if not is_cross_attention:
+        if not self.is_cross_attention:
             # fetch weight matrices.
             concatenated_weights = torch.cat([self.to_q.weight.data, self.to_k.weight.data, self.to_v.weight.data])
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
             # create a new single projection layer and copy over the weights.
-            self.to_qkv = self.linear_cls(in_features, out_features, bias=False, device=device, dtype=dtype)
+            self.to_qkv = self.linear_cls(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_qkv.weight.copy_(concatenated_weights)
+            if self.use_bias:
+                concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
+                self.to_qkv.bias.copy_(concatenated_bias)
 
         else:
             concatenated_weights = torch.cat([self.to_k.weight.data, self.to_v.weight.data])
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
-            self.to_kv = self.linear_cls(in_features, out_features, bias=False, device=device, dtype=dtype)
+            self.to_kv = self.linear_cls(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_kv.weight.copy_(concatenated_weights)
+            if self.use_bias:
+                concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
+                self.to_kv.bias.copy_(concatenated_bias)
 
         self.fused_projections = fuse
 
