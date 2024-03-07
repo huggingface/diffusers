@@ -243,3 +243,29 @@ accelerate launch train_dreambooth_lora_sdxl.py \
 
 > [!CAUTION]
 > Min-SNR gamma is not supported with the EDM-style training yet. When training with the PlaygroundAI model, it's recommended to not pass any "variant".
+
+### DoRA training 
+The script now supports DoRA training too!
+> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353), 
+**DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters. 
+The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference. 
+
+> [!NOTE]
+> 💡DoRA training is still _experimental_  
+> and is likely to require different hyperparameter values to perform best compared to a LoRA.
+> Specifically, we've noticed 2 differences to take into account your training: 
+> 1. **LoRA seem to converge faster than DoRA** (so a set of parameters that may lead to overfitting when training a LoRA may be working well for a DoRA)
+> 2. **DoRA quality superior to LoRA especially in lower ranks** the difference in quality of DoRA of rank 8 and LoRA of rank 8 appears to be more significant than when training ranks of 32 or 64 for example.  
+> This is also aligned with some of the quantitative analysis shown in the paper. 
+
+**Usage**
+1. To use DoRA you need to install `peft` from main: 
+```bash
+pip install git+https://github.com/huggingface/peft.git
+```
+2. Enable DoRA training by adding this flag
+```bash
+--use_dora
+```
+**Inference** 
+The inference is the same as if you train a regular LoRA 🤗
