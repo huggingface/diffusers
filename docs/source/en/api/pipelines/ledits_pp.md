@@ -32,13 +32,13 @@ This issue is unlikely to have any noticeable effects on applied use-cases. Howe
 We provide two distinct pipelines based on different pre-trained models. 
 
 ## LEditsPPPipelineStableDiffusion
-[[autodoc]] LEditsPPPipelineStableDiffusion
+[[autodoc]] pipelines.ledits_pp.LEditsPPPipelineStableDiffusion
 	- all
 	- __call__
 	- invert
 
 ## LEditsPPPipelineStableDiffusionXL
-[[autodoc]] LEditsPPPipelineStableDiffusionXL
+[[autodoc]] pipelines.ledits_pp.LEditsPPPipelineStableDiffusionXL
 	- all
 	- __call__
 	- invert
