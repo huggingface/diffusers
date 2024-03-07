@@ -1014,13 +1014,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 10. Instantiate the pipeline
         model = pipeline_class(**init_kwargs)
 
-        # 11. Handle cases where device map strategy is not "balanced".
-        if device_map == "balanced_ultra_low_memory":
-            model.enable_sequential_cpu_offload(component_device_mapping=final_device_map)
-        elif device_map == "balanced_low_memory":
-            model.enable_model_cpu_offload(component_device_mapping=final_device_map)
-
-        # 12. Save where the model was instantiated from
+        # 11. Save where the model was instantiated from
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         return model
 
@@ -1050,12 +1044,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
 
-    def enable_model_cpu_offload(
-        self,
-        gpu_id: Optional[int] = None,
-        device: Union[torch.device, str] = "cuda",
-        component_device_mapping: Dict[str, int] = None,
-    ):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
@@ -1110,12 +1099,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not isinstance(model, torch.nn.Module):
                 continue
 
-            if component_device_mapping is None:
-                _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
-            else:
-                component_device_id = component_device_mapping.get(model_str)
-                component_device = f"cuda:{component_device_id}"
-                _, hook = cpu_offload_with_hook(model, component_device, prev_module_hook=hook)
+            _, hook = cpu_offload_with_hook(model, device, prev_module_hook=hook)
             self._all_hooks.append(hook)
 
         # CPU offload models that are not in the seq chain unless they are explicitly excluded
@@ -1126,18 +1110,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 continue
 
             if name in self._exclude_from_cpu_offload:
-                if component_device_mapping is None:
-                    model.to(device)
-                else:
-                    component_device_id = component_device_id.get(name)
-                    model.to(f"cuda:{component_device_id}")
+                model.to(device)
             else:
-                if component_device_mapping is None:
-                    _, hook = cpu_offload_with_hook(model, device)
-                else:
-                    component_device_id = component_device_id.get(name)
-                    component_device = f"cuda:{component_device_id}"
-                    _, hook = cpu_offload_with_hook(model, component_device)
+                _, hook = cpu_offload_with_hook(model, device)
                 self._all_hooks.append(hook)
 
     def maybe_free_model_hooks(self):
@@ -1159,12 +1134,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
-    def enable_sequential_cpu_offload(
-        self,
-        gpu_id: Optional[int] = None,
-        device: Union[torch.device, str] = "cuda",
-        component_device_mapping: Dict[str, int] = None,
-    ):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using 🤗 Accelerate, significantly reducing memory usage. When called, the state
         dicts of all `torch.nn.Module` components (except those in `self._exclude_from_cpu_offload`) are saved to CPU
@@ -1211,20 +1181,12 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 continue
 
             if name in self._exclude_from_cpu_offload:
-                if component_device_mapping is None:
-                    model.to(device)
-                else:
-                    component_device_id = component_device_mapping.get(name)
-                    model.to(f"cuda:{component_device_id}")
+                model.to(device)
             else:
                 # make sure to offload buffers if not all high level weights
                 # are of type nn.Module
                 offload_buffers = len(model._parameters) > 0
-                if component_device_mapping is None:
-                    cpu_offload(model, device, offload_buffers=offload_buffers)
-                else:
-                    component_device_id = component_device_mapping.get(name)
-                    cpu_offload(model, f"cuda:{component_device_id}", offload_buffers=offload_buffers)
+                cpu_offload(model, device, offload_buffers=offload_buffers)
 
     @classmethod
     @validate_hf_hub_args
