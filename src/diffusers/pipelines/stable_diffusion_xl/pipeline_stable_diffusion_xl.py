@@ -693,6 +693,7 @@ class StableDiffusionXLPipeline(
             )
 
         if latents is None:
+            print(f"From pipeline: device: {device}")
             latents = randn_tensor(shape, generator=generator, device=device, dtype=dtype)
         else:
             latents = latents.to(device)
