@@ -52,6 +52,8 @@
       title: Image-to-image
     - local: using-diffusers/inpaint
       title: Inpainting
+    - local: using-diffusers/text-img2vid
+      title: Text or image-to-video
     - local: using-diffusers/depth2img
       title: Depth-to-image
     title: Tasks
@@ -316,6 +318,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/stable_cascade
+      title: Stable Cascade
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -323,6 +327,8 @@
         title: Text-to-image
       - local: api/pipelines/stable_diffusion/img2img
         title: Image-to-image
+      - local: api/pipelines/stable_diffusion/svd
+        title: Image-to-video
       - local: api/pipelines/stable_diffusion/inpaint
         title: Inpainting
       - local: api/pipelines/stable_diffusion/depth2img
@@ -414,6 +420,8 @@
       title: ScoreSdeVeScheduler
     - local: api/schedulers/score_sde_vp
       title: ScoreSdeVpScheduler
+    - local: api/schedulers/tcd
+      title: TCDScheduler
     - local: api/schedulers/unipc
       title: UniPCMultistepScheduler
     - local: api/schedulers/vq_diffusion

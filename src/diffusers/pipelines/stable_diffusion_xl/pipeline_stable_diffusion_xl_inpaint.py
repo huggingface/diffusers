@@ -36,7 +36,6 @@ from ...loaders import (
 from ...models import AutoencoderKL, ImageProjection, UNet2DConditionModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
-    FusedAttnProcessor2_0,
     LoRAAttnProcessor2_0,
     LoRAXFormersAttnProcessor,
     XFormersAttnProcessor,
@@ -54,7 +53,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
-from ..pipeline_utils import DiffusionPipeline
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from .pipeline_output import StableDiffusionXLPipelineOutput
 
 
@@ -311,6 +310,7 @@ def retrieve_timesteps(
 
 class StableDiffusionXLInpaintPipeline(
     DiffusionPipeline,
+    StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,
     FromSingleFileMixin,
@@ -429,39 +429,6 @@ class StableDiffusionXLInpaintPipeline(
         else:
             self.watermark = None
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.vae.enable_tiling()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_image
     def encode_image(self, image, device, num_images_per_prompt, output_hidden_states=None):
         dtype = next(self.image_encoder.parameters()).dtype
@@ -489,7 +456,7 @@ class StableDiffusionXLInpaintPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
@@ -513,13 +480,30 @@ class StableDiffusionXLInpaintPipeline(
                     [single_negative_image_embeds] * num_images_per_prompt, dim=0
                 )
 
-                if self.do_classifier_free_guidance:
+                if do_classifier_free_guidance:
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                     single_image_embeds = single_image_embeds.to(device)
 
                 image_embeds.append(single_image_embeds)
         else:
-            image_embeds = ip_adapter_image_embeds
+            repeat_dims = [1]
+            image_embeds = []
+            for single_image_embeds in ip_adapter_image_embeds:
+                if do_classifier_free_guidance:
+                    single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
+                    single_negative_image_embeds = single_negative_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
+                    )
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                else:
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
+                image_embeds.append(single_image_embeds)
+
         return image_embeds
 
     # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
@@ -618,7 +602,7 @@ class StableDiffusionXLInpaintPipeline(
             prompt_2 = prompt_2 or prompt
             prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
             for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
@@ -869,6 +853,16 @@ class StableDiffusionXLInpaintPipeline(
                 "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
             )
 
+        if ip_adapter_image_embeds is not None:
+            if not isinstance(ip_adapter_image_embeds, list):
+                raise ValueError(
+                    f"`ip_adapter_image_embeds` has to be of type `list` but is {type(ip_adapter_image_embeds)}"
+                )
+            elif ip_adapter_image_embeds[0].ndim not in [3, 4]:
+                raise ValueError(
+                    f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
+                )
+
     def prepare_latents(
         self,
         batch_size,
@@ -1115,95 +1109,6 @@ class StableDiffusionXLInpaintPipeline(
             self.vae.decoder.conv_in.to(dtype)
             self.vae.decoder.mid_block.to(dtype)
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
-    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
-
-        The suffixes after the scaling factors represent the stages where they are being applied.
-
-        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
-        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
-
-        Args:
-            s1 (`float`):
-                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            s2 (`float`):
-                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
-            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
-        """
-        if not hasattr(self, "unet"):
-            raise ValueError("The pipeline must have `unet` for using FreeU.")
-        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_freeu
-    def disable_freeu(self):
-        """Disables the FreeU mechanism if enabled."""
-        self.unet.disable_freeu()
-
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.fuse_qkv_projections
-    def fuse_qkv_projections(self, unet: bool = True, vae: bool = True):
-        """
-        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
-        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
-
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
-
-        Args:
-            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
-            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
-        """
-        self.fusing_unet = False
-        self.fusing_vae = False
-
-        if unet:
-            self.fusing_unet = True
-            self.unet.fuse_qkv_projections()
-            self.unet.set_attn_processor(FusedAttnProcessor2_0())
-
-        if vae:
-            if not isinstance(self.vae, AutoencoderKL):
-                raise ValueError("`fuse_qkv_projections()` is only supported for the VAE of type `AutoencoderKL`.")
-
-            self.fusing_vae = True
-            self.vae.fuse_qkv_projections()
-            self.vae.set_attn_processor(FusedAttnProcessor2_0())
-
-    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.unfuse_qkv_projections
-    def unfuse_qkv_projections(self, unet: bool = True, vae: bool = True):
-        """Disable QKV projection fusion if enabled.
-
-        <Tip warning={true}>
-
-        This API is 🧪 experimental.
-
-        </Tip>
-
-        Args:
-            unet (`bool`, defaults to `True`): To apply fusion on the UNet.
-            vae (`bool`, defaults to `True`): To apply fusion on the VAE.
-
-        """
-        if unet:
-            if not self.fusing_unet:
-                logger.warning("The UNet was not initially fused for QKV projections. Doing nothing.")
-            else:
-                self.unet.unfuse_qkv_projections()
-                self.fusing_unet = False
-
-        if vae:
-            if not self.fusing_vae:
-                logger.warning("The VAE was not initially fused for QKV projections. Doing nothing.")
-            else:
-                self.vae.unfuse_qkv_projections()
-                self.fusing_vae = False
-
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
     def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
         """
@@ -1412,8 +1317,10 @@ class StableDiffusionXLInpaintPipeline(
                 input argument.
             ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
+                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
+                if `do_classifier_free_guidance` is set to `True`.
+                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             eta (`float`, *optional*, defaults to 0.0):
@@ -1581,14 +1488,14 @@ class StableDiffusionXLInpaintPipeline(
 
         # 4. set timesteps
         def denoising_value_valid(dnv):
-            return isinstance(self.denoising_end, float) and 0 < dnv < 1
+            return isinstance(dnv, float) and 0 < dnv < 1
 
         timesteps, num_inference_steps = retrieve_timesteps(self.scheduler, num_inference_steps, device, timesteps)
         timesteps, num_inference_steps = self.get_timesteps(
             num_inference_steps,
             strength,
             device,
-            denoising_start=self.denoising_start if denoising_value_valid else None,
+            denoising_start=self.denoising_start if denoising_value_valid(self.denoising_start) else None,
         )
         # check that number of inference steps is not < 1 - as this doesn't make sense
         if num_inference_steps < 1:
@@ -1734,7 +1641,11 @@ class StableDiffusionXLInpaintPipeline(
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
-                ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_images_per_prompt
+                ip_adapter_image,
+                ip_adapter_image_embeds,
+                device,
+                batch_size * num_images_per_prompt,
+                self.do_classifier_free_guidance,
             )
 
         # 11. Denoising loop
