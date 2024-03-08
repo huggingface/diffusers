@@ -12,13 +12,13 @@ specific language governing permissions and limitations under the License.
 
 # Stable Cascade
 
-This model is built upon the [Würstchen](https://openreview.net/forum?id=gU58d5QeGv) architecture and its main 
-difference to other models like Stable Diffusion is that it is working at a much smaller latent space. Why is this 
-important? The smaller the latent space, the **faster** you can run inference and the **cheaper** the training becomes. 
-How small is the latent space? Stable Diffusion uses a compression factor of 8, resulting in a 1024x1024 image being 
-encoded to 128x128. Stable Cascade achieves a compression factor of 42, meaning that it is possible to encode a 
-1024x1024 image to 24x24, while maintaining crisp reconstructions. The text-conditional model is then trained in the 
-highly compressed latent space. Previous versions of this architecture, achieved a 16x cost reduction over Stable 
+This model is built upon the [Würstchen](https://openreview.net/forum?id=gU58d5QeGv) architecture and its main
+difference to other models like Stable Diffusion is that it is working at a much smaller latent space. Why is this
+important? The smaller the latent space, the **faster** you can run inference and the **cheaper** the training becomes.
+How small is the latent space? Stable Diffusion uses a compression factor of 8, resulting in a 1024x1024 image being
+encoded to 128x128. Stable Cascade achieves a compression factor of 42, meaning that it is possible to encode a
+1024x1024 image to 24x24, while maintaining crisp reconstructions. The text-conditional model is then trained in the
+highly compressed latent space. Previous versions of this architecture, achieved a 16x cost reduction over Stable
 Diffusion 1.5.
 
 Therefore, this kind of model is well suited for usages where efficiency is important. Furthermore, all known extensions
@@ -30,11 +30,11 @@ The original codebase can be found at [Stability-AI/StableCascade](https://githu
 Stable Cascade consists of three models: Stage A, Stage B and Stage C, representing a cascade to generate images,
 hence the name "Stable Cascade".
 
-Stage A & B are used to compress images, similar to what the job of the VAE is in Stable Diffusion. 
-However, with this setup, a much higher compression of images can be achieved. While the Stable Diffusion models use a 
-spatial compression factor of 8, encoding an image with resolution of 1024 x 1024 to 128 x 128, Stable Cascade achieves 
-a compression factor of 42. This encodes a 1024 x 1024 image to 24 x 24, while being able to accurately decode the 
-image. This comes with the great benefit of cheaper training and inference. Furthermore, Stage C is responsible 
+Stage A & B are used to compress images, similar to what the job of the VAE is in Stable Diffusion.
+However, with this setup, a much higher compression of images can be achieved. While the Stable Diffusion models use a
+spatial compression factor of 8, encoding an image with resolution of 1024 x 1024 to 128 x 128, Stable Cascade achieves
+a compression factor of 42. This encodes a 1024 x 1024 image to 24 x 24, while being able to accurately decode the
+image. This comes with the great benefit of cheaper training and inference. Furthermore, Stage C is responsible
 for generating the small 24 x 24 latents given a text prompt.
 
 ## Uses
@@ -53,7 +53,7 @@ Excluded uses are described below.
 
 ### Out-of-Scope Use
 
-The model was not trained to be factual or true representations of people or events, 
+The model was not trained to be factual or true representations of people or events,
 and therefore using the model to generate such content is out-of-scope for the abilities of this model.
 The model should not be used in any way that violates Stability AI's [Acceptable Use Policy](https://stability.ai/use-policy).
 
@@ -62,6 +62,16 @@ The model should not be used in any way that violates Stability AI's [Acceptable
 ### Limitations
 - Faces and people in general may not be generated properly.
 - The autoencoding part of the model is lossy.
+
+<Tip warning={true}>
+
+There are some restrictions on data types that can be used with the Stable Cascade models. The official checkpoints for the  `StableCascadePriorPipeline` do not support the `torch.float16` data type. Please use `torch.bfloat16` instead.
+
+In order to use the `torch.bfloat16` datatype with the `StableCascadeDecoderPipeline` you need to have PyTorch 2.2.0 or higher installed. This also means that using the `StableCascadeCombinedPipeline` with `torch.bfloat16` requires PyTorch 2.2.0 or higher, since it calls the `StableCascadeDecoderPipeline` internally.
+
+If it is not possible to install PyTorch 2.2.0 or higher in your environment, the `StableCascadeDecoderPipeline` can be used on its own with the `torch.float16` data type. You can download the full precision or `bf16` variant weights for the pipeline and cast the weights to `torch.float16`.
+
+</Tip>
 
 
 ## StableCascadeCombinedPipeline
