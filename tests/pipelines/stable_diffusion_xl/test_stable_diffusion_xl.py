@@ -1089,7 +1089,7 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
             if param_name in PARAMS_TO_IGNORE:
                 continue
             if param_name == "upcast_attention" and pipe.unet.config[param_name] is None:
-                pipe.unet.config[param_name] =  False
+                pipe.unet.config[param_name] = False
             assert (
                 pipe.unet.config[param_name] == param_value
             ), f"{param_name} is differs between single file loading and pretrained loading"
