@@ -215,7 +215,7 @@ class IPAdapterMixin:
                 else:
                     logger.warning(
                         "image_encoder is not loaded since `image_encoder_folder=None` passed. You will not be able to use `ip_adapter_image` when calling the pipeline with IP-Adapter."
-                        "Use `ip_adapter_image_embedding` to pass pre-geneated image embedding instead."
+                        "Use `ip_adapter_image_embeds` to pass pre-generated image embedding instead."
                     )
 
             # create feature extractor if it has not been registered to the pipeline yet
