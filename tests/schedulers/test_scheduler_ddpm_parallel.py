@@ -1,4 +1,4 @@
-# Copyright 2023 ParaDiGMS authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 ParaDiGMS authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -81,6 +81,10 @@ class DDPMParallelSchedulerTest(SchedulerCommonTest):
         assert torch.sum(torch.abs(scheduler._get_variance(0) - 0.0)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(487) - 0.00979)) < 1e-5
         assert torch.sum(torch.abs(scheduler._get_variance(999) - 0.02)) < 1e-5
+
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
 
     def test_batch_step_no_noise(self):
         scheduler_class = self.scheduler_classes[0]

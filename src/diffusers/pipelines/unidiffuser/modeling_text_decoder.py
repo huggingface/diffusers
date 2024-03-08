@@ -20,7 +20,7 @@ class UniDiffuserTextDecoder(ModelMixin, ConfigMixin, ModuleUtilsMixin):
         prefix_length (`int`):
             Max number of prefix tokens that will be supplied to the model.
         prefix_inner_dim (`int`):
-            The hidden size of the the incoming prefix embeddings. For UniDiffuser, this would be the hidden dim of the
+            The hidden size of the incoming prefix embeddings. For UniDiffuser, this would be the hidden dim of the
             CLIP text encoder.
         prefix_hidden_dim (`int`, *optional*):
             Hidden dim of the MLP if we encode the prefix.

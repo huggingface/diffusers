@@ -3,14 +3,14 @@
 # make sure to test the local checkout in scripts and not the pre-installed one (don't use quotes!)
 export PYTHONPATH = src
 
-check_dirs := examples scripts src tests utils
+check_dirs := examples scripts src tests utils benchmarks
 
 modified_only_fixup:
 	$(eval modified_py_files := $(shell python utils/get_modified_files.py $(check_dirs)))
 	@if test -n "$(modified_py_files)"; then \
 		echo "Checking/fixing $(modified_py_files)"; \
-		black $(modified_py_files); \
-		ruff $(modified_py_files); \
+		ruff check $(modified_py_files) --fix; \
+		ruff format $(modified_py_files);\
 	else \
 		echo "No library .py files were modified"; \
 	fi
@@ -40,23 +40,21 @@ repo-consistency:
 # this target runs checks on all files
 
 quality:
-	black --check $(check_dirs)
-	ruff $(check_dirs)
-	doc-builder style src/diffusers docs/source --max_len 119 --check_only --path_to_docs docs/source
+	ruff check $(check_dirs) setup.py
+	ruff format --check $(check_dirs) setup.py
 	python utils/check_doc_toc.py
 
 # Format source code automatically and check is there are any problems left that need manual fixing
 
 extra_style_checks:
 	python utils/custom_init_isort.py
-	doc-builder style src/diffusers docs/source --max_len 119 --path_to_docs docs/source
 	python utils/check_doc_toc.py --fix_and_overwrite
 
 # this target runs checks on all files and potentially modifies some of them
 
 style:
-	black $(check_dirs)
-	ruff $(check_dirs) --fix
+	ruff check $(check_dirs) setup.py --fix
+	ruff format $(check_dirs) setup.py
 	${MAKE} autogenerate_code
 	${MAKE} extra_style_checks
 

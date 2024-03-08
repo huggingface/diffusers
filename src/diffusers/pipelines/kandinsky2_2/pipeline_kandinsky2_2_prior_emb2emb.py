@@ -545,12 +545,10 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
         # if negative prompt has been defined, we retrieve split the image embedding into two
         if negative_prompt is None:
             zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
-            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-                self.final_offload_hook.offload()
         else:
             image_embeddings, zero_embeds = image_embeddings.chunk(2)
-            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-                self.prior_hook.offload()
+
+        self.maybe_free_model_hooks()
 
         if output_type not in ["pt", "np"]:
             raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")

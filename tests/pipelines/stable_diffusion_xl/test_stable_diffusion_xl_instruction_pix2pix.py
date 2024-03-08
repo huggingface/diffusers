@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 Harutatsu Akiyama and HuggingFace Inc.
+# Copyright 2024 Harutatsu Akiyama and HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,14 +36,23 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS,
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    SDXLOptionalComponentsTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
 class StableDiffusionXLInstructPix2PixPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    SDXLOptionalComponentsTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLInstructPix2PixPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS - {"height", "width", "cross_attention_kwargs"}
@@ -175,3 +184,6 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
 
     def test_cfg(self):
         pass
+
+    def test_save_load_optional_components(self):
+        self._test_save_load_optional_components()

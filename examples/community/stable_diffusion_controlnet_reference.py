@@ -8,7 +8,7 @@ import torch
 from diffusers import StableDiffusionControlNetPipeline
 from diffusers.models import ControlNetModel
 from diffusers.models.attention import BasicTransformerBlock
-from diffusers.models.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
+from diffusers.models.unets.unet_2d_blocks import CrossAttnDownBlock2D, CrossAttnUpBlock2D, DownBlock2D, UpBlock2D
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.utils import logging
@@ -546,7 +546,7 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
 
             return hidden_states, output_states
 
-        def hacked_DownBlock2D_forward(self, hidden_states, temb=None):
+        def hacked_DownBlock2D_forward(self, hidden_states, temb=None, *args, **kwargs):
             eps = 1e-6
 
             output_states = ()
@@ -642,7 +642,9 @@ class StableDiffusionControlNetReferencePipeline(StableDiffusionControlNetPipeli
 
             return hidden_states
 
-        def hacked_UpBlock2D_forward(self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None):
+        def hacked_UpBlock2D_forward(
+            self, hidden_states, res_hidden_states_tuple, temb=None, upsample_size=None, *args, **kwargs
+        ):
             eps = 1e-6
             for i, resnet in enumerate(self.resnets):
                 # pop res hidden states

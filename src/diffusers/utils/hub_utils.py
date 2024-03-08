@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,24 +21,24 @@ import tempfile
 import traceback
 import warnings
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, List, Optional, Union
 from uuid import uuid4
 
 from huggingface_hub import (
-    HfFolder,
     ModelCard,
     ModelCardData,
     create_repo,
     hf_hub_download,
     upload_folder,
-    whoami,
 )
+from huggingface_hub.constants import HF_HUB_CACHE, HF_HUB_DISABLE_TELEMETRY, HF_HUB_OFFLINE
 from huggingface_hub.file_download import REGEX_COMMIT_HASH
 from huggingface_hub.utils import (
     EntryNotFoundError,
     RepositoryNotFoundError,
     RevisionNotFoundError,
     is_jinja_available,
+    validate_hf_hub_args,
 )
 from packaging import version
 from requests import HTTPError
@@ -46,7 +46,6 @@ from requests import HTTPError
 from .. import __version__
 from .constants import (
     DEPRECATED_REVISION_ARGS,
-    DIFFUSERS_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
@@ -66,12 +65,8 @@ from .logging import get_logger
 
 logger = get_logger(__name__)
 
-
 MODEL_CARD_TEMPLATE_PATH = Path(__file__).parent / "model_card_template.md"
 SESSION_ID = uuid4().hex
-HF_HUB_OFFLINE = os.getenv("HF_HUB_OFFLINE", "").upper() in ENV_VARS_TRUE_VALUES
-DISABLE_TELEMETRY = os.getenv("DISABLE_TELEMETRY", "").upper() in ENV_VARS_TRUE_VALUES
-HUGGINGFACE_CO_TELEMETRY = HUGGINGFACE_CO_RESOLVE_ENDPOINT + "/api/telemetry/"
 
 
 def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
@@ -79,7 +74,7 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     Formats a user-agent string with basic info about a request.
     """
     ua = f"diffusers/{__version__}; python/{sys.version.split()[0]}; session_id/{SESSION_ID}"
-    if DISABLE_TELEMETRY or HF_HUB_OFFLINE:
+    if HF_HUB_DISABLE_TELEMETRY or HF_HUB_OFFLINE:
         return ua + "; telemetry/off"
     if is_torch_available():
         ua += f"; torch/{_torch_version}"
@@ -98,63 +93,89 @@ def http_user_agent(user_agent: Union[Dict, str, None] = None) -> str:
     return ua
 
 
-def get_full_repo_name(model_id: str, organization: Optional[str] = None, token: Optional[str] = None):
-    if token is None:
-        token = HfFolder.get_token()
-    if organization is None:
-        username = whoami(token)["name"]
-        return f"{username}/{model_id}"
-    else:
-        return f"{organization}/{model_id}"
+def load_or_create_model_card(
+    repo_id_or_path: str = None,
+    token: Optional[str] = None,
+    is_pipeline: bool = False,
+    from_training: bool = False,
+    model_description: Optional[str] = None,
+    base_model: str = None,
+    prompt: Optional[str] = None,
+    license: Optional[str] = None,
+    widget: Optional[List[dict]] = None,
+    inference: Optional[bool] = None,
+) -> ModelCard:
+    """
+    Loads or creates a model card.
 
-
-def create_model_card(args, model_name):
+    Args:
+        repo_id_or_path (`str`):
+            The repo id (e.g., "runwayml/stable-diffusion-v1-5") or local path where to look for the model card.
+        token (`str`, *optional*):
+            Authentication token. Will default to the stored token. See https://huggingface.co/settings/token for more details.
+        is_pipeline (`bool`):
+            Boolean to indicate if we're adding tag to a [`DiffusionPipeline`].
+        from_training: (`bool`): Boolean flag to denote if the model card is being created from a training script.
+        model_description (`str`, *optional*): Model description to add to the model card. Helpful when using
+            `load_or_create_model_card` from a training script.
+        base_model (`str`): Base model identifier (e.g., "stabilityai/stable-diffusion-xl-base-1.0"). Useful
+            for DreamBooth-like training.
+        prompt (`str`, *optional*): Prompt used for training. Useful for DreamBooth-like training.
+        license: (`str`, *optional*): License of the output artifact. Helpful when using
+            `load_or_create_model_card` from a training script.
+        widget (`List[dict]`, *optional*): Widget to accompany a gallery template.
+        inference: (`bool`, optional): Whether to turn on inference widget. Helpful when using
+            `load_or_create_model_card` from a training script.
+    """
     if not is_jinja_available():
         raise ValueError(
             "Modelcard rendering is based on Jinja templates."
-            " Please make sure to have `jinja` installed before using `create_model_card`."
+            " Please make sure to have `jinja` installed before using `load_or_create_model_card`."
             " To install it, please run `pip install Jinja2`."
         )
 
-    if hasattr(args, "local_rank") and args.local_rank not in [-1, 0]:
-        return
+    try:
+        # Check if the model card is present on the remote repo
+        model_card = ModelCard.load(repo_id_or_path, token=token)
+    except (EntryNotFoundError, RepositoryNotFoundError):
+        # Otherwise create a model card from template
+        if from_training:
+            model_card = ModelCard.from_template(
+                card_data=ModelCardData(  # Card metadata object that will be converted to YAML block
+                    license=license,
+                    library_name="diffusers",
+                    inference=inference,
+                    base_model=base_model,
+                    instance_prompt=prompt,
+                    widget=widget,
+                ),
+                template_path=MODEL_CARD_TEMPLATE_PATH,
+                model_description=model_description,
+            )
+        else:
+            card_data = ModelCardData()
+            component = "pipeline" if is_pipeline else "model"
+            if model_description is None:
+                model_description = f"This is the model card of a 🧨 diffusers {component} that has been pushed on the Hub. This model card has been automatically generated."
+            model_card = ModelCard.from_template(card_data, model_description=model_description)
 
-    hub_token = args.hub_token if hasattr(args, "hub_token") else None
-    repo_name = get_full_repo_name(model_name, token=hub_token)
+    return model_card
 
-    model_card = ModelCard.from_template(
-        card_data=ModelCardData(  # Card metadata object that will be converted to YAML block
-            language="en",
-            license="apache-2.0",
-            library_name="diffusers",
-            tags=[],
-            datasets=args.dataset_name,
-            metrics=[],
-        ),
-        template_path=MODEL_CARD_TEMPLATE_PATH,
-        model_name=model_name,
-        repo_name=repo_name,
-        dataset_name=args.dataset_name if hasattr(args, "dataset_name") else None,
-        learning_rate=args.learning_rate,
-        train_batch_size=args.train_batch_size,
-        eval_batch_size=args.eval_batch_size,
-        gradient_accumulation_steps=(
-            args.gradient_accumulation_steps if hasattr(args, "gradient_accumulation_steps") else None
-        ),
-        adam_beta1=args.adam_beta1 if hasattr(args, "adam_beta1") else None,
-        adam_beta2=args.adam_beta2 if hasattr(args, "adam_beta2") else None,
-        adam_weight_decay=args.adam_weight_decay if hasattr(args, "adam_weight_decay") else None,
-        adam_epsilon=args.adam_epsilon if hasattr(args, "adam_epsilon") else None,
-        lr_scheduler=args.lr_scheduler if hasattr(args, "lr_scheduler") else None,
-        lr_warmup_steps=args.lr_warmup_steps if hasattr(args, "lr_warmup_steps") else None,
-        ema_inv_gamma=args.ema_inv_gamma if hasattr(args, "ema_inv_gamma") else None,
-        ema_power=args.ema_power if hasattr(args, "ema_power") else None,
-        ema_max_decay=args.ema_max_decay if hasattr(args, "ema_max_decay") else None,
-        mixed_precision=args.mixed_precision,
-    )
 
-    card_path = os.path.join(args.output_dir, "README.md")
-    model_card.save(card_path)
+def populate_model_card(model_card: ModelCard, tags: Union[str, List[str]] = None) -> ModelCard:
+    """Populates the `model_card` with library name and optional tags."""
+    if model_card.data.library_name is None:
+        model_card.data.library_name = "diffusers"
+
+    if tags is not None:
+        if isinstance(tags, str):
+            tags = [tags]
+        if model_card.data.tags is None:
+            model_card.data.tags = []
+        for tag in tags:
+            model_card.data.tags.append(tag)
+
+    return model_card
 
 
 def extract_commit_hash(resolved_file: Optional[str], commit_hash: Optional[str] = None):
@@ -183,7 +204,7 @@ old_diffusers_cache = os.path.join(hf_cache_home, "diffusers")
 
 def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str] = None) -> None:
     if new_cache_dir is None:
-        new_cache_dir = DIFFUSERS_CACHE
+        new_cache_dir = HF_HUB_CACHE
     if old_cache_dir is None:
         old_cache_dir = old_diffusers_cache
 
@@ -203,7 +224,7 @@ def move_cache(old_cache_dir: Optional[str] = None, new_cache_dir: Optional[str]
     # At this point, old_cache_dir contains symlinks to the new cache (it can still be used).
 
 
-cache_version_file = os.path.join(DIFFUSERS_CACHE, "version_diffusers_cache.txt")
+cache_version_file = os.path.join(HF_HUB_CACHE, "version_diffusers_cache.txt")
 if not os.path.isfile(cache_version_file):
     cache_version = 0
 else:
@@ -233,12 +254,12 @@ if cache_version < 1:
 
 if cache_version < 1:
     try:
-        os.makedirs(DIFFUSERS_CACHE, exist_ok=True)
+        os.makedirs(HF_HUB_CACHE, exist_ok=True)
         with open(cache_version_file, "w") as f:
             f.write("1")
     except Exception:
         logger.warning(
-            f"There was a problem when trying to write in your cache folder ({DIFFUSERS_CACHE}). Please, ensure "
+            f"There was a problem when trying to write in your cache folder ({HF_HUB_CACHE}). Please, ensure "
             "the directory exists and can be written to."
         )
 
@@ -252,20 +273,21 @@ def _add_variant(weights_name: str, variant: Optional[str] = None) -> str:
     return weights_name
 
 
+@validate_hf_hub_args
 def _get_model_file(
-    pretrained_model_name_or_path,
+    pretrained_model_name_or_path: Union[str, Path],
     *,
-    weights_name,
-    subfolder,
-    cache_dir,
-    force_download,
-    proxies,
-    resume_download,
-    local_files_only,
-    use_auth_token,
-    user_agent,
-    revision,
-    commit_hash=None,
+    weights_name: str,
+    subfolder: Optional[str] = None,
+    cache_dir: Optional[str] = None,
+    force_download: bool = False,
+    proxies: Optional[Dict] = None,
+    resume_download: bool = False,
+    local_files_only: bool = False,
+    token: Optional[str] = None,
+    user_agent: Optional[Union[Dict, str]] = None,
+    revision: Optional[str] = None,
+    commit_hash: Optional[str] = None,
 ):
     pretrained_model_name_or_path = str(pretrained_model_name_or_path)
     if os.path.isfile(pretrained_model_name_or_path):
@@ -300,7 +322,7 @@ def _get_model_file(
                     proxies=proxies,
                     resume_download=resume_download,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     user_agent=user_agent,
                     subfolder=subfolder,
                     revision=revision or commit_hash,
@@ -325,7 +347,7 @@ def _get_model_file(
                 proxies=proxies,
                 resume_download=resume_download,
                 local_files_only=local_files_only,
-                use_auth_token=use_auth_token,
+                token=token,
                 user_agent=user_agent,
                 subfolder=subfolder,
                 revision=revision or commit_hash,
@@ -336,7 +358,7 @@ def _get_model_file(
             raise EnvironmentError(
                 f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier "
                 "listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a "
-                "token having permission to this repo with `use_auth_token` or log in with `huggingface-cli "
+                "token having permission to this repo with `token` or log in with `huggingface-cli "
                 "login`."
             )
         except RevisionNotFoundError:
@@ -447,6 +469,10 @@ class PushToHubMixin:
         """
         repo_id = create_repo(repo_id, private=private, token=token, exist_ok=True).repo_id
 
+        # Create a new empty model card and eventually tag it
+        model_card = load_or_create_model_card(repo_id, token=token)
+        model_card = populate_model_card(model_card)
+
         # Save all files.
         save_kwargs = {"safe_serialization": safe_serialization}
         if "Scheduler" not in self.__class__.__name__:
@@ -454,6 +480,9 @@ class PushToHubMixin:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             self.save_pretrained(tmpdir, **save_kwargs)
+
+            # Update model card if needed:
+            model_card.save(os.path.join(tmpdir, "README.md"))
 
             return self._upload_folder(
                 tmpdir,

@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
-from typing import Optional
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 from torch import nn
 
+from ..utils import USE_PEFT_BACKEND, deprecate
 from .activations import get_activation
+from .attention_processor import Attention
 from .lora import LoRACompatibleLinear
 
 
@@ -65,17 +67,22 @@ def get_timestep_embedding(
     return emb
 
 
-def get_2d_sincos_pos_embed(embed_dim, grid_size, cls_token=False, extra_tokens=0):
+def get_2d_sincos_pos_embed(
+    embed_dim, grid_size, cls_token=False, extra_tokens=0, interpolation_scale=1.0, base_size=16
+):
     """
     grid_size: int of the grid height and width return: pos_embed: [grid_size*grid_size, embed_dim] or
     [1+grid_size*grid_size, embed_dim] (w/ or w/o cls_token)
     """
-    grid_h = np.arange(grid_size, dtype=np.float32)
-    grid_w = np.arange(grid_size, dtype=np.float32)
+    if isinstance(grid_size, int):
+        grid_size = (grid_size, grid_size)
+
+    grid_h = np.arange(grid_size[0], dtype=np.float32) / (grid_size[0] / base_size) / interpolation_scale
+    grid_w = np.arange(grid_size[1], dtype=np.float32) / (grid_size[1] / base_size) / interpolation_scale
     grid = np.meshgrid(grid_w, grid_h)  # here w goes first
     grid = np.stack(grid, axis=0)
 
-    grid = grid.reshape([2, 1, grid_size, grid_size])
+    grid = grid.reshape([2, 1, grid_size[1], grid_size[0]])
     pos_embed = get_2d_sincos_pos_embed_from_grid(embed_dim, grid)
     if cls_token and extra_tokens > 0:
         pos_embed = np.concatenate([np.zeros([extra_tokens, embed_dim]), pos_embed], axis=0)
@@ -128,6 +135,7 @@ class PatchEmbed(nn.Module):
         layer_norm=False,
         flatten=True,
         bias=True,
+        interpolation_scale=1,
     ):
         super().__init__()
 
@@ -143,16 +151,41 @@ class PatchEmbed(nn.Module):
         else:
             self.norm = None
 
-        pos_embed = get_2d_sincos_pos_embed(embed_dim, int(num_patches**0.5))
+        self.patch_size = patch_size
+        # See:
+        # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L161
+        self.height, self.width = height // patch_size, width // patch_size
+        self.base_size = height // patch_size
+        self.interpolation_scale = interpolation_scale
+        pos_embed = get_2d_sincos_pos_embed(
+            embed_dim, int(num_patches**0.5), base_size=self.base_size, interpolation_scale=self.interpolation_scale
+        )
         self.register_buffer("pos_embed", torch.from_numpy(pos_embed).float().unsqueeze(0), persistent=False)
 
     def forward(self, latent):
+        height, width = latent.shape[-2] // self.patch_size, latent.shape[-1] // self.patch_size
+
         latent = self.proj(latent)
         if self.flatten:
             latent = latent.flatten(2).transpose(1, 2)  # BCHW -> BNC
         if self.layer_norm:
             latent = self.norm(latent)
-        return latent + self.pos_embed
+
+        # Interpolate positional embeddings if needed.
+        # (For PixArt-Alpha: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L162C151-L162C160)
+        if self.height != height or self.width != width:
+            pos_embed = get_2d_sincos_pos_embed(
+                embed_dim=self.pos_embed.shape[-1],
+                grid_size=(height, width),
+                base_size=self.base_size,
+                interpolation_scale=self.interpolation_scale,
+            )
+            pos_embed = torch.from_numpy(pos_embed)
+            pos_embed = pos_embed.float().unsqueeze(0).to(latent.device)
+        else:
+            pos_embed = self.pos_embed
+
+        return (latent + pos_embed).to(latent.dtype)
 
 
 class TimestepEmbedding(nn.Module):
@@ -164,10 +197,12 @@ class TimestepEmbedding(nn.Module):
         out_dim: int = None,
         post_act_fn: Optional[str] = None,
         cond_proj_dim=None,
+        sample_proj_bias=True,
     ):
         super().__init__()
+        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
 
-        self.linear_1 = LoRACompatibleLinear(in_channels, time_embed_dim)
+        self.linear_1 = linear_cls(in_channels, time_embed_dim, sample_proj_bias)
 
         if cond_proj_dim is not None:
             self.cond_proj = nn.Linear(cond_proj_dim, in_channels, bias=False)
@@ -180,7 +215,7 @@ class TimestepEmbedding(nn.Module):
             time_embed_dim_out = out_dim
         else:
             time_embed_dim_out = time_embed_dim
-        self.linear_2 = LoRACompatibleLinear(time_embed_dim, time_embed_dim_out)
+        self.linear_2 = linear_cls(time_embed_dim, time_embed_dim_out, sample_proj_bias)
 
         if post_act_fn is None:
             self.post_act = None
@@ -247,6 +282,33 @@ class GaussianFourierProjection(nn.Module):
         else:
             out = torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1)
         return out
+
+
+class SinusoidalPositionalEmbedding(nn.Module):
+    """Apply positional information to a sequence of embeddings.
+
+    Takes in a sequence of embeddings with shape (batch_size, seq_length, embed_dim) and adds positional embeddings to
+    them
+
+    Args:
+        embed_dim: (int): Dimension of the positional embedding.
+        max_seq_length: Maximum sequence length to apply positional embeddings
+
+    """
+
+    def __init__(self, embed_dim: int, max_seq_length: int = 32):
+        super().__init__()
+        position = torch.arange(max_seq_length).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, embed_dim, 2) * (-math.log(10000.0) / embed_dim))
+        pe = torch.zeros(1, max_seq_length, embed_dim)
+        pe[0, :, 0::2] = torch.sin(position * div_term)
+        pe[0, :, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("pe", pe)
+
+    def forward(self, x):
+        _, seq_length, _ = x.shape
+        x = x + self.pe[:, :seq_length]
+        return x
 
 
 class ImagePositionalEmbeddings(nn.Module):
@@ -400,6 +462,18 @@ class ImageProjection(nn.Module):
         return image_embeds
 
 
+class IPAdapterFullImageProjection(nn.Module):
+    def __init__(self, image_embed_dim=1024, cross_attention_dim=1024):
+        super().__init__()
+        from .attention import FeedForward
+
+        self.ff = FeedForward(image_embed_dim, cross_attention_dim, mult=1, activation_fn="gelu")
+        self.norm = nn.LayerNorm(cross_attention_dim)
+
+    def forward(self, image_embeds: torch.FloatTensor):
+        return self.norm(self.ff(image_embeds))
+
+
 class CombinedTimestepLabelEmbeddings(nn.Module):
     def __init__(self, num_classes, embedding_dim, class_dropout_prob=0.1):
         super().__init__()
@@ -547,29 +621,34 @@ class AttentionPooling(nn.Module):
         return a[:, 0, :]  # cls_token
 
 
-class FourierEmbedder(nn.Module):
-    def __init__(self, num_freqs=64, temperature=100):
-        super().__init__()
+def get_fourier_embeds_from_boundingbox(embed_dim, box):
+    """
+    Args:
+        embed_dim: int
+        box: a 3-D tensor [B x N x 4] representing the bounding boxes for GLIGEN pipeline
+    Returns:
+        [B x N x embed_dim] tensor of positional embeddings
+    """
 
-        self.num_freqs = num_freqs
-        self.temperature = temperature
+    batch_size, num_boxes = box.shape[:2]
 
-        freq_bands = temperature ** (torch.arange(num_freqs) / num_freqs)
-        freq_bands = freq_bands[None, None, None]
-        self.register_buffer("freq_bands", freq_bands, persistent=False)
+    emb = 100 ** (torch.arange(embed_dim) / embed_dim)
+    emb = emb[None, None, None].to(device=box.device, dtype=box.dtype)
+    emb = emb * box.unsqueeze(-1)
 
-    def __call__(self, x):
-        x = self.freq_bands * x.unsqueeze(-1)
-        return torch.stack((x.sin(), x.cos()), dim=-1).permute(0, 1, 3, 4, 2).reshape(*x.shape[:2], -1)
+    emb = torch.stack((emb.sin(), emb.cos()), dim=-1)
+    emb = emb.permute(0, 1, 3, 4, 2).reshape(batch_size, num_boxes, embed_dim * 2 * 4)
+
+    return emb
 
 
-class PositionNet(nn.Module):
+class GLIGENTextBoundingboxProjection(nn.Module):
     def __init__(self, positive_len, out_dim, feature_type="text-only", fourier_freqs=8):
         super().__init__()
         self.positive_len = positive_len
         self.out_dim = out_dim
 
-        self.fourier_embedder = FourierEmbedder(num_freqs=fourier_freqs)
+        self.fourier_embedder_dim = fourier_freqs
         self.position_dim = fourier_freqs * 2 * 4  # 2: sin/cos, 4: xyxy
 
         if isinstance(out_dim, tuple):
@@ -618,7 +697,7 @@ class PositionNet(nn.Module):
         masks = masks.unsqueeze(-1)
 
         # embedding position (it may includes padding as placeholder)
-        xyxy_embedding = self.fourier_embedder(boxes)  # B*N*4 -> B*N*C
+        xyxy_embedding = get_fourier_embeds_from_boundingbox(self.fourier_embedder_dim, boxes)  # B*N*4 -> B*N*C
 
         # learnable null embedding
         xyxy_null = self.null_position_feature.view(1, 1, -1)
@@ -654,3 +733,183 @@ class PositionNet(nn.Module):
             objs = torch.cat([objs_text, objs_image], dim=1)
 
         return objs
+
+
+class PixArtAlphaCombinedTimestepSizeEmbeddings(nn.Module):
+    """
+    For PixArt-Alpha.
+
+    Reference:
+    https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L164C9-L168C29
+    """
+
+    def __init__(self, embedding_dim, size_emb_dim, use_additional_conditions: bool = False):
+        super().__init__()
+
+        self.outdim = size_emb_dim
+        self.time_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+        self.timestep_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=embedding_dim)
+
+        self.use_additional_conditions = use_additional_conditions
+        if use_additional_conditions:
+            self.additional_condition_proj = Timesteps(num_channels=256, flip_sin_to_cos=True, downscale_freq_shift=0)
+            self.resolution_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
+            self.aspect_ratio_embedder = TimestepEmbedding(in_channels=256, time_embed_dim=size_emb_dim)
+
+    def forward(self, timestep, resolution, aspect_ratio, batch_size, hidden_dtype):
+        timesteps_proj = self.time_proj(timestep)
+        timesteps_emb = self.timestep_embedder(timesteps_proj.to(dtype=hidden_dtype))  # (N, D)
+
+        if self.use_additional_conditions:
+            resolution_emb = self.additional_condition_proj(resolution.flatten()).to(hidden_dtype)
+            resolution_emb = self.resolution_embedder(resolution_emb).reshape(batch_size, -1)
+            aspect_ratio_emb = self.additional_condition_proj(aspect_ratio.flatten()).to(hidden_dtype)
+            aspect_ratio_emb = self.aspect_ratio_embedder(aspect_ratio_emb).reshape(batch_size, -1)
+            conditioning = timesteps_emb + torch.cat([resolution_emb, aspect_ratio_emb], dim=1)
+        else:
+            conditioning = timesteps_emb
+
+        return conditioning
+
+
+class PixArtAlphaTextProjection(nn.Module):
+    """
+    Projects caption embeddings. Also handles dropout for classifier-free guidance.
+
+    Adapted from https://github.com/PixArt-alpha/PixArt-alpha/blob/master/diffusion/model/nets/PixArt_blocks.py
+    """
+
+    def __init__(self, in_features, hidden_size, num_tokens=120):
+        super().__init__()
+        self.linear_1 = nn.Linear(in_features=in_features, out_features=hidden_size, bias=True)
+        self.act_1 = nn.GELU(approximate="tanh")
+        self.linear_2 = nn.Linear(in_features=hidden_size, out_features=hidden_size, bias=True)
+
+    def forward(self, caption):
+        hidden_states = self.linear_1(caption)
+        hidden_states = self.act_1(hidden_states)
+        hidden_states = self.linear_2(hidden_states)
+        return hidden_states
+
+
+class IPAdapterPlusImageProjection(nn.Module):
+    """Resampler of IP-Adapter Plus.
+
+    Args:
+    ----
+        embed_dims (int): The feature dimension. Defaults to 768.
+        output_dims (int): The number of output channels, that is the same
+            number of the channels in the
+            `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int): The number of hidden channels. Defaults to 1280.
+        depth (int): The number of blocks. Defaults to 8.
+        dim_head (int): The number of head channels. Defaults to 64.
+        heads (int): Parallel attention heads. Defaults to 16.
+        num_queries (int): The number of queries. Defaults to 8.
+        ffn_ratio (float): The expansion ratio of feedforward network hidden
+            layer channels. Defaults to 4.
+    """
+
+    def __init__(
+        self,
+        embed_dims: int = 768,
+        output_dims: int = 1024,
+        hidden_dims: int = 1280,
+        depth: int = 4,
+        dim_head: int = 64,
+        heads: int = 16,
+        num_queries: int = 8,
+        ffn_ratio: float = 4,
+    ) -> None:
+        super().__init__()
+        from .attention import FeedForward  # Lazy import to avoid circular import
+
+        self.latents = nn.Parameter(torch.randn(1, num_queries, hidden_dims) / hidden_dims**0.5)
+
+        self.proj_in = nn.Linear(embed_dims, hidden_dims)
+
+        self.proj_out = nn.Linear(hidden_dims, output_dims)
+        self.norm_out = nn.LayerNorm(output_dims)
+
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        nn.LayerNorm(hidden_dims),
+                        nn.LayerNorm(hidden_dims),
+                        Attention(
+                            query_dim=hidden_dims,
+                            dim_head=dim_head,
+                            heads=heads,
+                            out_bias=False,
+                        ),
+                        nn.Sequential(
+                            nn.LayerNorm(hidden_dims),
+                            FeedForward(hidden_dims, hidden_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
+                        ),
+                    ]
+                )
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+        ----
+            x (torch.Tensor): Input Tensor.
+
+        Returns:
+        -------
+            torch.Tensor: Output Tensor.
+        """
+        latents = self.latents.repeat(x.size(0), 1, 1)
+
+        x = self.proj_in(x)
+
+        for ln0, ln1, attn, ff in self.layers:
+            residual = latents
+
+            encoder_hidden_states = ln0(x)
+            latents = ln1(latents)
+            encoder_hidden_states = torch.cat([encoder_hidden_states, latents], dim=-2)
+            latents = attn(latents, encoder_hidden_states) + residual
+            latents = ff(latents) + latents
+
+        latents = self.proj_out(latents)
+        return self.norm_out(latents)
+
+
+class MultiIPAdapterImageProjection(nn.Module):
+    def __init__(self, IPAdapterImageProjectionLayers: Union[List[nn.Module], Tuple[nn.Module]]):
+        super().__init__()
+        self.image_projection_layers = nn.ModuleList(IPAdapterImageProjectionLayers)
+
+    def forward(self, image_embeds: List[torch.FloatTensor]):
+        projected_image_embeds = []
+
+        # currently, we accept `image_embeds` as
+        #  1. a tensor (deprecated) with shape [batch_size, embed_dim] or [batch_size, sequence_length, embed_dim]
+        #  2. list of `n` tensors where `n` is number of ip-adapters, each tensor can hae shape [batch_size, num_images, embed_dim] or [batch_size, num_images, sequence_length, embed_dim]
+        if not isinstance(image_embeds, list):
+            deprecation_message = (
+                "You have passed a tensor as `image_embeds`.This is deprecated and will be removed in a future release."
+                " Please make sure to update your script to pass `image_embeds` as a list of tensors to supress this warning."
+            )
+            deprecate("image_embeds not a list", "1.0.0", deprecation_message, standard_warn=False)
+            image_embeds = [image_embeds.unsqueeze(1)]
+
+        if len(image_embeds) != len(self.image_projection_layers):
+            raise ValueError(
+                f"image_embeds must have the same length as image_projection_layers, got {len(image_embeds)} and {len(self.image_projection_layers)}"
+            )
+
+        for image_embed, image_projection_layer in zip(image_embeds, self.image_projection_layers):
+            batch_size, num_images = image_embed.shape[0], image_embed.shape[1]
+            image_embed = image_embed.reshape((batch_size * num_images,) + image_embed.shape[2:])
+            image_embed = image_projection_layer(image_embed)
+            image_embed = image_embed.reshape((batch_size, num_images) + image_embed.shape[1:])
+
+            projected_image_embeds.append(image_embed)
+
+        return projected_image_embeds
