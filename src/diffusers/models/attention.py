@@ -17,11 +17,15 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..utils import logging
 from ..utils.torch_utils import maybe_allow_in_graph
 from .activations import GEGLU, GELU, ApproximateGELU
 from .attention_processor import Attention
 from .embeddings import SinusoidalPositionalEmbedding
 from .normalization import AdaLayerNorm, AdaLayerNormContinuous, AdaLayerNormZero, RMSNorm
+
+
+logger = logging.get_logger(__name__)
 
 
 def _chunked_feed_forward(ff: nn.Module, hidden_states: torch.Tensor, chunk_dim: int, chunk_size: int):
@@ -287,6 +291,10 @@ class BasicTransformerBlock(nn.Module):
         class_labels: Optional[torch.LongTensor] = None,
         added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
     ) -> torch.FloatTensor:
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warn.warn("Passing `scale` to `cross_attention_kwargs` is depcrecated.")
+
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
         batch_size = hidden_states.shape[0]
