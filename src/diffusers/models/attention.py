@@ -293,7 +293,7 @@ class BasicTransformerBlock(nn.Module):
     ) -> torch.FloatTensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
-                logger.warn.warn("Passing `scale` to `cross_attention_kwargs` is depcrecated.")
+                logger.warn("Passing `scale` to `cross_attention_kwargs` is depcrecated.")
 
         # Notice that normalization is always applied before the real computation in the following blocks.
         # 0. Self-Attention
