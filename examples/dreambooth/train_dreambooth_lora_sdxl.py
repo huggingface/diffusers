@@ -139,7 +139,7 @@ Weights for this model are available in Safetensors format.
 [Download]({repo_id}/tree/main) them in the Files & versions tab.
 
 """
-    if "playgroundai" in args.pretrained_model_name_or_path:
+    if "playgroundai" in base_model:
         model_description += """\n
 ## License
 
