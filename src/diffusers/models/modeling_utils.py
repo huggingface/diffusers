@@ -30,12 +30,21 @@ from huggingface_hub.utils import validate_hf_hub_args
 from torch import Tensor, nn
 
 from .. import __version__
-from ..utils import (CONFIG_NAME, FLAX_WEIGHTS_NAME,
-                     SAFETENSORS_FILE_EXTENSION, SAFETENSORS_WEIGHTS_NAME,
-                     WEIGHTS_NAME, _add_variant, _get_model_file, deprecate,
-                     is_accelerate_available, is_torch_version, logging)
-from ..utils.hub_utils import (PushToHubMixin, load_or_create_model_card,
-                               populate_model_card)
+from ..utils import (
+    CONFIG_NAME,
+    FLAX_WEIGHTS_NAME,
+    SAFETENSORS_FILE_EXTENSION,
+    SAFETENSORS_WEIGHTS_NAME,
+    WEIGHTS_NAME,
+    _add_variant,
+    _get_model_file,
+    deprecate,
+    is_accelerate_available,
+    is_torch_version,
+    logging,
+)
+from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
+
 
 logger = logging.get_logger(__name__)
 
@@ -598,8 +607,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
             model = cls.from_config(config, **unused_kwargs)
 
             # Convert the weights
-            from .modeling_pytorch_flax_utils import \
-                load_flax_checkpoint_in_pytorch_model
+            from .modeling_pytorch_flax_utils import load_flax_checkpoint_in_pytorch_model
 
             model = load_flax_checkpoint_in_pytorch_model(model, model_file)
         else:
