@@ -104,6 +104,8 @@
       title: Latent Consistency Model-LoRA
     - local: using-diffusers/inference_with_lcm
       title: Latent Consistency Model
+    - local: using-diffusers/inference_with_tcd_lora
+      title: Trajectory Consistency Distillation-LoRA
     - local: using-diffusers/svd
       title: Stable Video Diffusion
     title: Specific pipeline examples
