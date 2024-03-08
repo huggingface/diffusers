@@ -510,7 +510,7 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
             "guidance_scale": 2.5,
         }
         return inputs
-    
+
     def get_inputs_tts(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
         latents = np.random.RandomState(seed).standard_normal((1, 8, 128, 16))
@@ -581,7 +581,7 @@ class AudioLDM2PipelineSlowTests(unittest.TestCase):
         )
         max_diff = np.abs(expected_slice - audio_slice).max()
         assert max_diff < 1e-3
-    
+
     def test_audioldm2_tts(self):
         audioldm_tts_pipe = AudioLDM2Pipeline.from_pretrained("anhnct/audioldm2_gigaspeech")
         audioldm_tts_pipe = audioldm_tts_pipe.to(torch_device)
