@@ -1343,7 +1343,7 @@ class DownBlock2D(nn.Module):
     def forward(
         self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, *args, **kwargs
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
-        if len(args) > 0 or kwargs.get("scale",None) is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
