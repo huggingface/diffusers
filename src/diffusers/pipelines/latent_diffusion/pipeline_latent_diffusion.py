@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import inspect
+from os import PathLike
 from typing import List, Optional, Tuple, Union
 
 import torch
@@ -32,10 +33,11 @@ from ..pipeline_utils import DiffusionPipeline, ImagePipelineOutput
 
 
 class ClassEmbedder(ModelMixin, ConfigMixin):
-    def __init__(self, embed_dim, n_classes=1000, **kwargs):
+    def __init__(self, embed_dim=512, n_classes=1000, **kwargs):
         super().__init__()
         self.n_classes = n_classes
         self.embedding = nn.Embedding(n_classes, embed_dim)
+        self.register_to_config(n_classes=n_classes, embed_dim=embed_dim)
 
     def forward(self, batch):
         c = batch[:, None]
