@@ -482,7 +482,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
         config["num_class_embeds"] = unet_params["num_classes"]
 
     config["out_channels"] = unet_params["out_channels"]
-    config["up_block_types"] = tuple(up_block_types)
+    config["up_block_types"] = up_block_types
 
     return config
 
