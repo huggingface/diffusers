@@ -18,8 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import USE_PEFT_BACKEND
-from .lora import LoRACompatibleConv
+from ..utils import deprecate
 from .normalization import RMSNorm
 
 
@@ -141,11 +140,12 @@ class Upsample2D(nn.Module):
             self.Conv2d_0 = conv
 
     def forward(
-        self,
-        hidden_states: torch.FloatTensor,
-        output_size: Optional[int] = None,
-        scale: float = 1.0,
+        self, hidden_states: torch.FloatTensor, output_size: Optional[int] = None, *args, **kwargs
     ) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         assert hidden_states.shape[1] == self.channels
 
         if self.norm is not None:
@@ -180,15 +180,9 @@ class Upsample2D(nn.Module):
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
             if self.name == "conv":
-                if isinstance(self.conv, LoRACompatibleConv) and not USE_PEFT_BACKEND:
-                    hidden_states = self.conv(hidden_states, scale)
-                else:
-                    hidden_states = self.conv(hidden_states)
+                hidden_states = self.conv(hidden_states)
             else:
-                if isinstance(self.Conv2d_0, LoRACompatibleConv) and not USE_PEFT_BACKEND:
-                    hidden_states = self.Conv2d_0(hidden_states, scale)
-                else:
-                    hidden_states = self.Conv2d_0(hidden_states)
+                hidden_states = self.Conv2d_0(hidden_states)
 
         return hidden_states
 

@@ -1444,8 +1444,8 @@ class DownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor, scale: float = None) -> torch.FloatTensor:
-        if scale is not None:
+    def forward(self, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
@@ -1546,8 +1546,8 @@ class AttnDownEncoderBlock2D(nn.Module):
         else:
             self.downsamplers = None
 
-    def forward(self, hidden_states: torch.FloatTensor, scale: float = None) -> torch.FloatTensor:
-        if scale is not None:
+    def forward(self, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
@@ -1648,9 +1648,10 @@ class AttnSkipDownBlock2D(nn.Module):
         hidden_states: torch.FloatTensor,
         temb: Optional[torch.FloatTensor] = None,
         skip_sample: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...], torch.FloatTensor]:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
@@ -1738,13 +1739,14 @@ class SkipDownBlock2D(nn.Module):
         hidden_states: torch.FloatTensor,
         temb: Optional[torch.FloatTensor] = None,
         skip_sample: Optional[torch.FloatTensor] = None,
-        scale: float = None,
+        *args,
+        **kwargs,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...], torch.FloatTensor]:
-        output_states = ()
-
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
+
+        output_states = ()
 
         for resnet in self.resnets:
             hidden_states = resnet(hidden_states, temb)
@@ -1827,9 +1829,9 @@ class ResnetDownsampleBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = None
+        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, *args, **kwargs
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
@@ -2328,9 +2330,10 @@ class AttnUpBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        scale: float = None,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
@@ -2581,9 +2584,10 @@ class UpBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        scale: float = None,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
@@ -2911,9 +2915,10 @@ class AttnSkipUpBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         skip_sample=None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
@@ -3022,9 +3027,10 @@ class SkipUpBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         skip_sample=None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
@@ -3128,9 +3134,10 @@ class ResnetUpsampleBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        scale: float = None,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 
@@ -3387,9 +3394,10 @@ class KUpBlock2D(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        scale: float = None,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 

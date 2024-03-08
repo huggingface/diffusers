@@ -1840,9 +1840,10 @@ class UpBlockFlat(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        scale: float = None,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 

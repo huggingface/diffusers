@@ -738,8 +738,13 @@ class AttnProcessor:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -909,8 +914,13 @@ class AttnAddedKVProcessor:
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         residual = hidden_states
 
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
@@ -977,8 +987,13 @@ class AttnAddedKVProcessor2_0:
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         residual = hidden_states
 
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
@@ -1123,8 +1138,13 @@ class XFormersAttnProcessor:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         residual = hidden_states
 
         if attn.spatial_norm is not None:
@@ -1206,8 +1226,13 @@ class AttnProcessor2_0:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -1300,8 +1325,13 @@ class FusedAttnProcessor2_0:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)

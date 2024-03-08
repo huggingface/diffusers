@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..utils import deprecate
 from .activations import get_activation
 from .attention_processor import SpatialNorm
 from .downsampling import (  # noqa
@@ -147,12 +148,11 @@ class ResnetBlockCondNorm2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(
-        self,
-        input_tensor: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        scale: float = 1.0,
-    ) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states, temb)
@@ -322,12 +322,11 @@ class ResnetBlock2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(
-        self,
-        input_tensor: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        scale: float = 1.0,
-    ) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)

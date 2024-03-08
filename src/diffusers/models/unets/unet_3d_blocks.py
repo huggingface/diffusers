@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from ...utils import is_torch_version
+from ...utils import deprecate, is_torch_version
 from ...utils.torch_utils import apply_freeu
 from ..attention import Attention
 from ..resnet import (
@@ -1005,9 +1005,14 @@ class DownBlockMotion(nn.Module):
         self,
         hidden_states: torch.FloatTensor,
         temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
         num_frames: int = 1,
+        *args,
+        **kwargs,
     ) -> Union[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         output_states = ()
 
         blocks = zip(self.resnets, self.motion_modules)
@@ -1029,18 +1034,18 @@ class DownBlockMotion(nn.Module):
                     )
                 else:
                     hidden_states = torch.utils.checkpoint.checkpoint(
-                        create_custom_forward(resnet), hidden_states, temb, scale
+                        create_custom_forward(resnet), hidden_states, temb
                     )
 
             else:
-                hidden_states = resnet(hidden_states, temb, scale=scale)
+                hidden_states = resnet(hidden_states, temb)
             hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
 
             output_states = output_states + (hidden_states,)
 
         if self.downsamplers is not None:
             for downsampler in self.downsamplers:
-                hidden_states = downsampler(hidden_states, scale=scale)
+                hidden_states = downsampler(hidden_states)
 
             output_states = output_states + (hidden_states,)
 
@@ -1504,9 +1509,14 @@ class UpBlockMotion(nn.Module):
         res_hidden_states_tuple: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         upsample_size=None,
-        scale: float = 1.0,
         num_frames: int = 1,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -1556,12 +1566,12 @@ class UpBlockMotion(nn.Module):
                     )
 
             else:
-                hidden_states = resnet(hidden_states, temb, scale=scale)
+                hidden_states = resnet(hidden_states, temb)
             hidden_states = motion_module(hidden_states, num_frames=num_frames)[0]
 
         if self.upsamplers is not None:
             for upsampler in self.upsamplers:
-                hidden_states = upsampler(hidden_states, upsample_size, scale=scale)
+                hidden_states = upsampler(hidden_states, upsample_size)
 
         return hidden_states
 
