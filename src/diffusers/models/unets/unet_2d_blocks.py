@@ -1341,9 +1341,9 @@ class DownBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     def forward(
-        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, scale: float = None
+        self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, *args, **kwargs
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
-        if scale is not None:
+        if len(args) > 0 or kwargs.get("scale",None) is not None:
             deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
             deprecate("scale", "1.0.0", deprecation_message)
 

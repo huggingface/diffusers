@@ -339,21 +339,17 @@ class ResnetBlock2D(nn.Module):
                 input_tensor = input_tensor.contiguous()
                 hidden_states = hidden_states.contiguous()
             input_tensor = (
-                self.upsample(input_tensor) if isinstance(self.upsample, Upsample2D) else self.upsample(input_tensor)
+                self.upsample(input_tensor)
             )
             hidden_states = (
-                self.upsample(hidden_states) if isinstance(self.upsample, Upsample2D) else self.upsample(hidden_states)
+                self.upsample(hidden_states)
             )
         elif self.downsample is not None:
             input_tensor = (
                 self.downsample(input_tensor)
-                if isinstance(self.downsample, Downsample2D)
-                else self.downsample(input_tensor)
             )
             hidden_states = (
                 self.downsample(hidden_states)
-                if isinstance(self.downsample, Downsample2D)
-                else self.downsample(hidden_states)
             )
 
         hidden_states = self.conv1(hidden_states)
