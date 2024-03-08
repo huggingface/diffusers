@@ -139,7 +139,7 @@ Weights for this model are available in Safetensors format.
 [Download]({repo_id}/tree/main) them in the Files & versions tab.
 
 """
-    if "playground" in base_model.lower():
+    if "playground" in base_model:
         model_description += """\n
 ## License
 
