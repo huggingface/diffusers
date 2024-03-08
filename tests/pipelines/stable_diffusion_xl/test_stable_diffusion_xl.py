@@ -1088,9 +1088,9 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         for param_name, param_value in single_file_pipe.unet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
-            if param_value == "upcast_attention" and pipe.unet.config[param_name] is None:
+            if pipe.unet.config[param_name] == "upcast_attention":
                 print(f"Pipe attrbiute {pipe.unet.config[param_name]}")
-                setattr(pipe.unet.config[param_name], False)
+                pipe.unet.config[param_name] =  False
                 print(f"Pipe attrbiute: {pipe.unet.config[param_name]}")
             assert (
                 pipe.unet.config[param_name] == param_value
