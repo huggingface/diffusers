@@ -37,6 +37,44 @@ a compression factor of 42. This encodes a 1024 x 1024 image to 24 x 24, while b
 image. This comes with the great benefit of cheaper training and inference. Furthermore, Stage C is responsible
 for generating the small 24 x 24 latents given a text prompt.
 
+## Usage example
+
+```python
+import torch
+from diffusers import (
+    StableCascadeDecoderPipeline,
+    StableCascadePriorPipeline,
+)
+
+prompt = "an image of a shiba inu, donning a spacesuit and helmet"
+negative_prompt = ""
+
+prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", variant="bf16", torch_dtype=torch.bfloat16)
+decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.float16)
+
+prior.enable_model_cpu_offload()
+prior_output = prior(
+    prompt=prompt,
+    height=1024,
+    width=1024,
+    negative_prompt=negative_prompt,
+    guidance_scale=4.0,
+    num_images_per_prompt=1,
+    num_inference_steps=20
+)
+
+decoder.enable_model_cpu_offload()
+decoder_output = decoder(
+    image_embeddings=prior_output.image_embeddings.to(torch.float16),
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    guidance_scale=0.0,
+    output_type="pil",
+    num_inference_steps=10
+).images[0]
+decoder_output.save("cascade.png")
+```
+
 ## Uses
 
 ### Direct Use
@@ -67,7 +105,7 @@ The model should not be used in any way that violates Stability AI's [Acceptable
 
 There are some restrictions on data types that can be used with the Stable Cascade models. The official checkpoints for the  `StableCascadePriorPipeline` do not support the `torch.float16` data type. Please use `torch.bfloat16` instead.
 
-In order to use the `torch.bfloat16` datatype with the `StableCascadeDecoderPipeline` you need to have PyTorch 2.2.0 or higher installed. This also means that using the `StableCascadeCombinedPipeline` with `torch.bfloat16` requires PyTorch 2.2.0 or higher, since it calls the `StableCascadeDecoderPipeline` internally.
+In order to use the `torch.bfloat16` data type with the `StableCascadeDecoderPipeline` you need to have PyTorch 2.2.0 or higher installed. This also means that using the `StableCascadeCombinedPipeline` with `torch.bfloat16` requires PyTorch 2.2.0 or higher, since it calls the `StableCascadeDecoderPipeline` internally.
 
 If it is not possible to install PyTorch 2.2.0 or higher in your environment, the `StableCascadeDecoderPipeline` can be used on its own with the `torch.float16` data type. You can download the full precision or `bf16` variant weights for the pipeline and cast the weights to `torch.float16`.
 
