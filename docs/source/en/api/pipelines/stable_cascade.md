@@ -41,10 +41,7 @@ for generating the small 24 x 24 latents given a text prompt.
 
 ```python
 import torch
-from diffusers import (
-    StableCascadeDecoderPipeline,
-    StableCascadePriorPipeline,
-)
+from diffusers import StableCascadeDecoderPipeline, StableCascadePriorPipeline
 
 prompt = "an image of a shiba inu, donning a spacesuit and helmet"
 negative_prompt = ""
