@@ -1,22 +1,9 @@
-# Copyright (c) 2023 Dominic Rampas MIT License
-# Copyright 2023 The HuggingFace Team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import torch
 import torch.nn as nn
 
 from ...models.attention_processor import Attention
+from ...models.lora import LoRACompatibleConv, LoRACompatibleLinear
+from ...utils import USE_PEFT_BACKEND
 
 
 class WuerstchenLayerNorm(nn.LayerNorm):
@@ -32,7 +19,8 @@ class WuerstchenLayerNorm(nn.LayerNorm):
 class TimestepBlock(nn.Module):
     def __init__(self, c, c_timestep):
         super().__init__()
-        self.mapper = nn.Linear(c_timestep, c * 2)
+        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        self.mapper = linear_cls(c_timestep, c * 2)
 
     def forward(self, x, t):
         a, b = self.mapper(t)[:, :, None, None].chunk(2, dim=1)
@@ -42,10 +30,14 @@ class TimestepBlock(nn.Module):
 class ResBlock(nn.Module):
     def __init__(self, c, c_skip=0, kernel_size=3, dropout=0.0):
         super().__init__()
-        self.depthwise = nn.Conv2d(c + c_skip, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
+
+        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+
+        self.depthwise = conv_cls(c + c_skip, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
         self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
         self.channelwise = nn.Sequential(
-            nn.Linear(c, c * 4), nn.GELU(), GlobalResponseNorm(c * 4), nn.Dropout(dropout), nn.Linear(c * 4, c)
+            linear_cls(c, c * 4), nn.GELU(), GlobalResponseNorm(c * 4), nn.Dropout(dropout), linear_cls(c * 4, c)
         )
 
     def forward(self, x, x_skip=None):
@@ -73,10 +65,13 @@ class GlobalResponseNorm(nn.Module):
 class AttnBlock(nn.Module):
     def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
         super().__init__()
+
+        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+
         self.self_attn = self_attn
         self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
         self.attention = Attention(query_dim=c, heads=nhead, dim_head=c // nhead, dropout=dropout, bias=True)
-        self.kv_mapper = nn.Sequential(nn.SiLU(), nn.Linear(c_cond, c))
+        self.kv_mapper = nn.Sequential(nn.SiLU(), linear_cls(c_cond, c))
 
     def forward(self, x, kv):
         kv = self.kv_mapper(kv)

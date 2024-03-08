@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ import re
 from typing import List, Union
 
 import torch
+import yaml
 from transformers import (
     AutoFeatureExtractor,
     AutoTokenizer,
@@ -45,7 +46,7 @@ from diffusers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import is_omegaconf_available, is_safetensors_available
+from diffusers.utils import is_safetensors_available
 from diffusers.utils.import_utils import BACKENDS_MAPPING
 
 
@@ -212,41 +213,41 @@ def create_unet_diffusers_config(original_config, image_size: int):
     """
     Creates a UNet config for diffusers based on the config of the original AudioLDM2 model.
     """
-    unet_params = original_config.model.params.unet_config.params
-    vae_params = original_config.model.params.first_stage_config.params.ddconfig
+    unet_params = original_config["model"]["params"]["unet_config"]["params"]
+    vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
 
-    block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
+    block_out_channels = [unet_params["model_channels"] * mult for mult in unet_params["channel_mult"]]
 
     down_block_types = []
     resolution = 1
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnDownBlock2D" if resolution in unet_params.attention_resolutions else "DownBlock2D"
+        block_type = "CrossAttnDownBlock2D" if resolution in unet_params["attention_resolutions"] else "DownBlock2D"
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
             resolution *= 2
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnUpBlock2D" if resolution in unet_params.attention_resolutions else "UpBlock2D"
+        block_type = "CrossAttnUpBlock2D" if resolution in unet_params["attention_resolutions"] else "UpBlock2D"
         up_block_types.append(block_type)
         resolution //= 2
 
-    vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
+    vae_scale_factor = 2 ** (len(vae_params["ch_mult"]) - 1)
 
-    cross_attention_dim = list(unet_params.context_dim) if "context_dim" in unet_params else block_out_channels
+    cross_attention_dim = list(unet_params["context_dim"]) if "context_dim" in unet_params else block_out_channels
     if len(cross_attention_dim) > 1:
         # require two or more cross-attention layers per-block, each of different dimension
         cross_attention_dim = [cross_attention_dim for _ in range(len(block_out_channels))]
 
     config = {
         "sample_size": image_size // vae_scale_factor,
-        "in_channels": unet_params.in_channels,
-        "out_channels": unet_params.out_channels,
+        "in_channels": unet_params["in_channels"],
+        "out_channels": unet_params["out_channels"],
         "down_block_types": tuple(down_block_types),
         "up_block_types": tuple(up_block_types),
         "block_out_channels": tuple(block_out_channels),
-        "layers_per_block": unet_params.num_res_blocks,
-        "transformer_layers_per_block": unet_params.transformer_depth,
+        "layers_per_block": unet_params["num_res_blocks"],
+        "transformer_layers_per_block": unet_params["transformer_depth"],
         "cross_attention_dim": tuple(cross_attention_dim),
     }
 
@@ -259,24 +260,24 @@ def create_vae_diffusers_config(original_config, checkpoint, image_size: int):
     Creates a VAE config for diffusers based on the config of the original AudioLDM2 model. Compared to the original
     Stable Diffusion conversion, this function passes a *learnt* VAE scaling factor to the diffusers VAE.
     """
-    vae_params = original_config.model.params.first_stage_config.params.ddconfig
-    _ = original_config.model.params.first_stage_config.params.embed_dim
+    vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
+    _ = original_config["model"]["params"]["first_stage_config"]["params"]["embed_dim"]
 
-    block_out_channels = [vae_params.ch * mult for mult in vae_params.ch_mult]
+    block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
 
-    scaling_factor = checkpoint["scale_factor"] if "scale_by_std" in original_config.model.params else 0.18215
+    scaling_factor = checkpoint["scale_factor"] if "scale_by_std" in original_config["model"]["params"] else 0.18215
 
     config = {
         "sample_size": image_size,
-        "in_channels": vae_params.in_channels,
-        "out_channels": vae_params.out_ch,
+        "in_channels": vae_params["in_channels"],
+        "out_channels": vae_params["out_ch"],
         "down_block_types": tuple(down_block_types),
         "up_block_types": tuple(up_block_types),
         "block_out_channels": tuple(block_out_channels),
-        "latent_channels": vae_params.z_channels,
-        "layers_per_block": vae_params.num_res_blocks,
+        "latent_channels": vae_params["z_channels"],
+        "layers_per_block": vae_params["num_res_blocks"],
         "scaling_factor": float(scaling_factor),
     }
     return config
@@ -285,9 +286,9 @@ def create_vae_diffusers_config(original_config, checkpoint, image_size: int):
 # Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.create_diffusers_schedular
 def create_diffusers_schedular(original_config):
     schedular = DDIMScheduler(
-        num_train_timesteps=original_config.model.params.timesteps,
-        beta_start=original_config.model.params.linear_start,
-        beta_end=original_config.model.params.linear_end,
+        num_train_timesteps=original_config["model"]["params"]["timesteps"],
+        beta_start=original_config["model"]["params"]["linear_start"],
+        beta_end=original_config["model"]["params"]["linear_end"],
         beta_schedule="scaled_linear",
     )
     return schedular
@@ -692,17 +693,17 @@ def create_transformers_vocoder_config(original_config):
     """
     Creates a config for transformers SpeechT5HifiGan based on the config of the vocoder model.
     """
-    vocoder_params = original_config.model.params.vocoder_config.params
+    vocoder_params = original_config["model"]["params"]["vocoder_config"]["params"]
 
     config = {
-        "model_in_dim": vocoder_params.num_mels,
-        "sampling_rate": vocoder_params.sampling_rate,
-        "upsample_initial_channel": vocoder_params.upsample_initial_channel,
-        "upsample_rates": list(vocoder_params.upsample_rates),
-        "upsample_kernel_sizes": list(vocoder_params.upsample_kernel_sizes),
-        "resblock_kernel_sizes": list(vocoder_params.resblock_kernel_sizes),
+        "model_in_dim": vocoder_params["num_mels"],
+        "sampling_rate": vocoder_params["sampling_rate"],
+        "upsample_initial_channel": vocoder_params["upsample_initial_channel"],
+        "upsample_rates": list(vocoder_params["upsample_rates"]),
+        "upsample_kernel_sizes": list(vocoder_params["upsample_kernel_sizes"]),
+        "resblock_kernel_sizes": list(vocoder_params["resblock_kernel_sizes"]),
         "resblock_dilation_sizes": [
-            list(resblock_dilation) for resblock_dilation in vocoder_params.resblock_dilation_sizes
+            list(resblock_dilation) for resblock_dilation in vocoder_params["resblock_dilation_sizes"]
         ],
         "normalize_before": False,
     }
@@ -876,11 +877,6 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
         return: An AudioLDM2Pipeline object representing the passed-in `.ckpt`/`.safetensors` file.
     """
 
-    if not is_omegaconf_available():
-        raise ValueError(BACKENDS_MAPPING["omegaconf"][1])
-
-    from omegaconf import OmegaConf
-
     if from_safetensors:
         if not is_safetensors_available():
             raise ValueError(BACKENDS_MAPPING["safetensors"][1])
@@ -903,9 +899,8 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
 
     if original_config_file is None:
         original_config = DEFAULT_CONFIG
-        original_config = OmegaConf.create(original_config)
     else:
-        original_config = OmegaConf.load(original_config_file)
+        original_config = yaml.safe_load(original_config_file)
 
     if image_size is not None:
         original_config["model"]["params"]["unet_config"]["params"]["image_size"] = image_size
@@ -926,9 +921,9 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
         if prediction_type is None:
             prediction_type = "epsilon"
 
-    num_train_timesteps = original_config.model.params.timesteps
-    beta_start = original_config.model.params.linear_start
-    beta_end = original_config.model.params.linear_end
+    num_train_timesteps = original_config["model"]["params"]["timesteps"]
+    beta_start = original_config["model"]["params"]["linear_start"]
+    beta_end = original_config["model"]["params"]["linear_end"]
 
     scheduler = DDIMScheduler(
         beta_end=beta_end,
@@ -1026,9 +1021,9 @@ def load_pipeline_from_original_AudioLDM2_ckpt(
     # Convert the GPT2 encoder model: AudioLDM2 uses the same configuration as the original GPT2 base model
     gpt2_config = GPT2Config.from_pretrained("gpt2")
     gpt2_model = GPT2Model(gpt2_config)
-    gpt2_model.config.max_new_tokens = (
-        original_config.model.params.cond_stage_config.crossattn_audiomae_generated.params.sequence_gen_length
-    )
+    gpt2_model.config.max_new_tokens = original_config["model"]["params"]["cond_stage_config"][
+        "crossattn_audiomae_generated"
+    ]["params"]["sequence_gen_length"]
 
     converted_gpt2_checkpoint = extract_sub_model(checkpoint, key_prefix="cond_stage_models.0.model.")
     gpt2_model.load_state_dict(converted_gpt2_checkpoint)

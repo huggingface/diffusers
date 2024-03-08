@@ -29,8 +29,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "algorithm_type": "dpmsolver++",
             "solver_type": "midpoint",
             "lower_order_final": False,
+            "euler_at_final": False,
             "lambda_min_clipped": -float("inf"),
             "variance_type": None,
+            "final_sigmas_type": "sigma_min",
         }
 
         config.update(**kwargs)
@@ -195,6 +197,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         self.check_over_configs(lower_order_final=True)
         self.check_over_configs(lower_order_final=False)
 
+    def test_euler_at_final(self):
+        self.check_over_configs(euler_at_final=True)
+        self.check_over_configs(euler_at_final=False)
+
     def test_lambda_min_clipped(self):
         self.check_over_configs(lambda_min_clipped=-float("inf"))
         self.check_over_configs(lambda_min_clipped=-5.1)
@@ -206,6 +212,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
     def test_inference_steps(self):
         for num_inference_steps in [1, 2, 3, 5, 10, 50, 100, 999, 1000]:
             self.check_over_forward(num_inference_steps=num_inference_steps, time_step=0)
+
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
 
     def test_full_loop_no_noise(self):
         sample = self.full_loop()
@@ -257,6 +267,12 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         assert abs(result_mean.item() - 0.2096) < 1e-3
+
+    def test_full_loop_with_lu_and_v_prediction(self):
+        sample = self.full_loop(prediction_type="v_prediction", use_lu_lambdas=True)
+        result_mean = torch.mean(torch.abs(sample))
+
+        assert abs(result_mean.item() - 0.1554) < 1e-3
 
     def test_switch(self):
         # make sure that iterating over schedulers with same config names gives same results

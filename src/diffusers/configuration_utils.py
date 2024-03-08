@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,12 +27,16 @@ from typing import Any, Dict, Tuple, Union
 
 import numpy as np
 from huggingface_hub import create_repo, hf_hub_download
-from huggingface_hub.utils import EntryNotFoundError, RepositoryNotFoundError, RevisionNotFoundError
+from huggingface_hub.utils import (
+    EntryNotFoundError,
+    RepositoryNotFoundError,
+    RevisionNotFoundError,
+    validate_hf_hub_args,
+)
 from requests import HTTPError
 
 from . import __version__
 from .utils import (
-    DIFFUSERS_CACHE,
     HUGGINGFACE_CO_RESOLVE_ENDPOINT,
     DummyObject,
     deprecate,
@@ -95,6 +99,7 @@ class ConfigMixin:
           should only have a `kwargs` argument if at least one argument is deprecated (should be overridden by
           subclass).
     """
+
     config_name = None
     ignore_for_config = []
     has_compatibles = False
@@ -122,7 +127,7 @@ class ConfigMixin:
         """The only reason we overwrite `getattr` here is to gracefully deprecate accessing
         config attributes directly. See https://github.com/huggingface/diffusers/pull/3129
 
-        Tihs funtion is mostly copied from PyTorch's __getattr__ overwrite:
+        This function is mostly copied from PyTorch's __getattr__ overwrite:
         https://pytorch.org/docs/stable/_modules/torch/nn/modules/module.html#Module
         """
 
@@ -254,6 +259,10 @@ class ConfigMixin:
         model = cls(**init_dict)
 
         # make sure to also save config parameters that might be used for compatible classes
+        # update _class_name
+        if "_class_name" in hidden_dict:
+            hidden_dict["_class_name"] = cls.__name__
+
         model.register_to_config(**hidden_dict)
 
         # add hidden kwargs of compatible classes to unused_kwargs
@@ -274,6 +283,7 @@ class ConfigMixin:
         return cls.load_config(*args, **kwargs)
 
     @classmethod
+    @validate_hf_hub_args
     def load_config(
         cls,
         pretrained_model_name_or_path: Union[str, os.PathLike],
@@ -310,7 +320,7 @@ class ConfigMixin:
             local_files_only (`bool`, *optional*, defaults to `False`):
                 Whether to only load local model weights and configuration files or not. If set to `True`, the model
                 won't be downloaded from the Hub.
-            use_auth_token (`str` or *bool*, *optional*):
+            token (`str` or *bool*, *optional*):
                 The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
                 `diffusers-cli login` (stored in `~/.huggingface`) is used.
             revision (`str`, *optional*, defaults to `"main"`):
@@ -328,11 +338,11 @@ class ConfigMixin:
                 A dictionary of all the parameters stored in a JSON configuration file.
 
         """
-        cache_dir = kwargs.pop("cache_dir", DIFFUSERS_CACHE)
+        cache_dir = kwargs.pop("cache_dir", None)
         force_download = kwargs.pop("force_download", False)
         resume_download = kwargs.pop("resume_download", False)
         proxies = kwargs.pop("proxies", None)
-        use_auth_token = kwargs.pop("use_auth_token", None)
+        token = kwargs.pop("token", None)
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         _ = kwargs.pop("mirror", None)
@@ -375,7 +385,7 @@ class ConfigMixin:
                     proxies=proxies,
                     resume_download=resume_download,
                     local_files_only=local_files_only,
-                    use_auth_token=use_auth_token,
+                    token=token,
                     user_agent=user_agent,
                     subfolder=subfolder,
                     revision=revision,
@@ -384,8 +394,7 @@ class ConfigMixin:
                 raise EnvironmentError(
                     f"{pretrained_model_name_or_path} is not a local folder and is not a valid model identifier"
                     " listed on 'https://huggingface.co/models'\nIf this is a private repository, make sure to pass a"
-                    " token having permission to this repo with `use_auth_token` or log in with `huggingface-cli"
-                    " login`."
+                    " token having permission to this repo with `token` or log in with `huggingface-cli login`."
                 )
             except RevisionNotFoundError:
                 raise EnvironmentError(
@@ -485,10 +494,18 @@ class ConfigMixin:
 
         # remove attributes from orig class that cannot be expected
         orig_cls_name = config_dict.pop("_class_name", cls.__name__)
-        if orig_cls_name != cls.__name__ and hasattr(diffusers_library, orig_cls_name):
+        if (
+            isinstance(orig_cls_name, str)
+            and orig_cls_name != cls.__name__
+            and hasattr(diffusers_library, orig_cls_name)
+        ):
             orig_cls = getattr(diffusers_library, orig_cls_name)
             unexpected_keys_from_orig = cls._get_init_keys(orig_cls) - expected_keys
             config_dict = {k: v for k, v in config_dict.items() if k not in unexpected_keys_from_orig}
+        elif not isinstance(orig_cls_name, str) and not isinstance(orig_cls_name, (list, tuple)):
+            raise ValueError(
+                "Make sure that the `_class_name` is of type string or list of string (for custom pipelines)."
+            )
 
         # remove private attributes
         config_dict = {k: v for k, v in config_dict.items() if not k.startswith("_")}
@@ -516,7 +533,7 @@ class ConfigMixin:
                 f"{cls.config_name} configuration file."
             )
 
-        # 5. Give nice info if config attributes are initiliazed to default because they have not been passed
+        # 5. Give nice info if config attributes are initialized to default because they have not been passed
         passed_keys = set(init_dict.keys())
         if len(expected_keys - passed_keys) > 0:
             logger.info(

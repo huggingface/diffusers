@@ -1,0 +1,36 @@
+name: Run Torch dependency tests
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "src/diffusers/**.py"
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check_torch_dependencies:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m pip install --upgrade pip uv
+          python -m uv pip install -e .
+          python -m uv pip install torch torchvision torchaudio
+          python -m uv pip install pytest
+      - name: Check for soft dependencies
+        run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          pytest tests/others/test_dependencies.py

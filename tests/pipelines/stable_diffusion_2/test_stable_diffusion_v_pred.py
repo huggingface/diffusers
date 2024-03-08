@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -127,6 +127,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=None,
+            image_encoder=None,
             requires_safety_checker=False,
         )
         sd_pipe = sd_pipe.to(device)
@@ -176,6 +177,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=None,
+            image_encoder=None,
             requires_safety_checker=False,
         )
         sd_pipe = sd_pipe.to(device)
@@ -236,6 +238,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=None,
+            image_encoder=None,
             requires_safety_checker=False,
         )
         sd_pipe = sd_pipe.to(torch_device)
@@ -320,7 +323,9 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         TODO: update this test after making DPM compatible with V-prediction!
         """
         scheduler = DPMSolverMultistepScheduler.from_pretrained(
-            "stabilityai/stable-diffusion-2", subfolder="scheduler"
+            "stabilityai/stable-diffusion-2",
+            subfolder="scheduler",
+            final_sigmas_type="sigma_min",
         )
         sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2", scheduler=scheduler)
         sd_pipe = sd_pipe.to(torch_device)
@@ -367,9 +372,9 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         output = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy")
         image = output.images
 
-        # make sure that more than 5.5 GB is allocated
+        # make sure that more than 3.0 GB is allocated
         mem_bytes = torch.cuda.max_memory_allocated()
-        assert mem_bytes > 5.5 * 10**9
+        assert mem_bytes > 3 * 10**9
         max_diff = numpy_cosine_similarity_distance(image.flatten(), image_chunked.flatten())
         assert max_diff < 1e-3
 

@@ -20,7 +20,6 @@ import torch.nn as nn
 from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import logging
 from .modeling_utils import ModelMixin
-from .resnet import Downsample2D
 
 
 logger = logging.get_logger(__name__)
@@ -51,24 +50,28 @@ class MultiAdapter(ModelMixin):
         if len(adapters) == 1:
             raise ValueError("For a single adapter, please use the `T2IAdapter` class instead of `MultiAdapter`")
 
-        # The outputs from each adapter are added together with a weight
-        # This means that the change in dimenstions from downsampling must
-        # be the same for all adapters. Inductively, it also means the total
-        # downscale factor must also be the same for all adapters.
-
+        # The outputs from each adapter are added together with a weight.
+        # This means that the change in dimensions from downsampling must
+        # be the same for all adapters. Inductively, it also means the
+        # downscale_factor and total_downscale_factor must be the same for all
+        # adapters.
         first_adapter_total_downscale_factor = adapters[0].total_downscale_factor
-
+        first_adapter_downscale_factor = adapters[0].downscale_factor
         for idx in range(1, len(adapters)):
-            adapter_idx_total_downscale_factor = adapters[idx].total_downscale_factor
-
-            if adapter_idx_total_downscale_factor != first_adapter_total_downscale_factor:
+            if (
+                adapters[idx].total_downscale_factor != first_adapter_total_downscale_factor
+                or adapters[idx].downscale_factor != first_adapter_downscale_factor
+            ):
                 raise ValueError(
-                    f"Expecting all adapters to have the same total_downscale_factor, "
-                    f"but got adapters[0].total_downscale_factor={first_adapter_total_downscale_factor} and "
-                    f"adapter[`{idx}`]={adapter_idx_total_downscale_factor}"
+                    f"Expecting all adapters to have the same downscaling behavior, but got:\n"
+                    f"adapters[0].total_downscale_factor={first_adapter_total_downscale_factor}\n"
+                    f"adapters[0].downscale_factor={first_adapter_downscale_factor}\n"
+                    f"adapter[`{idx}`].total_downscale_factor={adapters[idx].total_downscale_factor}\n"
+                    f"adapter[`{idx}`].downscale_factor={adapters[idx].downscale_factor}"
                 )
 
-        self.total_downscale_factor = adapters[0].total_downscale_factor
+        self.total_downscale_factor = first_adapter_total_downscale_factor
+        self.downscale_factor = first_adapter_downscale_factor
 
     def forward(self, xs: torch.Tensor, adapter_weights: Optional[List[float]] = None) -> List[torch.Tensor]:
         r"""
@@ -274,6 +277,13 @@ class T2IAdapter(ModelMixin, ConfigMixin):
     def total_downscale_factor(self):
         return self.adapter.total_downscale_factor
 
+    @property
+    def downscale_factor(self):
+        """The downscale factor applied in the T2I-Adapter's initial pixel unshuffle operation. If an input image's dimensions are
+        not evenly divisible by the downscale_factor then an exception will be raised.
+        """
+        return self.adapter.unshuffle.downscale_factor
+
 
 # full adapter
 
@@ -399,7 +409,7 @@ class AdapterBlock(nn.Module):
 
         self.downsample = None
         if down:
-            self.downsample = Downsample2D(in_channels)
+            self.downsample = nn.AvgPool2d(kernel_size=2, stride=2, ceil_mode=True)
 
         self.in_conv = None
         if in_channels != out_channels:
@@ -446,9 +456,8 @@ class AdapterResnetBlock(nn.Module):
         This method takes input tensor x and applies a convolutional layer, ReLU activation, and another convolutional
         layer on the input tensor. It returns addition with the input tensor.
         """
-        h = x
-        h = self.block1(h)
-        h = self.act(h)
+
+        h = self.act(self.block1(x))
         h = self.block2(h)
 
         return h + x
@@ -526,7 +535,7 @@ class LightAdapterBlock(nn.Module):
 
         self.downsample = None
         if down:
-            self.downsample = Downsample2D(in_channels)
+            self.downsample = nn.AvgPool2d(kernel_size=2, stride=2, ceil_mode=True)
 
         self.in_conv = nn.Conv2d(in_channels, mid_channels, kernel_size=1)
         self.resnets = nn.Sequential(*[LightAdapterResnetBlock(mid_channels) for _ in range(num_res_blocks)])
@@ -568,9 +577,8 @@ class LightAdapterResnetBlock(nn.Module):
         This function takes input tensor x and processes it through one convolutional layer, ReLU activation, and
         another convolutional layer and adds it to input tensor.
         """
-        h = x
-        h = self.block1(h)
-        h = self.act(h)
+
+        h = self.act(self.block1(x))
         h = self.block2(h)
 
         return h + x

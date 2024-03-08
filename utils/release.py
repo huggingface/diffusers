@@ -130,7 +130,7 @@ def pre_release_work(patch=False):
 
 
 def post_release_work():
-    """Do all the necesarry post-release steps."""
+    """Do all the necessary post-release steps."""
     # First let's get the current version
     current_version = get_version()
     dev_version = f"{current_version.major}.{current_version.minor + 1}.0.dev0"

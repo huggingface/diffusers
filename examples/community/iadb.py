@@ -4,7 +4,7 @@ import torch
 
 from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import ConfigMixin
-from diffusers.pipeline_utils import ImagePipelineOutput
+from diffusers.pipelines.pipeline_utils import ImagePipelineOutput
 from diffusers.schedulers.scheduling_utils import SchedulerMixin
 
 
