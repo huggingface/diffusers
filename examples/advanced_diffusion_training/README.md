@@ -80,8 +80,7 @@ To do so, just specify `--train_text_encoder_ti` while launching training (for r
 Please keep the following points in mind:
 
 * SDXL has two text encoders. So, we fine-tune both using LoRA.
-* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memoםהקרry.
-
+* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
 
 ### 3D icon example
 
@@ -233,6 +232,32 @@ In ComfyUI we will load a LoRA and a textual embedding at the same time.
 ### Specifying a better VAE
 
 SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
+
+### DoRA training 
+The advanced script now supports DoRA training too!
+> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353), 
+**DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters. 
+The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference. 
+
+> [!NOTE]
+> 💡DoRA training is still _experimental_  
+> and is likely to require different hyperparameter values to perform best compared to a LoRA.
+> Specifically, we've noticed 2 differences to take into account your training: 
+> 1. **LoRA seem to converge faster than DoRA** (so a set of parameters that may lead to overfitting when training a LoRA may be working well for a DoRA)
+> 2. **DoRA quality superior to LoRA especially in lower ranks** the difference in quality of DoRA of rank 8 and LoRA of rank 8 appears to be more significant than when training ranks of 32 or 64 for example.  
+> This is also aligned with some of the quantitative analysis shown in the paper. 
+
+**Usage**
+1. To use DoRA you need to install `peft` from main: 
+```bash
+pip install git+https://github.com/huggingface/peft.git
+```
+2. Enable DoRA training by adding this flag
+```bash
+--use_dora
+```
+**Inference** 
+The inference is the same as if you train a regular LoRA 🤗
 
 
 ### Tips and Tricks
