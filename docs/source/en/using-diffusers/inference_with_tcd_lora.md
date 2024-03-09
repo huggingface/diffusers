@@ -18,19 +18,19 @@ Trajecotroy Consistency Distillation (TCD) enables the model to generate higher 
 
 From the [Official Project Page](https://mhh0318.github.io/tcd/), the major merit of TCD can be outlined as follows:
 
-> ***Better than Teacher:*** TCD maintains superior generative quality at both low NFEs and high NFEs, even exceeding the performance of DPM-Solver++(2S) with origin SDXL. It is worth noting that there is no additional discriminator or LPIPS supervision included during training.
+- ***Better than Teacher:*** TCD maintains superior generative quality at both small and large inference steps, even exceeding the performance of [DPM-Solver++(2S)](https://huggingface.co/docs/diffusers/api/schedulers/multistep_dpm_solver) with Stable Diffusion XL (SDXL). It is worth noting that there is no additional discriminator or LPIPS supervision is included during training.
 
-> ***Flexible NFEs:*** The NFEs for TCD sampling can be varied at will without adversely affecting the quality of the results.
+- ***Flexible NFEs:*** The NFEs for TCD sampling can be varied at will without adversely affecting the quality of the results.
 
-> ***Freely Change the Detailing:*** During inference, the level of detail in the image can be simply modified by adjusing one hyper-parameter gamma. This option does not require the introduction of any additional parameters.
+- ***Freely Change the Detailing:*** During inference, the level of detail in the image can be simply modified by adjusing the hyper-parameter gamma. This option does not require any additional parameters.
 
 For more technical details of TCD, please refer to [the paper](https://arxiv.org/abs/2402.19159).
 
-Trajectory consistency distillation can directly place on top of a pre-trained diffusion model as a LoRA module. Such LoRA can be identified as a versatile acceleration module applicable to different fine-tuned models or LoRAs sharing the same base model without the need for additional training.
+Trajectory consistency distillation can be directly placed on top of a pre-trained diffusion model as a [LoRA](https://huggingface.co/docs/diffusers/main/en/training/lora) module. Such a LoRA can be identified as a versatile acceleration module applicable to different fine-tuned models or LoRAs sharing the same base model without the need for additional training.
 
 TCD-LoRAs are available for [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base), and [stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0). 
 
-The corresponding checkpoints can be found at [TCD-SD15](https://huggingface.co/h1t/TCD-SD15-LoRA), [TCD-SD21-base](https://huggingface.co/h1t/TCD-SD21-base-LoRA) and [TCD-SDXL](https://huggingface.co/h1t/TCD-SDXL-LoRA), separately.
+The corresponding checkpoints can be found at [TCD-SD15](https://huggingface.co/h1t/TCD-SD15-LoRA), [TCD-SD21-base](https://huggingface.co/h1t/TCD-SD21-base-LoRA), and [TCD-SDXL](https://huggingface.co/h1t/TCD-SDXL-LoRA), respectively.
 
 
 This guide shows how to perform inference with TCD-LoRAs for 
@@ -42,7 +42,7 @@ This guide shows how to perform inference with TCD-LoRAs for
 - IP-Adapter
 - AnimateDiff
 
-TCD-LoRA can be considered an advanced method compared with [LCM-LoRA](https://latent-consistency-models.github.io/). The guide of TCD-LoRA workflow is:
+TCD-LoRA can be considered an advanced method compared with [LCM-LoRA](https://latent-consistency-models.github.io/). The main parts of the TCD-LoRA workflow are as follows::
 - Load the task specific pipeline and model.
 - Set the scheduler to [`TCDScheduler`].
 - Load the TCD-LoRA weights for the model.
@@ -76,7 +76,7 @@ pipe.scheduler = TCDScheduler.from_config(pipe.scheduler.config)
 pipe.load_lora_weights(tcd_lora_id)
 pipe.fuse_lora()
 
-prompt = "Beautiful woman, bubblegum pink, lemon yellow, minty blue, futuristic, high-detail, epic composition, watercolor."
+prompt = "Painting of the orange cat Otto von Garfield, Count of Bismarck-Schönhausen, Duke of Lauenburg, Minister-President of Prussia. Depicted wearing a Prussian Pickelhaube and eating his favorite meal - lasagna."
 
 image = pipe(
     prompt=prompt,
@@ -87,18 +87,20 @@ image = pipe(
 ).images[0]
 ```
 
-![](https://github.com/jabir-zheng/TCD/raw/main/assets/t2i_tcd.png)
+![](https://github.com/jabir-zheng/TCD/raw/main/assets/demo_image.png)
 
 
 <Tip>
+
 Eta (referred to as `gamma` in the paper) is used to control the stochasticity in every step.
 A value of 0.3 often yields good results, where eta = 0 means determinstic and eta = 1 is identity to Multi-step Consistency Sampler (as well as LCMScheduler).
 We recommend using a higher eta when increasing the number of inference steps.
+
 </Tip>
 
 ## TCD-LoRA is Versatile for Community Models
 
-As mentioned above, the TCD-LoRA is versatile for community models and plugins. We initially demonstrate the results with  a community fine-tuned base model [animagine-xl-3.0](https://huggingface.co/cagliostrolab/animagine-xl-3.0).
+As mentioned above, the TCD-LoRA is versatile for community models and plugins. To test-drive this, load a community fine-tuned base model [animagine-xl-3.0](https://huggingface.co/cagliostrolab/animagine-xl-3.0).
 
 ```python
 import torch
@@ -127,7 +129,7 @@ image = pipe(
 
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/animagine_xl.png)
 
-Furthermore, TCD-LoRA also support other style LoRA. Here is an example with [Papercut](https://huggingface.co/TheLastBen/Papercut_SDXL). To learn more about how to combine LoRAs, refer to [this guide](https://huggingface.co/docs/diffusers/tutorials/using_peft_for_inference#combine-multiple-adapters).
+Furthermore, TCD-LoRA also supports LoRAs corresponding to other styles. Below is an example with [Papercut](https://huggingface.co/TheLastBen/Papercut_SDXL). To learn more about how to combine LoRAs, refer to [this guide](https://huggingface.co/docs/diffusers/tutorials/using_peft_for_inference#combine-multiple-adapters).
 
 ```python
 import torch
@@ -205,7 +207,7 @@ grid_image = make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 
 ## Compatibility with ControlNet
 
-For this example, we'll keep using the SDXL model and the TCD-LoRA for SDXL with depth and canny ControlNet.
+For this example, you'll keep using the SDXL model and the TCD-LoRA for SDXL with depth and canny ControlNets.
 
 ### Depth ControlNet
 ```python
