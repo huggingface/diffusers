@@ -600,6 +600,26 @@ class StableDiffusionPanoramaPipeline(
             views.append((h_start, h_end, w_start, w_end))
         return views
 
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def cross_attention_kwargs(self):
+        return self._cross_attention_kwargs
+
+    @property
+    def clip_skip(self):
+        return self._clip_skip
+
+    @property
+    def do_classifier_free_guidance(self):
+        return False
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
