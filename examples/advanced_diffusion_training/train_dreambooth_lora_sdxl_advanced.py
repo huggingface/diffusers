@@ -81,6 +81,7 @@ logger = get_logger(__name__)
 
 def save_model_card(
     repo_id: str,
+    use_dora: bool,
     images=None,
     base_model=str,
     train_text_encoder=False,
@@ -92,6 +93,7 @@ def save_model_card(
     vae_path=None,
 ):
     img_str = "widget:\n"
+    lora = "lora" if not use_dora else "dora"
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"""
@@ -144,9 +146,10 @@ to trigger concept `{key}` → use `{tokens}` in your prompt \n
 tags:
 - stable-diffusion-xl
 - stable-diffusion-xl-diffusers
+- diffusers-training
 - text-to-image
 - diffusers
-- lora
+- {lora}
 - template:sd-lora
 {img_str}
 base_model: {base_model}
@@ -660,6 +663,15 @@ def parse_args(input_args=None):
         type=int,
         default=4,
         help=("The dimension of the LoRA update matrices."),
+    )
+    parser.add_argument(
+        "--use_dora",
+        action="store_true",
+        default=False,
+        help=(
+            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
+        ),
     )
     parser.add_argument(
         "--cache_latents",
@@ -1323,6 +1335,7 @@ def main(args):
     unet_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
+        use_dora=args.use_dora,
         init_lora_weights="gaussian",
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
@@ -1334,6 +1347,7 @@ def main(args):
         text_lora_config = LoraConfig(
             r=args.rank,
             lora_alpha=args.rank,
+            use_dora=args.use_dora,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
@@ -2192,6 +2206,7 @@ def main(args):
 
         save_model_card(
             model_id if not args.push_to_hub else repo_id,
+            use_dora=args.use_dora,
             images=images,
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,
