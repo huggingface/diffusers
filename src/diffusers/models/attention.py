@@ -143,7 +143,7 @@ class BasicTransformerBlock(nn.Module):
         double_self_attention: bool = False,
         upcast_attention: bool = False,
         norm_elementwise_affine: bool = True,
-        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single', 'layer_norm_i2vgen'
+        norm_type: str = "layer_norm",  # 'layer_norm', 'ada_norm', 'ada_norm_zero', 'ada_norm_single', 'ada_norm_continuous', 'layer_norm_i2vgen'
         norm_eps: float = 1e-5,
         final_dropout: bool = False,
         attention_type: str = "default",
@@ -440,7 +440,6 @@ class TemporalBasicTransformerBlock(nn.Module):
 
         # Define 3 blocks. Each block has its own normalization layer.
         # 1. Self-Attn
-        self.norm_in = nn.LayerNorm(dim)
         self.ff_in = FeedForward(
             dim,
             dim_out=time_mix_inner_dim,

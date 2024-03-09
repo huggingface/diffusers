@@ -429,6 +429,27 @@ image = pipe(
 make_image_grid([original_image, canny_image, image], rows=1, cols=3)
 ```
 
+<Tip>
+
+You can use a refiner model with `StableDiffusionXLControlNetPipeline` to improve image quality, just like you can with a regular `StableDiffusionXLPipeline`.
+See the [Refine image quality](./sdxl#refine-image-quality) section to learn how to use the refiner model.
+Make sure to use `StableDiffusionXLControlNetPipeline` and pass `image` and `controlnet_conditioning_scale`.
+
+```py
+base = StableDiffusionXLControlNetPipeline(...)
+image = base(
+    prompt=prompt,
+    controlnet_conditioning_scale=0.5,
+    image=canny_image,
+    num_inference_steps=40,
+    denoising_end=0.8,
+    output_type="latent",
+).images
+# rest exactly as with StableDiffusionXLPipeline
+```
+
+</Tip>
+
 ## MultiControlNet
 
 <Tip>
