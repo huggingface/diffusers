@@ -53,12 +53,19 @@ from ..utils import (
     deprecate,
     is_accelerate_available,
     is_accelerate_version,
+    is_torch_npu_available,
     is_torch_version,
     logging,
     numpy_to_pil,
 )
 from ..utils.hub_utils import load_or_create_model_card, populate_model_card
 from ..utils.torch_utils import is_compiled_module
+
+
+if is_torch_npu_available():
+    import torch_npu  # noqa: F401
+
+
 from .pipeline_loading_utils import (
     ALL_IMPORTABLE_CLASSES,
     CONNECTED_PIPES_KEYS,
