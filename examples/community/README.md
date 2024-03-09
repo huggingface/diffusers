@@ -3414,15 +3414,13 @@ pipeline(prompt, uncond, inverted_latent, guidance_scale=7.5, num_inference_step
 
 ### Rerender A Video
 
-This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender A Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `examples/community/rerender_a_video.py`:
+This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender A Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `gmflow_dir`. After that, you can run the pipeline with:
 
 ```py
+import sys
 gmflow_dir = "/path/to/gmflow"
-```
+sys.path.insert(0, gmflow_dir)
 
-After that, you can run the pipeline with:
-
-```py
 from diffusers import ControlNetModel, AutoencoderKL, DDIMScheduler
 from diffusers.utils import export_to_video
 import numpy as np
