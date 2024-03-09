@@ -189,6 +189,30 @@ class FromSingleFileMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
+            original_config_file (`str`, *optional*):
+                The path to the original config file that was used to train the model. If not provided, the config file
+                will be inferred from the checkpoint file.
+            model_type (`str`, *optional*):
+                The type of model to load. If not provided, the model type will be inferred from the checkpoint file.
+            image_size (`int`, *optional*):
+                The size of the image output. It's used to configure the `sample_size` parameter of the UNet and VAE model.
+            load_safety_checker (`bool`, *optional*, defaults to `False`):
+                Whether to load the safety checker model or not. By default, the safety checker is not loaded unless a `safety_checker` component is passed to the `kwargs`.
+            num_in_channels (`int`, *optional*):
+                Specify the number of input channels for the UNet model. Read more about how to configure UNet model with this parameter
+                [here](https://huggingface.co/docs/diffusers/training/adapt_a_model#configure-unet2dconditionmodel-parameters).
+            scaling_factor (`float`, *optional*):
+                The scaling factor to use for the VAE model. If not provided, it is inferred from the config file first.
+                If the scaling factor is not found in the config file, the default value 0.18215 is used.
+            scheduler_type (`str`, *optional*):
+                The type of scheduler to load. If not provided, the scheduler type will be inferred from the checkpoint file.
+            prediction_type (`str`, *optional*):
+                The type of prediction to load. If not provided, the prediction type will be inferred from the checkpoint file.
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
+                class). The overwritten components are passed directly to the pipelines `__init__` method. See example
+                below for more information.
+
         Examples:
 
         ```py
