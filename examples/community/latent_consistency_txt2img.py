@@ -418,7 +418,7 @@ class LCMScheduler(SchedulerMixin, ConfigMixin):
             there is no previous alpha. When this option is `True` the previous alpha product is fixed to `1`,
             otherwise it uses the alpha value at step 0.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps.
+            An offset added to the inference steps, as required by some model families.
         prediction_type (`str`, defaults to `epsilon`, *optional*):
             Prediction type of the scheduler function; can be `epsilon` (predicts the noise of the diffusion process),
             `sample` (directly predicts the noisy sample`) or `v_prediction` (see section 2.4 of [Imagen
