@@ -107,7 +107,7 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
         outputs = torch.stack(outputs)
 
     elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
 
     return outputs
 
@@ -860,8 +860,8 @@ class PIAPipeline(
         Examples:
 
         Returns:
-            [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] is
+            [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
@@ -1018,13 +1018,14 @@ class PIAPipeline(
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
 
+        # 9. Post processing
         if output_type == "latent":
-            return PIAPipelineOutput(frames=latents)
+            video = latents
+        else:
+            video_tensor = self.decode_latents(latents)
+            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
-        video_tensor = self.decode_latents(latents)
-        video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
-
-        # 9. Offload all models
+        # 10. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
