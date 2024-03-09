@@ -1602,7 +1602,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
             else:
                 latents = latents / self.vae.config.scaling_factor
 
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            image = self.vae.decode(latents , return_dict=False)[0]
 
             # cast back to fp16 if needed
             if needs_upcasting:
