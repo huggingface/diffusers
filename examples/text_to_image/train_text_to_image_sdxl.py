@@ -101,6 +101,7 @@ Special VAE used for training: {vae_path}.
         "stable-diffusion-xl",
         "stable-diffusion-xl-diffusers",
         "text-to-image",
+        "diffusers-training",
         "diffusers",
     ]
     model_card = populate_model_card(model_card, tags=tags)

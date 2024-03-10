@@ -460,6 +460,8 @@ tags:
 - text-to-image
 - diffusers
 - controlnet
+- diffusers-training
+- webdataset
 inference: true
 ---
     """
