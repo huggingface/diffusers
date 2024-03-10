@@ -848,14 +848,62 @@ class UNet2DConditionLoadersMixin:
 
                 for state_dict in state_dicts:
                     if f"{key_id}.to_k_lora.down.weight" in state_dict["ip_adapter"]:
-                        lora_dict.update({f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.down.weight"]})
-                        lora_dict.update({f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"]})
-                        lora_dict.update({f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.down.weight"]})
-                        lora_dict.update({f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.down.weight"]})
-                        lora_dict.update({f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]})
-                        lora_dict.update({f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]})
-                        lora_dict.update({f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]})
-                        lora_dict.update({f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.up.weight"]})
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_k_lora.down.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_q_lora.down.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_v_lora.down.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_out_lora.down.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_k_lora.up.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_q_lora.up.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_v_lora.up.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_out_lora.up.weight"
+                                ]
+                            }
+                        )
                         key_id += 1
                         break
             else:
@@ -890,14 +938,62 @@ class UNet2DConditionLoadersMixin:
                     value_dict.update({f"to_k_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_k_ip.weight"]})
                     value_dict.update({f"to_v_ip.{i}.weight": state_dict["ip_adapter"][f"{key_id}.to_v_ip.weight"]})
                     if f"{key_id}.to_k_lora.down.weight" in state_dict["ip_adapter"]:
-                        lora_dict.update({f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.down.weight"]})
-                        lora_dict.update({f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"]})
-                        lora_dict.update({f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.down.weight"]})
-                        lora_dict.update({f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.down.weight"]})
-                        lora_dict.update({f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]})
-                        lora_dict.update({f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]})
-                        lora_dict.update({f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]})
-                        lora_dict.update({f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.up.weight"]})
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_k_lora.down.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_q_lora.down.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_v_lora.down.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_out_lora.down.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_k_lora.up.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_q_lora.up.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_v_lora.up.weight"
+                                ]
+                            }
+                        )
+                        lora_dict.update(
+                            {
+                                f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][
+                                    f"{key_id}.to_out_lora.up.weight"
+                                ]
+                            }
+                        )
 
                 if not low_cpu_mem_usage:
                     attn_procs[name].load_state_dict(value_dict)
@@ -917,7 +1013,9 @@ class UNet2DConditionLoadersMixin:
         # because `IPAdapterPlusImageProjection` also has `attn_processors`.
         self.encoder_hid_proj = None
 
-        attn_procs, lora_dict = self._convert_ip_adapter_attn_to_diffusers(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
+        attn_procs, lora_dict = self._convert_ip_adapter_attn_to_diffusers(
+            state_dicts, low_cpu_mem_usage=low_cpu_mem_usage
+        )
         self.set_attn_processor(attn_procs)
 
         # convert IP-Adapter Image Projection layers to diffusers
