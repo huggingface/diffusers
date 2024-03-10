@@ -311,10 +311,10 @@ class TransformerSpatioTemporalModel(nn.Module):
         time_context_first_timestep = time_context[None, :].reshape(
             batch_size, num_frames, -1, time_context.shape[-1]
         )[:, 0]
-        time_context = time_context_first_timestep[None, :].broadcast_to(
-            height * width, batch_size, 1, time_context.shape[-1]
+        time_context = time_context_first_timestep[:, None].broadcast_to(
+             batch_size, height * width, time_context.shape[-2], time_context.shape[-1]
         )
-        time_context = time_context.reshape(height * width * batch_size, 1, time_context.shape[-1])
+        time_context = time_context.reshape(batch_size * height * width , -1, time_context.shape[-1])
 
         residual = hidden_states
 
