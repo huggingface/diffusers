@@ -214,8 +214,8 @@ class IPAdapterMixin:
                         )
                 else:
                     logger.warning(
-                        "image_encoder is not loaded since `image_encoder_folder=None` passed. You will not be able to use `ip_adapter_image` when calling the pipeline with IP-Adapter."
-                        "Use `ip_adapter_image_embedding` to pass pre-geneated image embedding instead."
+                        "image_encoder is not loaded since `image_encoder_folder=None` passed. `ip_adapter_image` is allowed only if you are loading an IP-Adapter Face ID model."
+                        "If you don't load an IP Adapter Face ID model, always use `ip_adapter_image_embedding` to pass pre-geneated image embedding instead."
                     )
 
             # create feature extractor if it has not been registered to the pipeline yet
@@ -228,8 +228,11 @@ class IPAdapterMixin:
         extra_lora = unet._load_ip_adapter_weights(state_dicts, low_cpu_mem_usage=low_cpu_mem_usage)
 
         if extra_lora != {}:
-            self.load_lora_weights(extra_lora, adapter_name="faceid")
-            self.set_adapters(["faceid"], adapter_weights=[1.0])
+            # apply the IP Adapter Face ID LoRA weights
+            peft_config = getattr(unet, "peft_config", {})
+            if "faceid" not in peft_config:
+                self.load_lora_weights(extra_lora, adapter_name="faceid")
+                self.set_adapters(["faceid"], adapter_weights=[1.0])
 
     def set_ip_adapter_scale(self, scale):
         """

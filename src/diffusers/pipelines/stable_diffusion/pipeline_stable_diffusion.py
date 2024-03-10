@@ -490,8 +490,14 @@ class StableDiffusionPipeline(
 
                 return image_embeds, uncond_image_embeds
         else:
-            # TODO: add checks
             dtype = next(self.unet.parameters()).dtype
+
+            if not isinstance(image, torch.Tensor):
+                raise ValueError("When no image encoder is loaded, `image` must be a torch.Tensor")
+
+            if image.ndim < 2:
+                image = image.unsqueeze(0)
+
             image_embeds = image.to(device=device, dtype=dtype)
             uncond_image_embeds = torch.zeros_like(image_embeds)
             return image_embeds, uncond_image_embeds
