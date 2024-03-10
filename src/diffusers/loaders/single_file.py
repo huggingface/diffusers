@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -48,6 +48,7 @@ def build_sub_model_components(
     load_safety_checker=False,
     model_type=None,
     image_size=None,
+    torch_dtype=None,
     **kwargs,
 ):
     if component_name in pipeline_components:
@@ -56,14 +57,26 @@ def build_sub_model_components(
     if component_name == "unet":
         num_in_channels = kwargs.pop("num_in_channels", None)
         unet_components = create_diffusers_unet_model_from_ldm(
-            pipeline_class_name, original_config, checkpoint, num_in_channels=num_in_channels, image_size=image_size
+            pipeline_class_name,
+            original_config,
+            checkpoint,
+            num_in_channels=num_in_channels,
+            image_size=image_size,
+            torch_dtype=torch_dtype,
+            model_type=model_type,
         )
         return unet_components
 
     if component_name == "vae":
         scaling_factor = kwargs.get("scaling_factor", None)
         vae_components = create_diffusers_vae_model_from_ldm(
-            pipeline_class_name, original_config, checkpoint, image_size, scaling_factor
+            pipeline_class_name,
+            original_config,
+            checkpoint,
+            image_size,
+            scaling_factor,
+            torch_dtype,
+            model_type=model_type,
         )
         return vae_components
 
@@ -88,6 +101,7 @@ def build_sub_model_components(
             checkpoint,
             model_type=model_type,
             local_files_only=local_files_only,
+            torch_dtype=torch_dtype,
         )
         return text_encoder_components
 
@@ -96,7 +110,7 @@ def build_sub_model_components(
             from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
             safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
+                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only, torch_dtype=torch_dtype
             )
         else:
             safety_checker = None
@@ -117,11 +131,12 @@ def build_sub_model_components(
 def set_additional_components(
     pipeline_class_name,
     original_config,
+    checkpoint=None,
     model_type=None,
 ):
     components = {}
     if pipeline_class_name in REFINER_PIPELINES:
-        model_type = infer_model_type(original_config, model_type=model_type)
+        model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
         is_refiner = model_type == "SDXL-Refiner"
         components.update(
             {
@@ -174,10 +189,30 @@ class FromSingleFileMixin:
             revision (`str`, *optional*, defaults to `"main"`):
                 The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
                 allowed by Git.
-            use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
-                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
-                weights. If set to `False`, safetensors weights are not loaded.
+            original_config_file (`str`, *optional*):
+                The path to the original config file that was used to train the model. If not provided, the config file
+                will be inferred from the checkpoint file.
+            model_type (`str`, *optional*):
+                The type of model to load. If not provided, the model type will be inferred from the checkpoint file.
+            image_size (`int`, *optional*):
+                The size of the image output. It's used to configure the `sample_size` parameter of the UNet and VAE model.
+            load_safety_checker (`bool`, *optional*, defaults to `False`):
+                Whether to load the safety checker model or not. By default, the safety checker is not loaded unless a `safety_checker` component is passed to the `kwargs`.
+            num_in_channels (`int`, *optional*):
+                Specify the number of input channels for the UNet model. Read more about how to configure UNet model with this parameter
+                [here](https://huggingface.co/docs/diffusers/training/adapt_a_model#configure-unet2dconditionmodel-parameters).
+            scaling_factor (`float`, *optional*):
+                The scaling factor to use for the VAE model. If not provided, it is inferred from the config file first.
+                If the scaling factor is not found in the config file, the default value 0.18215 is used.
+            scheduler_type (`str`, *optional*):
+                The type of scheduler to load. If not provided, the scheduler type will be inferred from the checkpoint file.
+            prediction_type (`str`, *optional*):
+                The type of prediction to load. If not provided, the prediction type will be inferred from the checkpoint file.
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load and saveable variables (the pipeline components of the specific pipeline
+                class). The overwritten components are passed directly to the pipelines `__init__` method. See example
+                below for more information.
+
         Examples:
 
         ```py
@@ -209,7 +244,6 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        use_safetensors = kwargs.pop("use_safetensors", True)
 
         class_name = cls.__name__
 
@@ -223,7 +257,6 @@ class FromSingleFileMixin:
             token=token,
             revision=revision,
             local_files_only=local_files_only,
-            use_safetensors=use_safetensors,
             cache_dir=cache_dir,
         )
 
@@ -260,6 +293,7 @@ class FromSingleFileMixin:
                     image_size=image_size,
                     load_safety_checker=load_safety_checker,
                     local_files_only=local_files_only,
+                    torch_dtype=torch_dtype,
                     **kwargs,
                 )
                 if not components:

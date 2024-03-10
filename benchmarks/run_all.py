@@ -72,7 +72,7 @@ def main():
                 command += " --run_compile"
                 run_command(command.split())
 
-        elif file == "benchmark_sd_inpainting.py":
+        elif file in ["benchmark_sd_inpainting.py", "benchmark_ip_adapters.py"]:
             sdxl_ckpt = "stabilityai/stable-diffusion-xl-base-1.0"
             command = f"python {file} --ckpt {sdxl_ckpt}"
             run_command(command.split())

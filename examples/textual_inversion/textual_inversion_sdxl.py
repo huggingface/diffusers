@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -32,8 +32,6 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
 from huggingface_hub import create_repo, upload_folder
-
-# TODO: remove and import from diffusers.utils when the new version of diffusers is released
 from packaging import version
 from PIL import Image
 from torch.utils.data import Dataset
@@ -51,6 +49,7 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -77,7 +76,7 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.25.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -88,26 +87,32 @@ def save_model_card(repo_id: str, images=None, base_model=str, repo_folder=None)
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"![img_{i}](./image_{i}.png)\n"
 
-    yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {base_model}
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- text-to-image
-- diffusers
-- textual_inversion
-inference: true
----
-    """
-    model_card = f"""
+    model_description = f"""
 # Textual inversion text2image fine-tuning - {repo_id}
 These are textual inversion adaption weights for {base_model}. You can find some example images in the following. \n
 {img_str}
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=base_model,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = [
+        "stable-diffusion-xl",
+        "stable-diffusion-xl-diffusers",
+        "text-to-image",
+        "diffusers",
+        "diffusers-training",
+        "textual_inversion",
+    ]
+
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def log_validation(
@@ -372,7 +377,7 @@ def parse_args():
     parser.add_argument(
         "--validation_prompt",
         type=str,
-        default="A <cat-toy> backpack",
+        default=None,
         help="A prompt that is used during validation to verify that the model is learning.",
     )
     parser.add_argument(
@@ -542,6 +547,8 @@ class TextualInversionDataset(Dataset):
 
         example["original_size"] = (image.height, image.width)
 
+        image = image.resize((self.size, self.size), resample=self.interpolation)
+
         if self.center_crop:
             y1 = max(0, int(round((image.height - self.size) / 2.0)))
             x1 = max(0, int(round((image.width - self.size) / 2.0)))
@@ -572,7 +579,6 @@ class TextualInversionDataset(Dataset):
         img = np.array(image).astype(np.uint8)
 
         image = Image.fromarray(img)
-        image = image.resize((self.size, self.size), resample=self.interpolation)
 
         image = self.flip_transform(image)
         image = np.array(image).astype(np.uint8)
@@ -584,6 +590,12 @@ class TextualInversionDataset(Dataset):
 
 def main():
     args = parse_args()
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     accelerator = Accelerator(

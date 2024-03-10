@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -62,7 +62,10 @@ def create_ip_adapter_state_dict(model):
     key_id = 1
 
     for name in model.attn_processors.keys():
-        cross_attention_dim = None if name.endswith("attn1.processor") else model.config.cross_attention_dim
+        cross_attention_dim = (
+            None if name.endswith("attn1.processor") or "motion_module" in name else model.config.cross_attention_dim
+        )
+
         if name.startswith("mid_block"):
             hidden_size = model.config.block_out_channels[-1]
         elif name.startswith("up_blocks"):
@@ -71,6 +74,7 @@ def create_ip_adapter_state_dict(model):
         elif name.startswith("down_blocks"):
             block_id = int(name[len("down_blocks.")])
             hidden_size = model.config.block_out_channels[block_id]
+
         if cross_attention_dim is not None:
             sd = IPAdapterAttnProcessor(
                 hidden_size=hidden_size, cross_attention_dim=cross_attention_dim, scale=1.0
