@@ -131,6 +131,56 @@ decoder_output = decoder(
 decoder_output.save("cascade.png")
 ```
 
+## Loading original checkpoints with `from_single_file`
+
+Loading the original format checkpoints is supported via `from_single_file` method in the StableCascadeUNet.
+
+```python
+import torch
+from diffusers import (
+    StableCascadeDecoderPipeline,
+    StableCascadePriorPipeline,
+    StableCascadeUNet,
+)
+
+prompt = "an image of a shiba inu, donning a spacesuit and helmet"
+negative_prompt = ""
+
+prior_unet = StableCascadeUNet.from_single_file(
+    "https://huggingface.co/stabilityai/stable-cascade/resolve/main/stage_c_bf16.safetensors",
+    torch_dtype=torch.bfloat16
+)
+decoder_unet = StableCascadeUNet.from_single_file(
+    "https://huggingface.co/stabilityai/stable-cascade/blob/main/stage_b_bf16.safetensors",
+    torch_dtype=torch.bfloat16
+)
+
+prior = StableCascadePriorPipeline.from_pretrained("../checkpoints/stable-cascade-prior", prior=prior_unet, torch_dtype=torch.bfloat16)
+decoder = StableCascadeDecoderPipeline.from_pretrained("../checkpoints/stable-cascade", decoder=decoder_unet, torch_dtype=torch.bfloat16)
+
+prior.enable_model_cpu_offload()
+prior_output = prior(
+    prompt=prompt,
+    height=1024,
+    width=1024,
+    negative_prompt=negative_prompt,
+    guidance_scale=4.0,
+    num_images_per_prompt=1,
+    num_inference_steps=20
+)
+
+decoder.enable_model_cpu_offload()
+decoder_output = decoder(
+    image_embeddings=prior_output.image_embeddings,
+    prompt=prompt,
+    negative_prompt=negative_prompt,
+    guidance_scale=0.0,
+    output_type="pil",
+    num_inference_steps=10
+).images[0]
+decoder_output.save("cascade-single-file.png")
+```
+
 ## Uses
 
 ### Direct Use
