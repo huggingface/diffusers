@@ -126,7 +126,7 @@ decoder_output = decoder(
     negative_prompt=negative_prompt,
     guidance_scale=0.0,
     output_type="pil",
-    num_inference_steps=20
+    num_inference_steps=10
 ).images[0]
 decoder_output.save("cascade.png")
 ```
