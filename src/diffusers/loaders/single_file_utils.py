@@ -257,6 +257,39 @@ def fetch_ldm_config_and_checkpoint(
     return original_config, checkpoint
 
 
+def load_single_file_model_checkpoint(pretrained_model_link_or_path, **kwargs):
+    resume_download = kwargs.pop("resume_download", False)
+    force_download = kwargs.pop("force_download", False)
+    proxies = kwargs.pop("proxies", None)
+    token = kwargs.pop("token", None)
+    cache_dir = kwargs.pop("cache_dir", None)
+    local_files_only = kwargs.pop("local_files_only", None)
+    revision = kwargs.pop("revision", None)
+
+    if os.path.isfile(pretrained_model_link_or_path):
+        checkpoint = load_state_dict(pretrained_model_link_or_path)
+    else:
+        repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
+        checkpoint_path = _get_model_file(
+            repo_id,
+            weights_name=weights_name,
+            force_download=force_download,
+            cache_dir=cache_dir,
+            resume_download=resume_download,
+            proxies=proxies,
+            local_files_only=local_files_only,
+            token=token,
+            revision=revision,
+        )
+        checkpoint = load_state_dict(checkpoint_path)
+
+    # some checkpoints contain the model state dict under a "state_dict" key
+    while "state_dict" in checkpoint:
+        checkpoint = checkpoint["state_dict"]
+
+    return checkpoint
+
+
 def infer_original_config_file(class_name, checkpoint):
     if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
         config_url = CONFIG_URLS["v2"]

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import math
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -21,9 +22,94 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput
+from ...loaders.single_file_utils import load_single_file_model_checkpoint
+from ...utils import BaseOutput, is_accelerate_available
 from ..attention_processor import Attention
-from ..modeling_utils import ModelMixin
+from ..modeling_utils import ModelMixin, load_model_dict_into_meta
+
+
+if is_accelerate_available():
+    from accelerate import init_empty_weights
+
+
+DEFAULT_CONFIGS = {
+    "stage_c": {"pretrained_model_name_or_path": "stabilityai/stable-cascade-prior", "subfolder": "prior"},
+    "stage_c_lite": {"pretrained_model_name_or_path": "stabilityai/stable-cascade-prior", "subfolder": "prior_lite"},
+    "stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder"},
+    "stage_b_lite": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder_lite"},
+}
+
+
+def convert_single_file_to_diffusers(original_state_dict):
+    is_stage_c = "clip_txt_mapper.weight" in original_state_dict
+
+    if is_stage_c:
+        state_dict = {}
+        for key in original_state_dict.keys():
+            if key.endswith("in_proj_weight"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            else:
+                state_dict[key] = original_state_dict[key]
+    else:
+        state_dict = {}
+        for key in original_state_dict.keys():
+            if key.endswith("in_proj_weight"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            # rename clip_mapper to clip_txt_pooled_mapper
+            elif key.endswith("clip_mapper.weight"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("clip_mapper.weight", "clip_txt_pooled_mapper.weight")] = weights
+            elif key.endswith("clip_mapper.bias"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
+            else:
+                state_dict[key] = original_state_dict[key]
+
+    return state_dict
+
+
+def infer_single_file_config(checkpoint):
+    is_stage_c = "clip_txt_mapper.weight" in checkpoint
+    is_stage_b = "down_blocks.1.0.channelwise.0.weight" in checkpoint
+
+    if is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 1536):
+        config_type = "stage_c_lite"
+    elif is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 2048):
+        config_type = "stage_c"
+    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 576:
+        config_type = "stage_b_lite"
+    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 640:
+        config_type = "stage_b"
+
+    return DEFAULT_CONFIGS[config_type]
 
 
 # Copied from diffusers.pipelines.wuerstchen.modeling_wuerstchen_common.WuerstchenLayerNorm with WuerstchenLayerNorm -> SDCascadeLayerNorm
@@ -386,6 +472,25 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         )
 
         self.gradient_checkpointing = False
+
+    @classmethod
+    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
+        config = kwargs.pop("config", None)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
+        checkpoint = load_single_file_model_checkpoint(pretrained_model_link_or_path, **kwargs)
+        if config is None:
+            config = infer_single_file_config(checkpoint)
+
+        ctx = init_empty_weights if is_accelerate_available() else nullcontext
+        with ctx():
+            model_config = cls.load_config(**config, **kwargs)
+            model = cls.from_config(model_config, **kwargs)
+
+        diffusers_format_checkpoint = convert_single_file_to_diffusers(checkpoint)
+        load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+
+        return model
 
     def _set_gradient_checkpointing(self, value=False):
         self.gradient_checkpointing = value
