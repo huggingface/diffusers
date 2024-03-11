@@ -155,8 +155,8 @@ decoder_unet = StableCascadeUNet.from_single_file(
     torch_dtype=torch.bfloat16
 )
 
-prior = StableCascadePriorPipeline.from_pretrained("../checkpoints/stable-cascade-prior", prior=prior_unet, torch_dtype=torch.bfloat16)
-decoder = StableCascadeDecoderPipeline.from_pretrained("../checkpoints/stable-cascade", decoder=decoder_unet, torch_dtype=torch.bfloat16)
+prior = StableCascadePriorPipeline.from_pretrained("stabilityai/stable-cascade-prior", prior=prior_unet, torch_dtype=torch.bfloat16)
+decoder = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", decoder=decoder_unet, torch_dtype=torch.bfloat16)
 
 prior.enable_model_cpu_offload()
 prior_output = prior(
