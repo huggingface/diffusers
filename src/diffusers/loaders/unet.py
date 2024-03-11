@@ -358,27 +358,24 @@ class UNet2DConditionLoadersMixin:
                         )
                         remove_hook_from_module(component, recurse=is_sequential_cpu_offload)
 
-            # only custom diffusion needs to set attn processors
-            if is_custom_diffusion:
-                self.set_attn_processor(attn_processors)
+        # only custom diffusion needs to set attn processors
+        if is_custom_diffusion:
+            #Load custom diffusion cross attention weight with PEFT installed in environment
+            self.set_attn_processor(attn_processors)
 
-            # set lora layers
-            for target_module, lora_layer in lora_layers_list:
-                target_module.set_lora_layer(lora_layer)
+        # set lora layers
+        for target_module, lora_layer in lora_layers_list:
+            target_module.set_lora_layer(lora_layer)
 
-            self.to(dtype=self.dtype, device=self.device)
-
+        self.to(dtype=self.dtype, device=self.device)
+        
+        if not USE_PEFT_BACKEND:
             # Offload back.
             if is_model_cpu_offload:
                 _pipeline.enable_model_cpu_offload()
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
             # Unsafe code />
-        elif is_custom_diffusion:
-                #Load custom diffusion cross attention weight with PEFT installed in environment
-                self.set_attn_processor(attn_processors)
-            
-                self.to(dtype=self.dtype, device=self.device)
                 
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
