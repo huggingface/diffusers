@@ -502,8 +502,19 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
         )
 
         if load_weights_from_unet:
-            controlnet.load_state_dict(unet.state_dict(), strict=False)
-            
+            controlnet.conv_in.load_state_dict(unet.conv_in.state_dict())
+            controlnet.time_proj.load_state_dict(unet.time_proj.state_dict())
+            controlnet.time_embedding.load_state_dict(unet.time_embedding.state_dict())
+
+            if controlnet.class_embedding:
+                controlnet.class_embedding.load_state_dict(unet.class_embedding.state_dict())
+
+            if hasattr(controlnet, "add_embedding"):
+                controlnet.add_embedding.load_state_dict(unet.add_embedding.state_dict())
+
+            controlnet.down_blocks.load_state_dict(unet.down_blocks.state_dict())
+            controlnet.mid_block.load_state_dict(unet.mid_block.state_dict())
+
         return controlnet
 
     @property
