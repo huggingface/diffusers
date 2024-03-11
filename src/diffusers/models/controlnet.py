@@ -508,7 +508,7 @@ class ControlNetModel(ModelMixin, ConfigMixin, FromOriginalControlNetMixin):
 
             if controlnet.class_embedding:
                 controlnet.class_embedding.load_state_dict(unet.class_embedding.state_dict())
-                
+
             if hasattr(controlnet, "add_embedding"):
                 controlnet.add_embedding.load_state_dict(unet.add_embedding.state_dict())
 
