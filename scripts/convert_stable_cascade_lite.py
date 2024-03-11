@@ -1,7 +1,7 @@
 # Run this script to convert the Stable Cascade model weights to a diffusers pipeline.
 import argparse
+from contextlib import nullcontext
 
-import accelerate
 import torch
 from safetensors.torch import load_file
 from transformers import (
@@ -21,7 +21,11 @@ from diffusers import (
 from diffusers.models import StableCascadeUNet
 from diffusers.models.modeling_utils import load_model_dict_into_meta
 from diffusers.pipelines.wuerstchen import PaellaVQModel
+from diffusers.utils import is_accelerate_available
 
+
+if is_accelerate_available():
+    from accelerate import init_empty_weights
 
 parser = argparse.ArgumentParser(description="Convert Stable Cascade model weights to a diffusers pipeline")
 parser.add_argument("--model_path", type=str, default="../StableCascade", help="Location of Stable Cascade weights")
@@ -63,6 +67,8 @@ if args.use_safetensors:
 else:
     orig_state_dict = torch.load(prior_checkpoint_path, map_location=device)
 
+ctx = init_empty_weights if is_accelerate_available() else nullcontext
+
 state_dict = {}
 for key in orig_state_dict.keys():
     if key.endswith("in_proj_weight"):
@@ -85,7 +91,7 @@ for key in orig_state_dict.keys():
         state_dict[key] = orig_state_dict[key]
 
 
-with accelerate.init_empty_weights():
+with ctx():
     prior_model = StableCascadeUNet(
         in_channels=16,
         out_channels=16,
@@ -112,7 +118,11 @@ with accelerate.init_empty_weights():
         timestep_conditioning_type=["sca", "crp"],
         switch_level=[False],
     )
-load_model_dict_into_meta(prior_model, state_dict)
+
+if is_accelerate_available():
+    load_model_dict_into_meta(prior_model, state_dict)
+else:
+    prior_model.load_state_dict(state_dict)
 
 # scheduler for prior and decoder
 scheduler = DDPMWuerstchenScheduler()
@@ -164,7 +174,7 @@ for key in orig_state_dict.keys():
     else:
         state_dict[key] = orig_state_dict[key]
 
-with accelerate.init_empty_weights():
+with ctx():
     decoder = StableCascadeUNet(
         in_channels=4,
         out_channels=4,
@@ -192,7 +202,11 @@ with accelerate.init_empty_weights():
         self_attn=True,
         timestep_conditioning_type=["sca"],
     )
-load_model_dict_into_meta(decoder, state_dict)
+
+if is_accelerate_available():
+    load_model_dict_into_meta(decoder, state_dict)
+else:
+    decoder.load_state_dict(state_dict)
 
 # VQGAN from Wuerstchen-V2
 vqmodel = PaellaVQModel.from_pretrained("warp-ai/wuerstchen", subfolder="vqgan")
@@ -221,4 +235,4 @@ stable_cascade_pipeline = StableCascadeCombinedPipeline(
     prior_image_encoder=image_encoder,
     prior_feature_extractor=feature_extractor,
 )
-stable_cascade_pipeline.save_pretrained(f"{args.save_org}/StableCascade", push_to_hub=args.push_to_hub)
+stable_cascade_pipeline.save_pretrained(f"{args.save_org}/StableCascade-lite", push_to_hub=args.push_to_hub)
