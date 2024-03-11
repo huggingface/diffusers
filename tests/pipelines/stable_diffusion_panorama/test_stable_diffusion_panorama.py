@@ -98,7 +98,7 @@ class StableDiffusionPanoramaPipelineFastTests(
         return components
 
     def get_dummy_inputs(self, device, seed=0):
-        generator = torch.manual_seed(seed)
+        generator = torch.Generator(device=device).manual_seed(seed)
         inputs = {
             "prompt": "a photo of the dolomites",
             "generator": generator,
