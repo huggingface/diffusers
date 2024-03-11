@@ -25,7 +25,6 @@ import diffusers
 from diffusers import (
     AutoencoderKL,
     ControlNetXSAddon,
-    ControlNetXSModel,
     EulerDiscreteScheduler,
     StableDiffusionXLControlNetXSPipeline,
     UNet2DConditionModel,
@@ -88,13 +87,12 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
             cross_attention_dim=64,
         )
         torch.manual_seed(0)
-        controlnet_addon = ControlNetXSAddon.from_unet(
+        controlnet = ControlNetXSAddon.from_unet(
             base_model=unet,
             size_ratio=0.5,
             learn_time_embedding=True,
             conditioning_embedding_out_channels=(16, 32),
         )
-        controlnet = ControlNetXSModel(base_model=unet, ctrl_addon=controlnet_addon)
         torch.manual_seed(0)
         scheduler = EulerDiscreteScheduler(
             beta_start=0.00085,
@@ -134,6 +132,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
         components = {
+            "unet": unet,
             "controlnet": controlnet,
             "scheduler": scheduler,
             "vae": vae,
@@ -308,168 +307,6 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
 
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1.1e-4
-
-    # copied from test_controlnetxs.py
-    def test_save_load_local(self, expected_max_difference=5e-4):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output = pipe(**inputs)[0]
-
-        logger = logging.get_logger("diffusers.pipelines.pipeline_utils")
-        logger.setLevel(diffusers.logging.INFO)
-
-        with tempfile.TemporaryDirectory() as tmpdir_components:
-            with tempfile.TemporaryDirectory() as tmpdir_addon:
-                pipe.get_base_pipeline().save_pretrained(tmpdir_components, safe_serialization=False)
-                pipe.get_controlnet_addon().save_pretrained(tmpdir_addon, safe_serialization=False)
-
-                addon_loaded = ControlNetXSAddon.from_pretrained(tmpdir_addon)
-                pipe_loaded = self.pipeline_class.from_pretrained(
-                    base_path=tmpdir_components, controlnet_addon=addon_loaded
-                )
-
-                for component in pipe_loaded.components.values():
-                    if hasattr(component, "set_default_attn_processor"):
-                        component.set_default_attn_processor()
-
-                pipe_loaded.to(torch_device)
-                pipe_loaded.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_loaded = pipe_loaded(**inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, expected_max_difference)
-
-    def test_save_load_optional_components(self, expected_max_difference=1e-4):
-        components = self.get_dummy_components()
-        pipe = self.pipeline_class(**components)
-
-        # set all optional components to None
-        for optional_component in pipe._optional_components:
-            setattr(pipe, optional_component, None)
-
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        generator_device = "cpu"
-        inputs = self.get_dummy_inputs(generator_device)
-
-        tokenizer = components.pop("tokenizer")
-        tokenizer_2 = components.pop("tokenizer_2")
-        text_encoder = components.pop("text_encoder")
-        text_encoder_2 = components.pop("text_encoder_2")
-
-        tokenizers = [tokenizer, tokenizer_2] if tokenizer is not None else [tokenizer_2]
-        text_encoders = [text_encoder, text_encoder_2] if text_encoder is not None else [text_encoder_2]
-        prompt = inputs.pop("prompt")
-        (
-            prompt_embeds,
-            negative_prompt_embeds,
-            pooled_prompt_embeds,
-            negative_pooled_prompt_embeds,
-        ) = self.encode_prompt(tokenizers, text_encoders, prompt)
-        inputs["prompt_embeds"] = prompt_embeds
-        inputs["negative_prompt_embeds"] = negative_prompt_embeds
-        inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
-        inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
-
-        output = pipe(**inputs)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir_components:
-            with tempfile.TemporaryDirectory() as tmpdir_addon:
-                pipe.get_base_pipeline().save_pretrained(tmpdir_components, safe_serialization=False)
-                pipe.get_controlnet_addon().save_pretrained(tmpdir_addon, safe_serialization=False)
-
-                addon_loaded = ControlNetXSAddon.from_pretrained(tmpdir_addon)
-                pipe_loaded = self.pipeline_class.from_pretrained(
-                    base_path=tmpdir_components, controlnet_addon=addon_loaded
-                )
-
-                for component in pipe_loaded.components.values():
-                    if hasattr(component, "set_default_attn_processor"):
-                        component.set_default_attn_processor()
-
-                pipe_loaded.to(torch_device)
-                pipe_loaded.set_progress_bar_config(disable=None)
-
-        for optional_component in pipe._optional_components:
-            self.assertTrue(
-                getattr(pipe_loaded, optional_component) is None,
-                f"`{optional_component}` did not stay set to None after loading.",
-            )
-
-        inputs = self.get_dummy_inputs(generator_device)
-
-        _ = inputs.pop("prompt")
-        inputs["prompt_embeds"] = prompt_embeds
-        inputs["negative_prompt_embeds"] = negative_prompt_embeds
-        inputs["pooled_prompt_embeds"] = pooled_prompt_embeds
-        inputs["negative_pooled_prompt_embeds"] = negative_pooled_prompt_embeds
-
-        output_loaded = pipe_loaded(**inputs)[0]
-
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(max_diff, expected_max_difference)
-
-    # copied from test_controlnetxs.py
-    @unittest.skipIf(torch_device != "cuda", reason="float16 requires CUDA")
-    def test_save_load_float16(self, expected_max_diff=1e-2):
-        components = self.get_dummy_components()
-        for name, module in components.items():
-            if hasattr(module, "half"):
-                components[name] = module.to(torch_device).half()
-
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output = pipe(**inputs)[0]
-
-        with tempfile.TemporaryDirectory() as tmpdir_components:
-            with tempfile.TemporaryDirectory() as tmpdir_addon:
-                pipe.save_pretrained(
-                    base_path=tmpdir_components,
-                    addon_path=tmpdir_addon,
-                    base_kwargs={"safe_serialization": False},
-                    addon_kwargs={"safe_serialization": False},
-                )
-
-                pipe_loaded = self.pipeline_class.from_pretrained(base_path=tmpdir_components, addon_path=tmpdir_addon)
-                for component in pipe_loaded.components.values():
-                    if hasattr(component, "set_default_attn_processor"):
-                        component.set_default_attn_processor()
-                pipe_loaded.to(torch_device)
-                pipe_loaded.set_progress_bar_config(disable=None)
-
-        for name, component in pipe_loaded.components.items():
-            if hasattr(component, "dtype"):
-                self.assertTrue(
-                    component.dtype == torch.float16,
-                    f"`{name}.dtype` switched from `float16` to {component.dtype} after loading.",
-                )
-
-        inputs = self.get_dummy_inputs(torch_device)
-        output_loaded = pipe_loaded(**inputs)[0]
-        max_diff = np.abs(to_np(output) - to_np(output_loaded)).max()
-        self.assertLess(
-            max_diff, expected_max_diff, "The output of the fp16 pipeline changed after saving and loading."
-        )
 
 
 @slow

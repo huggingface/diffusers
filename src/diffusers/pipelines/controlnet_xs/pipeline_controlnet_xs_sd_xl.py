@@ -30,7 +30,7 @@ from diffusers.utils.import_utils import is_invisible_watermark_available
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, StableDiffusionXLLoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetXSModel
+from ...models import AutoencoderKL, ControlNetXSAddon, UNet2DConditionModel, UNetControlNetXSModel
 from ...models.attention_processor import (
     AttnProcessor2_0,
     LoRAAttnProcessor2_0,
@@ -152,7 +152,8 @@ class StableDiffusionXLControlNetXSPipeline(
             watermarker is used.
     """
 
-    model_cpu_offload_seq = "text_encoder->text_encoder_2->controlnet->vae"
+    # todo: dont load controlnet to gpu
+    model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
     _optional_components = [
         "tokenizer",
         "tokenizer_2",
@@ -169,7 +170,8 @@ class StableDiffusionXLControlNetXSPipeline(
         text_encoder_2: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
-        controlnet: ControlNetXSModel,
+        unet: Union[UNet2DConditionModel, UNetControlNetXSModel],
+        controlnet: ControlNetXSAddon,
         scheduler: KarrasDiffusionSchedulers,
         force_zeros_for_empty_prompt: bool = True,
         add_watermarker: Optional[bool] = None,
@@ -177,11 +179,14 @@ class StableDiffusionXLControlNetXSPipeline(
     ):
         super().__init__()
 
+        if isinstance(unet, UNet2DConditionModel):
+            unet = UNetControlNetXSModel(unet, controlnet)
+
         (
             vae_compatible,
             cnxs_condition_downsample_factor,
             vae_downsample_factor,
-        ) = controlnet._check_if_vae_compatible(vae)
+        ) = unet._check_if_vae_compatible(vae)
         if not vae_compatible:
             raise ValueError(
                 f"The downsampling factors of the VAE ({vae_downsample_factor}) and the conditioning part of ControlNetXSAddon model ({cnxs_condition_downsample_factor}) need to be equal. Consider building the ControlNetXSAddon model with different `conditioning_embedding_out_channels`."
@@ -193,6 +198,7 @@ class StableDiffusionXLControlNetXSPipeline(
             text_encoder_2=text_encoder_2,
             tokenizer=tokenizer,
             tokenizer_2=tokenizer_2,
+            unet=unet,
             controlnet=controlnet,
             scheduler=scheduler,
             feature_extractor=feature_extractor,
@@ -238,7 +244,7 @@ class StableDiffusionXLControlNetXSPipeline(
 
         components = {k: v for k, v in components.items() if k not in ["unet"] + to_ignore}
 
-        controlnet = ControlNetXSModel(unet, controlnet_addon, time_embedding_mix)
+        controlnet = UNetControlNetXSModel(unet, controlnet_addon, time_embedding_mix)
         return StableDiffusionXLControlNetXSPipeline(controlnet=controlnet, **components)
 
     def save_pretrained(self, *args, **kwargs):
@@ -487,7 +493,7 @@ class StableDiffusionXLControlNetXSPipeline(
         if self.text_encoder_2 is not None:
             prompt_embeds = prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
         else:
-            prompt_embeds = prompt_embeds.to(dtype=self.controlnet.dtype, device=device)
+            prompt_embeds = prompt_embeds.to(dtype=self.unet.dtype, device=device)
 
         bs_embed, seq_len, _ = prompt_embeds.shape
         # duplicate text embeddings for each generation per prompt, using mps friendly method
@@ -501,7 +507,7 @@ class StableDiffusionXLControlNetXSPipeline(
             if self.text_encoder_2 is not None:
                 negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.text_encoder_2.dtype, device=device)
             else:
-                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.controlnet.dtype, device=device)
+                negative_prompt_embeds = negative_prompt_embeds.to(dtype=self.unet.dtype, device=device)
 
             negative_prompt_embeds = negative_prompt_embeds.repeat(1, num_images_per_prompt, 1)
             negative_prompt_embeds = negative_prompt_embeds.view(batch_size * num_images_per_prompt, seq_len, -1)
@@ -624,12 +630,12 @@ class StableDiffusionXLControlNetXSPipeline(
 
         # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
-            self.controlnet, torch._dynamo.eval_frame.OptimizedModule
+            self.unet, torch._dynamo.eval_frame.OptimizedModule
         )
         if (
-            isinstance(self.controlnet, ControlNetXSModel)
+            isinstance(self.unet, UNetControlNetXSModel)
             or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetXSModel)
+            and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
         ):
             self.check_image(image, prompt, prompt_embeds)
         else:
@@ -637,9 +643,9 @@ class StableDiffusionXLControlNetXSPipeline(
 
         # Check `controlnet_conditioning_scale`
         if (
-            isinstance(self.controlnet, ControlNetXSModel)
+            isinstance(self.unet, UNetControlNetXSModel)
             or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetXSModel)
+            and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
         ):
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
@@ -747,9 +753,9 @@ class StableDiffusionXLControlNetXSPipeline(
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         passed_add_embed_dim = (
-            self.controlnet.base_model.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
+            self.unet.base_model.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
         )
-        expected_add_embed_dim = self.controlnet.base_model.add_embedding.linear_1.in_features
+        expected_add_embed_dim = self.unet.base_model.add_embedding.linear_1.in_features
 
         if expected_add_embed_dim != passed_add_embed_dim:
             raise ValueError(
@@ -985,7 +991,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
             )
 
-        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
+        controlnet = self.unet._orig_mod if is_compiled_module(self.unet) else self.unet
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -1050,7 +1056,7 @@ class StableDiffusionXLControlNetXSPipeline(
         )
 
         # 4. Prepare image
-        if isinstance(controlnet, ControlNetXSModel):
+        if isinstance(controlnet, UNetControlNetXSModel):
             image = self.prepare_image(
                 image=image,
                 width=width,
@@ -1070,7 +1076,7 @@ class StableDiffusionXLControlNetXSPipeline(
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
-        num_channels_latents = self.controlnet.base_model.config.in_channels
+        num_channels_latents = self.unet.base_model.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -1129,7 +1135,7 @@ class StableDiffusionXLControlNetXSPipeline(
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-        is_controlnet_compiled = is_compiled_module(self.controlnet)
+        is_controlnet_compiled = is_compiled_module(self.unet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1147,7 +1153,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 do_control = (
                     i / len(timesteps) >= control_guidance_start and (i + 1) / len(timesteps) <= control_guidance_end
                 )
-                noise_pred = self.controlnet(
+                noise_pred = self.unet(
                     sample=latent_model_input,
                     timestep=t,
                     encoder_hidden_states=prompt_embeds,

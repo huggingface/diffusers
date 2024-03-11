@@ -23,7 +23,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from ...models import AutoencoderKL, ControlNetXSModel
+from ...models import AutoencoderKL, ControlNetXSAddon, UNet2DConditionModel, UNetControlNetXSModel
 from ...models.lora import adjust_lora_scale_text_encoder
 from ...schedulers import KarrasDiffusionSchedulers
 from ...utils import (
@@ -125,7 +125,8 @@ class StableDiffusionControlNetXSPipeline(
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
-    model_cpu_offload_seq = "text_encoder->controlnet->vae"
+    # todo: dont load controlnet to gpu
+    model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
@@ -135,13 +136,17 @@ class StableDiffusionControlNetXSPipeline(
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
-        controlnet: ControlNetXSModel,
+        unet: Union[UNet2DConditionModel, UNetControlNetXSModel],
+        controlnet: ControlNetXSAddon,
         scheduler: KarrasDiffusionSchedulers,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPImageProcessor,
         requires_safety_checker: bool = True,
     ):
         super().__init__()
+
+        if isinstance(unet, UNet2DConditionModel):
+            unet = UNetControlNetXSModel(unet, controlnet)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -163,7 +168,7 @@ class StableDiffusionControlNetXSPipeline(
             vae_compatible,
             cnxs_condition_downsample_factor,
             vae_downsample_factor,
-        ) = controlnet._check_if_vae_compatible(vae)
+        ) = unet._check_if_vae_compatible(vae)
         if not vae_compatible:
             raise ValueError(
                 f"The downsampling factors of the VAE ({vae_downsample_factor}) and the conditioning part of ControlNetXSAddon model ({cnxs_condition_downsample_factor}) need to be equal. Consider building the ControlNetXSAddon model with different `conditioning_embedding_out_channels`."
@@ -173,6 +178,7 @@ class StableDiffusionControlNetXSPipeline(
             vae=vae,
             text_encoder=text_encoder,
             tokenizer=tokenizer,
+            unet=unet,
             controlnet=controlnet,
             scheduler=scheduler,
             safety_checker=safety_checker,
@@ -184,42 +190,6 @@ class StableDiffusionControlNetXSPipeline(
             vae_scale_factor=self.vae_scale_factor, do_convert_rgb=True, do_normalize=False
         )
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    @classmethod
-    def from_pretrained(cls, base_path, controlnet_addon, time_embedding_mix=1.0, **kwargs):
-        """
-        Instantiates pipeline from a `StableDiffusionPipeline` and a `ControlNetXSAddon`.
-
-        Arguments:
-            base_path (`str` or `os.PathLike`):
-                Directory to load underlying `StableDiffusionPipeline` from.
-            controlnet_addon (`ControlNetXSAddon`):
-                A `ControlNetXSAddon` model.
-            kwargs (`Dict[str, Any]`, *optional*):
-                Additional keyword arguments passed along to the [`~StableDiffusionPipeline.from_pretrained`] method.
-        """
-
-        components = StableDiffusionPipeline.from_pretrained(base_path, **kwargs).components
-
-        unet = components["unet"]
-
-        to_ignore = ["image_encoder"]
-        for item in to_ignore:
-            if item in components:
-                print(
-                    f"Loaded base pipeline has component `{item}` which StableDiffusionControlNetXSPipeline can't use. It will be ignored."
-                )
-
-        components = {k: v for k, v in components.items() if k not in ["unet"] + to_ignore}
-
-        controlnet = ControlNetXSModel(unet, controlnet_addon, time_embedding_mix)
-        return StableDiffusionControlNetXSPipeline(controlnet=controlnet, **components)
-
-    def save_pretrained(self, *args, **kwargs):
-        raise EnvironmentError(
-            "Save the underlying `StableDiffusionPipeline` and the `ControlNetXSAddon` separately"
-            " by using `pipe.get_base_pipeline().save_pretrained()` and `pipe.get_controlnet_addon().save_pretrained()`."
-        )
 
     def get_base_pipeline(self):
         """Get underlying `StableDiffusionPipeline` without the `ControlNetXSAddon` model."""
@@ -577,12 +547,12 @@ class StableDiffusionControlNetXSPipeline(
 
         # Check `image`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
-            self.controlnet, torch._dynamo.eval_frame.OptimizedModule
+            self.unet, torch._dynamo.eval_frame.OptimizedModule
         )
         if (
-            isinstance(self.controlnet, ControlNetXSModel)
+            isinstance(self.unet, UNetControlNetXSModel)
             or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetXSModel)
+            and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
         ):
             self.check_image(image, prompt, prompt_embeds)
         else:
@@ -590,9 +560,9 @@ class StableDiffusionControlNetXSPipeline(
 
         # Check `controlnet_conditioning_scale`
         if (
-            isinstance(self.controlnet, ControlNetXSModel)
+            isinstance(self.unet, UNetControlNetXSModel)
             or is_compiled
-            and isinstance(self.controlnet._orig_mod, ControlNetXSModel)
+            and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
         ):
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
@@ -845,7 +815,8 @@ class StableDiffusionControlNetXSPipeline(
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
             )
 
-        controlnet = self.controlnet._orig_mod if is_compiled_module(self.controlnet) else self.controlnet
+        # todo umer: what's this for?
+        controlnet = self.unet._orig_mod if is_compiled_module(self.unet) else self.unet
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -903,7 +874,7 @@ class StableDiffusionControlNetXSPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare image
-        if isinstance(controlnet, ControlNetXSModel):
+        if isinstance(controlnet, UNetControlNetXSModel):
             image = self.prepare_image(
                 image=image,
                 width=width,
@@ -923,7 +894,7 @@ class StableDiffusionControlNetXSPipeline(
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
-        num_channels_latents = self.controlnet.base_model.config.in_channels
+        num_channels_latents = self.unet.base_model.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -941,7 +912,7 @@ class StableDiffusionControlNetXSPipeline(
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
-        is_controlnet_compiled = is_compiled_module(self.controlnet)
+        is_controlnet_compiled = is_compiled_module(self.unet)
         is_torch_higher_equal_2_1 = is_torch_version(">=", "2.1")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -957,7 +928,7 @@ class StableDiffusionControlNetXSPipeline(
                 do_control = (
                     i / len(timesteps) >= control_guidance_start and (i + 1) / len(timesteps) <= control_guidance_end
                 )
-                noise_pred = self.controlnet(
+                noise_pred = self.unet(
                     sample=latent_model_input,
                     timestep=t,
                     encoder_hidden_states=prompt_embeds,
