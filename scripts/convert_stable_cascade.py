@@ -126,7 +126,9 @@ prior_pipeline = StableCascadePriorPipeline(
     scheduler=scheduler,
     feature_extractor=feature_extractor,
 )
-prior_pipeline.to(dtype).save_pretrained(f"{args.save_org}/StableCascade-prior", push_to_hub=args.push_to_hub, variant=args.variant)
+prior_pipeline.to(dtype).save_pretrained(
+    f"{args.save_org}/StableCascade-prior", push_to_hub=args.push_to_hub, variant=args.variant
+)
 
 # Decoder
 if args.use_safetensors:
@@ -199,7 +201,9 @@ vqmodel = PaellaVQModel.from_pretrained("warp-ai/wuerstchen", subfolder="vqgan")
 decoder_pipeline = StableCascadeDecoderPipeline(
     decoder=decoder, text_encoder=text_encoder, tokenizer=tokenizer, vqgan=vqmodel, scheduler=scheduler
 )
-decoder_pipeline.to(dtype).save_pretrained(f"{args.save_org}/StableCascade-decoder", push_to_hub=args.push_to_hub, variant=args.variant)
+decoder_pipeline.to(dtype).save_pretrained(
+    f"{args.save_org}/StableCascade-decoder", push_to_hub=args.push_to_hub, variant=args.variant
+)
 
 # Stable Cascade combined pipeline
 stable_cascade_pipeline = StableCascadeCombinedPipeline(
