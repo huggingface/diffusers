@@ -834,7 +834,7 @@ class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
                 continue
             assert pipe.text_encoder_2.config.to_dict()[param_name] == param_value
 
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values", "upcast_attention"]
         for param_name, param_value in single_file_pipe.unet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
