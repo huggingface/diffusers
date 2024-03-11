@@ -30,7 +30,7 @@ parser.add_argument("--stage_b_name", type=str, default="stage_b.safetensors", h
 parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
 parser.add_argument("--save_org", type=str, default="diffusers", help="Hub organization to save the pipelines to")
 parser.add_argument("--push_to_hub", action="store_true", help="Push to hub")
-parser.add_argument("--variant", type=str)
+parser.add_argument("--variant", type=str, help="Set to bf16 to save bfloat16 weights")
 
 args = parser.parse_args()
 model_path = args.model_path
