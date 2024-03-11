@@ -389,7 +389,6 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--do_edm_style_training",
-        default=False,
         action="store_true",
         help="Flag to conduct training using the EDM formulation as introduced in https://arxiv.org/abs/2206.00364.",
     )
@@ -1833,6 +1832,7 @@ def main(args):
     )
 
     def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
+        #TODO: revisit other sampling algorithms
         sigmas = noise_scheduler.sigmas.to(device=accelerator.device, dtype=dtype)
         schedule_timesteps = noise_scheduler.timesteps.to(accelerator.device)
         timesteps = timesteps.to(accelerator.device)
