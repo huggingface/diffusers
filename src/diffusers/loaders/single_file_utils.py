@@ -484,8 +484,8 @@ def create_unet_diffusers_config(original_config, image_size: int):
     config = {
         "sample_size": image_size // vae_scale_factor,
         "in_channels": unet_params["in_channels"],
-        "down_block_types": tuple(down_block_types),
-        "block_out_channels": tuple(block_out_channels),
+        "down_block_types": down_block_types,
+        "block_out_channels": block_out_channels,
         "layers_per_block": unet_params["num_res_blocks"],
         "cross_attention_dim": context_dim,
         "attention_head_dim": head_dim,
@@ -504,7 +504,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
         config["num_class_embeds"] = unet_params["num_classes"]
 
     config["out_channels"] = unet_params["out_channels"]
-    config["up_block_types"] = tuple(up_block_types)
+    config["up_block_types"] = up_block_types
 
     return config
 
@@ -552,9 +552,9 @@ def create_vae_diffusers_config(original_config, image_size, scaling_factor=None
         "sample_size": image_size,
         "in_channels": vae_params["in_channels"],
         "out_channels": vae_params["out_ch"],
-        "down_block_types": tuple(down_block_types),
-        "up_block_types": tuple(up_block_types),
-        "block_out_channels": tuple(block_out_channels),
+        "down_block_types": down_block_types,
+        "up_block_types": up_block_types,
+        "block_out_channels": block_out_channels,
         "latent_channels": vae_params["z_channels"],
         "layers_per_block": vae_params["num_res_blocks"],
         "scaling_factor": scaling_factor,
