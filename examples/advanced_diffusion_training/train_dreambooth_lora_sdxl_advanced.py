@@ -1832,7 +1832,7 @@ def main(args):
     )
 
     def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
-        #TODO: revisit other sampling algorithms
+        # TODO: revisit other sampling algorithms
         sigmas = noise_scheduler.sigmas.to(device=accelerator.device, dtype=dtype)
         schedule_timesteps = noise_scheduler.timesteps.to(accelerator.device)
         timesteps = timesteps.to(accelerator.device)
