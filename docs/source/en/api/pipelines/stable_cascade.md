@@ -55,10 +55,7 @@ If it is not possible to install PyTorch 2.2.0 or higher in your environment, th
 
 ```python
 import torch
-from diffusers import (
-    StableCascadeDecoderPipeline,
-    StableCascadePriorPipeline,
-)
+from diffusers import StableCascadeDecoderPipeline, StableCascadePriorPipeline
 
 prompt = "an image of a shiba inu, donning a spacesuit and helmet"
 negative_prompt = ""
