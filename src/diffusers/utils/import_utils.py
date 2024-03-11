@@ -14,6 +14,7 @@
 """
 Import utilities: Utilities related to imports and our lazy inits.
 """
+
 import importlib.util
 import operator as op
 import os
@@ -71,6 +72,15 @@ if _torch_xla_available:
         logger.info(f"PyTorch XLA version {_torch_xla_version} available.")
     except ImportError:
         _torch_xla_available = False
+
+# check whether torch_npu is available
+_torch_npu_available = importlib.util.find_spec("torch_npu") is not None
+if _torch_npu_available:
+    try:
+        _torch_npu_version = importlib_metadata.version("torch_npu")
+        logger.info(f"torch_npu version {_torch_npu_version} available.")
+    except ImportError:
+        _torch_npu_available = False
 
 _jax_version = "N/A"
 _flax_version = "N/A"
@@ -292,6 +302,10 @@ def is_torch_available():
 
 def is_torch_xla_available():
     return _torch_xla_available
+
+
+def is_torch_npu_available():
+    return _torch_npu_available
 
 
 def is_flax_available():
