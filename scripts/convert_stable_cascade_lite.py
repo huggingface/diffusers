@@ -127,7 +127,7 @@ prior_pipeline = StableCascadePriorPipeline(
     feature_extractor=feature_extractor,
 )
 prior_pipeline.to(dtype).save_pretrained(
-    f"{args.save_org}/StableCascade-prior", push_to_hub=args.push_to_hub, variant=args.variant
+    f"{args.save_org}/StableCascade-prior-lite", push_to_hub=args.push_to_hub, variant=args.variant
 )
 
 # Decoder
@@ -202,7 +202,7 @@ decoder_pipeline = StableCascadeDecoderPipeline(
     decoder=decoder, text_encoder=text_encoder, tokenizer=tokenizer, vqgan=vqmodel, scheduler=scheduler
 )
 decoder_pipeline.to(dtype).save_pretrained(
-    f"{args.save_org}/StableCascade-decoder", push_to_hub=args.push_to_hub, variant=args.variant
+    f"{args.save_org}/StableCascade-decoder-lite", push_to_hub=args.push_to_hub, variant=args.variant
 )
 
 # Stable Cascade combined pipeline
