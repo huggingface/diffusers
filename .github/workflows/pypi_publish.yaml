@@ -9,13 +9,41 @@ on:
       - "*"
 
 jobs:
+  find-and-checkout-latest-branch:
+    runs-on: ubuntu-latest
+    outputs:
+      latest_branch: ${{ steps.set_latest_branch.outputs.latest_branch }}
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.8'
+
+      - name: Fetch latest branch
+        id: fetch_latest_branch
+        run: |
+          pip install -U requests packaging
+          LATEST_BRANCH=$(python utils/fetch_latest_release_branch.py)
+          echo "Latest branch: $LATEST_BRANCH"
+          echo "latest_branch=$LATEST_BRANCH" >> $GITHUB_ENV
+          
+      - name: Set latest branch output
+        id: set_latest_branch
+        run: echo "::set-output name=latest_branch::${{ env.latest_branch }}"
+
   release:
+    needs: find-and-checkout-latest-branch
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v3
-      
+        with:
+          ref: ${{ needs.find-and-checkout-latest-branch.outputs.latest_branch }}
+          
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
