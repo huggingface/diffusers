@@ -307,7 +307,7 @@ def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=
     return original_config
 
 
-def infer_model_type(original_config, checkpoint=None, model_type=None):
+def infer_model_type(original_config, checkpoint, model_type=None):
     if model_type is not None:
         return model_type
 
