@@ -490,7 +490,7 @@ class LatentConsistencyModelPipeline(
         latents = latents * self.scheduler.init_noise_sigma
         return latents
 
-    def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
+    def get_guidance_scale_embedding(self, timesteps, embedding_dim=512, dtype=torch.float32):
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
 
@@ -505,17 +505,17 @@ class LatentConsistencyModelPipeline(
         Returns:
             `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
         """
-        assert len(w.shape) == 1
-        w = w * 1000.0
+        assert len(timesteps.shape) == 1
+        timesteps = timesteps * 1000.0
 
         half_dim = embedding_dim // 2
         emb = torch.log(torch.tensor(10000.0)) / (half_dim - 1)
         emb = torch.exp(torch.arange(half_dim, dtype=dtype) * -emb)
-        emb = w.to(dtype)[:, None] * emb[None, :]
+        emb = timesteps.to(dtype)[:, None] * emb[None, :]
         emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=1)
         if embedding_dim % 2 == 1:  # zero pad
             emb = torch.nn.functional.pad(emb, (0, 1))
-        assert emb.shape == (w.shape[0], embedding_dim)
+        assert emb.shape == (timesteps.shape[0], embedding_dim)
         return emb
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
