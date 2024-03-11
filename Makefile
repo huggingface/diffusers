@@ -36,6 +36,7 @@ repo-consistency:
 	python utils/check_dummies.py
 	python utils/check_repo.py
 	python utils/check_inits.py
+	python utils/check_doctest_list.py
 
 # this target runs checks on all files
 
@@ -67,6 +68,7 @@ fixup: modified_only_fixup extra_style_checks autogenerate_code repo-consistency
 fix-copies:
 	python utils/check_copies.py --fix_and_overwrite
 	python utils/check_dummies.py --fix_and_overwrite
+	python utils/check_doctest_list.py --fix_and_overwrite
 
 # Run tests for the library
 

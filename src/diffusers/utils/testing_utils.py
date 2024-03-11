@@ -779,7 +779,7 @@ class CaptureLogger:
     >>> logger = logging.get_logger("diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.py")
     >>> with CaptureLogger(logger) as cl:
     ...     logger.info(msg)
-    >>> assert cl.out, msg + "\n"
+    >>> assert cl.out, msg + \n
     ```
     """
 
