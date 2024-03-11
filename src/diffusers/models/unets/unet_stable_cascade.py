@@ -33,10 +33,10 @@ if is_accelerate_available():
 
 
 DEFAULT_CONFIGS = {
-    "stage_c": {"pretrained_model_name_or_path": "stabilityai/stable-cascade-prior", "subfolder": "prior"},
-    "stage_c_lite": {"pretrained_model_name_or_path": "stabilityai/stable-cascade-prior", "subfolder": "prior_lite"},
-    "stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder"},
-    "stage_b_lite": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder_lite"},
+    "stage_c": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior"},
+    "stage_c_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior_lite"},
+    "stage_b": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder"},
+    "stage_b_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder_lite"},
 }
 
 
@@ -481,10 +481,12 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
         checkpoint = load_single_file_model_checkpoint(pretrained_model_link_or_path, **kwargs)
         if config is None:
             config = infer_single_file_config(checkpoint)
+            model_config = cls.load_config(**config, **kwargs)
+        else:
+            model_config = config
 
         ctx = init_empty_weights if is_accelerate_available() else nullcontext
         with ctx():
-            model_config = cls.load_config(**config, **kwargs)
             model = cls.from_config(model_config, **kwargs)
 
         diffusers_format_checkpoint = convert_single_file_to_diffusers(checkpoint)
