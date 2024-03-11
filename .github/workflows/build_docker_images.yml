@@ -1,22 +1,58 @@
-name: Build Docker images (nightly)
+name: Test, build, and push Docker images
 
 on:
+  pull_request: # During PRs, we just check if the changes Dockerfiles can be successfully built
+    branches:
+      - main
+    paths:
+      - "docker/**"
   workflow_dispatch:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
 
 concurrency:
-  group: docker-image-builds
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: diffusers
   CI_SLACK_CHANNEL: ${{ secrets.CI_DOCKER_CHANNEL }}
 
 jobs:
-  build-docker-images:
+  test-build-docker-images:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      
+      - name: Check out code
+        uses: actions/checkout@v3
+      
+      - name: Find Changed Dockerfiles
+        id: file_changes
+        uses: jitterbit/get-changed-files@v1
+        with:
+          format: 'space-delimited'
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build Changed Docker Images
+        run: |
+          CHANGED_FILES="${{ steps.file_changes.outputs.all }}"
+          for FILE in $CHANGED_FILES; do
+            if [[ "$FILE" == docker/*Dockerfile ]]; then
+              DOCKER_PATH="${FILE%/Dockerfile}"
+              DOCKER_TAG=$(basename "$DOCKER_PATH")
+              echo "Building Docker image for $DOCKER_TAG"
+              docker build -t "$DOCKER_TAG" "$DOCKER_PATH"
+            fi
+          done
+        if: steps.file_changes.outputs.all != ''
 
+  build-and-push-docker-images:
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    
     permissions:
       contents: read
       packages: write
