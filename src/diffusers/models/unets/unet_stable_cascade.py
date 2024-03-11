@@ -23,10 +23,12 @@ import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...loaders.single_file_utils import load_single_file_model_checkpoint
-from ...utils import BaseOutput, is_accelerate_available
+from ...utils import BaseOutput, is_accelerate_available, logging
 from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin, load_model_dict_into_meta
 
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -507,7 +509,15 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
             model = cls.from_config(model_config, **kwargs)
 
         diffusers_format_checkpoint = convert_single_file_to_diffusers(checkpoint)
-        load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if is_accelerate_available():
+            unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+            if len(unexpected_keys) > 0:
+                logger.warn(
+                    f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+                )
+
+        else:
+            model.load_state_dict(diffusers_format_checkpoint)
 
         return model
 
