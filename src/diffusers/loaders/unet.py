@@ -374,6 +374,12 @@ class UNet2DConditionLoadersMixin:
             elif is_sequential_cpu_offload:
                 _pipeline.enable_sequential_cpu_offload()
             # Unsafe code />
+        elif is_custom_diffusion:
+                #Load custom diffusion cross attention weight with PEFT installed in environment
+                self.set_attn_processor(attn_processors)
+            
+                self.to(dtype=self.dtype, device=self.device)
+                
 
     def convert_state_dict_legacy_attn_format(self, state_dict, network_alphas):
         is_new_lora_format = all(
