@@ -143,7 +143,7 @@ class Upsample2D(nn.Module):
         self, hidden_states: torch.FloatTensor, output_size: Optional[int] = None, *args, **kwargs
     ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
             deprecate("scale", "1.0.0", deprecation_message)
 
         assert hidden_states.shape[1] == self.channels

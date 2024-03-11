@@ -742,7 +742,7 @@ class AttnProcessor:
         **kwargs,
     ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecation_message = f"Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{attn.__class__.__name__}` class, it won't have any effect."
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
@@ -918,7 +918,7 @@ class AttnAddedKVProcessor:
         **kwargs,
     ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecation_message = f"Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{attn.__class__.__name__}` class, it won't have any effect."
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
@@ -991,7 +991,7 @@ class AttnAddedKVProcessor2_0:
         **kwargs,
     ) -> torch.Tensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecation_message = f"Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{attn.__class__.__name__}` class, it won't have any effect."
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
@@ -1142,7 +1142,7 @@ class XFormersAttnProcessor:
         **kwargs,
     ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecation_message = f"Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{attn.__class__.__name__}` class, it won't have any effect."
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
@@ -1230,7 +1230,7 @@ class AttnProcessor2_0:
         **kwargs,
     ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecation_message = f"Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{attn.__class__.__name__}` class, it won't have any effect."
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states
@@ -1329,7 +1329,7 @@ class FusedAttnProcessor2_0:
         **kwargs,
     ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecation_message = f"Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{attn.__class__.__name__}` class, it won't have any effect."
             deprecate("scale", "1.0.0", deprecation_message)
 
         residual = hidden_states

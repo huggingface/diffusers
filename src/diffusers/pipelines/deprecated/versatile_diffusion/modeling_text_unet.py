@@ -1844,7 +1844,7 @@ class UpBlockFlat(nn.Module):
         **kwargs,
     ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument."
+            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
             deprecate("scale", "1.0.0", deprecation_message)
 
         is_freeu_enabled = (
