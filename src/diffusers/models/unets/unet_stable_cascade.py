@@ -476,9 +476,26 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
     @classmethod
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         config = kwargs.pop("config", None)
+        resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        token = kwargs.pop("token", None)
+        cache_dir = kwargs.pop("cache_dir", None)
+        local_files_only = kwargs.pop("local_files_only", False)
+        revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        checkpoint = load_single_file_model_checkpoint(pretrained_model_link_or_path, **kwargs)
+        checkpoint = load_single_file_model_checkpoint(
+            pretrained_model_link_or_path,
+            resume_download=resume_download,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            revision=revision,
+        )
+
         if config is None:
             config = infer_single_file_config(checkpoint)
             model_config = cls.load_config(**config, **kwargs)

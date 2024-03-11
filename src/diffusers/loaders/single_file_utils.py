@@ -230,42 +230,31 @@ def fetch_ldm_config_and_checkpoint(
     local_files_only=None,
     revision=None,
 ):
-    if os.path.isfile(pretrained_model_link_or_path):
-        checkpoint = load_state_dict(pretrained_model_link_or_path)
-
-    else:
-        repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
-        checkpoint_path = _get_model_file(
-            repo_id,
-            weights_name=weights_name,
-            force_download=force_download,
-            cache_dir=cache_dir,
-            resume_download=resume_download,
-            proxies=proxies,
-            local_files_only=local_files_only,
-            token=token,
-            revision=revision,
-        )
-        checkpoint = load_state_dict(checkpoint_path)
-
-    # some checkpoints contain the model state dict under a "state_dict" key
-    while "state_dict" in checkpoint:
-        checkpoint = checkpoint["state_dict"]
-
+    checkpoint = load_single_file_model_checkpoint(
+        pretrained_model_link_or_path,
+        resume_download=resume_download,
+        force_download=force_download,
+        proxies=proxies,
+        token=token,
+        cache_dir=cache_dir,
+        local_files_only=local_files_only,
+        revision=revision,
+    )
     original_config = fetch_original_config(class_name, checkpoint, original_config_file)
 
     return original_config, checkpoint
 
 
-def load_single_file_model_checkpoint(pretrained_model_link_or_path, **kwargs):
-    resume_download = kwargs.pop("resume_download", False)
-    force_download = kwargs.pop("force_download", False)
-    proxies = kwargs.pop("proxies", None)
-    token = kwargs.pop("token", None)
-    cache_dir = kwargs.pop("cache_dir", None)
-    local_files_only = kwargs.pop("local_files_only", None)
-    revision = kwargs.pop("revision", None)
-
+def load_single_file_model_checkpoint(
+    pretrained_model_link_or_path,
+    resume_download=False,
+    force_download=False,
+    proxies=None,
+    token=None,
+    cache_dir=None,
+    local_files_only=None,
+    revision=None,
+):
     if os.path.isfile(pretrained_model_link_or_path):
         checkpoint = load_state_dict(pretrained_model_link_or_path)
     else:

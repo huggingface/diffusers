@@ -37,25 +37,59 @@ enable_full_determinism()
 @slow
 class StableCascadeUNetModelSlowTests(unittest.TestCase):
     def tearDown(self) -> None:
+        super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
-        super().tearDown()
 
-    def test_stable_cascade_prior_unet_single_file_components(self):
+    def test_stable_cascade_unet_prior_single_file_components(self):
         single_file_url = "https://huggingface.co/stabilityai/stable-cascade/blob/main/stage_c_bf16.safetensors"
         single_file_unet = StableCascadeUNet.from_single_file(single_file_url)
+
+        single_file_unet_config = single_file_unet.config
+        del single_file_unet
+        gc.collect()
+        torch.cuda.empty_cache()
 
         unet = StableCascadeUNet.from_pretrained(
             "stabilityai/stable-cascade-prior", subfolder="prior", revision="refs/pr/2", variant="bf16"
         )
+        unet_config = unet.config
+        del unet
+        gc.collect()
+        torch.cuda.empty_cache()
+
         PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
-        for param_name, param_value in single_file_unet.config.items():
+        for param_name, param_value in single_file_unet_config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
 
-            assert unet.config[param_name] == param_value
+            assert unet_config[param_name] == param_value
 
-    def test_stable_cascade_config_loading(self):
+    def test_stable_cascade_unet_decoder_single_file_components(self):
+        single_file_url = "https://huggingface.co/stabilityai/stable-cascade/blob/main/stage_b_bf16.safetensors"
+        single_file_unet = StableCascadeUNet.from_single_file(single_file_url)
+
+        single_file_unet_config = single_file_unet.config
+        del single_file_unet
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        unet = StableCascadeUNet.from_pretrained(
+            "stabilityai/stable-cascade", subfolder="decoder", revision="refs/pr/44", variant="bf16"
+        )
+        unet_config = unet.config
+        del unet
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
+        for param_name, param_value in single_file_unet_config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+
+            assert unet_config[param_name] == param_value
+
+    def test_stable_cascade_unet_config_loading(self):
         config = StableCascadeUNet.load_config(
             pretrained_model_name_or_path="diffusers/stable-cascade-configs", subfolder="prior"
         )
@@ -63,6 +97,9 @@ class StableCascadeUNetModelSlowTests(unittest.TestCase):
 
         single_file_unet = StableCascadeUNet.from_single_file(single_file_url, config=config)
         single_file_unet_config = single_file_unet.config
+        del single_file_unet
+        gc.collect()
+        torch.cuda.empty_cache()
 
         PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
         for param_name, param_value in config.items():
