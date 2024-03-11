@@ -11,6 +11,7 @@ from ..utils import (
     is_note_seq_available,
     is_onnx_available,
     is_torch_available,
+    is_torch_npu_available,
     is_transformers_available,
 )
 
