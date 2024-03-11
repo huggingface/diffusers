@@ -19,6 +19,7 @@ import argparse
 import logging
 import math
 import os
+import os.path
 import random
 import shutil
 from pathlib import Path
@@ -586,6 +587,7 @@ def main(args):
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     # The VAE is in float32 to avoid NaN losses.
     unet.to(accelerator.device, dtype=weight_dtype)
+
     if args.pretrained_vae_model_name_or_path is None:
         vae.to(accelerator.device, dtype=torch.float32)
     else:
@@ -829,6 +831,7 @@ def main(args):
     )
 
     def preprocess_train(examples):
+        fnames = [os.path.basename(image.filename) for image in examples[image_column]]
         images = [image.convert("RGB") for image in examples[image_column]]
         # image aug
         original_sizes = []
@@ -858,13 +861,14 @@ def main(args):
         tokens_one, tokens_two = tokenize_captions(examples)
         examples["input_ids_one"] = tokens_one
         examples["input_ids_two"] = tokens_two
+        examples["filenames"] = fnames
         return examples
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        train_dataset = dataset["train"].with_transform(preprocess_train, output_all_columns=True)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -879,6 +883,7 @@ def main(args):
             "input_ids_two": input_ids_two,
             "original_sizes": original_sizes,
             "crop_top_lefts": crop_top_lefts,
+            "filenames": [example['filenames'] for example in examples]
         }
 
     # DataLoaders creation:
@@ -1073,9 +1078,12 @@ def main(args):
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
 
+                for fname in batch['filenames']:
+                    accelerator.log({'loss_for_' + fname: loss}, step=global_step)
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
+
 
                 # Backpropagate
                 accelerator.backward(loss)
