@@ -683,12 +683,15 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, StableDiffusionMixin, Textua
                 do_classifier_free_guidance,
             )
 
-            image_embeds = []
-            negative_image_embeds = []
-            for single_image_embeds in ip_adapter_image_embeds:
-                single_image_embeds, single_negative_image_embeds = single_image_embeds.chunk(2)
-                image_embeds.append(single_image_embeds)
-                negative_image_embeds.append(single_negative_image_embeds)
+            if do_classifier_free_guidance:
+                image_embeds = []
+                negative_image_embeds = []
+                for tmp_image_embeds in ip_adapter_image_embeds:
+                    single_negative_image_embeds, single_image_embeds = tmp_image_embeds.chunk(2)
+                    image_embeds.append(single_image_embeds)
+                    negative_image_embeds.append(single_negative_image_embeds)
+            else:
+                image_embeds = ip_adapter_image_embeds
 
         # 3. Encode input prompt
         prompt_embeds, negative_prompt_embeds = self.encode_prompt(
@@ -739,7 +742,12 @@ class StableDiffusionSAGPipeline(DiffusionPipeline, StableDiffusionMixin, Textua
             else None
         )
 
-        added_uncond_kwargs = {"image_embeds": negative_image_embeds} if ip_adapter_image is not None else None
+        if do_classifier_free_guidance:
+            added_uncond_kwargs = (
+                {"image_embeds": negative_image_embeds}
+                if ip_adapter_image is not None or ip_adapter_image_embeds is not None
+                else None
+            )
 
         # 7. Denoising loop
         store_processor = CrossAttnStoreProcessor()
