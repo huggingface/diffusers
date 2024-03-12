@@ -457,7 +457,6 @@ def _assign_components_to_devices(
     device_cycle = device_ids + device_ids[::-1]
 
     deivce_id_component_mapping = {}
-    needs_offloading_mapping = {}
     current_device_index = 0
     for component in module_sizes:
         device_id = device_cycle[current_device_index % len(device_cycle)]
@@ -467,11 +466,7 @@ def _assign_components_to_devices(
 
         # If the GPU doesn't fit the current component offload to the CPU.
         if component_memory > curr_device_memory:
-            needs_offloading_mapping[component] = True
-            if device_mapping_strategy != "balanced":
-                deivce_id_component_mapping[device_id] = [component]
-            else:
-                deivce_id_component_mapping["cpu"] = [component]
+            deivce_id_component_mapping["cpu"] = [component]
         else:
             if device_id not in deivce_id_component_mapping:
                 deivce_id_component_mapping[device_id] = [component]
@@ -479,7 +474,7 @@ def _assign_components_to_devices(
                 deivce_id_component_mapping[device_id].append(component)
         current_device_index += 1
 
-    return deivce_id_component_mapping, needs_offloading_mapping
+    return deivce_id_component_mapping
 
 
 def load_sub_model(
@@ -493,7 +488,6 @@ def load_sub_model(
     provider: Any,
     sess_options: Any,
     device_map: Optional[Union[Dict[str, torch.device], str]],
-    needs_offloading: Optional[bool],
     device_map_strategy: Optional[str],
     max_memory: Optional[Dict[Union[int, str], Union[int, str]]],
     offload_folder: Optional[Union[str, os.PathLike]],
@@ -601,8 +595,9 @@ def load_sub_model(
         # else load from the root directory
         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
-    if isinstance(loaded_sub_model, torch.nn.Module) and device_map_strategy == "balanced":
-        if needs_offloading:
+    if isinstance(loaded_sub_model, torch.nn.Module) and device_map_strategy in ["balanced"]:
+        needs_offloading_to_cpu = device_map[""] == "cpu"
+        if needs_offloading_to_cpu:
             dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, main_device=0)
         else:
             dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)

@@ -812,7 +812,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         ###### 6. device map delegation ######
         final_device_map = None
-        if device_map is not None and device_map.startswith("balanced"):
+        if device_map is not None and isinstance(device_map, str) and device_map in ["balanced"]:
             # Load each module in the pipeline on a meta device so that we can derive the device map.
             init_empty_modules = {}
             for name, (library_name, class_name) in init_dict.items():
@@ -881,10 +881,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # Obtain a dictionary mapping the model-level components to the available
             # devices based on the maximum memory and the model sizes.
-            device_id_component_mapping, needs_offloading_mapping = _assign_components_to_devices(
+            device_id_component_mapping = _assign_components_to_devices(
                 module_sizes, max_memory, device_mapping_strategy=device_map
             )
-            print(device_id_component_mapping, needs_offloading_mapping)
+            print(device_id_component_mapping)
 
             # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
             final_device_map = {}
@@ -897,12 +897,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # 7. Load each module in the pipeline
         current_device_map = None
-        needs_offloading = False
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             if final_device_map is not None and len(final_device_map) > 0:
                 component_device = final_device_map.get(name, None)
-                needs_offloading = needs_offloading_mapping.get(name, False)
-                if component_device is not None and not needs_offloading:
+                if component_device is not None:
                     current_device_map = {"": component_device}
                 else:
                     current_device_map = None
@@ -937,7 +935,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     provider=provider,
                     sess_options=sess_options,
                     device_map=current_device_map,
-                    needs_offloading=needs_offloading,
                     device_map_strategy=device_map,
                     max_memory=max_memory,
                     offload_folder=offload_folder,
