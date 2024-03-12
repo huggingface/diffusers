@@ -19,7 +19,6 @@ import argparse
 import logging
 import math
 import os
-import os.path
 import random
 import shutil
 from pathlib import Path
@@ -415,6 +414,11 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+    parser.add_argument(
+        "--debug-loss",
+        action="store_true",
+        default=False,
+        help="debug loss for each image, if filenames are awailable in the dataset")
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -831,7 +835,6 @@ def main(args):
     )
 
     def preprocess_train(examples):
-        fnames = [os.path.basename(image.filename) for image in examples[image_column]]
         images = [image.convert("RGB") for image in examples[image_column]]
         # image aug
         original_sizes = []
@@ -861,7 +864,10 @@ def main(args):
         tokens_one, tokens_two = tokenize_captions(examples)
         examples["input_ids_one"] = tokens_one
         examples["input_ids_two"] = tokens_two
-        examples["filenames"] = fnames
+        if args.debug_loss:
+            fnames = [os.path.basename(image.filename) for image in examples[image_column] if image.filename]
+            if fnames:
+                examples["filenames"] = fnames
         return examples
 
     with accelerator.main_process_first():
@@ -877,14 +883,18 @@ def main(args):
         crop_top_lefts = [example["crop_top_lefts"] for example in examples]
         input_ids_one = torch.stack([example["input_ids_one"] for example in examples])
         input_ids_two = torch.stack([example["input_ids_two"] for example in examples])
-        return {
+        result = {
             "pixel_values": pixel_values,
             "input_ids_one": input_ids_one,
             "input_ids_two": input_ids_two,
             "original_sizes": original_sizes,
             "crop_top_lefts": crop_top_lefts,
-            "filenames": [example['filenames'] for example in examples]
         }
+
+        filenames = [example['filenames'] for example in examples if 'filenames' in example]
+        if filenames:
+            result['filenames'] = filenames
+        return result
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -1077,13 +1087,12 @@ def main(args):
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
-
-                for fname in batch['filenames']:
-                    accelerator.log({'loss_for_' + fname: loss}, step=global_step)
+                if args.debug_loss and 'filenames' in batch:
+                    for fname in batch['filenames']:
+                        accelerator.log({'loss_for_' + fname: loss}, step=global_step)
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
-
 
                 # Backpropagate
                 accelerator.backward(loss)
