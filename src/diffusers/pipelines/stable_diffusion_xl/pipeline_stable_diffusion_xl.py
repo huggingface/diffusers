@@ -865,8 +865,8 @@ class StableDiffusionXLPipeline(
         return self._guidance_scale
 
     @property
-    def native_guidance_scale(self):
-        return self._native_guidance_scale
+    def force_classifier_free_guidance(self):
+        return self._force_classifier_free_guidance
 
     @property
     def guidance_rescale(self):
@@ -881,8 +881,8 @@ class StableDiffusionXLPipeline(
     # corresponds to doing no classifier free guidance.
     @property
     def do_classifier_free_guidance(self):
-        return self._guidance_scale > 1 and (
-            self.unet.config.time_cond_proj_dim is not None and self._native_guidance_scale > 1
+        return self.force_classifier_free_guidance or (
+            self._guidance_scale > 1 and self.unet.config.time_cond_proj_dim is None
         )
 
     @property
@@ -938,7 +938,8 @@ class StableDiffusionXLPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        native_guidance_scale: float = 1.0,
+        callback_on_step_end_also_at_init: bool = False,
+        force_classifier_free_guidance: bool = False,
         **kwargs,
     ):
         r"""
@@ -1071,11 +1072,13 @@ class StableDiffusionXLPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
-            native_guidance_scale (`float`, *optional*, defaults to 1.0):
-                Guidance scale to be applied with distilled LCM models. Note that the regular guidance scale
-                parameter for LCM models is passed to the model as conditioning. This parameter forces
-                to also perform classifier-free guidance as usual with the given native guidance scale.
-                Use 1 or below if you don't want to use native classifier-free guidance.
+            callback_on_step_end_also_at_init (`bool`, *optional*, defaults to False):
+                If `True`, the `callback_on_step_end` function will also be called before the start of the inference.
+                The callback will receive -1 as step to identify this particular case, in which some tensors
+                might not be available.
+            force_classifier_free_guidance (`bool`, *optional*, defaults to False):
+                Forces the execution of classifier free guidance, even if the guidance scale is below 1 or the model
+                is a LCM model.
 
         Examples:
 
@@ -1127,11 +1130,11 @@ class StableDiffusionXLPipeline(
         )
 
         self._guidance_scale = guidance_scale
-        self._native_guidance_scale = native_guidance_scale
         self._guidance_rescale = guidance_rescale
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
         self._denoising_end = denoising_end
+        self._force_classifier_free_guidance = force_classifier_free_guidance
         self._interrupt = False
 
         # 2. Define call parameters
@@ -1257,11 +1260,33 @@ class StableDiffusionXLPipeline(
             if self.do_classifier_free_guidance:
                 timestep_cond = timestep_cond.repeat_interleave(2, dim=0)
 
+        def invoke_callback_at_step_end(step: int, timestep: int):
+            nonlocal latents, prompt_embeds, negative_prompt_embeds, add_text_embeds, negative_pooled_prompt_embeds
+            nonlocal add_time_ids, negative_add_time_ids
+
+            callback_kwargs = {}
+            for k in callback_on_step_end_tensor_inputs:
+                callback_kwargs[k] = locals()[k]
+            callback_outputs = callback_on_step_end(self, step, timestep, callback_kwargs)
+
+            latents = callback_outputs.pop("latents", latents)
+            prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+            negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+            add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
+            negative_pooled_prompt_embeds = callback_outputs.pop(
+                "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
+            )
+            add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
+            negative_add_time_ids = callback_outputs.pop("negative_add_time_ids", negative_add_time_ids)
+
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
+
+                if callback_on_step_end is not None and callback_on_step_end_also_at_init:
+                    invoke_callback_at_step_end(-1, t)
 
                 # expand the latents if we are doing classifier free guidance
                 latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
@@ -1284,11 +1309,8 @@ class StableDiffusionXLPipeline(
 
                 # perform guidance
                 if self.do_classifier_free_guidance:
-                    final_guidance_scale = self.guidance_scale
-                    if self.unet.config.time_cond_proj_dim is not None:
-                        final_guidance_scale = self.native_guidance_scale
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + final_guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
@@ -1298,20 +1320,7 @@ class StableDiffusionXLPipeline(
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
                 if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
-
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-                    add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
-                    negative_pooled_prompt_embeds = callback_outputs.pop(
-                        "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
-                    )
-                    add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
-                    negative_add_time_ids = callback_outputs.pop("negative_add_time_ids", negative_add_time_ids)
+                    invoke_callback_at_step_end(i, t)
 
                 # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):

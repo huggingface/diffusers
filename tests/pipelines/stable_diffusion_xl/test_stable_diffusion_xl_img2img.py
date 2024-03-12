@@ -252,7 +252,12 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
-    def test_stable_diffusion_xl_img2img_euler_lcm_native_guidance_scale(self):
+    def test_stable_diffusion_xl_img2img_force_classifier_free_guidance_and_callback_on_step_end_also_at_init(self):
+        """
+        This test checks the parameters force_classifier_free_guidance and the callback_on_step_end_also_at_init.
+        They are used here to predict using regular classifier free guidance with LCMs. In this case,
+        a guidance scale of 2 is used for regular classifier free guidance whereas 5 is used for conditional-based one.
+        """
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components(time_cond_proj_dim=256)
         sd_pipe = StableDiffusionXLImg2ImgPipeline(**components)
@@ -260,17 +265,24 @@ class StableDiffusionXLImg2ImgPipelineFastTests(PipelineLatentTesterMixin, Pipel
         sd_pipe = sd_pipe.to(device)
         sd_pipe.set_progress_bar_config(disable=None)
 
+        def callback_on_step_end(pipe, step, timestep, tensors):
+            pipe._guidance_scale = 2
+            return tensors
+
         inputs = self.get_dummy_inputs(device)
         inputs["image"] = inputs["image"].repeat(2, 1, 1, 1)
-        inputs["native_guidance_scale"] = 5
+        inputs["guidance_scale"] = 5
         inputs["num_images_per_prompt"] = 2
         inputs["generator"] = [torch.Generator(device=device).manual_seed(s) for s in range(2)]
+        inputs["callback_on_step_end"] = callback_on_step_end
+        inputs["force_classifier_free_guidance"] = True
+        inputs["callback_on_step_end_also_at_init"] = True
         image = sd_pipe(**inputs).images
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (2, 32, 32, 3)
         expected_slice = np.array(
-            [0.540020, 0.430933, 0.486702, 0.559579, 0.475279, 0.673364, 0.604304, 0.526997, 0.534485]
+            [0.5557767, 0.43330115, 0.4750325, 0.5788473, 0.50074375, 0.67199385, 0.6235892, 0.5418786, 0.53033805]
         )
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 
