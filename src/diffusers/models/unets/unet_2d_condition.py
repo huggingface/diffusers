@@ -147,9 +147,9 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             The second activation function to use in timestep embedding. Choose from `silu`, `mish` and `gelu`.
         time_cond_proj_dim (`int`, *optional*, defaults to `None`):
             The dimension of `cond_proj` layer in the timestep embedding.
-        conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer. conv_out_kernel (`int`,
-        *optional*, default to `3`): The kernel size of `conv_out` layer. projection_class_embeddings_input_dim (`int`,
-        *optional*): The dimension of the `class_labels` input when
+        conv_in_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_in` layer.
+        conv_out_kernel (`int`, *optional*, default to `3`): The kernel size of `conv_out` layer.
+        projection_class_embeddings_input_dim (`int`, *optional*): The dimension of the `class_labels` input when
             `class_embed_type="projection"`. Required when `class_embed_type="projection"`.
         class_embeddings_concat (`bool`, *optional*, defaults to `False`): Whether to concatenate the time
             embeddings with the class embeddings.
