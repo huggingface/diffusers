@@ -53,6 +53,7 @@ from diffusers.utils.testing_utils import (
     require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
+    require_torch_multi_gpu,
     run_test_in_subprocess,
     slow,
     torch_device,
@@ -1422,4 +1423,47 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
             "/stable_diffusion_text2img/stable_diffusion_1_4_euler.npy"
         )
         max_diff = np.abs(expected_image - image).max()
+        assert max_diff < 1e-3
+
+
+@slow
+@require_torch_multi_gpu
+class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+        generator = torch.Generator(device=generator_device).manual_seed(seed)
+        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
+        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
+        inputs = {
+            "prompt": "a photograph of an astronaut riding a horse",
+            "latents": latents,
+            "generator": generator,
+            "num_inference_steps": 50,
+            "guidance_scale": 7.5,
+            "output_type": "np",
+        }
+        return inputs
+
+    def test_forward_pass_balanced_device_map(self):
+        sd_pipe = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
+        ).to(torch_device)
+        sd_pipe.set_progress_bar_config(disable=True)
+        inputs = self.get_inputs()
+        no_device_map_image = sd_pipe(**inputs).images
+
+        del sd_pipe
+
+        sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
+        ).to(torch_device)
+        sd_pipe_with_device_map.set_progress_bar_config(disable=True)
+        inputs = self.get_inputs()
+        device_map_image = sd_pipe_with_device_map(**inputs).images
+
+        max_diff = np.abs(device_map_image - no_device_map_image).max()
         assert max_diff < 1e-3
