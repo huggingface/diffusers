@@ -105,7 +105,7 @@ pipeline_output = pipe(
     # processing_res=768,     # (optional) Maximum resolution of processing. If set to 0: will not resize at all. Defaults to 768.
     # match_input_res=True,   # (optional) Resize depth prediction to match input resolution.
     # batch_size=0,           # (optional) Inference batch size, no bigger than `num_ensemble`. If set to 0, the script will automatically decide the proper batch size. Defaults to 0.
-    # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral".
+    # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral". Set to `None` to skip colormap generation.
     # show_progress_bar=True, # (optional) If true, will show progress bars of the inference progress.
 )
 
@@ -3414,15 +3414,13 @@ pipeline(prompt, uncond, inverted_latent, guidance_scale=7.5, num_inference_step
 
 ### Rerender A Video
 
-This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender A Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `examples/community/rerender_a_video.py`:
+This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender A Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `gmflow_dir`. After that, you can run the pipeline with:
 
 ```py
+import sys
 gmflow_dir = "/path/to/gmflow"
-```
+sys.path.insert(0, gmflow_dir)
 
-After that, you can run the pipeline with:
-
-```py
 from diffusers import ControlNetModel, AutoencoderKL, DDIMScheduler
 from diffusers.utils import export_to_video
 import numpy as np
