@@ -64,7 +64,9 @@ class StableCascadePriorPipelineOutput(BaseOutput):
 
     image_embeddings: Union[torch.FloatTensor, np.ndarray]
     prompt_embeds: Union[torch.FloatTensor, np.ndarray]
+    prompt_embeds_pooled: Union[torch.FloatTensor, np.ndarray]
     negative_prompt_embeds: Union[torch.FloatTensor, np.ndarray]
+    negative_prompt_embeds_pooled: Union[torch.FloatTensor, np.ndarray]
 
 
 class StableCascadePriorPipeline(DiffusionPipeline):
@@ -339,7 +341,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
     def num_timesteps(self):
         return self._num_timesteps
 
-    def get_t_condioning(self, t, alphas_cumprod):
+    def get_timestep_ratio_conditioning(self, t, alphas_cumprod):
         s = torch.tensor([0.003])
         clamp_range = [0, 1]
         min_var = torch.cos(s / (1 + s) * torch.pi * 0.5) ** 2
@@ -558,7 +560,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(timesteps)):
             if not isinstance(self.scheduler, DDPMWuerstchenScheduler):
                 if len(alphas_cumprod) > 0:
-                    timestep_ratio = self.get_t_condioning(t.long().cpu(), alphas_cumprod)
+                    timestep_ratio = self.get_timestep_ratio_conditioning(t.long().cpu(), alphas_cumprod)
                     timestep_ratio = timestep_ratio.expand(latents.size(0)).to(dtype).to(device)
                 else:
                     timestep_ratio = t.float().div(self.scheduler.timesteps[-1]).expand(latents.size(0)).to(dtype)
@@ -609,6 +611,18 @@ class StableCascadePriorPipeline(DiffusionPipeline):
             )  # float() as bfloat16-> numpy doesnt work
 
         if not return_dict:
-            return (latents, prompt_embeds, negative_prompt_embeds)
+            return (
+                latents,
+                prompt_embeds,
+                prompt_embeds_pooled,
+                negative_prompt_embeds,
+                negative_prompt_embeds_pooled,
+            )
 
-        return StableCascadePriorPipelineOutput(latents, prompt_embeds, negative_prompt_embeds)
+        return StableCascadePriorPipelineOutput(
+            image_embeddings=latents,
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
+        )

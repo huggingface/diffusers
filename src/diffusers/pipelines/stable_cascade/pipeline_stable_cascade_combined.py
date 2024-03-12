@@ -274,7 +274,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         )
         image_embeddings = prior_outputs.image_embeddings
         prompt_embeds = prior_outputs.get("prompt_embeds", None)
+        prompt_embeds_pooled = prior_outputs.get("prompt_embeds_pooled", None)
         negative_prompt_embeds = prior_outputs.get("negative_prompt_embeds", None)
+        negative_prompt_embeds_pooled = prior_outputs.get("negative_prompt_embeds_pooled", None)
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
@@ -283,7 +285,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             guidance_scale=decoder_guidance_scale,
             negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
             prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
             generator=generator,
             output_type=output_type,
             return_dict=return_dict,
