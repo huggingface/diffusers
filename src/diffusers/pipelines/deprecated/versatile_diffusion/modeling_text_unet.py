@@ -2332,6 +2332,10 @@ class UNetMidBlockFlatCrossAttn(nn.Module):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warn("Passing `scale` to `cross_attention_kwargs` is depcrecated. `scale` will be ignored.")
+
         hidden_states = self.resnets[0](hidden_states, temb)
         for attn, resnet in zip(self.attentions, self.resnets[1:]):
             if self.training and self.gradient_checkpointing:
@@ -2470,6 +2474,8 @@ class UNetMidBlockFlatSimpleCrossAttn(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
         cross_attention_kwargs = cross_attention_kwargs if cross_attention_kwargs is not None else {}
+        if cross_attention_kwargs.get("scale", None) is not None:
+            logger.warn("Passing `scale` to `cross_attention_kwargs` is depcrecated. `scale` will be ignored.")
 
         if attention_mask is None:
             # if encoder_hidden_states is defined: we are doing cross-attn, so we should use cross-attn mask.
