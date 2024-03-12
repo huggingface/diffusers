@@ -17,6 +17,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
+from ..utils import deprecate
+
 
 ACTIVATION_FUNCTIONS = {
     "swish": nn.SiLU(),
@@ -92,7 +94,11 @@ class GEGLU(nn.Module):
         # mps: gelu is not implemented for float16
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
-    def forward(self, hidden_states):
+    def forward(self, hidden_states, *args, **kwargs):
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         hidden_states, gate = self.proj(hidden_states).chunk(2, dim=-1)
         return hidden_states * self.gelu(gate)
 

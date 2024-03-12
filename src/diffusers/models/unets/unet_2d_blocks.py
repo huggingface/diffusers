@@ -1344,7 +1344,7 @@ class DownBlock2D(nn.Module):
         self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, *args, **kwargs
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         output_states = ()
@@ -1446,7 +1446,7 @@ class DownEncoderBlock2D(nn.Module):
 
     def forward(self, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         for resnet in self.resnets:
@@ -1548,7 +1548,7 @@ class AttnDownEncoderBlock2D(nn.Module):
 
     def forward(self, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -1652,7 +1652,7 @@ class AttnSkipDownBlock2D(nn.Module):
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...], torch.FloatTensor]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         output_states = ()
@@ -1743,7 +1743,7 @@ class SkipDownBlock2D(nn.Module):
         **kwargs,
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...], torch.FloatTensor]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         output_states = ()
@@ -1832,7 +1832,7 @@ class ResnetDownsampleBlock2D(nn.Module):
         self, hidden_states: torch.FloatTensor, temb: Optional[torch.FloatTensor] = None, *args, **kwargs
     ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         output_states = ()
@@ -2334,7 +2334,7 @@ class AttnUpBlock2D(nn.Module):
         **kwargs,
     ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         for resnet, attn in zip(self.resnets, self.attentions):
@@ -2588,7 +2588,7 @@ class UpBlock2D(nn.Module):
         **kwargs,
     ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         is_freeu_enabled = (
@@ -2919,7 +2919,7 @@ class AttnSkipUpBlock2D(nn.Module):
         **kwargs,
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         for resnet in self.resnets:
@@ -3031,7 +3031,7 @@ class SkipUpBlock2D(nn.Module):
         **kwargs,
     ) -> Tuple[torch.FloatTensor, torch.FloatTensor]:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         for resnet in self.resnets:
@@ -3138,7 +3138,7 @@ class ResnetUpsampleBlock2D(nn.Module):
         **kwargs,
     ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         for resnet in self.resnets:
@@ -3398,7 +3398,7 @@ class KUpBlock2D(nn.Module):
         **kwargs,
     ) -> torch.FloatTensor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
-            deprecation_message = "Use of `scale` is deprecated. Please remove the argument. Even if you pass it to the `forward()` of the `{self.__class__.__name__}` class, it won't have any effect."
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
 
         res_hidden_states_tuple = res_hidden_states_tuple[-1]
