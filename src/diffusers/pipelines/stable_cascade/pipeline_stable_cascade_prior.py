@@ -307,6 +307,16 @@ class StableCascadePriorPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
+        if prompt_embeds is not None and prompt_embeds_pooled is None:
+            raise ValueError(
+                "If `prompt_embeds` are provided, `prompt_embeds_pooled` must also be provided. Make sure to generate `prompt_embeds_pooled` from the same text encoder that was used to generate `prompt_embeds`"
+            )
+
+        if negative_prompt_embeds is not None and negative_prompt_embeds_pooled is None:
+            raise ValueError(
+                "If `negative_prompt_embeds` are provided, `negative_prompt_embeds_pooled` must also be provided. Make sure to generate `prompt_embeds_pooled` from the same text encoder that was used to generate `prompt_embeds`"
+            )
+
         if prompt_embeds_pooled is not None and negative_prompt_embeds_pooled is not None:
             if prompt_embeds_pooled.shape != negative_prompt_embeds_pooled.shape:
                 raise ValueError(

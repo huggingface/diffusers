@@ -160,7 +160,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         decoder_guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -185,7 +187,14 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, text embeddings will be generated from `prompt` input argument.
+            prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
+                prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
+                input argument.
+            negative_prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
                 prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
@@ -251,7 +260,6 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
-
         prior_outputs = self.prior_pipe(
             prompt=prompt if prompt_embeds is None else None,
             images=images,
@@ -261,7 +269,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             guidance_scale=prior_guidance_scale,
             negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
             prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
             num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             latents=latents,
