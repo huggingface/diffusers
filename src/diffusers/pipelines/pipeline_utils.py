@@ -871,27 +871,23 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 if isinstance(module, torch.nn.Module)
             }
             module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
-            print(module_sizes)
 
             # Obtain maximum memory available per device (GPUs only).
             max_memory = get_max_memory(max_memory)
             max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
             max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
-            print(max_memory)
 
             # Obtain a dictionary mapping the model-level components to the available
             # devices based on the maximum memory and the model sizes.
             device_id_component_mapping = _assign_components_to_devices(
                 module_sizes, max_memory, device_mapping_strategy=device_map
             )
-            print(device_id_component_mapping)
 
             # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
             final_device_map = {}
             for device_id, components in device_id_component_mapping.items():
                 for component in components:
                     final_device_map[component] = device_id
-            print(final_device_map)
 
         ###### End: device map delegation ######
 

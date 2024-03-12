@@ -1426,6 +1426,9 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
         assert max_diff < 1e-3
 
 
+# (sayakpaul): This test suite was run in the DGX with two GPUs (1, 2).
+# The `test_components_put_in_right_devices` assertions depend on the device
+# on which the test is being run.
 @slow
 @require_torch_multi_gpu
 class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
@@ -1434,13 +1437,10 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-    def get_inputs(self, device, generator_device="cpu", dtype=torch.float32, seed=0):
+    def get_inputs(self, generator_device="cpu", seed=0):
         generator = torch.Generator(device=generator_device).manual_seed(seed)
-        latents = np.random.RandomState(seed).standard_normal((1, 4, 64, 64))
-        latents = torch.from_numpy(latents).to(device=device, dtype=dtype)
         inputs = {
             "prompt": "a photograph of an astronaut riding a horse",
-            "latents": latents,
             "generator": generator,
             "num_inference_steps": 50,
             "guidance_scale": 7.5,
@@ -1453,17 +1453,27 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
             "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
         ).to(torch_device)
         sd_pipe.set_progress_bar_config(disable=True)
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         no_device_map_image = sd_pipe(**inputs).images
 
         del sd_pipe
 
         sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
             "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
-        ).to(torch_device)
+        )
         sd_pipe_with_device_map.set_progress_bar_config(disable=True)
-        inputs = self.get_inputs(torch_device)
+        inputs = self.get_inputs()
         device_map_image = sd_pipe_with_device_map(**inputs).images
 
         max_diff = np.abs(device_map_image - no_device_map_image).max()
         assert max_diff < 1e-3
+
+    def test_components_put_in_right_devices(self):
+        sd_pipe_with_device_map = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
+        )
+
+        assert str(sd_pipe_with_device_map.unet.device) == "cuda:1"
+        assert str(sd_pipe_with_device_map.vae.device) == "cuda:1"
+        assert str(sd_pipe_with_device_map.safety_checker.device) == "cuda:0"
+        assert str(sd_pipe_with_device_map.text_encoder.device) == "cuda:0"
