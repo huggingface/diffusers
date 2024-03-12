@@ -14,13 +14,13 @@ specific language governing permissions and limitations under the License.
 
 # Trajectory Consistency Distillation-LoRA
 
-Trajectory Consistency Distillation (TCD) enables a model to generate higher quality and more detailed images with fewer steps. Additionally, TCD demonstrates superior performance even under conditions of high NFEs.
+Trajectory Consistency Distillation (TCD) enables a model to generate higher quality and more detailed images with fewer steps. Moreover, owing to the effective error mitigation during the distillation process, TCD demonstrates superior performance even under conditions of large inference steps.
 
 The major advantages of TCD are:
 
 - Better than Teacher: TCD demonstrates superior generative quality at both small and large inference steps and exceeds the performance of [DPM-Solver++(2S)](../../api/schedulers/multistep_dpm_solver) with Stable Diffusion XL (SDXL). There is no additional discriminator or LPIPS supervision included during TCD training.
 
-- Flexible NFEs: The NFEs for TCD sampling can be freely adjusted without adversely affecting the image quality.
+- Flexible Inference Steps: The inference steps for TCD sampling can be freely adjusted without adversely affecting the image quality.
 
 - Freely change detail level: During inference, the level of detail in the image can be adjusted with a single hyperparameter, *gamma*.
 
@@ -203,6 +203,7 @@ TCD-LoRA is very versatile, and it can be combined with other adapter types like
 
 <hfoptions id="adapters">
 <hfoption id="ControlNet">
+
 ```python
 import torch
 import numpy as np
