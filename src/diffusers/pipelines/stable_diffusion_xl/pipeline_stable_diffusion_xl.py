@@ -1262,7 +1262,7 @@ class StableDiffusionXLPipeline(
 
         def invoke_callback_at_step_end(step: int, timestep: int):
             nonlocal latents, prompt_embeds, negative_prompt_embeds, add_text_embeds, negative_pooled_prompt_embeds
-            nonlocal add_time_ids, negative_add_time_ids
+            nonlocal add_time_ids, negative_add_time_ids, timesteps
 
             callback_kwargs = {}
             for k in callback_on_step_end_tensor_inputs:
