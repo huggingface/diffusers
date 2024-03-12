@@ -1176,7 +1176,7 @@ def create_diffusers_unet_model_from_ldm(
     original_config,
     checkpoint,
     num_in_channels=None,
-    upcast_attention=False,
+    upcast_attention=None,
     extract_ema=False,
     image_size=None,
     torch_dtype=None,
@@ -1204,7 +1204,8 @@ def create_diffusers_unet_model_from_ldm(
     )
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
     unet_config["in_channels"] = num_in_channels
-    unet_config["upcast_attention"] = upcast_attention
+    if upcast_attention is not None:
+        unet_config["upcast_attention"] = upcast_attention
 
     diffusers_format_unet_checkpoint = convert_ldm_unet_checkpoint(checkpoint, unet_config, extract_ema=extract_ema)
     ctx = init_empty_weights if is_accelerate_available() else nullcontext

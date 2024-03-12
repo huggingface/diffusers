@@ -56,7 +56,7 @@ def build_sub_model_components(
 
     if component_name == "unet":
         num_in_channels = kwargs.pop("num_in_channels", None)
-        upcast_attention = kwargs.pop("upcast_attention", False)
+        upcast_attention = kwargs.pop("upcast_attention", None)
 
         unet_components = create_diffusers_unet_model_from_ldm(
             pipeline_class_name,
