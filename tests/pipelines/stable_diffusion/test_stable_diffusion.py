@@ -1453,7 +1453,7 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
             "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
         ).to(torch_device)
         sd_pipe.set_progress_bar_config(disable=True)
-        inputs = self.get_inputs()
+        inputs = self.get_inputs(torch_device)
         no_device_map_image = sd_pipe(**inputs).images
 
         del sd_pipe
@@ -1462,7 +1462,7 @@ class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
             "runwayml/stable-diffusion-v1-5", device_map="balanced", torch_dtype=torch.float16
         ).to(torch_device)
         sd_pipe_with_device_map.set_progress_bar_config(disable=True)
-        inputs = self.get_inputs()
+        inputs = self.get_inputs(torch_device)
         device_map_image = sd_pipe_with_device_map(**inputs).images
 
         max_diff = np.abs(device_map_image - no_device_map_image).max()
