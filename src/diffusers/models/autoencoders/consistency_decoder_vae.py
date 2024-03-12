@@ -306,6 +306,19 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         return_dict: bool = True,
         num_inference_steps: int = 2,
     ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
+        """
+        Decodes the input latent vector `z` using the consistency decoder VAE model.
+
+        Args:
+            z (torch.FloatTensor): The input latent vector.
+            generator (Optional[torch.Generator]): The random number generator. Default is None.
+            return_dict (bool): Whether to return the output as a dictionary. Default is True.
+            num_inference_steps (int): The number of inference steps. Default is 2.
+
+        Returns:
+            Union[DecoderOutput, Tuple[torch.FloatTensor]]: The decoded output.
+
+        """
         z = (z * self.config.scaling_factor - self.means) / self.stds
 
         scale_factor = 2 ** (len(self.config.block_out_channels) - 1)
