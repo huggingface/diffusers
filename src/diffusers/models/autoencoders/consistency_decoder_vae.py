@@ -73,6 +73,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         self,
         scaling_factor: float = 0.18215,
         latent_channels: int = 4,
+        sample_size: int = 32,
         encoder_act_fn: str = "silu",
         encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         encoder_double_z: bool = True,
@@ -153,6 +154,16 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
 
         self.use_slicing = False
         self.use_tiling = False
+
+        # only relevant if vae tiling is enabled
+        self.tile_sample_min_size = self.config.sample_size
+        sample_size = (
+            self.config.sample_size[0]
+            if isinstance(self.config.sample_size, (list, tuple))
+            else self.config.sample_size
+        )
+        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
+        self.tile_overlap_factor = 0.25
 
     # Copied from diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL.enable_tiling
     def enable_tiling(self, use_tiling: bool = True):
