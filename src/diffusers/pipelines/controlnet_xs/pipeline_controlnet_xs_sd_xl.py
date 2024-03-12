@@ -180,7 +180,7 @@ class StableDiffusionXLControlNetXSPipeline(
         super().__init__()
 
         if isinstance(unet, UNet2DConditionModel):
-            unet = UNetControlNetXSModel(unet, controlnet)
+            unet = UNetControlNetXSModel.from_unet2d(unet, controlnet)
 
         (
             vae_compatible,
@@ -216,42 +216,6 @@ class StableDiffusionXLControlNetXSPipeline(
             self.watermark = None
 
         self.register_to_config(force_zeros_for_empty_prompt=force_zeros_for_empty_prompt)
-
-    @classmethod
-    def from_pretrained(cls, base_path, controlnet_addon, time_embedding_mix=1.0, **kwargs):
-        """
-        Instantiates pipeline from a `StableDiffusionXLPipeline` and a `ControlNetXSAddon`.
-
-        Arguments:
-            base_path (`str` or `os.PathLike`):
-                Directory to load underlying `StableDiffusionXLPipeline` from.
-            controlnet_addon (`ControlNetXSAddon`):
-                A `ControlNetXSAddon` model.
-            kwargs (`Dict[str, Any]`, *optional*):
-                Additional keyword arguments passed along to the [`~StableDiffusionXLPipeline.from_pretrained`] method.
-        """
-
-        components = StableDiffusionXLPipeline.from_pretrained(base_path, **kwargs).components
-
-        unet = components["unet"]
-
-        to_ignore = ["image_encoder"]
-        for item in to_ignore:
-            if item in components:
-                print(
-                    f"Loaded base pipeline has component `{item}` which StableDiffusionControlNetXSPipeline can't use. It will be ignored."
-                )
-
-        components = {k: v for k, v in components.items() if k not in ["unet"] + to_ignore}
-
-        controlnet = UNetControlNetXSModel(unet, controlnet_addon, time_embedding_mix)
-        return StableDiffusionXLControlNetXSPipeline(controlnet=controlnet, **components)
-
-    def save_pretrained(self, *args, **kwargs):
-        raise EnvironmentError(
-            "Save the underlying `StableDiffusionXLPipeline` and the `ControlNetXSAddon` separately"
-            " by using `pipe.get_base_pipeline().save_pretrained()` and `pipe.get_controlnet_addon().save_pretrained()`."
-        )
 
     def get_base_pipeline(self):
         """Get underlying `StableDiffusionXLPipeline` without the `ControlNetXSAddon` model."""
@@ -753,9 +717,9 @@ class StableDiffusionXLControlNetXSPipeline(
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
 
         passed_add_embed_dim = (
-            self.unet.base_model.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
+            self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
         )
-        expected_add_embed_dim = self.unet.base_model.add_embedding.linear_1.in_features
+        expected_add_embed_dim = self.base_add_embedding.linear_1.in_features
 
         if expected_add_embed_dim != passed_add_embed_dim:
             raise ValueError(
@@ -1076,7 +1040,7 @@ class StableDiffusionXLControlNetXSPipeline(
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
-        num_channels_latents = self.unet.base_model.config.in_channels
+        num_channels_latents = self.unet.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,

@@ -146,7 +146,7 @@ class StableDiffusionControlNetXSPipeline(
         super().__init__()
 
         if isinstance(unet, UNet2DConditionModel):
-            unet = UNetControlNetXSModel(unet, controlnet)
+            unet = UNetControlNetXSModel.from_unet2d(unet, controlnet)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(
@@ -894,7 +894,7 @@ class StableDiffusionControlNetXSPipeline(
         timesteps = self.scheduler.timesteps
 
         # 6. Prepare latent variables
-        num_channels_latents = self.unet.base_model.config.in_channels
+        num_channels_latents = self.unet.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
