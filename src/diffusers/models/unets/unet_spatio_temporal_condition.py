@@ -92,10 +92,13 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,
         num_attention_heads: Union[int, Tuple[int]] = (5, 10, 20, 20),
         num_frames: int = 25,
+        flow_is_same_channel: bool = True,
+        flow_dim_scale: Optional[int] = None,
     ):
         super().__init__()
 
         self.sample_size = sample_size
+        self.is_dragnuwa = flow_dim_scale is not None
 
         # Check inputs
         if len(down_block_types) != len(up_block_types):
@@ -157,6 +160,49 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
 
+        # flow
+        if self.is_dragnuwa:
+            assert flow_dim_scale is not None
+            self.flow_blocks = nn.ModuleList([])
+            flow_dim = block_out_channels[0] // flow_dim_scale
+            flow_in_block = nn.Sequential(
+                nn.Conv2d(2, flow_dim // 4, kernel_size=3, stride=2, padding=1),
+                nn.Conv1d(flow_dim // 4, flow_dim // 4, kernel_size=3, stride=1, padding=1, padding_mode="replicate"),
+                nn.GroupNorm(8, flow_dim // 4),
+                nn.SiLU(),
+                nn.Conv2d(flow_dim // 4, flow_dim // 2, 3, stride=2, padding=1),
+                nn.Conv1d(flow_dim // 2, flow_dim // 2, kernel_size=3, stride=1, padding=1, padding_mode="replicate"),
+                nn.GroupNorm(8, flow_dim // 2),
+                nn.SiLU(),
+                nn.Conv2d(flow_dim // 2, flow_dim, kernel_size=3, stride=2, padding=1),
+                nn.Conv1d(flow_dim, flow_dim, kernel_size=3, stride=1, padding=1, padding_mode="replicate"),
+            )
+            self.flow_blocks.append(flow_in_block)
+
+            for index, bc in enumerate(block_out_channels[1:]):
+                assert bc % block_out_channels[0] == 0
+                mult_factor = bc // block_out_channels[0]
+
+                flow_layer = nn.Sequential(
+                    nn.GroupNorm(8, flow_dim),
+                    nn.SiLU(),
+                    nn.Conv2d(flow_dim, mult_factor * block_out_channels[0] // flow_dim_scale, 3, padding=1),
+                    nn.Conv1d(
+                        mult_factor * block_out_channels[0] // flow_dim_scale,
+                        mult_factor * block_out_channels[0] // flow_dim_scale,
+                        kernel_size=3,
+                        stride=1,
+                        padding=1,
+                        padding_mode="replicate",
+                    ),
+                )
+                flow_dim = mult_factor * block_out_channels[0] // flow_dim_scale
+
+                if index != len(block_out_channels) - 1:
+                    flow_layer.append(nn.Conv2d(flow_dim, flow_dim, kernel_size=3, stride=2, padding=1))
+
+                self.flow_blocks.append(flow_layer)
+
         blocks_time_embed_dim = time_embed_dim
 
         # down
@@ -178,6 +224,8 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 cross_attention_dim=cross_attention_dim[i],
                 num_attention_heads=num_attention_heads[i],
                 resnet_act_fn="silu",
+                flow_is_same_channel=flow_is_same_channel,
+                flow_dim_scale=flow_dim_scale,
             )
             self.down_blocks.append(down_block)
 
@@ -229,6 +277,8 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                 cross_attention_dim=reversed_cross_attention_dim[i],
                 num_attention_heads=reversed_num_attention_heads[i],
                 resnet_act_fn="silu",
+                flow_is_same_channel=flow_is_same_channel,
+                flow_dim_scale=flow_dim_scale,
             )
             self.up_blocks.append(up_block)
             prev_output_channel = output_channel
@@ -359,6 +409,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         added_time_ids: torch.Tensor,
+        flow: Optional[torch.Tensor] = None,
         return_dict: bool = True,
     ) -> Union[UNetSpatioTemporalConditionOutput, Tuple]:
         r"""
@@ -423,25 +474,49 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         # encoder_hidden_states: [batch, 1, channels] -> [batch * frames, 1, channels]
         encoder_hidden_states = encoder_hidden_states.repeat_interleave(num_frames, dim=0)
 
+        flow_block_samples = []
+        if self.is_dragnuwa and flow is not None:
+            flow = flow.flatten(0, 1)
+
         # 2. pre-process
         sample = self.conv_in(sample)
 
         image_only_indicator = torch.zeros(batch_size, num_frames, dtype=sample.dtype, device=sample.device)
 
         down_block_res_samples = (sample,)
-        for downsample_block in self.down_blocks:
+        for index, downsample_block in enumerate(self.down_blocks):
+            if flow is not None:
+                for flow_module in self.flow_blocks[index]:
+                    if isinstance(flow_module, nn.Conv1d):
+                        flow_batch_size, flow_channels, flow_height, flow_width = flow.shape
+                        flow = flow.reshape(
+                            flow_batch_size // num_frames, num_frames, flow_channels, flow_height, flow_width
+                        )
+                        flow = flow.permute(0, 3, 4, 2, 1)
+                        flow = flow.flatten(0, 2)
+                        flow = flow_module(flow)
+                        flow = flow.reshape(flow_batch_size // num_frames, flow_height, flow_width, -1, num_frames)
+                        flow = flow.permute(0, 4, 3, 1, 2)
+                        flow = flow.flatten(0, 1)
+                    else:
+                        flow = flow_module(flow)
+
+                flow_block_samples.append(flow)
+
             if hasattr(downsample_block, "has_cross_attention") and downsample_block.has_cross_attention:
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    flow=flow,
                 )
             else:
                 sample, res_samples = downsample_block(
                     hidden_states=sample,
                     temb=emb,
                     image_only_indicator=image_only_indicator,
+                    flow=flow,
                 )
 
             down_block_res_samples += res_samples
@@ -458,6 +533,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
         for i, upsample_block in enumerate(self.up_blocks):
             res_samples = down_block_res_samples[-len(upsample_block.resnets) :]
             down_block_res_samples = down_block_res_samples[: -len(upsample_block.resnets)]
+            flow_sample = None if len(flow_block_samples) == 0 else flow_block_samples.pop()
 
             if hasattr(upsample_block, "has_cross_attention") and upsample_block.has_cross_attention:
                 sample = upsample_block(
@@ -466,6 +542,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                     res_hidden_states_tuple=res_samples,
                     encoder_hidden_states=encoder_hidden_states,
                     image_only_indicator=image_only_indicator,
+                    flow=flow_sample,
                 )
             else:
                 sample = upsample_block(
@@ -473,6 +550,7 @@ class UNetSpatioTemporalConditionModel(ModelMixin, ConfigMixin, UNet2DConditionL
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     image_only_indicator=image_only_indicator,
+                    flow=flow_sample,
                 )
 
         # 6. post-process
