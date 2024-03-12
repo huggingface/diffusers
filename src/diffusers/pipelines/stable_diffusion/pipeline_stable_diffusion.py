@@ -1011,7 +1011,6 @@ class StableDiffusionPipeline(
             image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
                 0
             ]
-            print(f"VAE: {image[0, :4, :4, :1].flatten()}")
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
