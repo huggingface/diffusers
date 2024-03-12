@@ -63,7 +63,8 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         ...     "runwayml/stable-diffusion-v1-5", vae=vae, torch_dtype=torch.float16
         ... ).to("cuda")
 
-        >>> pipe("horse", generator=torch.manual_seed(0)).images
+        >>> image = pipe("horse", generator=torch.manual_seed(0)).images[0]
+        >>> image
         ```
     """
 
@@ -272,7 +273,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         Args:
             x (`torch.FloatTensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return a [`~models.consistecy_decoder_vae.ConsistencyDecoderOoutput`] instead of a plain
+                Whether to return a [`~models.consistency_decoder_vae.ConsistencyDecoderVAEOutput`] instead of a plain
                 tuple.
 
         Returns:
@@ -345,7 +346,9 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> ConsistencyDecoderVAEOutput:
+    def tiled_encode(
+        self, x: torch.FloatTensor, return_dict: bool = True
+    ) -> Union[ConsistencyDecoderVAEOutput, Tuple]:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several
