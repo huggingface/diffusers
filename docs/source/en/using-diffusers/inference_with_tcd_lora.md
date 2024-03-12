@@ -12,55 +12,51 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-# Performing inference with TCD-LoRA
+# Trajectory Consistency Distillation-LoRA
 
-Trajecotroy Consistency Distillation (TCD) enables the model to generate higher quality, more detailed images with fewer steps. Additionally, TCD demonstrates superior performance even under conditions of high NFEs.
+Trajectory Consistency Distillation (TCD) enables a model to generate higher quality and more detailed images with fewer steps. Additionally, TCD demonstrates superior performance even under conditions of high NFEs.
 
-From the [Official Project Page](https://mhh0318.github.io/tcd/), the major merit of TCD can be outlined as follows:
+The major advantages of TCD are:
 
-- ***Better than Teacher:*** TCD maintains superior generative quality at both small and large inference steps, even exceeding the performance of [DPM-Solver++(2S)](https://huggingface.co/docs/diffusers/api/schedulers/multistep_dpm_solver) with Stable Diffusion XL (SDXL). It is worth noting that there is no additional discriminator or LPIPS supervision is included during training.
+- Better than Teacher: TCD demonstrates superior generative quality at both small and large inference steps and exceeds the performance of [DPM-Solver++(2S)](../../api/schedulers/multistep_dpm_solver) with Stable Diffusion XL (SDXL). There is no additional discriminator or LPIPS supervision included during TCD training.
 
-- ***Flexible NFEs:*** The NFEs for TCD sampling can be varied at will without adversely affecting the quality of the results.
+- Flexible NFEs: The NFEs for TCD sampling can be freely adjusted without adversely affecting the image quality.
 
-- ***Freely Change the Detailing:*** During inference, the level of detail in the image can be simply modified by adjusing the hyper-parameter gamma. This option does not require any additional parameters.
+- Freely change detail level: During inference, the level of detail in the image can be adjusted with a single hyperparameter, *gamma*.
 
-For more technical details of TCD, please refer to [the paper](https://arxiv.org/abs/2402.19159).
+> [!TIP]
+> For more technical details of TCD, please refer to the [paper](https://arxiv.org/abs/2402.19159) or official [project page](https://mhh0318.github.io/tcd/)).
 
-Trajectory consistency distillation can be directly placed on top of a pre-trained diffusion model as a [LoRA](https://huggingface.co/docs/diffusers/main/en/training/lora) module. Such a LoRA can be identified as a versatile acceleration module applicable to different fine-tuned models or LoRAs sharing the same base model without the need for additional training.
-
-TCD-LoRAs are available for [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5), [stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base), and [stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0). 
-
-The corresponding checkpoints can be found at [TCD-SD15](https://huggingface.co/h1t/TCD-SD15-LoRA), [TCD-SD21-base](https://huggingface.co/h1t/TCD-SD21-base-LoRA), and [TCD-SDXL](https://huggingface.co/h1t/TCD-SDXL-LoRA), respectively.
+For large models like SDXL, TCD is trained with [LoRA](https://huggingface.co/docs/peft/conceptual_guides/adapter#low-rank-adaptation-lora) to reduce memory usage. This is also useful because you can reuse LoRAs between different finetuned models, as long as they share the same base model, without further training.
 
 
-This guide shows how to perform inference with TCD-LoRAs for 
-- text-to-image
-- inpainting
-- community models
-- style LoRA
-- ControlNet
-- IP-Adapter
-- AnimateDiff
 
-TCD-LoRA can be considered an advanced method compared with [LCM-LoRA](https://latent-consistency-models.github.io/). The main parts of the TCD-LoRA workflow are as follows::
-- Load the task specific pipeline and model.
-- Set the scheduler to [`TCDScheduler`].
-- Load the TCD-LoRA weights for the model.
-- Set the `num_inference_steps` between [4, 50].
-- Set `eta` from [0, 1]. Larger `eta` in [`TCDScheduler`] will lead to blurrier images.
-- Perform inference with the pipeline with the usual parameters.
+This guide will show you how to perform inference with TCD-LoRAs for a variety of tasks like text-to-image and inpainting, as well as how you can easily combine TCD-LoRAs with other adapters. Choose one of the supported base model and it's corresponding TCD-LoRA checkpoint from the table below to get started.
 
-Let's look at how we can perform inference with TCD-LoRAs for different tasks.
+| Base model                                                                                      | TCD-LoRA checkpoint                                            |
+|-------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
+| [stable-diffusion-v1-5](https://huggingface.co/runwayml/stable-diffusion-v1-5)                  | [TCD-SD15](https://huggingface.co/h1t/TCD-SD15-LoRA)           |
+| [stable-diffusion-2-1-base](https://huggingface.co/stabilityai/stable-diffusion-2-1-base)       | [TCD-SD21-base](https://huggingface.co/h1t/TCD-SD21-base-LoRA) |
+| [stable-diffusion-xl-base-1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) | [TCD-SDXL](https://huggingface.co/h1t/TCD-SDXL-LoRA)           |
 
-First, make sure you have [peft](https://github.com/huggingface/peft) installed, for better LoRA support.
+
+Make sure you have [PEFT](https://github.com/huggingface/peft) installed for better LoRA support.
 
 ```bash
 pip install -U peft
 ```
 
-## Text-to-image
+## General tasks
 
-You can use the [`StableDiffusionXLPipeline`] with the scheduler: [`TCDScheduler`] and then load the TCD-LoRA. Together with the TCD-LoRA and the TCDScheduler, the pipeline enables a fast inference workflow with high quality outputs.
+In this guide, let's use the [`StableDiffusionXLPipeline`] and the [`TCDScheduler`]. Use the [`~StableDiffusionPipeline.load_lora_weights`] method to load the SDXL-compatible TCD-LoRA weights.
+
+A few tips to keep in mind for TCD-LoRA inference are to:
+
+- Keep the `num_inference_steps` between 4 and 50
+- Set `eta` (used to control stochasticity at each step) between 0 and 1. You should use a higher `eta` when increasing the number of inference steps, but the downside is that a larger `eta` in [`TCDScheduler`] leads to blurrier images. A value of 0.3 is recommended to produce good results.
+
+<hfoptions id="tasks">
+<hfoption id="text-to-image">
 
 ```python
 import torch
@@ -90,17 +86,10 @@ image = pipe(
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/demo_image.png)
 
 
-<Tip>
 
-Eta (referred to as `gamma` in the paper) is used to control the stochasticity in every step.
-A value of 0.3 often yields good results, where eta = 0 means determinstic and eta = 1 is identity to Multi-step Consistency Sampler (as well as LCMScheduler).
-We recommend using a higher eta when increasing the number of inference steps.
+## Community models
 
-</Tip>
-
-## TCD-LoRA is Versatile for Community Models
-
-As mentioned above, the TCD-LoRA is versatile for community models and plugins. To test-drive this, load a community fine-tuned base model [animagine-xl-3.0](https://huggingface.co/cagliostrolab/animagine-xl-3.0).
+TCD-LoRA also works with many community finetuned models and plugins. For example, load the [animagine-xl-3.0](https://huggingface.co/cagliostrolab/animagine-xl-3.0) checkpoint which is a community finetuned version of SDXL for generating anime images.
 
 ```python
 import torch
@@ -129,7 +118,10 @@ image = pipe(
 
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/animagine_xl.png)
 
-Furthermore, TCD-LoRA also supports LoRAs corresponding to other styles. Below is an example with [Papercut](https://huggingface.co/TheLastBen/Papercut_SDXL). To learn more about how to combine LoRAs, refer to [this guide](https://huggingface.co/docs/diffusers/tutorials/using_peft_for_inference#combine-multiple-adapters).
+TCD-LoRA also supports other LoRAs trained on different styles. For example, let's load the [TheLastBen/Papercut_SDXL](https://huggingface.co/TheLastBen/Papercut_SDXL) LoRA and fuse it with the TCD-LoRA with the [`~loaders.UNet2DConditionLoadersMixin.set_adapters`] method. 
+
+> [!TIP]
+> Check out the [Merge LoRAs](merge_loras) guide to learn more about efficient merging methods.
 
 ```python
 import torch
@@ -205,11 +197,12 @@ grid_image = make_image_grid([init_image, mask_image, image], rows=1, cols=3)
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/inpainting_tcd.png)
 
 
-## Compatibility with ControlNet
+## Adapters
 
-For this example, you'll keep using the SDXL model and the TCD-LoRA for SDXL with depth and canny ControlNets.
+TCD-LoRA is very versatile, and it can be combined with other adapter types like ControlNets, IP-Adapter, and AnimateDiff.
 
-### Depth ControlNet
+<hfoptions id="adapters">
+<hfoption id="ControlNet">
 ```python
 import torch
 import numpy as np
@@ -341,7 +334,8 @@ grid_image = make_image_grid([canny_image, image], rows=1, cols=2)
 The inference parameters in this example might not work for all examples, so we recommend you to try different values for `num_inference_steps`, `guidance_scale`, `controlnet_conditioning_scale` and `cross_attention_kwargs` parameters and choose the best one. 
 </Tip>
 
-## IP-Adapter
+</hfoption>
+<hfoption id="IP-Adapter">
 
 This example shows how to use the TCD-LoRA with the [IP-Adapter](https://github.com/tencent-ailab/IP-Adapter/tree/main) and SDXL.
 
@@ -393,7 +387,8 @@ grid_image = make_image_grid([ref_image, image], rows=1, cols=2)
 
 
 
-## AnimateDiff
+</hfoption>
+<hfoption id="AnimateDiff">
 
 [`AnimateDiff`] allows animating images using Stable Diffusion models. TCD-LoRA can substantially accelerate the process without degrading image quality. The quality of animation with TCD-LoRA and AnimateDiff has a more lucid outcome.
 
@@ -433,3 +428,6 @@ export_to_gif(frames, "animation.gif")
 ```
 
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/animation_example.gif)
+
+</hfoption>
+</hfoptions>
