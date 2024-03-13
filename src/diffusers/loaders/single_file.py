@@ -56,6 +56,8 @@ def build_sub_model_components(
 
     if component_name == "unet":
         num_in_channels = kwargs.pop("num_in_channels", None)
+        upcast_attention = kwargs.pop("upcast_attention", None)
+
         unet_components = create_diffusers_unet_model_from_ldm(
             pipeline_class_name,
             original_config,
@@ -64,6 +66,7 @@ def build_sub_model_components(
             image_size=image_size,
             torch_dtype=torch_dtype,
             model_type=model_type,
+            upcast_attention=upcast_attention,
         )
         return unet_components
 
@@ -300,7 +303,9 @@ class FromSingleFileMixin:
                     continue
                 init_kwargs.update(components)
 
-        additional_components = set_additional_components(class_name, original_config, model_type=model_type)
+        additional_components = set_additional_components(
+            class_name, original_config, checkpoint=checkpoint, model_type=model_type
+        )
         if additional_components:
             init_kwargs.update(additional_components)
 
