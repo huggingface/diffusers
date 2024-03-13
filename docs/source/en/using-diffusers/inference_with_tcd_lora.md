@@ -85,7 +85,52 @@ image = pipe(
 
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/demo_image.png)
 
+</hfoption>
 
+<hfoption id="inpainting">
+
+```python
+import torch
+from diffusers import AutoPipelineForInpainting, TCDScheduler
+from diffusers.utils import load_image, make_image_grid
+
+device = "cuda"
+base_model_id = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
+tcd_lora_id = "h1t/TCD-SDXL-LoRA"
+
+pipe = AutoPipelineForInpainting.from_pretrained(base_model_id, torch_dtype=torch.float16, variant="fp16").to(device)
+pipe.scheduler = TCDScheduler.from_config(pipe.scheduler.config)
+
+pipe.load_lora_weights(tcd_lora_id)
+pipe.fuse_lora()
+
+img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+
+init_image = load_image(img_url).resize((1024, 1024))
+mask_image = load_image(mask_url).resize((1024, 1024))
+
+prompt = "a tiger sitting on a park bench"
+
+image = pipe(
+  prompt=prompt,
+  image=init_image,
+  mask_image=mask_image,
+  num_inference_steps=8,
+  guidance_scale=0,
+  eta=0.3,
+  strength=0.99,  # make sure to use `strength` below 1.0
+  generator=torch.Generator(device=device).manual_seed(0),
+).images[0]
+
+grid_image = make_image_grid([init_image, mask_image, image], rows=1, cols=3)
+```
+
+![](https://github.com/jabir-zheng/TCD/raw/main/assets/inpainting_tcd.png)
+
+
+</hfoption>
+</hfoptions>
 
 ## Community models
 
@@ -154,55 +199,14 @@ image = pipe(
 ![](https://github.com/jabir-zheng/TCD/raw/main/assets/styled_lora.png)
 
 
-## Inpainting with TCD 
-
-
-```python
-import torch
-from diffusers import AutoPipelineForInpainting, TCDScheduler
-from diffusers.utils import load_image, make_image_grid
-
-device = "cuda"
-base_model_id = "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"
-tcd_lora_id = "h1t/TCD-SDXL-LoRA"
-
-pipe = AutoPipelineForInpainting.from_pretrained(base_model_id, torch_dtype=torch.float16, variant="fp16").to(device)
-pipe.scheduler = TCDScheduler.from_config(pipe.scheduler.config)
-
-pipe.load_lora_weights(tcd_lora_id)
-pipe.fuse_lora()
-
-img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
-
-init_image = load_image(img_url).resize((1024, 1024))
-mask_image = load_image(mask_url).resize((1024, 1024))
-
-prompt = "a tiger sitting on a park bench"
-
-image = pipe(
-  prompt=prompt,
-  image=init_image,
-  mask_image=mask_image,
-  num_inference_steps=8,
-  guidance_scale=0,
-  eta=0.3, # Eta (referred to as `gamma` in the paper) is used to control the stochasticity in every step. A value of 0.3 often yields good results.
-  strength=0.99,  # make sure to use `strength` below 1.0
-  generator=torch.Generator(device=device).manual_seed(0),
-).images[0]
-
-grid_image = make_image_grid([init_image, mask_image, image], rows=1, cols=3)
-```
-
-![](https://github.com/jabir-zheng/TCD/raw/main/assets/inpainting_tcd.png)
-
-
 ## Adapters
 
 TCD-LoRA is very versatile, and it can be combined with other adapter types like ControlNets, IP-Adapter, and AnimateDiff.
 
 <hfoptions id="adapters">
 <hfoption id="ControlNet">
+
+### Depth ControlNet
 
 ```python
 import torch
