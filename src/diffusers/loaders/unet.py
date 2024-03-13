@@ -905,14 +905,14 @@ class UNet2DConditionLoadersMixin:
 
 class FromOriginalUNetMixin:
     """
-    Load pretrained UNet model weights saved in the `.ckpt` or `.safetensors` format into a [`ControlNetModel`].
+    Load pretrained UNet model weights saved in the `.ckpt` or `.safetensors` format into a [`StableCascadeUNet`].
     """
 
     @classmethod
     @validate_hf_hub_args
     def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
         r"""
-        Instantiate a [`ControlNetModel`] from pretrained ControlNet weights saved in the original `.ckpt` or
+        Instantiate a [`StableCascadeUNet`] from pretrained StableCascadeUNet weights saved in the original `.ckpt` or
         `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
 
         Parameters:
@@ -951,6 +951,10 @@ class FromOriginalUNetMixin:
                 Can be used to overwrite load and saveable variables of the model.
 
         """
+        class_name = cls.__name__
+        if class_name != "StableCascadeUNet":
+            raise ValueError("FromOriginalUNetMixin is currently only compatible with StableCascadeUNet")
+
         config = kwargs.pop("config", None)
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
@@ -960,10 +964,6 @@ class FromOriginalUNetMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-
-        class_name = cls.__name__
-        if class_name != "StableCascadeUNet":
-            raise ValueError("FromOriginalUNetMixin is currently only compatible with StableCascadeUNet")
 
         checkpoint = load_single_file_model_checkpoint(
             pretrained_model_link_or_path,
