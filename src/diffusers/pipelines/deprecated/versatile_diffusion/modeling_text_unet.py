@@ -2160,7 +2160,7 @@ class UNetMidBlockFlat(nn.Module):
         attentions = []
 
         if attention_head_dim is None:
-            logger.warn(
+            logger.warning(
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
             )
             attention_head_dim = in_channels
