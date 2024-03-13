@@ -22,7 +22,10 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModel, CLIPTokenizer
 
 from diffusers import (
+    AsymmetricAutoencoderKL,
     AutoencoderKL,
+    AutoencoderTiny,
+    ConsistencyDecoderVAE,
     ControlNetXSAddon,
     DDIMScheduler,
     LCMScheduler,
@@ -43,6 +46,12 @@ from diffusers.utils.testing_utils import (
 )
 from diffusers.utils.torch_utils import randn_tensor
 
+from ...models.autoencoders.test_models_vae import (
+    get_asym_autoencoder_kl_config,
+    get_autoencoder_kl_config,
+    get_autoencoder_tiny_config,
+    get_consistency_vae_config,
+)
 from ..pipeline_params import (
     IMAGE_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_BATCH_PARAMS,
@@ -126,6 +135,7 @@ class ControlNetXSPipelineFastTests(
             cross_attention_dim=32,
             norm_num_groups=1,
             time_cond_proj_dim=time_cond_proj_dim,
+            use_linear_projection=True,
         )
         torch.manual_seed(0)
         controlnet = ControlNetXSAddon.from_unet(
@@ -235,6 +245,53 @@ class ControlNetXSPipelineFastTests(
         )
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    def test_to_dtype(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        # pipeline creates a new UNetControlNetXSModel under the hood. So we need to check the dtype from pipe.components
+        model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
+        self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
+
+        pipe.to(dtype=torch.float16)
+        model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
+        self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
+
+    def test_multi_vae(self):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+
+        block_out_channels = pipe.vae.config.block_out_channels
+        norm_num_groups = pipe.vae.config.norm_num_groups
+
+        vae_classes = [AutoencoderKL, AsymmetricAutoencoderKL, ConsistencyDecoderVAE, AutoencoderTiny]
+        configs = [
+            get_autoencoder_kl_config(block_out_channels, norm_num_groups),
+            get_asym_autoencoder_kl_config(block_out_channels, norm_num_groups),
+            get_consistency_vae_config(block_out_channels, norm_num_groups),
+            get_autoencoder_tiny_config(block_out_channels),
+        ]
+
+        out_np = pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
+
+        for vae_cls, config in zip(vae_classes, configs):
+            vae = vae_cls(**config)
+            vae = vae.to(torch_device)
+            components["vae"] = vae
+            vae_pipe = self.pipeline_class(**components)
+
+            # pipeline creates a new UNetControlNetXSModel under the hood, which aren't on device.
+            # So we need to move the new pipe to device.
+            vae_pipe.to(torch_device)
+            vae_pipe.set_progress_bar_config(disable=None)
+
+            out_vae_np = vae_pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
+
+            assert out_vae_np.shape == out_np.shape
 
 
 @slow
