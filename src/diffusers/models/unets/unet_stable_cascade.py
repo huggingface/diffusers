@@ -21,6 +21,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders.unet import FromOriginalUNetMixin
 from ...utils import BaseOutput
 from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin
@@ -134,7 +135,7 @@ class StableCascadeUNetOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
-class StableCascadeUNet(ModelMixin, ConfigMixin):
+class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalUNetMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
