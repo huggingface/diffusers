@@ -426,9 +426,8 @@ def parse_args(input_args=None):
         help=("The dimension of the LoRA update matrices."),
     )
     parser.add_argument(
-        "--debug-loss",
+        "--debug_loss",
         action="store_true",
-        default=False,
         help="debug loss for each image, if filenames are awailable in the dataset",
     )
 
