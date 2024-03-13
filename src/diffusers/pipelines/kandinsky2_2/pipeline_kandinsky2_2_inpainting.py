@@ -372,7 +372,7 @@ class KandinskyV22InpaintPipeline(DiffusionPipeline):
         if not self._warn_has_been_called and version.parse(version.parse(__version__).base_version) < version.parse(
             "0.23.0.dev0"
         ):
-            logger.warn(
+            logger.warning(
                 "Please note that the expected format of `mask_image` has recently been changed. "
                 "Before diffusers == 0.19.0, Kandinsky Inpainting pipelines repainted black pixels and preserved black pixels. "
                 "As of diffusers==0.19.0 this behavior has been inverted. Now white pixels are repainted and black pixels are preserved. "

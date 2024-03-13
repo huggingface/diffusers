@@ -256,7 +256,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     break
 
             if save_method_name is None:
-                logger.warn(f"self.{pipeline_component_name}={sub_model} of type {type(sub_model)} cannot be saved.")
+                logger.warning(
+                    f"self.{pipeline_component_name}={sub_model} of type {type(sub_model)} cannot be saved."
+                )
                 # make sure that unsaveable components are not tried to be loaded afterward
                 self.register_to_config(**{pipeline_component_name: (None, None)})
                 continue
@@ -1202,7 +1204,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             try:
                 info = model_info(pretrained_model_name, token=token, revision=revision)
             except (HTTPError, OfflineModeIsEnabled, requests.ConnectionError) as e:
-                logger.warn(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
+                logger.warning(f"Couldn't connect to the Hub: {e}.\nWill try to load from local cache.")
                 local_files_only = True
                 model_info_call_error = e  # save error to reraise it if model is not cached locally
 
@@ -1353,7 +1355,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     len(safetensors_variant_filenames) > 0
                     and safetensors_model_filenames != safetensors_variant_filenames
                 ):
-                    logger.warn(
+                    logger.warning(
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(safetensors_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(safetensors_model_filenames - safetensors_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                     )
             else:
@@ -1366,7 +1368,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 bin_variant_filenames = {f for f in variant_filenames if f.endswith(".bin")}
                 bin_model_filenames = {f for f in model_filenames if f.endswith(".bin")}
                 if len(bin_variant_filenames) > 0 and bin_model_filenames != bin_variant_filenames:
-                    logger.warn(
+                    logger.warning(
                         f"\nA mixture of {variant} and non-{variant} filenames will be loaded.\nLoaded {variant} filenames:\n[{', '.join(bin_variant_filenames)}]\nLoaded non-{variant} filenames:\n[{', '.join(bin_model_filenames - bin_variant_filenames)}\nIf this behavior is not expected, please check your folder structure."
                     )
 
