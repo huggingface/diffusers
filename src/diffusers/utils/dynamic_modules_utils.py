@@ -335,7 +335,6 @@ def get_cached_module_file(
                 if not os.path.exists(submodule_path / module_folder):
                     os.makedirs(submodule_path / module_folder)
             module_needed = f"{module_needed}.py"
-            print(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
             shutil.copy(os.path.join(pretrained_model_name_or_path, module_needed), submodule_path / module_needed)
     else:
         # Get the commit hash
@@ -354,7 +353,7 @@ def get_cached_module_file(
                 if not os.path.exists(submodule_path / module_folder):
                     os.makedirs(submodule_path / module_folder)
             shutil.copy(resolved_module_file, submodule_path / module_file)
-        
+
         # Make sure we also have every file with relative
         for module_needed in modules_needed:
             if len(module_needed.split(".")) == 2:

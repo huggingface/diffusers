@@ -1312,7 +1312,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     f"load the model. You can inspect the repository content at {', '.join([f'https://hf.co/{pretrained_model_name}/{k}/{v}.py' for k,v in custom_components.items()])}.\n"
                     f"Please pass the argument `trust_remote_code=True` to allow custom code to be run."
                 )
-            
+
             # retrieve passed components that should not be downloaded
             pipeline_class = _get_pipeline_class(
                 cls,
@@ -1376,7 +1376,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             allow_patterns = [
                 p for p in allow_patterns if not (len(p.split("/")) == 2 and p.split("/")[0] in passed_components)
             ]
-            print(f"Allowed: {allow_patterns}")
 
             if pipeline_class._load_connected_pipes:
                 allow_patterns.append("README.md")
@@ -1395,7 +1394,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if pipeline_is_cached and not force_download:
                 # if the pipeline is cached, we can directly return it
                 # else call snapshot_download
-                print(f"Snapshot: {os.listdir(snapshot_folder)}")
                 return snapshot_folder
 
         user_agent = {"pipeline_class": cls.__name__}
