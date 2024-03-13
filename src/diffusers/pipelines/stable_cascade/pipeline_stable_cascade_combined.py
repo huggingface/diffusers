@@ -159,7 +159,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         decoder_guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -184,7 +186,14 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, text embeddings will be generated from `prompt` input argument.
+            prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
+                Pre-generated text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
+                Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
+                prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
+                input argument.
+            negative_prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings for the prior. Can be used to easily tweak text inputs, *e.g.*
                 prompt weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
@@ -265,7 +274,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             guidance_scale=prior_guidance_scale,
             negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
             prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
             num_images_per_prompt=num_images_per_prompt,
             generator=generator,
             latents=latents,
@@ -276,7 +287,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
         )
         image_embeddings = prior_outputs.image_embeddings
         prompt_embeds = prior_outputs.get("prompt_embeds", None)
+        prompt_embeds_pooled = prior_outputs.get("prompt_embeds_pooled", None)
         negative_prompt_embeds = prior_outputs.get("negative_prompt_embeds", None)
+        negative_prompt_embeds_pooled = prior_outputs.get("negative_prompt_embeds_pooled", None)
 
         outputs = self.decoder_pipe(
             image_embeddings=image_embeddings,
@@ -285,7 +298,9 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             guidance_scale=decoder_guidance_scale,
             negative_prompt=negative_prompt if negative_prompt_embeds is None else None,
             prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
             negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
             generator=generator,
             output_type=output_type,
             return_dict=return_dict,
