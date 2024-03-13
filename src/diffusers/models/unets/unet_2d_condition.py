@@ -1226,7 +1226,7 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                     **additional_residuals,
                 )
             else:
-                sample, res_samples = downsample_block(hidden_states=sample, temb=emb, scale=lora_scale)
+                sample, res_samples = downsample_block(hidden_states=sample, temb=emb)
                 if is_adapter and len(down_intrablock_additional_residuals) > 0:
                     sample += down_intrablock_additional_residuals.pop(0)
 
@@ -1297,7 +1297,6 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
                     temb=emb,
                     res_hidden_states_tuple=res_samples,
                     upsample_size=upsample_size,
-                    scale=lora_scale,
                 )
 
         # 6. post-process
