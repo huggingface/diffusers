@@ -223,6 +223,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         """
         steps = num_inference_steps
         order = self.config.solver_order
+        if order > 3:
+            raise ValueError("Order > 3 is not supported by this scheduler")
         if self.config.lower_order_final:
             if order == 3:
                 if steps % 3 == 0:
@@ -239,7 +241,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             elif order == 1:
                 orders = [1] * steps
         else:
-            if order == 3:
+            if order >= 3:
                 orders = [1, 2, 3] * (steps // 3)
             elif order == 2:
                 orders = [1, 2] * (steps // 2)
