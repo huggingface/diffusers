@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import copy
 import gc
 import unittest
 
@@ -24,8 +25,10 @@ from diffusers import (
     AutoencoderKL,
     ControlNetModel,
     EulerDiscreteScheduler,
+    HeunDiscreteScheduler,
     LCMScheduler,
     StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLImg2ImgPipeline,
     UNet2DConditionModel,
 )
 from diffusers.models.unets.unet_2d_blocks import UNetMidBlock2D
@@ -48,6 +51,7 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_PARAMS,
 )
 from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -59,6 +63,7 @@ enable_full_determinism()
 
 
 class StableDiffusionXLControlNetPipelineFastTests(
+    IPAdapterTesterMixin,
     PipelineLatentTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineTesterMixin,
@@ -361,6 +366,110 @@ class StableDiffusionXLControlNetPipelineFastTests(
         expected_slice = np.array([0.7799, 0.614, 0.6162, 0.7082, 0.6662, 0.5833, 0.4148, 0.5182, 0.4866])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
+
+    # copied from test_stable_diffusion_xl.py:test_stable_diffusion_two_xl_mixture_of_denoiser_fast
+    # with `StableDiffusionXLControlNetPipeline` instead of `StableDiffusionXLPipeline`
+    def test_controlnet_sdxl_two_mixture_of_denoiser_fast(self):
+        components = self.get_dummy_components()
+        pipe_1 = StableDiffusionXLControlNetPipeline(**components).to(torch_device)
+        pipe_1.unet.set_default_attn_processor()
+
+        components_without_controlnet = {k: v for k, v in components.items() if k != "controlnet"}
+        pipe_2 = StableDiffusionXLImg2ImgPipeline(**components_without_controlnet).to(torch_device)
+        pipe_2.unet.set_default_attn_processor()
+
+        def assert_run_mixture(
+            num_steps,
+            split,
+            scheduler_cls_orig,
+            expected_tss,
+            num_train_timesteps=pipe_1.scheduler.config.num_train_timesteps,
+        ):
+            inputs = self.get_dummy_inputs(torch_device)
+            inputs["num_inference_steps"] = num_steps
+
+            class scheduler_cls(scheduler_cls_orig):
+                pass
+
+            pipe_1.scheduler = scheduler_cls.from_config(pipe_1.scheduler.config)
+            pipe_2.scheduler = scheduler_cls.from_config(pipe_2.scheduler.config)
+
+            # Let's retrieve the number of timesteps we want to use
+            pipe_1.scheduler.set_timesteps(num_steps)
+            expected_steps = pipe_1.scheduler.timesteps.tolist()
+
+            if pipe_1.scheduler.order == 2:
+                expected_steps_1 = list(filter(lambda ts: ts >= split, expected_tss))
+                expected_steps_2 = expected_steps_1[-1:] + list(filter(lambda ts: ts < split, expected_tss))
+                expected_steps = expected_steps_1 + expected_steps_2
+            else:
+                expected_steps_1 = list(filter(lambda ts: ts >= split, expected_tss))
+                expected_steps_2 = list(filter(lambda ts: ts < split, expected_tss))
+
+            # now we monkey patch step `done_steps`
+            # list into the step function for testing
+            done_steps = []
+            old_step = copy.copy(scheduler_cls.step)
+
+            def new_step(self, *args, **kwargs):
+                done_steps.append(args[1].cpu().item())  # args[1] is always the passed `t`
+                return old_step(self, *args, **kwargs)
+
+            scheduler_cls.step = new_step
+
+            inputs_1 = {
+                **inputs,
+                **{
+                    "denoising_end": 1.0 - (split / num_train_timesteps),
+                    "output_type": "latent",
+                },
+            }
+            latents = pipe_1(**inputs_1).images[0]
+
+            assert expected_steps_1 == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+            inputs_2 = {
+                **inputs,
+                **{
+                    "denoising_start": 1.0 - (split / num_train_timesteps),
+                    "image": latents,
+                },
+            }
+            pipe_2(**inputs_2).images[0]
+
+            assert expected_steps_2 == done_steps[len(expected_steps_1) :]
+            assert expected_steps == done_steps, f"Failure with {scheduler_cls.__name__} and {num_steps} and {split}"
+
+        steps = 10
+        for split in [300, 700]:
+            for scheduler_cls_timesteps in [
+                (EulerDiscreteScheduler, [901, 801, 701, 601, 501, 401, 301, 201, 101, 1]),
+                (
+                    HeunDiscreteScheduler,
+                    [
+                        901.0,
+                        801.0,
+                        801.0,
+                        701.0,
+                        701.0,
+                        601.0,
+                        601.0,
+                        501.0,
+                        501.0,
+                        401.0,
+                        401.0,
+                        301.0,
+                        301.0,
+                        201.0,
+                        201.0,
+                        101.0,
+                        101.0,
+                        1.0,
+                        1.0,
+                    ],
+                ),
+            ]:
+                assert_run_mixture(steps, split, scheduler_cls_timesteps[0], scheduler_cls_timesteps[1])
 
 
 class StableDiffusionXLMultiControlNetPipelineFastTests(
@@ -860,6 +969,49 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
 
         max_diff = numpy_cosine_similarity_distance(images[0].flatten(), single_file_images[0].flatten())
         assert max_diff < 5e-2
+
+    def test_single_file_component_configs(self):
+        controlnet = ControlNetModel.from_pretrained(
+            "diffusers/controlnet-depth-sdxl-1.0", torch_dtype=torch.float16, variant="fp16"
+        )
+        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0",
+            variant="fp16",
+            controlnet=controlnet,
+            torch_dtype=torch.float16,
+        )
+
+        single_file_url = (
+            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+        )
+        single_file_pipe = StableDiffusionXLControlNetPipeline.from_single_file(
+            single_file_url, controlnet=controlnet, torch_dtype=torch.float16
+        )
+
+        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
+            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
+                continue
+            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+
+        for param_name, param_value in single_file_pipe.text_encoder_2.config.to_dict().items():
+            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
+                continue
+            assert pipe.text_encoder_2.config.to_dict()[param_name] == param_value
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        for param_name, param_value in single_file_pipe.unet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.unet.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.vae.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.vae.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
 
 
 class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNetPipelineFastTests):

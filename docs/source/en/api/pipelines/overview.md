@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -57,6 +57,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Latent Consistency Models](latent_consistency_models) | text2image |
 | [Latent Diffusion](latent_diffusion) | text2image, super-resolution |
 | [LDM3D](stable_diffusion/ldm3d_diffusion) | text2image, text-to-3D, text-to-pano, upscaling |
+| [LEDITS++](ledits_pp) | image editing |
 | [MultiDiffusion](panorama) | text2image |
 | [MusicLDM](musicldm) | text2audio |
 | [Paint by Example](paint_by_example) | inpainting |

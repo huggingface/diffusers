@@ -18,7 +18,7 @@
   - local: tutorials/basic_training
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
-    title: Inference with PEFT
+    title: Load LoRAs for inference
   - local: tutorials/fast_diffusion
     title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
@@ -52,12 +52,18 @@
       title: Image-to-image
     - local: using-diffusers/inpaint
       title: Inpainting
+    - local: using-diffusers/text-img2vid
+      title: Text or image-to-video
     - local: using-diffusers/depth2img
       title: Depth-to-image
     title: Tasks
   - sections:
     - local: using-diffusers/textual_inversion_inference
       title: Textual inversion
+    - local: using-diffusers/ip_adapter
+      title: IP-Adapter
+    - local: using-diffusers/merge_loras
+      title: Merge LoRAs
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
@@ -228,6 +234,8 @@
       title: UNet3DConditionModel
     - local: api/models/unet-motion
       title: UNetMotionModel
+    - local: api/models/uvit2d
+      title: UViT2DModel
     - local: api/models/vq
       title: VQModel
     - local: api/models/autoencoderkl
@@ -282,6 +290,8 @@
       title: DiffEdit
     - local: api/pipelines/dit
       title: DiT
+    - local: api/pipelines/i2vgenxl
+      title: I2VGen-XL
     - local: api/pipelines/pix2pix
       title: InstructPix2Pix
     - local: api/pipelines/kandinsky
@@ -294,12 +304,16 @@
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
+    - local: api/pipelines/ledits_pp
+      title: LEDITS++
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
       title: MusicLDM
     - local: api/pipelines/paint_by_example
       title: Paint by Example
+    - local: api/pipelines/pia
+      title: Personalized Image Animator (PIA)
     - local: api/pipelines/pixart
       title: PixArt-α
     - local: api/pipelines/self_attention_guidance
@@ -308,6 +322,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/stable_cascade
+      title: Stable Cascade
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -315,6 +331,8 @@
         title: Text-to-image
       - local: api/pipelines/stable_diffusion/img2img
         title: Image-to-image
+      - local: api/pipelines/stable_diffusion/svd
+        title: Image-to-video
       - local: api/pipelines/stable_diffusion/inpaint
         title: Inpainting
       - local: api/pipelines/stable_diffusion/depth2img
@@ -406,6 +424,8 @@
       title: ScoreSdeVeScheduler
     - local: api/schedulers/score_sde_vp
       title: ScoreSdeVpScheduler
+    - local: api/schedulers/tcd
+      title: TCDScheduler
     - local: api/schedulers/unipc
       title: UniPCMultistepScheduler
     - local: api/schedulers/vq_diffusion
