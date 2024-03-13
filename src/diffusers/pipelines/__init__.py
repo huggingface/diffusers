@@ -425,6 +425,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LatentConsistencyModelPipeline,
         )
         from .latent_diffusion import LDMTextToImagePipeline
+        from .ledits_pp import (
+            LEditsPPDiffusionPipelineOutput,
+            LEditsPPInversionPipelineOutput,
+            LEditsPPPipelineStableDiffusion,
+            LEditsPPPipelineStableDiffusionXL,
+        )
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline
