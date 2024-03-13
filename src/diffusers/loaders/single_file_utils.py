@@ -884,7 +884,7 @@ def create_diffusers_controlnet_model_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {controlnet.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
     else:
@@ -1060,7 +1060,7 @@ def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
     else:
@@ -1155,7 +1155,7 @@ def create_text_encoder_from_open_clip_checkpoint(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
@@ -1221,7 +1221,7 @@ def create_diffusers_unet_model_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {unet.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
     else:
@@ -1283,7 +1283,7 @@ def create_diffusers_vae_model_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {vae.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
     else:
