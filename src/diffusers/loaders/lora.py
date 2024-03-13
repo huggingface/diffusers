@@ -430,7 +430,7 @@ class LoraLoaderMixin:
             # contain the module names of the `unet` as its keys WITHOUT any prefix.
             if not USE_PEFT_BACKEND:
                 warn_message = "You have saved the LoRA weights using the old format. To convert the old LoRA weights to the new format, you can first load them in a dictionary and then create a new dictionary like the following: `new_state_dict = {f'unet.{module_name}': params for module_name, params in old_state_dict.items()}`."
-                logger.warn(warn_message)
+                logger.warning(warn_message)
 
         if len(state_dict.keys()) > 0:
             if adapter_name in getattr(unet, "peft_config", {}):
@@ -882,7 +882,7 @@ class LoraLoaderMixin:
         if fuse_unet or fuse_text_encoder:
             self.num_fused_loras += 1
             if self.num_fused_loras > 1:
-                logger.warn(
+                logger.warning(
                     "The current API is supported for operating with a single LoRA file. You are trying to load and fuse more than one LoRA which is not well-supported.",
                 )
 
