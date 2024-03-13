@@ -328,7 +328,6 @@ class IPAdapterFaceIDStableDiffusionPipeline(
         return image_projection
 
     def _load_ip_adapter_weights(self, state_dict):
-
         num_image_text_embeds = 4
 
         self.unet.encoder_hid_proj = None
@@ -353,20 +352,38 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                 )
                 attn_procs[name] = attn_processor_class()
 
-                lora_dict.update({f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.down.weight"]})
-                lora_dict.update({f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"]})
-                lora_dict.update({f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.down.weight"]})
-                lora_dict.update({f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.down.weight"]})
-                lora_dict.update({f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]})
-                lora_dict.update({f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]})
-                lora_dict.update({f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]})
-                lora_dict.update({f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.up.weight"]})
+                lora_dict.update(
+                    {f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.down.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.down.weight"]}
+                )
+                lora_dict.update(
+                    {
+                        f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][
+                            f"{key_id}.to_out_lora.down.weight"
+                        ]
+                    }
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.up.weight"]}
+                )
                 key_id += 1
             else:
                 attn_processor_class = (
-                    IPAdapterAttnProcessor2_0
-                    if hasattr(F, "scaled_dot_product_attention")
-                    else IPAdapterAttnProcessor
+                    IPAdapterAttnProcessor2_0 if hasattr(F, "scaled_dot_product_attention") else IPAdapterAttnProcessor
                 )
                 attn_procs[name] = attn_processor_class(
                     hidden_size=hidden_size,
@@ -375,14 +392,34 @@ class IPAdapterFaceIDStableDiffusionPipeline(
                     num_tokens=num_image_text_embeds,
                 ).to(dtype=self.dtype, device=self.device)
 
-                lora_dict.update({f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.down.weight"]})
-                lora_dict.update({f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"]})
-                lora_dict.update({f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.down.weight"]})
-                lora_dict.update({f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.down.weight"]})
-                lora_dict.update({f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]})
-                lora_dict.update({f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]})
-                lora_dict.update({f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]})
-                lora_dict.update({f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.up.weight"]})
+                lora_dict.update(
+                    {f"unet.{name}.to_k_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.down.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_q_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.down.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_v_lora.down.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.down.weight"]}
+                )
+                lora_dict.update(
+                    {
+                        f"unet.{name}.to_out_lora.down.weight": state_dict["ip_adapter"][
+                            f"{key_id}.to_out_lora.down.weight"
+                        ]
+                    }
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]}
+                )
+                lora_dict.update(
+                    {f"unet.{name}.to_out_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_out_lora.up.weight"]}
+                )
 
                 value_dict = {}
                 value_dict.update({"to_k_ip.0.weight": state_dict["ip_adapter"][f"{key_id}.to_k_ip.weight"]})

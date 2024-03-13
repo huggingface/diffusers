@@ -923,25 +923,13 @@ class UNet2DConditionLoadersMixin:
                         }
                     )
                     lora_dicts[i].update(
-                        {
-                            f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][
-                                f"{key_id}.to_k_lora.up.weight"
-                            ]
-                        }
+                        {f"unet.{name}.to_k_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_k_lora.up.weight"]}
                     )
                     lora_dicts[i].update(
-                        {
-                            f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][
-                                f"{key_id}.to_q_lora.up.weight"
-                            ]
-                        }
+                        {f"unet.{name}.to_q_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_q_lora.up.weight"]}
                     )
                     lora_dicts[i].update(
-                        {
-                            f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][
-                                f"{key_id}.to_v_lora.up.weight"
-                            ]
-                        }
+                        {f"unet.{name}.to_v_lora.up.weight": state_dict["ip_adapter"][f"{key_id}.to_v_lora.up.weight"]}
                     )
                     lora_dicts[i].update(
                         {
