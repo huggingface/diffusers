@@ -393,9 +393,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             raise ValueError(
                 "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
             )
-        
+
         if self._is_pipeline_device_mapped:
-            raise ValueError("It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`.")
+            raise ValueError(
+                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`."
+            )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
         pipeline_is_offloaded = any(module_is_offloaded(module) for _, module in self.components.items())
@@ -1067,8 +1069,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 default to "cuda".
         """
         if self._is_pipeline_device_mapped:
-            raise ValueError("It seems like you have activated a device mapping strategy on the pipeline so calling `enable_model_cpu_offload() isn't allowed.")
-        
+            raise ValueError(
+                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_model_cpu_offload() isn't allowed."
+            )
+
         if self.model_cpu_offload_seq is None:
             raise ValueError(
                 "Model CPU offload cannot be enabled because no `model_cpu_offload_seq` class attribute is set."
@@ -1166,7 +1170,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
         if self._is_pipeline_device_mapped:
-            raise ValueError("It seems like you have activated a device mapping strategy on the pipeline so calling `enable_sequential_cpu_offload() isn't allowed.")
+            raise ValueError(
+                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_sequential_cpu_offload() isn't allowed."
+            )
 
         torch_device = torch.device(device)
         device_index = torch_device.index
