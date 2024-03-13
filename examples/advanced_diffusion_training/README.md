@@ -65,7 +65,7 @@ write_basic_config()
 ```
 
 When running `accelerate config`, if we specify torch compile mode to True there can be dramatic speedups. 
-Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.6.0` installed in your environment.
+Note also that we use PEFT library as backend for LoRA training, make sure to have `peft>=0.9.0` installed in your environment.
 
 ### Pivotal Tuning
 **Training with text encoder(s)**
