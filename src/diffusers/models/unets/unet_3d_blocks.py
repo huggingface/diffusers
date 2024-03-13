@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 import torch
 from torch import nn
 
-from ...utils import deprecate, is_torch_version
+from ...utils import deprecate, is_torch_version, logging
 from ...utils.torch_utils import apply_freeu
 from ..attention import Attention
 from ..resnet import (
@@ -33,6 +33,9 @@ from ..transformers.transformer_temporal import (
     TransformerSpatioTemporalModel,
     TransformerTemporalModel,
 )
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def get_down_block(
@@ -1178,6 +1181,10 @@ class CrossAttnDownBlockMotion(nn.Module):
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         additional_residuals: Optional[torch.FloatTensor] = None,
     ):
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is depcrecated. `scale` will be ignored.")
+
         output_states = ()
 
         blocks = list(zip(self.resnets, self.attentions, self.motion_modules))
@@ -1358,6 +1365,10 @@ class CrossAttnUpBlockMotion(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
     ) -> torch.FloatTensor:
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is depcrecated. `scale` will be ignored.")
+
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
@@ -1694,6 +1705,10 @@ class UNetMidBlockCrossAttnMotion(nn.Module):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         num_frames: int = 1,
     ) -> torch.FloatTensor:
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is depcrecated. `scale` will be ignored.")
+
         hidden_states = self.resnets[0](hidden_states, temb)
 
         blocks = zip(self.attentions, self.resnets[1:], self.motion_modules)

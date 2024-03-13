@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..utils import deprecate
 from .normalization import RMSNorm
 from .upsampling import upfirdn2d_native
 

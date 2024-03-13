@@ -19,11 +19,14 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import BaseOutput, deprecate, is_torch_version
+from ...utils import BaseOutput, deprecate, is_torch_version, logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
@@ -303,6 +306,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is depcrecated. `scale` will be ignored.")
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
