@@ -89,7 +89,7 @@ class I2VGenXLTransformerTemporalEncoder(nn.Module):
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
 
-        ff_output = self.ff(hidden_states, scale=1.0)
+        ff_output = self.ff(hidden_states)
         hidden_states = ff_output + hidden_states
         if hidden_states.ndim == 4:
             hidden_states = hidden_states.squeeze(1)
