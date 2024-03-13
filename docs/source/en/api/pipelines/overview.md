@@ -57,6 +57,7 @@ The table below lists all the pipelines currently available in 🤗 Diffusers an
 | [Latent Consistency Models](latent_consistency_models) | text2image |
 | [Latent Diffusion](latent_diffusion) | text2image, super-resolution |
 | [LDM3D](stable_diffusion/ldm3d_diffusion) | text2image, text-to-3D, text-to-pano, upscaling |
+| [LEDITS++](ledits_pp) | image editing |
 | [MultiDiffusion](panorama) | text2image |
 | [MusicLDM](musicldm) | text2audio |
 | [Paint by Example](paint_by_example) | inpainting |
