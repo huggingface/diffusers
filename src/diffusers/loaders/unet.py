@@ -345,7 +345,7 @@ class UNet2DConditionLoadersMixin:
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
-        # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `lora_lora_weights_into_unet`
+        # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `load_lora_weights_into_unet`
         if not USE_PEFT_BACKEND:
             if _pipeline is not None:
                 for _, component in _pipeline.components.items():
@@ -384,7 +384,7 @@ class UNet2DConditionLoadersMixin:
             is_text_encoder_present = any(key.startswith(self.text_encoder_name) for key in state_dict.keys())
             if is_text_encoder_present:
                 warn_message = "The state_dict contains LoRA params corresponding to the text encoder which are not being used here. To use both UNet and text encoder related LoRA params, use [`pipe.load_lora_weights()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights)."
-                logger.warn(warn_message)
+                logger.warning(warn_message)
             unet_keys = [k for k in state_dict.keys() if k.startswith(self.unet_name)]
             state_dict = {k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
 

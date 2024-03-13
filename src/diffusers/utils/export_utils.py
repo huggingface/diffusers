@@ -116,7 +116,7 @@ def export_to_obj(mesh, output_obj_path: str = None):
 
 
 def export_to_video(
-    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None, fps: int = 8
+    video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None, fps: int = 10
 ) -> str:
     if is_opencv_available():
         import cv2
