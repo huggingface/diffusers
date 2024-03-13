@@ -416,13 +416,13 @@ class IFPipeline(DiffusionPipeline, LoraLoaderMixin):
 
     def _text_preprocessing(self, text, clean_caption=False):
         if clean_caption and not is_bs4_available():
-            logger.warn(BACKENDS_MAPPING["bs4"][-1].format("Setting `clean_caption=True`"))
-            logger.warn("Setting `clean_caption` to False...")
+            logger.warning(BACKENDS_MAPPING["bs4"][-1].format("Setting `clean_caption=True`"))
+            logger.warning("Setting `clean_caption` to False...")
             clean_caption = False
 
         if clean_caption and not is_ftfy_available():
-            logger.warn(BACKENDS_MAPPING["ftfy"][-1].format("Setting `clean_caption=True`"))
-            logger.warn("Setting `clean_caption` to False...")
+            logger.warning(BACKENDS_MAPPING["ftfy"][-1].format("Setting `clean_caption=True`"))
+            logger.warning("Setting `clean_caption` to False...")
             clean_caption = False
 
         if not isinstance(text, (tuple, list)):

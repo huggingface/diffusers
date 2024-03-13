@@ -677,7 +677,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
                     if len(unexpected_keys) > 0:
-                        logger.warn(
+                        logger.warning(
                             f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
                         )
 
@@ -706,7 +706,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         # the weights so we don't have to do this again.
 
                         if "'Attention' object has no attribute" in str(e):
-                            logger.warn(
+                            logger.warning(
                                 f"Taking `{str(e)}` while using `accelerate.load_checkpoint_and_dispatch` to mean {pretrained_model_name_or_path}"
                                 " was saved with deprecated attention block weight names. We will load it with the deprecated attention block"
                                 " names and convert them on the fly to the new attention block format. Please re-save the model after this conversion,"
