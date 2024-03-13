@@ -60,6 +60,7 @@ def get_down_block(
     upcast_attention: bool = False,
     resnet_time_scale_shift: str = "default",
     attention_type: str = "default",
+    attention_legacy_order: bool = False,
     resnet_skip_time_act: bool = False,
     resnet_out_scale_factor: float = 1.0,
     cross_attention_norm: Optional[str] = None,
@@ -73,7 +74,6 @@ def get_down_block(
             f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
         )
         attention_head_dim = num_attention_heads
-
     down_block_type = down_block_type[7:] if down_block_type.startswith("UNetRes") else down_block_type
     if down_block_type == "DownBlock2D":
         return DownBlock2D(
@@ -119,6 +119,7 @@ def get_down_block(
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
             downsample_padding=downsample_padding,
+            attention_legacy_order=attention_legacy_order,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             downsample_type=downsample_type,
@@ -345,6 +346,7 @@ def get_up_block(
     upcast_attention: bool = False,
     resnet_time_scale_shift: str = "default",
     attention_type: str = "default",
+    attention_legacy_order: bool = False,
     resnet_skip_time_act: bool = False,
     resnet_out_scale_factor: float = 1.0,
     cross_attention_norm: Optional[str] = None,
@@ -457,6 +459,7 @@ def get_up_block(
             resnet_eps=resnet_eps,
             resnet_act_fn=resnet_act_fn,
             resnet_groups=resnet_groups,
+            attention_legacy_order=attention_legacy_order,
             attention_head_dim=attention_head_dim,
             resnet_time_scale_shift=resnet_time_scale_shift,
             upsample_type=upsample_type,
@@ -609,6 +612,8 @@ class UNetMidBlock2D(nn.Module):
         attention_head_dim (`int`, *optional*, defaults to 1):
             Dimension of a single attention head. The number of attention heads is determined based on this value and
             the number of input channels.
+        attention_legacy_order (`bool`, *optional*, defaults to `False`):
+            if attention_legacy_order, split heads before split qkv, see https://github.com/openai/guided-diffusion/blob/main/guided_diffusion/unet.py#L328
         output_scale_factor (`float`, *optional*, defaults to 1.0): The output scale factor.
 
     Returns:
@@ -624,13 +629,14 @@ class UNetMidBlock2D(nn.Module):
         dropout: float = 0.0,
         num_layers: int = 1,
         resnet_eps: float = 1e-6,
-        resnet_time_scale_shift: str = "default",  # default, spatial
+        resnet_time_scale_shift: str = "default",  # default, spatial, scale_shift
         resnet_act_fn: str = "swish",
         resnet_groups: int = 32,
         attn_groups: Optional[int] = None,
         resnet_pre_norm: bool = True,
         add_attention: bool = True,
         attention_head_dim: int = 1,
+        attention_legacy_order: bool = False,
         output_scale_factor: float = 1.0,
     ):
         super().__init__()
@@ -677,7 +683,6 @@ class UNetMidBlock2D(nn.Module):
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
             )
             attention_head_dim = in_channels
-
         for _ in range(num_layers):
             if self.add_attention:
                 attentions.append(
@@ -693,6 +698,7 @@ class UNetMidBlock2D(nn.Module):
                         bias=True,
                         upcast_softmax=True,
                         _from_deprecated_attn_block=True,
+                        attention_legacy_order=attention_legacy_order,
                     )
                 )
             else:
@@ -1025,6 +1031,7 @@ class AttnDownBlock2D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attention_head_dim: int = 1,
+        attention_legacy_order: bool = False,
         output_scale_factor: float = 1.0,
         downsample_padding: int = 1,
         downsample_type: str = "conv",
@@ -1068,6 +1075,7 @@ class AttnDownBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     _from_deprecated_attn_block=True,
+                    attention_legacy_order=attention_legacy_order,
                 )
             )
 
@@ -2234,6 +2242,7 @@ class AttnUpBlock2D(nn.Module):
         resnet_groups: int = 32,
         resnet_pre_norm: bool = True,
         attention_head_dim: int = 1,
+        attention_legacy_order: bool = False,
         output_scale_factor: float = 1.0,
         upsample_type: str = "conv",
     ):
@@ -2279,6 +2288,7 @@ class AttnUpBlock2D(nn.Module):
                     bias=True,
                     upcast_softmax=True,
                     _from_deprecated_attn_block=True,
+                    attention_legacy_order=attention_legacy_order,
                 )
             )
 
