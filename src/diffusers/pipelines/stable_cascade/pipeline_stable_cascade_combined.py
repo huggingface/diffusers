@@ -19,7 +19,7 @@ from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer, CLIPV
 
 from ...models import StableCascadeUNet
 from ...schedulers import DDPMWuerstchenScheduler
-from ...utils import replace_example_docstring
+from ...utils import is_torch_version, replace_example_docstring
 from ..pipeline_utils import DiffusionPipeline
 from ..wuerstchen.modeling_paella_vq_model import PaellaVQModel
 from .pipeline_stable_cascade import StableCascadeDecoderPipeline
@@ -29,11 +29,10 @@ from .pipeline_stable_cascade_prior import StableCascadePriorPipeline
 TEXT2IMAGE_EXAMPLE_DOC_STRING = """
     Examples:
         ```py
-        >>> from diffusions import StableCascadeCombinedPipeline
-
-        >>> pipe = StableCascadeCombinedPipeline.from_pretrained("stabilityai/stable-cascade-combined", torch_dtype=torch.bfloat16).to(
-        ...     "cuda"
-        ... )
+        >>> import torch
+        >>> from diffusers import StableCascadeCombinedPipeline
+        >>> pipe = StableCascadeCombinedPipeline.from_pretrained("stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.bfloat16)
+        >>> pipe.enable_model_cpu_offload()
         >>> prompt = "an image of a shiba inu, donning a spacesuit and helmet"
         >>> images = pipe(prompt=prompt)
         ```
@@ -260,6 +259,12 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             [`~pipelines.ImagePipelineOutput`] or `tuple` [`~pipelines.ImagePipelineOutput`] if `return_dict` is True,
             otherwise a `tuple`. When returning a tuple, the first element is a list with the generated images.
         """
+        dtype = self.decoder_pipe.decoder.dtype
+        if is_torch_version("<", "2.2.0") and dtype == torch.bfloat16:
+            raise ValueError(
+                "`StableCascadeCombinedPipeline` requires torch>=2.2.0 when using `torch.bfloat16` dtype."
+            )
+
         prior_outputs = self.prior_pipe(
             prompt=prompt if prompt_embeds is None else None,
             images=images,
