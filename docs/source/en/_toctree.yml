@@ -18,7 +18,7 @@
   - local: tutorials/basic_training
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
-    title: Inference with PEFT
+    title: Load LoRAs for inference
   - local: tutorials/fast_diffusion
     title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
@@ -62,6 +62,8 @@
       title: Textual inversion
     - local: using-diffusers/ip_adapter
       title: IP-Adapter
+    - local: using-diffusers/merge_loras
+      title: Merge LoRAs
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
@@ -302,6 +304,8 @@
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
+    - local: api/pipelines/ledits_pp
+      title: LEDITS++
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
@@ -318,6 +322,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/stable_cascade
+      title: Stable Cascade
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview

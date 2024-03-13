@@ -204,6 +204,9 @@ class LoRALinearLayer(nn.Module):
     ):
         super().__init__()
 
+        deprecation_message = "Use of `LoRALinearLayer` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
+        deprecate("LoRALinearLayer", "1.0.0", deprecation_message)
+
         self.down = nn.Linear(in_features, rank, bias=False, device=device, dtype=dtype)
         self.up = nn.Linear(rank, out_features, bias=False, device=device, dtype=dtype)
         # This value has the same meaning as the `--network_alpha` option in the kohya-ss trainer script.
@@ -263,6 +266,9 @@ class LoRAConv2dLayer(nn.Module):
         network_alpha: Optional[float] = None,
     ):
         super().__init__()
+
+        deprecation_message = "Use of `LoRAConv2dLayer` is deprecated. Please switch to PEFT backend by installing PEFT: `pip install peft`."
+        deprecate("LoRAConv2dLayer", "1.0.0", deprecation_message)
 
         self.down = nn.Conv2d(in_features, rank, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
         # according to the official kohya_ss trainer kernel_size are always fixed for the up layer
