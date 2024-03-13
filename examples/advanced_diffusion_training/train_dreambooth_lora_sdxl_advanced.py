@@ -29,6 +29,7 @@ from typing import List, Optional
 
 import numpy as np
 import torch
+import peft
 import torch.nn.functional as F
 
 # imports of the TokenEmbeddingsHandler class
@@ -75,6 +76,9 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.27.0.dev0")
+
+if version.parse("0.9.0") > version.parse(peft.__version__):
+    raise ImportError(f"Version of Peft must be 0.9.0 or higher, but the version found is {peft.__version__}.")
 
 logger = get_logger(__name__)
 
