@@ -2002,6 +2002,10 @@ class CrossAttnUpBlockFlat(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
     ) -> torch.FloatTensor:
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is depcrecated. `scale` will be ignored.")
+
         is_freeu_enabled = (
             getattr(self, "s1", None)
             and getattr(self, "s2", None)
