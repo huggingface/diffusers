@@ -69,7 +69,7 @@ def get_down_block(
 ):
     # If attn head dim is not defined, we default it to the number of heads
     if attention_head_dim is None:
-        logger.warn(
+        logger.warning(
             f"It is recommended to provide `attention_head_dim` when calling `get_down_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
         )
         attention_head_dim = num_attention_heads
@@ -354,7 +354,7 @@ def get_up_block(
 ) -> nn.Module:
     # If attn head dim is not defined, we default it to the number of heads
     if attention_head_dim is None:
-        logger.warn(
+        logger.warning(
             f"It is recommended to provide `attention_head_dim` when calling `get_up_block`. Defaulting `attention_head_dim` to {num_attention_heads}."
         )
         attention_head_dim = num_attention_heads
@@ -673,7 +673,7 @@ class UNetMidBlock2D(nn.Module):
         attentions = []
 
         if attention_head_dim is None:
-            logger.warn(
+            logger.warning(
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {in_channels}."
             )
             attention_head_dim = in_channels
@@ -1035,7 +1035,7 @@ class AttnDownBlock2D(nn.Module):
         self.downsample_type = downsample_type
 
         if attention_head_dim is None:
-            logger.warn(
+            logger.warning(
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
@@ -1480,7 +1480,7 @@ class AttnDownEncoderBlock2D(nn.Module):
         attentions = []
 
         if attention_head_dim is None:
-            logger.warn(
+            logger.warning(
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
@@ -1579,7 +1579,7 @@ class AttnSkipDownBlock2D(nn.Module):
         self.resnets = nn.ModuleList([])
 
         if attention_head_dim is None:
-            logger.warn(
+            logger.warning(
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
@@ -2244,7 +2244,7 @@ class AttnUpBlock2D(nn.Module):
         self.upsample_type = upsample_type
 
         if attention_head_dim is None:
-            logger.warn(
+            logger.warning(
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `in_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
@@ -2719,7 +2719,7 @@ class AttnUpDecoderBlock2D(nn.Module):
         attentions = []
 
         if attention_head_dim is None:
-            logger.warn(
+            logger.warning(
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `out_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
@@ -2841,7 +2841,7 @@ class AttnSkipUpBlock2D(nn.Module):
             )
 
         if attention_head_dim is None:
-            logger.warn(
+            logger.warning(
                 f"It is not recommend to pass `attention_head_dim=None`. Defaulting `attention_head_dim` to `out_channels`: {out_channels}."
             )
             attention_head_dim = out_channels
