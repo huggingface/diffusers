@@ -336,7 +336,7 @@ def parse_args(input_args=None):
         "captions - e.g. TOK. To use multiple identifiers, please specify them in a comma seperated string - e.g. "
         "'TOK,TOK2,TOK3' etc.",
     )
-    
+
     parser.add_argument(
         "--base_new_tokens_off_token_abstractions",
         default=False,

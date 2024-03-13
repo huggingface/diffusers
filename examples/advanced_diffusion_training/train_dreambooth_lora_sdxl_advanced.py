@@ -368,6 +368,13 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument(
+        "--base_new_tokens_off_token_abstractions",
+        default=False,
+        action="store_true",
+        help="utilize <TOK_0><TOK_1>... per each token instead of the default <si><si+1>..."
+    )
+
+    parser.add_argument(
         "--num_new_tokens_per_abstraction",
         type=int,
         default=2,
