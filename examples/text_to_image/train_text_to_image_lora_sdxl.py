@@ -418,7 +418,8 @@ def parse_args(input_args=None):
         "--debug-loss",
         action="store_true",
         default=False,
-        help="debug loss for each image, if filenames are awailable in the dataset")
+        help="debug loss for each image, if filenames are awailable in the dataset",
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -891,9 +892,9 @@ def main(args):
             "crop_top_lefts": crop_top_lefts,
         }
 
-        filenames = [example['filenames'] for example in examples if 'filenames' in example]
+        filenames = [example["filenames"] for example in examples if "filenames" in example]
         if filenames:
-            result['filenames'] = filenames
+            result["filenames"] = filenames
         return result
 
     # DataLoaders creation:
@@ -1087,9 +1088,9 @@ def main(args):
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
-                if args.debug_loss and 'filenames' in batch:
-                    for fname in batch['filenames']:
-                        accelerator.log({'loss_for_' + fname: loss}, step=global_step)
+                if args.debug_loss and "filenames" in batch:
+                    for fname in batch["filenames"]:
+                        accelerator.log({"loss_for_" + fname: loss}, step=global_step)
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps
