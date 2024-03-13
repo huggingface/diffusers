@@ -1189,7 +1189,7 @@ def main(args):
                 token_abstraction_dict[token] = [
                     f"<{token}_{j}>" for j in range(args.num_new_tokens_per_abstraction)
                 ]
-            else: 
+            else:
                 token_abstraction_dict[token] = [
                     f"<s{token_idx + i + j}>" for j in range(args.num_new_tokens_per_abstraction)
                 ]
