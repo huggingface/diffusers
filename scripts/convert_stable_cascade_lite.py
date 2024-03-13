@@ -30,10 +30,14 @@ if is_accelerate_available():
 
 parser = argparse.ArgumentParser(description="Convert Stable Cascade model weights to a diffusers pipeline")
 parser.add_argument("--model_path", type=str, help="Location of Stable Cascade weights")
-parser.add_argument("--stage_c_name", type=str, default="stage_c.safetensors", help="Name of stage c checkpoint file")
+parser.add_argument(
+    "--stage_c_name", type=str, default="stage_c_lite.safetensors", help="Name of stage c checkpoint file"
+)
+parser.add_argument(
+    "--stage_b_name", type=str, default="stage_b_lite.safetensors", help="Name of stage b checkpoint file"
+)
 parser.add_argument("--skip_stage_c", action="store_true", help="Skip converting stage c")
 parser.add_argument("--skip_stage_b", action="store_true", help="Skip converting stage b")
-parser.add_argument("--stage_b_name", type=str, default="stage_b.safetensors", help="Name of stage b checkpoint file")
 parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
 parser.add_argument(
     "--prior_output_path",
@@ -58,6 +62,12 @@ parser.add_argument("--push_to_hub", action="store_true", help="Push to hub")
 parser.add_argument("--variant", type=str, help="Set to bf16 to save bfloat16 weights")
 
 args = parser.parse_args()
+
+if args.skip_stage_b and args.skip_stage_c:
+    raise ValueError("At least one stage should be converted")
+if (args.skip_stage_b or args.skip_stage_c) and args.save_combined:
+    raise ValueError("Cannot skip stages when creating a combined pipeline")
+
 model_path = args.model_path
 
 device = "cpu"

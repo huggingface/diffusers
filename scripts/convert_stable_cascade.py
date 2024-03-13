@@ -55,6 +55,12 @@ parser.add_argument("--push_to_hub", action="store_true", help="Push to hub")
 parser.add_argument("--variant", type=str, help="Set to bf16 to save bfloat16 weights")
 
 args = parser.parse_args()
+
+if args.skip_stage_b and args.skip_stage_c:
+    raise ValueError("At least one stage should be converted")
+if (args.skip_stage_b or args.skip_stage_c) and args.save_combined:
+    raise ValueError("Cannot skip stages when creating a combined pipeline")
+
 model_path = args.model_path
 
 device = "cpu"
