@@ -166,13 +166,19 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         self.tile_overlap_factor = 0.25
 
     # Copied from diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL.enable_tiling
-    def enable_tiling(self, use_tiling: bool = True):
+    def enable_tiling(
+        self, use_tiling: bool = True, tile_sample_min_size: int = 32, tile_overlap_factor: float = 0.25
+    ):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
         self.use_tiling = use_tiling
+        if not use_tiling:
+            return
+        self.tile_sample_min_size = tile_sample_min_size
+        self.tile_overlap_factor = tile_overlap_factor
 
     # Copied from diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL.disable_tiling
     def disable_tiling(self):
