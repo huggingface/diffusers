@@ -30,24 +30,31 @@ if is_accelerate_available():
 
 parser = argparse.ArgumentParser(description="Convert Stable Cascade model weights to a diffusers pipeline")
 parser.add_argument("--model_path", type=str, help="Location of Stable Cascade weights")
-parser.add_argument("--stage_c_name", type=str, default="stage_c.safetensors", help="Name of stage c checkpoint file")
-parser.add_argument("--stage_b_name", type=str, default="stage_b.safetensors", help="Name of stage b checkpoint file")
+parser.add_argument(
+    "--stage_c_name", type=str, default="stage_c_lite.safetensors", help="Name of stage c checkpoint file"
+)
+parser.add_argument(
+    "--stage_b_name", type=str, default="stage_b_lite.safetensors", help="Name of stage b checkpoint file"
+)
 parser.add_argument("--skip_stage_c", action="store_true", help="Skip converting stage c")
 parser.add_argument("--skip_stage_b", action="store_true", help="Skip converting stage b")
 parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
 parser.add_argument(
-    "--prior_output_path", default="stable-cascade-prior", type=str, help="Hub organization to save the pipelines to"
+    "--prior_output_path",
+    default="stable-cascade-prior-lite",
+    type=str,
+    help="Hub organization to save the pipelines to",
 )
 parser.add_argument(
     "--decoder_output_path",
     type=str,
-    default="stable-cascade-decoder",
+    default="stable-cascade-decoder-lite",
     help="Hub organization to save the pipelines to",
 )
 parser.add_argument(
     "--combined_output_path",
     type=str,
-    default="stable-cascade-combined",
+    default="stable-cascade-combined-lite",
     help="Hub organization to save the pipelines to",
 )
 parser.add_argument("--save_combined", action="store_true")
@@ -84,9 +91,9 @@ tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b1
 # image processor
 feature_extractor = CLIPImageProcessor()
 image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
-
 # scheduler for prior and decoder
 scheduler = DDPMWuerstchenScheduler()
+
 ctx = init_empty_weights if is_accelerate_available() else nullcontext
 
 if not args.skip_stage_c:
@@ -97,18 +104,17 @@ if not args.skip_stage_c:
         prior_orig_state_dict = torch.load(prior_checkpoint_path, map_location=device)
 
     prior_state_dict = convert_stable_cascade_unet_single_file_to_diffusers(prior_orig_state_dict)
-
     with ctx():
         prior_model = StableCascadeUNet(
             in_channels=16,
             out_channels=16,
             timestep_ratio_embedding_dim=64,
             patch_size=1,
-            conditioning_dim=2048,
-            block_out_channels=[2048, 2048],
-            num_attention_heads=[32, 32],
-            down_num_layers_per_block=[8, 24],
-            up_num_layers_per_block=[24, 8],
+            conditioning_dim=1536,
+            block_out_channels=[1536, 1536],
+            num_attention_heads=[24, 24],
+            down_num_layers_per_block=[4, 12],
+            up_num_layers_per_block=[12, 4],
             down_blocks_repeat_mappers=[1, 1],
             up_blocks_repeat_mappers=[1, 1],
             block_types_per_layer=[
@@ -125,6 +131,7 @@ if not args.skip_stage_c:
             timestep_conditioning_type=["sca", "crp"],
             switch_level=[False],
         )
+
     if is_accelerate_available():
         load_model_dict_into_meta(prior_model, prior_state_dict)
     else:
@@ -151,6 +158,7 @@ if not args.skip_stage_b:
         decoder_orig_state_dict = torch.load(decoder_checkpoint_path, map_location=device)
 
     decoder_state_dict = convert_stable_cascade_unet_single_file_to_diffusers(decoder_orig_state_dict)
+
     with ctx():
         decoder = StableCascadeUNet(
             in_channels=4,
@@ -158,12 +166,12 @@ if not args.skip_stage_b:
             timestep_ratio_embedding_dim=64,
             patch_size=2,
             conditioning_dim=1280,
-            block_out_channels=[320, 640, 1280, 1280],
-            down_num_layers_per_block=[2, 6, 28, 6],
-            up_num_layers_per_block=[6, 28, 6, 2],
+            block_out_channels=[320, 576, 1152, 1152],
+            down_num_layers_per_block=[2, 4, 14, 4],
+            up_num_layers_per_block=[4, 14, 4, 2],
             down_blocks_repeat_mappers=[1, 1, 1, 1],
-            up_blocks_repeat_mappers=[3, 3, 2, 2],
-            num_attention_heads=[0, 0, 20, 20],
+            up_blocks_repeat_mappers=[2, 2, 2, 2],
+            num_attention_heads=[0, 9, 18, 18],
             block_types_per_layer=[
                 ["SDCascadeResBlock", "SDCascadeTimestepBlock"],
                 ["SDCascadeResBlock", "SDCascadeTimestepBlock"],
