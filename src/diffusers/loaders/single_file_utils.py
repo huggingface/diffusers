@@ -81,6 +81,87 @@ SCHEDULER_DEFAULT_CONFIG = {
     "timestep_spacing": "leading",
 }
 
+
+STABLE_CASCADE_DEFAULT_CONFIGS = {
+    "stage_c": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior"},
+    "stage_c_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior_lite"},
+    "stage_b": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder"},
+    "stage_b_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder_lite"},
+}
+
+
+def convert_stable_cascade_unet_single_file_to_diffusers(original_state_dict):
+    is_stage_c = "clip_txt_mapper.weight" in original_state_dict
+
+    if is_stage_c:
+        state_dict = {}
+        for key in original_state_dict.keys():
+            if key.endswith("in_proj_weight"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            else:
+                state_dict[key] = original_state_dict[key]
+    else:
+        state_dict = {}
+        for key in original_state_dict.keys():
+            if key.endswith("in_proj_weight"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            # rename clip_mapper to clip_txt_pooled_mapper
+            elif key.endswith("clip_mapper.weight"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("clip_mapper.weight", "clip_txt_pooled_mapper.weight")] = weights
+            elif key.endswith("clip_mapper.bias"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
+            else:
+                state_dict[key] = original_state_dict[key]
+
+    return state_dict
+
+
+def infer_stable_cascade_single_file_config(checkpoint):
+    is_stage_c = "clip_txt_mapper.weight" in checkpoint
+    is_stage_b = "down_blocks.1.0.channelwise.0.weight" in checkpoint
+
+    if is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 1536):
+        config_type = "stage_c_lite"
+    elif is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 2048):
+        config_type = "stage_c"
+    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 576:
+        config_type = "stage_b_lite"
+    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 640:
+        config_type = "stage_b"
+
+    return STABLE_CASCADE_DEFAULT_CONFIGS[config_type]
+
+
 DIFFUSERS_TO_LDM_MAPPING = {
     "unet": {
         "layers": {
@@ -230,9 +311,33 @@ def fetch_ldm_config_and_checkpoint(
     local_files_only=None,
     revision=None,
 ):
+    checkpoint = load_single_file_model_checkpoint(
+        pretrained_model_link_or_path,
+        resume_download=resume_download,
+        force_download=force_download,
+        proxies=proxies,
+        token=token,
+        cache_dir=cache_dir,
+        local_files_only=local_files_only,
+        revision=revision,
+    )
+    original_config = fetch_original_config(class_name, checkpoint, original_config_file)
+
+    return original_config, checkpoint
+
+
+def load_single_file_model_checkpoint(
+    pretrained_model_link_or_path,
+    resume_download=False,
+    force_download=False,
+    proxies=None,
+    token=None,
+    cache_dir=None,
+    local_files_only=None,
+    revision=None,
+):
     if os.path.isfile(pretrained_model_link_or_path):
         checkpoint = load_state_dict(pretrained_model_link_or_path)
-
     else:
         repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
         checkpoint_path = _get_model_file(
@@ -252,9 +357,7 @@ def fetch_ldm_config_and_checkpoint(
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
 
-    original_config = fetch_original_config(class_name, checkpoint, original_config_file)
-
-    return original_config, checkpoint
+    return checkpoint
 
 
 def infer_original_config_file(class_name, checkpoint):
@@ -884,7 +987,7 @@ def create_diffusers_controlnet_model_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {controlnet.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
     else:
@@ -1060,7 +1163,7 @@ def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
     else:
@@ -1155,7 +1258,7 @@ def create_text_encoder_from_open_clip_checkpoint(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
 
@@ -1221,7 +1324,7 @@ def create_diffusers_unet_model_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {unet.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
     else:
@@ -1283,7 +1386,7 @@ def create_diffusers_vae_model_from_ldm(
                 unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
         if len(unexpected_keys) > 0:
-            logger.warn(
+            logger.warning(
                 f"Some weights of the model checkpoint were not used when initializing {vae.__name__}: \n {[', '.join(unexpected_keys)]}"
             )
     else:
