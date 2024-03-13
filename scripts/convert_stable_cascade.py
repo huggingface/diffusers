@@ -35,9 +35,21 @@ parser.add_argument("--stage_b_name", type=str, default="stage_b.safetensors", h
 parser.add_argument("--skip_stage_c", action="store_true", help="Skip converting stage c")
 parser.add_argument("--skip_stage_b", action="store_true", help="Skip converting stage b")
 parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
-parser.add_argument("--prior_output_path", default="stable-cascade-prior", type=str, help="Hub organization to save the pipelines to")
-parser.add_argument("--decoder_output_path", type=str, default="stable-cascade-decoder", help="Hub organization to save the pipelines to")
-parser.add_argument("--combined_output_path", type=str, default="stable-cascade-combined", help="Hub organization to save the pipelines to")
+parser.add_argument(
+    "--prior_output_path", default="stable-cascade-prior", type=str, help="Hub organization to save the pipelines to"
+)
+parser.add_argument(
+    "--decoder_output_path",
+    type=str,
+    default="stable-cascade-decoder",
+    help="Hub organization to save the pipelines to",
+)
+parser.add_argument(
+    "--combined_output_path",
+    type=str,
+    default="stable-cascade-combined",
+    help="Hub organization to save the pipelines to",
+)
 parser.add_argument("--save_combined", action="store_true")
 parser.add_argument("--push_to_hub", action="store_true", help="Push to hub")
 parser.add_argument("--variant", type=str, help="Set to bf16 to save bfloat16 weights")
@@ -195,4 +207,6 @@ if args.save_combined:
         prior_image_encoder=image_encoder,
         prior_feature_extractor=feature_extractor,
     )
-    stable_cascade_pipeline.to(dtype).save_pretrained(args.combined_output_path, push_to_hub=args.push_to_hub, variant=args.variant)
+    stable_cascade_pipeline.to(dtype).save_pretrained(
+        args.combined_output_path, push_to_hub=args.push_to_hub, variant=args.variant
+    )

@@ -35,9 +35,24 @@ parser.add_argument("--skip_stage_c", action="store_true", help="Skip converting
 parser.add_argument("--skip_stage_b", action="store_true", help="Skip converting stage b")
 parser.add_argument("--stage_b_name", type=str, default="stage_b.safetensors", help="Name of stage b checkpoint file")
 parser.add_argument("--use_safetensors", action="store_true", help="Use SafeTensors for conversion")
-parser.add_argument("--prior_output_path", default="stable-cascade-prior-lite", type=str, help="Hub organization to save the pipelines to")
-parser.add_argument("--decoder_output_path", type=str, default="stable-cascade-decoder-lite", help="Hub organization to save the pipelines to")
-parser.add_argument("--combined_output_path", type=str, default="stable-cascade-combined-lite", help="Hub organization to save the pipelines to")
+parser.add_argument(
+    "--prior_output_path",
+    default="stable-cascade-prior-lite",
+    type=str,
+    help="Hub organization to save the pipelines to",
+)
+parser.add_argument(
+    "--decoder_output_path",
+    type=str,
+    default="stable-cascade-decoder-lite",
+    help="Hub organization to save the pipelines to",
+)
+parser.add_argument(
+    "--combined_output_path",
+    type=str,
+    default="stable-cascade-combined-lite",
+    help="Hub organization to save the pipelines to",
+)
 parser.add_argument("--save_combined", action="store_true")
 parser.add_argument("--push_to_hub", action="store_true", help="Push to hub")
 parser.add_argument("--variant", type=str, help="Set to bf16 to save bfloat16 weights")
@@ -66,6 +81,8 @@ tokenizer = AutoTokenizer.from_pretrained("laion/CLIP-ViT-bigG-14-laion2B-39B-b1
 # image processor
 feature_extractor = CLIPImageProcessor()
 image_encoder = CLIPVisionModelWithProjection.from_pretrained("openai/clip-vit-large-patch14")
+# scheduler for prior and decoder
+scheduler = DDPMWuerstchenScheduler()
 
 ctx = init_empty_weights if is_accelerate_available() else nullcontext
 
@@ -109,9 +126,6 @@ if not args.skip_stage_c:
         load_model_dict_into_meta(prior_model, prior_state_dict)
     else:
         prior_model.load_state_dict(prior_state_dict)
-
-    # scheduler for prior and decoder
-    scheduler = DDPMWuerstchenScheduler()
 
     # Prior pipeline
     prior_pipeline = StableCascadePriorPipeline(
@@ -165,9 +179,9 @@ if not args.skip_stage_b:
         )
 
     if is_accelerate_available():
-        load_model_dict_into_meta(decoder, decoder_orig_state_dict)
+        load_model_dict_into_meta(decoder, decoder_state_dict)
     else:
-        decoder.load_state_dict(decoder_orig_state_dict)
+        decoder.load_state_dict(decoder_state_dict)
 
     # VQGAN from Wuerstchen-V2
     vqmodel = PaellaVQModel.from_pretrained("warp-ai/wuerstchen", subfolder="vqgan")
@@ -197,4 +211,6 @@ if args.save_combined:
         prior_image_encoder=image_encoder,
         prior_feature_extractor=feature_extractor,
     )
-    stable_cascade_pipeline.to(dtype).save_pretrained(args.combined_output_path, push_to_hub=args.push_to_hub, variant=args.variant)
+    stable_cascade_pipeline.to(dtype).save_pretrained(
+        args.combined_output_path, push_to_hub=args.push_to_hub, variant=args.variant
+    )
