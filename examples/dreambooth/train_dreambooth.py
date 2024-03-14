@@ -86,11 +86,8 @@ def save_model_card(
     model_description = f"""
 # DreamBooth - {repo_id}
 
-This is a dreambooth model derived from {base_model}. The weights were trained on {prompt} using [DreamBooth](https://dreambooth.github.io/).
-You can find some example images in the following. \n
+This is a dreambooth model derived from {base_model}. The weights were trained on {prompt} using [DreamBooth](https://dreambooth.github.io/). You can find some example images in the following. \n
 {img_str}
-
-DreamBooth for the text encoder was enabled: {train_text_encoder}.
 """
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
