@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import inspect
-from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -27,6 +26,7 @@ from diffusers.loaders import IPAdapterMixin, LoraLoaderMixin, TextualInversionL
 from diffusers.models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel, UNetMotionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.models.unets.unet_motion_model import MotionAdapter
+from diffusers.pipelines.animatediff.pipeline_output import AnimateDiffPipelineOutput
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.schedulers import (
@@ -37,7 +37,7 @@ from diffusers.schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from diffusers.utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
+from diffusers.utils import USE_PEFT_BACKEND, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
 
 
@@ -91,10 +91,8 @@ EXAMPLE_DOC_STRING = """
 """
 
 
+# Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
 def tensor2vid(video: torch.Tensor, processor, output_type="np"):
-    # Based on:
-    # https://github.com/modelscope/modelscope/blob/1509fdb973e5871f37148a4b5e5964cafd43e64d/modelscope/pipelines/multi_modal/text_to_video_synthesis_pipeline.py#L78
-
     batch_size, channels, num_frames, height, width = video.shape
     outputs = []
     for batch_idx in range(batch_size):
@@ -103,12 +101,16 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
 
         outputs.append(batch_output)
 
+    if output_type == "np":
+        outputs = np.stack(outputs)
+
+    elif output_type == "pt":
+        outputs = torch.stack(outputs)
+
+    elif not output_type == "pil":
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
+
     return outputs
-
-
-@dataclass
-class AnimateDiffControlNetPipelineOutput(BaseOutput):
-    frames: Union[torch.Tensor, np.ndarray]
 
 
 class AnimateDiffControlNetPipeline(
@@ -799,8 +801,10 @@ class AnimateDiffControlNetPipeline(
             ip_adapter_image (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
+                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
+                if `do_classifier_free_guidance` is set to `True`.
+                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
             conditioning_frames (`List[PipelineImageInput]`, *optional*):
                 The ControlNet input condition to provide guidance to the `unet` for generation. If multiple ControlNets
                 are specified, images must be passed as a list such that each element of the list can be correctly
@@ -841,8 +845,8 @@ class AnimateDiffControlNetPipeline(
         Examples:
 
         Returns:
-            [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.text_to_video_synthesis.TextToVideoSDPipelineOutput`] is
+            [`~pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`~pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
 
@@ -1018,7 +1022,7 @@ class AnimateDiffControlNetPipeline(
             ]
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
-        # Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -1094,21 +1098,17 @@ class AnimateDiffControlNetPipeline(
                     if callback is not None and i % callback_steps == 0:
                         callback(i, t, latents)
 
+        # 9. Post processing
         if output_type == "latent":
-            return AnimateDiffControlNetPipelineOutput(frames=latents)
-
-        # Post-processing
-        video_tensor = self.decode_latents(latents)
-
-        if output_type == "pt":
-            video = video_tensor
+            video = latents
         else:
+            video_tensor = self.decode_latents(latents)
             video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
-        # Offload all models
+        # 10. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
             return (video,)
 
-        return AnimateDiffControlNetPipelineOutput(frames=video)
+        return AnimateDiffPipelineOutput(frames=video)

@@ -100,7 +100,7 @@ def tensor2vid(video: torch.Tensor, processor, output_type="np"):
         outputs = torch.stack(outputs)
 
     elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
 
     return outputs
 
@@ -448,7 +448,7 @@ class AnimateDiffVideoToVideoPipeline(
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_ip_adapter_image_embeds
     def prepare_ip_adapter_image_embeds(
-        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt
+        self, ip_adapter_image, ip_adapter_image_embeds, device, num_images_per_prompt, do_classifier_free_guidance
     ):
         if ip_adapter_image_embeds is None:
             if not isinstance(ip_adapter_image, list):
@@ -472,13 +472,30 @@ class AnimateDiffVideoToVideoPipeline(
                     [single_negative_image_embeds] * num_images_per_prompt, dim=0
                 )
 
-                if self.do_classifier_free_guidance:
+                if do_classifier_free_guidance:
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                     single_image_embeds = single_image_embeds.to(device)
 
                 image_embeds.append(single_image_embeds)
         else:
-            image_embeds = ip_adapter_image_embeds
+            repeat_dims = [1]
+            image_embeds = []
+            for single_image_embeds in ip_adapter_image_embeds:
+                if do_classifier_free_guidance:
+                    single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
+                    single_negative_image_embeds = single_negative_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
+                    )
+                    single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
+                else:
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
+                image_embeds.append(single_image_embeds)
+
         return image_embeds
 
     # Copied from diffusers.pipelines.text_to_video_synthesis/pipeline_text_to_video_synth.TextToVideoSDPipeline.decode_latents
@@ -523,6 +540,8 @@ class AnimateDiffVideoToVideoPipeline(
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
+        ip_adapter_image=None,
+        ip_adapter_image_embeds=None,
         callback_on_step_end_tensor_inputs=None,
     ):
         if strength < 0 or strength > 1:
@@ -566,6 +585,21 @@ class AnimateDiffVideoToVideoPipeline(
 
         if video is not None and latents is not None:
             raise ValueError("Only one of `video` or `latents` should be provided")
+
+        if ip_adapter_image is not None and ip_adapter_image_embeds is not None:
+            raise ValueError(
+                "Provide either `ip_adapter_image` or `ip_adapter_image_embeds`. Cannot leave both `ip_adapter_image` and `ip_adapter_image_embeds` defined."
+            )
+
+        if ip_adapter_image_embeds is not None:
+            if not isinstance(ip_adapter_image_embeds, list):
+                raise ValueError(
+                    f"`ip_adapter_image_embeds` has to be of type `list` but is {type(ip_adapter_image_embeds)}"
+                )
+            elif ip_adapter_image_embeds[0].ndim not in [3, 4]:
+                raise ValueError(
+                    f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
+                )
 
     def get_timesteps(self, num_inference_steps, timesteps, strength, device):
         # get the original timestep using init_timestep
@@ -765,8 +799,10 @@ class AnimateDiffVideoToVideoPipeline(
             ip_adapter_image: (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. If not
-                provided, embeddings are computed from the `ip_adapter_image` input argument.
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
+                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
+                if `do_classifier_free_guidance` is set to `True`.
+                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
                 `np.array`.
@@ -792,8 +828,8 @@ class AnimateDiffVideoToVideoPipeline(
         Examples:
 
         Returns:
-            [`AnimateDiffPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`AnimateDiffPipelineOutput`] is
+            [`pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] or `tuple`:
+                If `return_dict` is `True`, [`pipelines.animatediff.pipeline_output.AnimateDiffPipelineOutput`] is
                 returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
         """
 
@@ -814,6 +850,8 @@ class AnimateDiffVideoToVideoPipeline(
             negative_prompt_embeds=negative_prompt_embeds,
             video=video,
             latents=latents,
+            ip_adapter_image=ip_adapter_image,
+            ip_adapter_image_embeds=ip_adapter_image_embeds,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
         )
 
@@ -855,7 +893,11 @@ class AnimateDiffVideoToVideoPipeline(
 
         if ip_adapter_image is not None or ip_adapter_image_embeds is not None:
             image_embeds = self.prepare_ip_adapter_image_embeds(
-                ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_videos_per_prompt
+                ip_adapter_image,
+                ip_adapter_image_embeds,
+                device,
+                batch_size * num_videos_per_prompt,
+                self.do_classifier_free_guidance,
             )
 
         # 4. Prepare timesteps
@@ -900,6 +942,7 @@ class AnimateDiffVideoToVideoPipeline(
 
             self._num_timesteps = len(timesteps)
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
+
             # 8. Denoising loop
             with self.progress_bar(total=num_inference_steps) as progress_bar:
                 for i, t in enumerate(timesteps):
@@ -938,15 +981,11 @@ class AnimateDiffVideoToVideoPipeline(
                     if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                         progress_bar.update()
 
-        if output_type == "latent":
-            return AnimateDiffPipelineOutput(frames=latents)
-
         # 9. Post-processing
-        video_tensor = self.decode_latents(latents)
-
-        if output_type == "pt":
-            video = video_tensor
+        if output_type == "latent":
+            video = latents
         else:
+            video_tensor = self.decode_latents(latents)
             video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
         # 10. Offload all models

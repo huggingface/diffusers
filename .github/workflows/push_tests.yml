@@ -21,7 +21,7 @@ env:
 jobs:
   setup_torch_cuda_pipeline_matrix:
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
-    runs-on: docker-gpu
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cpu # this is a CPU image, but we need it to fetch the matrix
       options: --shm-size "16gb" --ipc host
@@ -62,7 +62,6 @@ jobs:
     needs: setup_torch_cuda_pipeline_matrix
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
     runs-on: [single-gpu, nvidia-gpu, t4, ci]

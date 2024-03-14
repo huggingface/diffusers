@@ -81,6 +81,7 @@ tags:
 - wuerstchen
 - text-to-image
 - diffusers
+- diffusers-training
 - lora
 inference: true
 ---
@@ -183,7 +184,7 @@ def log_validation(text_encoder, tokenizer, prior, args, accelerator, weight_dty
                 }
             )
         else:
-            logger.warn(f"image logging not implemented for {tracker.name}")
+            logger.warning(f"image logging not implemented for {tracker.name}")
 
     del pipeline
     torch.cuda.empty_cache()

@@ -97,7 +97,14 @@ These are Custom Diffusion adaption weights for {base_model}. The weights were t
         inference=True,
     )
 
-    tags = ["text-to-image", "diffusers", "stable-diffusion", "stable-diffusion-diffusers", "custom-diffusion"]
+    tags = [
+        "text-to-image",
+        "diffusers",
+        "stable-diffusion",
+        "stable-diffusion-diffusers",
+        "custom-diffusion",
+        "diffusers-training",
+    ]
     model_card = populate_model_card(model_card, tags=tags)
 
     model_card.save(os.path.join(repo_folder, "README.md"))
@@ -897,7 +904,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             attention_class = CustomDiffusionXFormersAttnProcessor
@@ -1171,7 +1178,7 @@ def main(args):
                         grads_text_encoder = text_encoder.get_input_embeddings().weight.grad
                     # Get the index for tokens that we want to zero the grads for
                     index_grads_to_zero = torch.arange(len(tokenizer)) != modifier_token_id[0]
-                    for i in range(len(modifier_token_id[1:])):
+                    for i in range(1, len(modifier_token_id)):
                         index_grads_to_zero = index_grads_to_zero & (
                             torch.arange(len(tokenizer)) != modifier_token_id[i]
                         )

@@ -39,7 +39,7 @@ def main():
     open_issues = repo.get_issues(state="open")
 
     for issue in open_issues:
-        labels = [label.name for label in issue.get_labels()]
+        labels = [label.name.lower() for label in issue.get_labels()]
         if "stale" in labels:
             comments = sorted(issue.get_comments(), key=lambda i: i.created_at, reverse=True)
             last_comment = comments[0] if len(comments) > 0 else None
@@ -50,7 +50,7 @@ def main():
         elif (
             (dt.now(timezone.utc) - issue.updated_at).days > 23
             and (dt.now(timezone.utc) - issue.created_at).days >= 30
-            and not any(label.name.lower() in LABELS_TO_EXEMPT for label in labels)
+            and not any(label in LABELS_TO_EXEMPT for label in labels)
         ):
             # Post a Stalebot notification after 23 days of inactivity.
             issue.create_comment(
