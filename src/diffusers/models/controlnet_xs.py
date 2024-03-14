@@ -24,7 +24,6 @@ from ..utils import BaseOutput, is_torch_version, logging
 from .autoencoders import AutoencoderKL
 from .embeddings import (
     TimestepEmbedding,
-    Timesteps,
 )
 from .modeling_utils import ModelMixin
 from .unets.unet_2d_blocks import Downsample2D, ResnetBlock2D, Transformer2DModel, UNetMidBlock2DCrossAttn, Upsample2D
@@ -115,8 +114,10 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             Dimension of input into time embedding. Needs to be same as in the base model.
         time_embedding_dim (`int`, defaults to 1280):
             Dimension of output from time embedding. Needs to be same as in the base model.
-        time_embedding_mix
-            # todo umer
+        time_embedding_mix (`float`, defaults to 1.0):
+            If 0, then only the control addon's time embedding is used.
+            If 1, then only the base unet's time embedding is used.
+            Otherwise, both are combined.
         learn_time_embedding (`bool`, defaults to `False`):
             Whether a time embedding should be learned. If yes, `ControlNetXSModel` will combine the time embeddings of the base model and the addon.
             If no, `ControlNetXSModel` will use the base model's time embedding.
@@ -201,6 +202,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         block_out_channels: Optional[List[int]] = None,
         num_attention_heads: Optional[List[int]] = None,
         learn_time_embedding: bool = False,
+        time_embedding_mix: int = 1.0,
         conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
     ):
         r"""
@@ -256,6 +258,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             conditioning_embedding_out_channels=conditioning_embedding_out_channels,
             time_embedding_input_dim=time_embedding_input_dim,
             time_embedding_dim=time_embedding_dim,
+            time_embedding_mix=time_embedding_mix,
         )
 
     @register_to_config
@@ -324,10 +327,8 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
 
         # time
         if learn_time_embedding:
-            self.time_proj = Timesteps(block_out_channels[0], flip_sin_to_cos=True, downscale_freq_shift=0)
             self.time_embedding = TimestepEmbedding(time_embedding_input_dim, time_embedding_dim)
         else:
-            self.time_proj = None
             self.time_embedding = None
 
         self.time_embed_act = None
@@ -454,20 +455,35 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
 
 class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     r"""
-    A ControlNet-XS model
+    A UNet fused with a ControlNet-XS addon model
 
     This model inherits from [`ModelMixin`] and [`ConfigMixin`]. Check the superclass documentation for it's generic
     methods implemented for all models (such as downloading or saving).
 
-    `ControlNetXSModel` is compatible with StableDiffusion and StableDiffusion-XL.
+    `UNetControlNetXSModel` is compatible with StableDiffusion and StableDiffusion-XL.
     It's default parameters are compatible with StableDiffusion.
 
+    Most of it's paremeters are passed to the underlying `UNet2DConditionModel`. See it's documentation for details.
+
     Parameters:
-        # todo umer
         time_embedding_mix (`float`, defaults to 1.0):
-            If 0, then only the base model's time embedding is used.
-            If 1, then only the control model's time embedding is used.
+            If 0, then only the control addon's time embedding is used.
+            If 1, then only the base unet's time embedding is used.
             Otherwise, both are combined.
+        ctrl_conditioning_channels (`int`, defaults to 3):
+            The number of channels of the control conditioning input.
+        ctrl_conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
+            Block sizes of the `ControlNetConditioningEmbedding`.
+        ctrl_conditioning_channel_order (`str`, defaults to "rgb"):
+            The order of channels in the control conditioning input.
+        ctrl_learn_time_embedding (`bool`, defaults to False):
+            Whether the control addon should learn a time embedding. Needs to be `True` if `time_embedding_mix` > 0.
+        ctrl_block_out_channels (`tuple[int]`, defaults to `(4, 8, 16, 16)`):
+            The tuple of output channels for each block in the control addon.
+        ctrl_attention_head_dim (`int` or `tuple[int]`, defaults to 4):
+            The dimension of the attention heads in the control addon.
+        ctrl_max_norm_num_groups (`int`, defaults to 32):
+            The maximum number of groups to use for the normalization in the control addon. Can be reduced to fit the block sizes.
     """
 
     _supports_gradient_checkpointing = True
@@ -487,12 +503,12 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         norm_num_groups: Optional[int] = 32,
         cross_attention_dim: Union[int, Tuple[int]] = 1024,
-        transformer_layers_per_block: Union[int, Tuple[int], Tuple[Tuple]] = 1,  # type Tuple[Tuple] necessary?
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = 8,
-        upcast_attention: bool = True,
         class_embed_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,
         addition_time_embed_dim: Optional[int] = None,
+        upcast_attention: bool = True,
         time_embedding_dim: Optional[int] = None,
         time_cond_proj_dim: Optional[int] = None,
         projection_class_embeddings_input_dim: Optional[int] = None,
@@ -500,7 +516,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         time_embedding_mix: float = 1.0,
         ctrl_conditioning_channels: int = 3,
         ctrl_conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
-        ctrl_time_embedding_input_dim: int = 320,
         ctrl_conditioning_channel_order: str = "rgb",
         ctrl_learn_time_embedding: bool = False,
         ctrl_block_out_channels: Tuple[int] = (4, 8, 16, 16),
@@ -558,7 +573,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             conditioning_channels=ctrl_conditioning_channels,
             conditioning_channel_order=ctrl_conditioning_channel_order,
             conditioning_embedding_out_channels=ctrl_conditioning_embedding_out_channels,
-            time_embedding_input_dim=ctrl_time_embedding_input_dim,
+            time_embedding_input_dim=block_out_channels[0],
             time_embedding_dim=time_embedding_dim,
             time_embedding_mix=time_embedding_mix,
             learn_time_embedding=ctrl_learn_time_embedding,
@@ -575,7 +590,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
 
     @classmethod
     def _unet_to_subblocks(cls, unet: UNet2DConditionModel):
-        """todo umer"""
+        """Decompose the down and up blocks of a UNet into subblocks, as required by UNetControlNetXSModel"""
         down_subblocks = nn.ModuleList()
         up_subblocks = nn.ModuleList()
 
@@ -621,14 +636,11 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         controlnet: ControlNetXSAddon,
         load_weights: bool = True,
     ):
-        # todo umer: assert unet is sd/sdxl?
-
         # Create config for UNetControlNetXSModel object
         config = {}
         config["_class_name"] = cls.__name__
 
         params_for_unet = [
-            "time_embedding_dim",
             "sample_size",
             "down_block_types",
             "up_block_types",
@@ -636,12 +648,13 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             "norm_num_groups",
             "cross_attention_dim",
             "transformer_layers_per_block",
-            "upcast_attention",
             "class_embed_type",
             "addition_embed_type",
+            "addition_time_embed_dim",
+            "upcast_attention",
+            "time_embedding_dim",
             "time_cond_proj_dim",
             "projection_class_embeddings_input_dim",
-            "addition_time_embed_dim",
         ]
         config.update({k: v for k, v in unet.config.items() if k in params_for_unet})
         # The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
@@ -651,7 +664,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             "conditioning_channels",
             "conditioning_embedding_out_channels",
             "conditioning_channel_order",
-            "time_embedding_input_dim",
             "learn_time_embedding",
             "block_out_channels",
             "attention_head_dim",

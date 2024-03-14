@@ -83,13 +83,12 @@ EXAMPLE_DOC_STRING = """
         >>> # initialize the models and pipeline
         >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
-        >>> controlnet_xs_addon = ControlNetXSAddon.from_pretrained(
+        >>> controlnet = ControlNetXSAddon.from_pretrained(
         ...     "UmerHA/Testing-ConrolNetXS-SDXL-canny", torch_dtype=torch.float16
         ... )
-        >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-        ...     base_path="stabilityai/stable-diffusion-xl-base-1.0", controlnet_xs_addon=controlnet_xs_addon,
-        ...     time_embedding_mix=0.95, torch_dtype=torch.float16
-        ... ) # paper used time_embedding_mix=0.95
+        >>> pipe = StableDiffusionXLControlNetXSPipeline.from_pretrained(
+        ...     "stabilityai/stable-diffusion-xl-base-1.0", controlnet=controlnet, , torch_dtype=torch.float16
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
         >>> # get canny image
@@ -152,7 +151,6 @@ class StableDiffusionXLControlNetXSPipeline(
             watermarker is used.
     """
 
-    # todo umer: dont load controlnet to gpu, its already part of unet
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
     _optional_components = [
         "tokenizer",
@@ -319,7 +317,6 @@ class StableDiffusionXLControlNetXSPipeline(
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
         """
-
         device = device or self._execution_device
 
         # set lora scale so that monkey patched LoRA
@@ -955,7 +952,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
             )
 
-        controlnet = self.unet._orig_mod if is_compiled_module(self.unet) else self.unet
+        unet = self.unet._orig_mod if is_compiled_module(self.unet) else self.unet
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
@@ -1020,7 +1017,7 @@ class StableDiffusionXLControlNetXSPipeline(
         )
 
         # 4. Prepare image
-        if isinstance(controlnet, UNetControlNetXSModel):
+        if isinstance(unet, UNetControlNetXSModel):
             image = self.prepare_image(
                 image=image,
                 width=width,
@@ -1028,7 +1025,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 batch_size=batch_size * num_images_per_prompt,
                 num_images_per_prompt=num_images_per_prompt,
                 device=device,
-                dtype=controlnet.dtype,
+                dtype=unet.dtype,
                 do_classifier_free_guidance=do_classifier_free_guidance,
             )
             height, width = image.shape[-2:]

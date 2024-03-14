@@ -162,26 +162,6 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             else:
                 self.assertTrue(param_value.requires_grad)
 
-    def test_forward_no_control(self):
-        unet = self.get_dummy_unet()
-        controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
-
-        model = UNetControlNetXSModel.from_unet2d(unet, controlnet)
-
-        unet = unet.to(torch_device)
-        model = model.to(torch_device)
-
-        input_ = self.dummy_input
-
-        control_specific_input = ["controlnet_cond", "conditioning_scale"]
-        input_for_unet = {k: v for k, v in input_.items() if k not in control_specific_input}
-
-        with torch.no_grad():
-            unet_output = unet(**input_for_unet).sample.cpu()
-            unet_controlnet_output = model(**input_, do_control=False).sample.cpu()
-
-        assert np.abs(unet_output.flatten() - unet_controlnet_output.flatten()).max() < 1e-5
-
     def test_gradient_checkpointing_is_applied(self):
         model_class_copy = copy.copy(UNetControlNetXSModel)
 
@@ -214,3 +194,43 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
 
         assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET
         assert all(modules_with_gc_enabled.values()), "All modules should be enabled"
+
+    def test_forward_no_control(self):
+        unet = self.get_dummy_unet()
+        controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
+
+        model = UNetControlNetXSModel.from_unet2d(unet, controlnet)
+
+        unet = unet.to(torch_device)
+        model = model.to(torch_device)
+
+        input_ = self.dummy_input
+
+        control_specific_input = ["controlnet_cond", "conditioning_scale"]
+        input_for_unet = {k: v for k, v in input_.items() if k not in control_specific_input}
+
+        with torch.no_grad():
+            unet_output = unet(**input_for_unet).sample.cpu()
+            unet_controlnet_output = model(**input_, do_control=False).sample.cpu()
+
+        assert np.abs(unet_output.flatten() - unet_controlnet_output.flatten()).max() < 1e-5
+
+    def test_time_embedding_mixing(self):
+        unet = self.get_dummy_unet()
+        controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
+        controlnet_mix_time = ControlNetXSAddon.from_unet(unet, size_ratio=1, time_embedding_mix=0.5)
+
+        model = UNetControlNetXSModel.from_unet2d(unet, controlnet)
+        model_mix_time = UNetControlNetXSModel.from_unet2d(unet, controlnet_mix_time)
+
+        unet = unet.to(torch_device)
+        model = model.to(torch_device)
+        model_mix_time = model_mix_time.to(torch_device)
+
+        input_ = self.dummy_input
+
+        with torch.no_grad():
+            output = model(**input_).sample
+            output_mix_time = model_mix_time(**input_).sample
+
+        assert output.shape == output_mix_time.shape
