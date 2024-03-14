@@ -321,11 +321,11 @@ class EMAModel:
         one_minus_decay = 1 - decay
 
         context_manager = contextlib.nullcontext
-        if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
+        if is_transformers_available() and transformers.integrations.is_deepspeed_zero3_enabled():
             import deepspeed
 
         for s_param, param in zip(self.shadow_params, parameters):
-            if is_transformers_available() and transformers.deepspeed.is_deepspeed_zero3_enabled():
+            if is_transformers_available() and transformers.integrations.is_deepspeed_zero3_enabled():
                 context_manager = deepspeed.zero.GatheredParameters(param, modifier_rank=None)
 
             with context_manager():
