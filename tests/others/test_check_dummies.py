@@ -115,4 +115,6 @@ class FakeClass(metaclass=DummyObject):
         requires_backends(cls, ["torch"])
 """
         dummy_files = create_dummy_files({"torch": ["CONSTANT", "function", "FakeClass"]})
+        print(f"Dummy file: {dummy_files['torch']}")
+        print(f"expected_dummy_pytorch_file: {expected_dummy_pytorch_file}")
         self.assertEqual(dummy_files["torch"], expected_dummy_pytorch_file)
