@@ -46,7 +46,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests, state_dicts_almost_equal  # noqa: E402
+from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set, state_dicts_almost_equal  # noqa: E402
 
 
 if is_accelerate_available():
@@ -562,10 +562,7 @@ class LoraSDXLIntegrationTests(unittest.TestCase):
         pipe.load_lora_weights(lora_id, weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
         pipe = pipe.to(torch_device)
 
-        self.assertTrue(
-            self.check_if_lora_correctly_set(pipe.unet),
-            "Lora not correctly set in Unet",
-        )
+        self.assertTrue(check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
         prompt = "toy_face of a hacker with a hoodie"
 

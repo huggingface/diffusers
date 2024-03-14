@@ -44,7 +44,7 @@ from diffusers.utils.testing_utils import (
 
 sys.path.append(".")
 
-from utils import PeftLoraLoaderMixinTests  # noqa: E402
+from utils import PeftLoraLoaderMixinTests, check_if_lora_correctly_set  # noqa: E402
 
 
 if is_accelerate_available():
@@ -100,12 +100,12 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         pipe = pipe.to(torch_device)
 
         self.assertTrue(
-            self.check_if_lora_correctly_set(pipe.text_encoder),
+            check_if_lora_correctly_set(pipe.text_encoder),
             "Lora not correctly set in text encoder",
         )
 
         self.assertTrue(
-            self.check_if_lora_correctly_set(pipe.unet),
+            check_if_lora_correctly_set(pipe.unet),
             "Lora not correctly set in text encoder",
         )
 
@@ -164,7 +164,7 @@ class LoraIntegrationTests(unittest.TestCase):
         pipe = pipe.to(torch_device)
 
         self.assertTrue(
-            self.check_if_lora_correctly_set(pipe.text_encoder),
+            check_if_lora_correctly_set(pipe.text_encoder),
             "Lora not correctly set in text encoder 2",
         )
 
@@ -196,7 +196,7 @@ class LoraIntegrationTests(unittest.TestCase):
         pipe = pipe.to(torch_device)
 
         self.assertTrue(
-            self.check_if_lora_correctly_set(pipe.text_encoder),
+            check_if_lora_correctly_set(pipe.text_encoder),
             "Lora not correctly set in text encoder",
         )
 
