@@ -294,8 +294,8 @@ class TransformerSpatioTemporalModel(nn.Module):
                 A tensor indicating whether the input contains only images. 1 indicates that the input contains only
                 images, 0 indicates that the input contains video frames.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.transformer_temporal.TransformerTemporalModelOutput`] instead of a plain
-                tuple.
+                Whether or not to return a [`~models.transformer_temporal.TransformerTemporalModelOutput`] instead of a
+                plain tuple.
 
         Returns:
             [`~models.transformer_temporal.TransformerTemporalModelOutput`] or `tuple`:

@@ -20,7 +20,8 @@ from ..utils import MIN_PEFT_VERSION, check_peft_version, is_peft_available
 class PeftAdapterMixin:
     """
     A class containing all functions for loading and using adapters weights that are supported in PEFT library. For
-    more details about adapters and injecting them in a transformer-based model, check out the PEFT [documentation](https://huggingface.co/docs/peft/index).
+    more details about adapters and injecting them in a transformer-based model, check out the PEFT
+    [documentation](https://huggingface.co/docs/peft/index).
 
     Install the latest version of PEFT, and use this mixin to:
 
@@ -143,8 +144,8 @@ class PeftAdapterMixin:
 
     def enable_adapters(self) -> None:
         """
-        Enable adapters that are attached to the model. The model uses `self.active_adapters()` to retrieve the
-        list of adapters to enable.
+        Enable adapters that are attached to the model. The model uses `self.active_adapters()` to retrieve the list of
+        adapters to enable.
 
         If you are not familiar with adapters and PEFT methods, we invite you to read more about them on the PEFT
         [documentation](https://huggingface.co/docs/peft).

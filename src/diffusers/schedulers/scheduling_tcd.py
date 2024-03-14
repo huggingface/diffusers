@@ -132,8 +132,8 @@ def rescale_zero_terminal_snr(betas: torch.FloatTensor) -> torch.FloatTensor:
 
 class TCDScheduler(SchedulerMixin, ConfigMixin):
     """
-    `TCDScheduler` incorporates the `Strategic Stochastic Sampling` introduced by the paper `Trajectory Consistency Distillation`,
-    extending the original Multistep Consistency Sampling to enable unrestricted trajectory traversal.
+    `TCDScheduler` incorporates the `Strategic Stochastic Sampling` introduced by the paper `Trajectory Consistency
+    Distillation`, extending the original Multistep Consistency Sampling to enable unrestricted trajectory traversal.
 
     This code is based on the official repo of TCD(https://github.com/jabir-zheng/TCD).
 
@@ -540,8 +540,9 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
             sample (`torch.FloatTensor`):
                 A current instance of a sample created by the diffusion process.
             eta (`float`):
-                A stochastic parameter (referred to as `gamma` in the paper) used to control the stochasticity in every step.
-                When eta = 0, it represents deterministic sampling, whereas eta = 1 indicates full stochastic sampling.
+                A stochastic parameter (referred to as `gamma` in the paper) used to control the stochasticity in every
+                step. When eta = 0, it represents deterministic sampling, whereas eta = 1 indicates full stochastic
+                sampling.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
             return_dict (`bool`, *optional*, defaults to `True`):

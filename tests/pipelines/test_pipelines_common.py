@@ -67,8 +67,8 @@ def check_same_shape(tensor_list):
 
 class SDFunctionTesterMixin:
     """
-    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
-    It provides a set of common tests for PyTorch pipeline that inherit from StableDiffusionMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
+    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes. It provides a set of
+    common tests for PyTorch pipeline that inherit from StableDiffusionMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
     """
 
     def test_vae_slicing(self):
@@ -209,8 +209,8 @@ class SDFunctionTesterMixin:
 
 class IPAdapterTesterMixin:
     """
-    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
-    It provides a set of common tests for pipelines that support IP Adapters.
+    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes. It provides a set of
+    common tests for pipelines that support IP Adapters.
     """
 
     def test_pipeline_signature(self):
@@ -350,9 +350,8 @@ class IPAdapterTesterMixin:
 
 class PipelineLatentTesterMixin:
     """
-    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes.
-    It provides a set of common tests for PyTorch pipeline that has vae, e.g.
-    equivalence of different input and output types, etc.
+    This mixin is designed to be used with PipelineTesterMixin and unittest.TestCase classes. It provides a set of
+    common tests for PyTorch pipeline that has vae, e.g. equivalence of different input and output types, etc.
     """
 
     @property
@@ -508,9 +507,8 @@ class PipelineLatentTesterMixin:
 @require_torch
 class PipelineKarrasSchedulerTesterMixin:
     """
-    This mixin is designed to be used with unittest.TestCase classes.
-    It provides a set of common tests for each PyTorch pipeline that makes use of KarrasDiffusionSchedulers
-    equivalence of dict and tuple outputs, etc.
+    This mixin is designed to be used with unittest.TestCase classes. It provides a set of common tests for each
+    PyTorch pipeline that makes use of KarrasDiffusionSchedulers equivalence of dict and tuple outputs, etc.
     """
 
     def test_karras_schedulers_shape(self):
@@ -548,9 +546,8 @@ class PipelineKarrasSchedulerTesterMixin:
 @require_torch
 class PipelineTesterMixin:
     """
-    This mixin is designed to be used with unittest.TestCase classes.
-    It provides a set of common tests for each PyTorch pipeline, e.g. saving and loading the pipeline,
-    equivalence of dict and tuple outputs, etc.
+    This mixin is designed to be used with unittest.TestCase classes. It provides a set of common tests for each
+    PyTorch pipeline, e.g. saving and loading the pipeline, equivalence of dict and tuple outputs, etc.
     """
 
     # Canonical parameters that are passed to `__call__` regardless

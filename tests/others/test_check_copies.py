@@ -40,8 +40,7 @@ REFERENCE_CODE = """    \"""
             `pred_original_sample` can be used to preview progress or for guidance.
     \"""
 
-    prev_sample: torch.FloatTensor
-    pred_original_sample: Optional[torch.FloatTensor] = None
+    prev_sample: torch.FloatTensor pred_original_sample: Optional[torch.FloatTensor] = None
 """
 
 

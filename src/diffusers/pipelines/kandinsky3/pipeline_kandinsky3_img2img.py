@@ -29,11 +29,15 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers.utils import load_image
         >>> import torch
 
-        >>> pipe = AutoPipelineForImage2Image.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+        >>> pipe = AutoPipelineForImage2Image.from_pretrained(
+        ...     "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "A painting of the inside of a subway train with tiny raccoons."
-        >>> image = load_image("https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky3/t2i.png")
+        >>> image = load_image(
+        ...     "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/kandinsky3/t2i.png"
+        ... )
 
         >>> generator = torch.Generator(device="cpu").manual_seed(0)
         >>> image = pipe(prompt, image=image, strength=0.75, num_inference_steps=25, generator=generator).images[0]

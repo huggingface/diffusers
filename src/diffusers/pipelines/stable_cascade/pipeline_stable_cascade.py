@@ -332,8 +332,8 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 argument.
             negative_prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt` input
-                argument.
+                weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt`
+                input argument.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):

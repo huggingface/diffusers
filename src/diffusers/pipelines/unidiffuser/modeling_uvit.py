@@ -752,7 +752,8 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             cross_attention_kwargs (*optional*):
                 Keyword arguments to supply to the cross attention layers, if used.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+                Whether or not to return a [`models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                tuple.
             hidden_states_is_embedding (`bool`, *optional*, defaults to `False`):
                 Whether or not hidden_states is an embedding directly usable by the transformer. In this case we will
                 ignore input handling (e.g. continuous, vectorized, etc.) and directly feed hidden_states into the
