@@ -40,8 +40,7 @@ from diffusers.utils import BaseOutput, check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
-
+check_min_version("0.28.0.dev0")
 
 class MarigoldDepthOutput(BaseOutput):
     """
