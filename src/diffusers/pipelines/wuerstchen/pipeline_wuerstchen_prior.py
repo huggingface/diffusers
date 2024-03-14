@@ -508,7 +508,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.maybe_free_model_hooks()
 
         if output_type == "np":
-            latents = latents.cpu().numpy()
+            latents = latents.cpu().float().numpy()
 
         if not return_dict:
             return (latents,)

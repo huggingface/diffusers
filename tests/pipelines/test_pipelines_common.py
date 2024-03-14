@@ -99,14 +99,13 @@ class SDFunctionTesterMixin:
         assert np.abs(output_2[0].flatten() - output_1[0].flatten()).max() < 1e-2
 
     def test_vae_tiling(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
 
         # make sure here that pndm scheduler skips prk
         if "safety_checker" in components:
             components["safety_checker"] = None
         pipe = self.pipeline_class(**components)
-        pipe = pipe.to(device)
+        pipe = pipe.to(torch_device)
         pipe.set_progress_bar_config(disable=None)
 
         inputs = self.get_dummy_inputs(torch_device)
@@ -126,7 +125,7 @@ class SDFunctionTesterMixin:
         # test that tiled decode works with various shapes
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
         for shape in shapes:
-            zeros = torch.zeros(shape).to(device)
+            zeros = torch.zeros(shape).to(torch_device)
             pipe.vae.decode(zeros)
 
     def test_freeu_enabled(self):
@@ -318,6 +317,35 @@ class IPAdapterTesterMixin:
             1e-2,
             "Output with multi-ip-adapter scale must be different from normal inference",
         )
+
+    def test_ip_adapter_cfg(self, expected_max_diff: float = 1e-4):
+        parameters = inspect.signature(self.pipeline_class.__call__).parameters
+
+        if "guidance_scale" not in parameters:
+            return
+
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components).to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        cross_attention_dim = pipe.unet.config.get("cross_attention_dim", 32)
+
+        adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
+        pipe.unet._load_ip_adapter_weights(adapter_state_dict)
+        pipe.set_ip_adapter_scale(1.0)
+
+        # forward pass with CFG not applied
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)[0].unsqueeze(0)]
+        inputs["guidance_scale"] = 1.0
+        out_no_cfg = pipe(**inputs)[0]
+
+        # forward pass with CFG applied
+        inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
+        inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
+        inputs["guidance_scale"] = 7.5
+        out_cfg = pipe(**inputs)[0]
+
+        assert out_cfg.shape == out_no_cfg.shape
 
 
 class PipelineLatentTesterMixin:
