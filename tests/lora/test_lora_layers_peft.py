@@ -202,7 +202,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_lora(self):
         """
-        Tests a simple inference with lora attached on the text encoder and makes sure it works as expected
+        Tests a simple inference with lora attached on the text encoder
+        and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -232,8 +233,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_lora_and_scale(self):
         """
-        Tests a simple inference with lora attached on the text encoder + scale argument and makes sure it works as
-        expected
+        Tests a simple inference with lora attached on the text encoder + scale argument
+        and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -279,8 +280,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_lora_fused(self):
         """
-        Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model and
-        makes sure it works as expected
+        Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
+        and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -321,8 +322,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_lora_unloaded(self):
         """
-        Tests a simple inference with lora attached to text encoder, then unloads the lora weights and makes sure it
-        works as expected
+        Tests a simple inference with lora attached to text encoder, then unloads the lora weights
+        and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
@@ -553,8 +554,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_unet_lora_and_scale(self):
         """
-        Tests a simple inference with lora attached on the text encoder + Unet + scale argument and makes sure it works
-        as expected
+        Tests a simple inference with lora attached on the text encoder + Unet + scale argument
+        and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -607,8 +608,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_lora_unet_fused(self):
         """
-        Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model and
-        makes sure it works as expected - with unet
+        Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
+        and makes sure it works as expected - with unet
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -653,8 +654,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_unet_lora_unloaded(self):
         """
-        Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights and makes
-        sure it works as expected
+        Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
+        and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -700,8 +701,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_unet_lora_unfused(self):
         """
-        Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights and makes
-        sure it works as expected
+        Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
+        and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -750,7 +751,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_unet_multi_adapter(self):
         """
-        Tests a simple inference with lora attached to text encoder and unet, attaches multiple adapters and set them
+        Tests a simple inference with lora attached to text encoder and unet, attaches
+        multiple adapters and set them
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -817,8 +819,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_unet_multi_adapter_delete_adapter(self):
         """
-        Tests a simple inference with lora attached to text encoder and unet, attaches multiple adapters and set/delete
-        them
+        Tests a simple inference with lora attached to text encoder and unet, attaches
+        multiple adapters and set/delete them
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -907,7 +909,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_simple_inference_with_text_unet_multi_adapter_weighted(self):
         """
-        Tests a simple inference with lora attached to text encoder and unet, attaches multiple adapters and set them
+        Tests a simple inference with lora attached to text encoder and unet, attaches
+        multiple adapters and set them
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1016,7 +1019,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_get_adapters(self):
         """
-        Tests a simple usecase where we attach multiple adapters and check if the results are the expected results
+        Tests a simple usecase where we attach multiple adapters and check if the results
+        are the expected results
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1042,7 +1046,8 @@ class PeftLoraLoaderMixinTests:
 
     def test_get_list_adapters(self):
         """
-        Tests a simple usecase where we attach multiple adapters and check if the results are the expected results
+        Tests a simple usecase where we attach multiple adapters and check if the results
+        are the expected results
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1079,8 +1084,8 @@ class PeftLoraLoaderMixinTests:
     @require_peft_version_greater(peft_version="0.6.2")
     def test_simple_inference_with_text_lora_unet_fused_multi(self):
         """
-        Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model and
-        makes sure it works as expected - with unet and multi-adapter case
+        Tests a simple inference with lora attached into text encoder + fuses the lora weights into base model
+        and makes sure it works as expected - with unet and multi-adapter case
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -1141,8 +1146,8 @@ class PeftLoraLoaderMixinTests:
     @unittest.skip("This is failing for now - need to investigate")
     def test_simple_inference_with_text_unet_lora_unfused_torch_compile(self):
         """
-        Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights and makes
-        sure it works as expected
+        Tests a simple inference with lora attached to text encoder and unet, then unloads the lora weights
+        and makes sure it works as expected
         """
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
@@ -2206,8 +2211,8 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
     def test_sd_load_civitai_empty_network_alpha(self):
         """
-        This test simply checks that loading a LoRA with an empty network alpha works fine See:
-        https://github.com/huggingface/diffusers/issues/5606
+        This test simply checks that loading a LoRA with an empty network alpha works fine
+        See: https://github.com/huggingface/diffusers/issues/5606
         """
         pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5").to("cuda")
         pipeline.enable_sequential_cpu_offload()
