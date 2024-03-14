@@ -29,7 +29,8 @@ from diffusers.models.attention_processor import LoRAAttnProcessor, LoRAAttnProc
 from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    load_pt,
+    load_numpy,
+    numpy_cosine_similarity_distance,
     require_peft_backend,
     require_torch_gpu,
     skip_mps,
@@ -319,7 +320,9 @@ class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_stable_cascade_prior(self):
-        pipe = StableCascadePriorPipeline.from_pretrained("diffusers/StableCascade-prior", torch_dtype=torch.bfloat16)
+        pipe = StableCascadePriorPipeline.from_pretrained(
+            "stabilityai/stable-cascade-prior", variant="bf16", torch_dtype=torch.bfloat16
+        )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
@@ -327,17 +330,12 @@ class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 
-        output = pipe(prompt, num_inference_steps=10, generator=generator)
+        output = pipe(prompt, num_inference_steps=2, output_type="np", generator=generator)
         image_embedding = output.image_embeddings
-
-        expected_image_embedding = load_pt(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/image_embedding.pt"
+        expected_image_embedding = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/stable_cascade_prior_image_embeddings.npy"
         )
-
         assert image_embedding.shape == (1, 16, 24, 24)
 
-        self.assertTrue(
-            np.allclose(
-                image_embedding.cpu().float().numpy(), expected_image_embedding.cpu().float().numpy(), atol=5e-2
-            )
-        )
+        max_diff = numpy_cosine_similarity_distance(image_embedding.flatten(), expected_image_embedding.flatten())
+        assert max_diff < 1e-4
