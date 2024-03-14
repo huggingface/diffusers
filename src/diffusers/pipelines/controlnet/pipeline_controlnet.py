@@ -834,7 +834,7 @@ class StableDiffusionControlNetPipeline(
             w (`torch.Tensor`):
                 Generate embedding vectors with a specified guidance scale to subsequently enrich timestep embeddings.
             embedding_dim (`int`, *optional*, defaults to 512):
-            Dimension of the embeddings to generate.
+                Dimension of the embeddings to generate.
             dtype (`torch.dtype`, *optional*, defaults to `torch.float32`):
                 Data type of the generated embeddings.
 
