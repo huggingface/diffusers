@@ -152,7 +152,7 @@ class StableDiffusionXLControlNetXSPipeline(
             watermarker is used.
     """
 
-    # todo: dont load controlnet to gpu
+    # todo umer: dont load controlnet to gpu, its already part of unet
     model_cpu_offload_seq = "text_encoder->text_encoder_2->unet->vae"
     _optional_components = [
         "tokenizer",
@@ -260,6 +260,7 @@ class StableDiffusionXLControlNetXSPipeline(
         """
         self.vae.disable_tiling()
 
+    # Copied from diffusers.pipelines.stable_diffusion_xl.pipeline_stable_diffusion_xl.StableDiffusionXLPipeline.encode_prompt
     def encode_prompt(
         self,
         prompt: str,
@@ -318,7 +319,6 @@ class StableDiffusionXLControlNetXSPipeline(
                 Number of layers to be skipped from CLIP while computing the prompt embeddings. A value of 1 means that
                 the output of the pre-final layer will be used for computing the prompt embeddings.
         """
-        # Note: this is almost an exact copy of `StableDiffusionXLPipeline.encode_prompt` except that `sefl.controlnet` is used instead of `self.unet`
 
         device = device or self._execution_device
 
@@ -357,7 +357,7 @@ class StableDiffusionXLControlNetXSPipeline(
             prompt_2 = prompt_2 or prompt
             prompt_2 = [prompt_2] if isinstance(prompt_2, str) else prompt_2
 
-            # textual inversion: procecss multi-vector tokens if necessary
+            # textual inversion: process multi-vector tokens if necessary
             prompt_embeds_list = []
             prompts = [prompt, prompt_2]
             for prompt, tokenizer, text_encoder in zip(prompts, tokenizers, text_encoders):
@@ -719,7 +719,7 @@ class StableDiffusionXLControlNetXSPipeline(
         passed_add_embed_dim = (
             self.unet.config.addition_time_embed_dim * len(add_time_ids) + text_encoder_projection_dim
         )
-        expected_add_embed_dim = self.base_add_embedding.linear_1.in_features
+        expected_add_embed_dim = self.unet.base_add_embedding.linear_1.in_features
 
         if expected_add_embed_dim != passed_add_embed_dim:
             raise ValueError(

@@ -313,6 +313,10 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1.1e-4
 
+    # copied from test_stable_diffusion_xl.py
+    def test_save_load_optional_components(self):
+        self._test_save_load_optional_components()
+
     # copied from test_controlnetxs.py
     def test_to_dtype(self):
         components = self.get_dummy_components()

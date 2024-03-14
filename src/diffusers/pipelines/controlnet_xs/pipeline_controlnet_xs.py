@@ -125,7 +125,7 @@ class StableDiffusionControlNetXSPipeline(
             A `CLIPImageProcessor` to extract features from generated images; used as inputs to the `safety_checker`.
     """
 
-    # todo: dont load controlnet to gpu
+    # todo umer: dont load controlnet to gpu, its already part of unet
     model_cpu_offload_seq = "text_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor"]
     _exclude_from_cpu_offload = ["safety_checker"]

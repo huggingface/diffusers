@@ -492,8 +492,10 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         upcast_attention: bool = True,
         class_embed_type: Optional[str] = None,
         addition_embed_type: Optional[str] = None,
+        addition_time_embed_dim: Optional[int] = None,
         time_embedding_dim: Optional[int] = None,
         time_cond_proj_dim: Optional[int] = None,
+        projection_class_embeddings_input_dim: Optional[int] = None,
         # additional controlnet configs
         time_embedding_mix: float = 1.0,
         ctrl_conditioning_channels: int = 3,
@@ -532,6 +534,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             class_embed_type=class_embed_type,
             addition_embed_type=addition_embed_type,
             time_cond_proj_dim=time_cond_proj_dim,
+            projection_class_embeddings_input_dim=projection_class_embeddings_input_dim,
+            addition_time_embed_dim=addition_time_embed_dim,
         )
 
         self.in_channels = 4
@@ -636,6 +640,8 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             "class_embed_type",
             "addition_embed_type",
             "time_cond_proj_dim",
+            "projection_class_embeddings_input_dim",
+            "addition_time_embed_dim",
         ]
         config.update({k: v for k, v in unet.config.items() if k in params_for_unet})
         # The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
