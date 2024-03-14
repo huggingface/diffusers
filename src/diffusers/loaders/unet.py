@@ -1008,4 +1008,4 @@ class FromOriginalUNetMixin:
                 image_size=kwargs.get("image_size", None),
                 torch_dtype=torch_dtype,
                 model_type=kwargs.pop("model_type", None),
-            )
+            )["unet"]
