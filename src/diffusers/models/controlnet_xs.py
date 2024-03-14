@@ -37,11 +37,11 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 @dataclass
 class ControlNetXSOutput(BaseOutput):
     """
-    The output of [`ControlNetXSModel`].
+    The output of [`UNetControlNetXSModel`].
 
     Args:
         sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
-            The output of the `ControlNetXSModel`. Unlike `ControlNetOutput` this is NOT to be added to the base model
+            The output of the `UNetControlNetXSModel`. Unlike `ControlNetOutput` this is NOT to be added to the base model
             output, but is already the final output.
     """
 
@@ -960,7 +960,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         h_base = self.base_conv_out(h_base)
 
         if not return_dict:
-            return h_base
+            return (h_base,)
 
         return ControlNetXSOutput(sample=h_base)
 

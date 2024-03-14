@@ -14,9 +14,7 @@
 # limitations under the License.
 
 import copy
-import os
 import re
-import tempfile
 import unittest
 
 import numpy as np
@@ -24,7 +22,6 @@ import torch
 
 from diffusers import ControlNetXSAddon, UNet2DConditionModel, UNetControlNetXSModel
 from diffusers.utils import logging
-from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
@@ -43,9 +40,56 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
     model_class = UNetControlNetXSModel
     main_input_name = "sample"
 
-    def get_dummy_components(self, seed=0):
-        torch.manual_seed(seed)
-        unet = UNet2DConditionModel(
+    @property
+    def dummy_input(self):
+        batch_size = 4
+        num_channels = 4
+        sizes = (32, 32)
+
+        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
+        time_step = torch.tensor([10]).to(torch_device)
+        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
+        controlnet_cond = floats_tensor((batch_size, 3, 256, 256)).to(torch_device)
+        conditioning_scale = 1
+
+        return {
+            "sample": noise,
+            "timestep": time_step,
+            "encoder_hidden_states": encoder_hidden_states,
+            "controlnet_cond": controlnet_cond,
+            "conditioning_scale": conditioning_scale,
+        }
+
+    @property
+    def input_shape(self):
+        return (4, 32, 32)
+
+    @property
+    def output_shape(self):
+        return (4, 32, 32)
+
+    def prepare_init_args_and_inputs_for_common(self):
+        init_dict = {
+            "sample_size": 32,
+            "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
+            "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
+            "block_out_channels": (4, 8),
+            "norm_num_groups": 1,
+            "cross_attention_dim": 32,
+            "transformer_layers_per_block": 1,
+            "num_attention_heads": 8,
+            "upcast_attention": False,
+            "ctrl_time_embedding_input_dim": 4,
+            "ctrl_block_out_channels": [4, 8],
+            "ctrl_attention_head_dim": 8,
+            "ctrl_max_norm_num_groups": 1,
+        }
+        inputs_dict = self.dummy_input
+        return init_dict, inputs_dict
+
+    def get_dummy_unet(self):
+        """For some tests we also need the underlying UNet. For these, we'll build the UNetControlNetXSModel from the UNet"""
+        return UNet2DConditionModel(
             block_out_channels=(4, 8),
             layers_per_block=2,
             sample_size=32,
@@ -57,30 +101,12 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             norm_num_groups=1,
             use_linear_projection=True,
         )
-        controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
-        return unet, controlnet
-
-    @property
-    def dummy_input(self):
-        batch_size = 4
-        num_channels = 4
-        sizes = (32, 32)
-
-        noise = floats_tensor((batch_size, num_channels) + sizes).to(torch_device)
-        time_step = torch.tensor([10]).to(torch_device)
-        encoder_hidden_states = floats_tensor((batch_size, 4, 32)).to(torch_device)
-
-        return {"sample": noise, "timestep": time_step, "encoder_hidden_states": encoder_hidden_states}
-
-    @property
-    def input_shape(self):
-        return (4, 8, 32, 32)
 
     def test_from_unet2d(self):
-        torch.manual_seed(0)
-        unet2d, controlnet = self.get_dummy_components()
+        unet = self.get_dummy_unet()
+        controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
 
-        model = UNetControlNetXSModel.from_unet2d(unet2d, controlnet)
+        model = UNetControlNetXSModel.from_unet2d(unet, controlnet)
         model_state_dict = model.state_dict()
 
         def is_decomposed(module_name):
@@ -113,7 +139,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
 
             return param_name
 
-        for param_name, param_value in unet2d.named_parameters():
+        for param_name, param_value in unet.named_parameters():
             if is_decomposed(param_name):
                 # check unet modules that were decomposed
                 self.assertTrue(torch.equal(model_state_dict[block_to_subblock_name(param_name)], param_value))
@@ -126,7 +152,8 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             self.assertTrue(torch.equal(model_state_dict["control_addon." + param_name], param_value))
 
     def test_freeze_unet2d(self):
-        model = UNetControlNetXSModel.from_unet2d(*self.get_dummy_components())
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = UNetControlNetXSModel(**init_dict)
         model.freeze_unet2d_params()
 
         for param_name, param_value in model.named_parameters():
@@ -135,17 +162,22 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             else:
                 self.assertTrue(param_value.requires_grad)
 
-    def test_no_control(self):
-        unet2d, controlnet = self.get_dummy_components()
+    def test_forward_no_control(self):
+        unet = self.get_dummy_unet()
+        controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
 
-        model = UNetControlNetXSModel.from_unet2d(unet2d, controlnet)
+        model = UNetControlNetXSModel.from_unet2d(unet, controlnet)
 
-        unet2d = unet2d.to(torch_device)
+        unet = unet.to(torch_device)
         model = model.to(torch_device)
 
         input_ = self.dummy_input
+
+        control_specific_input = ["controlnet_cond", "conditioning_scale"]
+        input_for_unet = {k: v for k, v in input_.items() if k not in control_specific_input}
+
         with torch.no_grad():
-            unet_output = unet2d(**input_).sample.cpu()
+            unet_output = unet(**input_for_unet).sample.cpu()
             unet_controlnet_output = model(**input_, do_control=False).sample.cpu()
 
         assert np.abs(unet_output.flatten() - unet_controlnet_output.flatten()).max() < 1e-5
@@ -167,7 +199,9 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
 
         model_class_copy._set_gradient_checkpointing = _set_gradient_checkpointing_new
 
-        model = model_class_copy.from_unet2d(*self.get_dummy_components())
+        init_dict, _ = self.prepare_init_args_and_inputs_for_common()
+        model = model_class_copy(**init_dict)
+
         model.enable_gradient_checkpointing()
 
         EXPECTED_SET = {
@@ -175,7 +209,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             "UNetMidBlock2DCrossAttn",
             "CrossAttnDownSubBlock2D",
             "DownSubBlock2D",
-            "CrossAttnUpSubBlock2D"
+            "CrossAttnUpSubBlock2D",
         }
 
         assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET
