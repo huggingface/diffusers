@@ -50,6 +50,8 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
 
+    from ..models.modeling_utils import load_model_dict_into_meta
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 CONFIG_URLS = {
@@ -1272,6 +1274,59 @@ def create_text_encoder_from_open_clip_checkpoint(
         text_model = text_model.to(torch_dtype)
 
     return text_model
+
+
+def create_diffusers_unet_from_stable_cascade(
+    cls,
+    pretrained_model_link_or_path,
+    config,
+    resume_download,
+    force_download,
+    proxies,
+    token,
+    cache_dir,
+    local_files_only,
+    revision,
+    torch_dtype,
+    **kwargs,
+):
+    checkpoint = load_single_file_model_checkpoint(
+        pretrained_model_link_or_path,
+        resume_download=resume_download,
+        force_download=force_download,
+        proxies=proxies,
+        token=token,
+        cache_dir=cache_dir,
+        local_files_only=local_files_only,
+        revision=revision,
+    )
+
+    if config is None:
+        config = infer_stable_cascade_single_file_config(checkpoint)
+        model_config = cls.load_config(**config, **kwargs)
+    else:
+        model_config = config
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        model = cls.from_config(model_config, **kwargs)
+
+    diffusers_format_checkpoint = convert_stable_cascade_unet_single_file_to_diffusers(checkpoint)
+
+    if is_accelerate_available():
+        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
+
+    else:
+        model.load_state_dict(diffusers_format_checkpoint)
+
+    if torch_dtype is not None:
+        model.to(torch_dtype)
+
+    return model
 
 
 def create_diffusers_unet_model_from_ldm(

@@ -19,7 +19,7 @@ import torch.nn as nn
 import torch.utils.checkpoint
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...loaders import PeftAdapterMixin, UNet2DConditionLoadersMixin
+from ...loaders import FromOriginalUNetMixin, PeftAdapterMixin, UNet2DConditionLoadersMixin
 from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, logging, scale_lora_layers, unscale_lora_layers
 from ..activations import get_activation
 from ..attention_processor import (
@@ -66,7 +66,9 @@ class UNet2DConditionOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
-class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin):
+class UNet2DConditionModel(
+    ModelMixin, ConfigMixin, FromOriginalUNetMixin, UNet2DConditionLoadersMixin, PeftAdapterMixin
+):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
     shaped output.
