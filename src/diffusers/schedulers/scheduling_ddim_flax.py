@@ -268,6 +268,8 @@ class FlaxDDIMScheduler(FlaxSchedulerMixin, ConfigMixin):
                 f"prediction_type given as {self.config.prediction_type} must be one of `epsilon`, `sample`, or"
                 " `v_prediction`"
             )
+        
+         
 
         # 4. Clip or threshold "predicted x_0"
         if self.config.clip_sample:
