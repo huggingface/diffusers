@@ -522,7 +522,7 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         ckpt_path = (
             "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"
         )
-        single_file_pipe = StableDiffusionUpscalePipeline.from_single_file(ckpt_path, load_safety_checker=True)
+        single_file_pipe = StableDiffusionUpscalePipeline.from_single_file(ckpt_path)
 
         for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
             if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
