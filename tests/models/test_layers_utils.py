@@ -376,6 +376,7 @@ class Transformer2DModelTests(unittest.TestCase):
             dropout=0.0,
             cross_attention_dim=64,
             num_embeds_ada_norm=num_embeds_ada_norm,
+            norm_type="ada_norm",
         ).to(torch_device)
         with torch.no_grad():
             timestep_1 = torch.tensor(1, dtype=torch.long).to(torch_device)
@@ -467,6 +468,7 @@ class Transformer2DModelTests(unittest.TestCase):
             attention_head_dim=32,
             in_channels=32,
             num_embeds_ada_norm=5,
+            norm_type="ada_norm",
         )
 
         assert spatial_transformer_block.transformer_blocks[0].norm1.__class__ == AdaLayerNorm
