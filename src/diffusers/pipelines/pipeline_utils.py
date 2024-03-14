@@ -1670,13 +1670,13 @@ class StableDiffusionMixin:
         """
         self.vae.disable_slicing()
 
-    def enable_vae_tiling(self, tile_sample_min_size: int = 32, tile_overlap_factor: float = 0.25):
+    def enable_vae_tiling(self):
         r"""
         Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
         compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
         processing larger images.
         """
-        self.vae.enable_tiling(tile_sample_min_size=tile_sample_min_size, tile_overlap_factor=tile_overlap_factor)
+        self.vae.enable_tiling()
 
     def disable_vae_tiling(self):
         r"""
