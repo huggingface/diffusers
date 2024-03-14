@@ -124,11 +124,13 @@ else:
             "ImagePipelineOutput",
             "KarrasVePipeline",
             "LDMPipeline",
+            "LDMClasstoImagePipeline",
             "LDMSuperResolutionPipeline",
             "PNDMPipeline",
             "RePaintPipeline",
             "ScoreSdeVePipeline",
             "StableDiffusionMixin",
+            "ClassEmbeddder",
         ]
     )
     _import_structure["schedulers"].extend(

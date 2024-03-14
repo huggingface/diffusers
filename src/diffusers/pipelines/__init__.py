@@ -171,6 +171,7 @@ else:
     ]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
     _import_structure["latent_diffusion"].extend(["LDMClassToImagePipeline"])
+    _import_structure["latent_diffusion"].extend(["ClassEmbedder"])
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]

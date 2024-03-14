@@ -258,6 +258,8 @@ class T2IAdapter(ModelMixin, ConfigMixin):
             self.adapter = FullAdapterXL(in_channels, channels, num_res_blocks, downscale_factor)
         elif adapter_type == "light_adapter":
             self.adapter = LightAdapter(in_channels, channels, num_res_blocks, downscale_factor)
+        elif adapter_type == 'ldm_adapter':
+            self.adapter = LDMAdapter(in_channels, channels, num_res_blocks, downscale_factor)
         else:
             raise ValueError(
                 f"Unsupported adapter_type: '{adapter_type}'. Choose either 'full_adapter' or "
@@ -283,6 +285,60 @@ class T2IAdapter(ModelMixin, ConfigMixin):
         not evenly divisible by the downscale_factor then an exception will be raised.
         """
         return self.adapter.unshuffle.downscale_factor
+
+
+# ldm adapter
+
+class LDMAdapter(nn.Module):
+    r"""
+    See [`T2IAdapter`] for more information.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 3,
+        channels: List[int] = [320, 640, 1280, 1280],
+        num_res_blocks: int = 2,
+        downscale_factor: int = 8,
+    ):
+        super().__init__()
+
+        in_channels = in_channels * downscale_factor**2
+
+        self.unshuffle = nn.PixelUnshuffle(downscale_factor)
+        self.conv_in = nn.Conv2d(in_channels, channels[0], kernel_size=3, padding=1)
+
+        self.body = nn.ModuleList(
+            [
+                AdapterBlock(channels[0], channels[0], num_res_blocks),
+                *[
+                    AdapterBlock(channels[i - 1], channels[i], num_res_blocks, down=i >= len(channels) - 2)
+                    for i in range(1, len(channels))
+                ],
+            ]
+        )
+
+        self.total_downscale_factor = downscale_factor * 2 ** (len(channels) - 1)
+
+    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        r"""
+        This method processes the input tensor `x` through the FullAdapter model and performs operations including
+        pixel unshuffling, convolution, and a stack of AdapterBlocks. It returns a list of feature tensors, each
+        capturing information at a different stage of processing within the FullAdapter model. The number of feature
+        tensors in the list is determined by the number of downsample blocks specified during initialization.
+        """
+        x = self.unshuffle(x)
+        x = self.conv_in(x)
+
+        features = []
+
+        for block in self.body:
+            x = block(x)
+            features.append(x)
+
+        return features
+
+
 
 
 # full adapter

@@ -36,7 +36,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import is_compiled_module, is_torch_version, randn_tensor
-from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin
+from ..pipeline_utils import DiffusionPipeline, StableDiffusionMixin, ImagePipelineOutput
 from ..stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ..stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from .multicontrolnet import MultiControlNetModel
@@ -1321,7 +1321,7 @@ class StableDiffusionControlNetPipeline(
 from diffusers.pipelines.latent_diffusion.pipeline_latent_diffusion import ClassEmbedder
 from diffusers import VQModel
 
-class LDMClassToImagePipeline(StableDiffusionControlNetPipeline):
+class LDMClassToImageControlNetPipeline(StableDiffusionControlNetPipeline):
     model_cpu_offload_seq = "class_embedder->image_encoder->unet->vae"
     _optional_components = ["feature_extractor", "image_encoder"]
     _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
@@ -1332,12 +1332,10 @@ class LDMClassToImagePipeline(StableDiffusionControlNetPipeline):
         class_embedder: ClassEmbedder,
         unet: UNet2DConditionModel,
         controlnet: Union[ControlNetModel, List[ControlNetModel], Tuple[ControlNetModel], MultiControlNetModel],
-        scheduler: KarrasDiffusionSchedulers,
-        feature_extractor: CLIPImageProcessor,
+        scheduler: KarrasDiffusionSchedulers = None,
+        feature_extractor: CLIPImageProcessor = None,
         image_encoder: CLIPVisionModelWithProjection = None,
     ):
-        super().__init__()
-
         if isinstance(controlnet, (list, tuple)):
             controlnet = MultiControlNetModel(controlnet)
 
@@ -1757,7 +1755,7 @@ class LDMClassToImagePipeline(StableDiffusionControlNetPipeline):
         self._cross_attention_kwargs = cross_attention_kwargs
 
         # 2. Define call parameters
-        if prompt is not None and isinstance(prompt, str):
+        if prompt is not None and isinstance(prompt, int):
             batch_size = 1
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
@@ -1983,7 +1981,7 @@ class LDMClassToImagePipeline(StableDiffusionControlNetPipeline):
             torch.cuda.empty_cache()
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[
                 0
             ]
         else:
@@ -1997,4 +1995,4 @@ class LDMClassToImagePipeline(StableDiffusionControlNetPipeline):
         if not return_dict:
             return (image, )
 
-        return StableDiffusionPipelineOutput(images=image)
+        return ImagePipelineOutput(images=image)

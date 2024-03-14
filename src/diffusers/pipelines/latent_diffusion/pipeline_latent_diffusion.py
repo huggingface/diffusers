@@ -213,6 +213,9 @@ class LDMClassToImagePipeline(DiffusionPipeline):
             # compute the previous noisy sample x_t -> x_t-1
             latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
+        if output_type == 'latent':
+             return latents.cpu().numpy()
+    
         # scale and decode the image latents with vae
         # latents = 1 / self.vqvae.config.scaling_factor * latents
         image = self.vqvae.decode(latents).sample
