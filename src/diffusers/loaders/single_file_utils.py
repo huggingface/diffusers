@@ -454,8 +454,7 @@ def set_image_size(pipeline_class_name, original_config, checkpoint, image_size=
     model_type = infer_model_type(original_config, checkpoint, model_type)
 
     if pipeline_class_name == "StableDiffusionUpscalePipeline":
-        image_size = original_config["model"]["params"]["unet_config"]["params"]["image_size"]
-        return image_size
+        return 512
 
     elif model_type in ["SDXL", "SDXL-Refiner", "Playground"]:
         image_size = 1024
