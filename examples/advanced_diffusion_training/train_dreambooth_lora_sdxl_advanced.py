@@ -22,6 +22,7 @@ import logging
 import math
 import os
 import random
+import contextlib
 import re
 import shutil
 import warnings
@@ -2172,17 +2173,18 @@ def main(args):
                 # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
                 scheduler_args = {}
 
-                if "variance_type" in pipeline.scheduler.config:
-                    variance_type = pipeline.scheduler.config.variance_type
+                if not args.do_edm_style_training:
+                    if "variance_type" in pipeline.scheduler.config:
+                        variance_type = pipeline.scheduler.config.variance_type
 
-                    if variance_type in ["learned", "learned_range"]:
-                        variance_type = "fixed_small"
+                        if variance_type in ["learned", "learned_range"]:
+                            variance_type = "fixed_small"
 
-                    scheduler_args["variance_type"] = variance_type
+                        scheduler_args["variance_type"] = variance_type
 
-                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-                    pipeline.scheduler.config, **scheduler_args
-                )
+                    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+                        pipeline.scheduler.config, **scheduler_args
+                    )
 
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
@@ -2190,12 +2192,13 @@ def main(args):
                 # run inference
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
+                inference_ctx = (
+                    contextlib.nullcontext() if "playground" in args.pretrained_model_name_or_path else torch.cuda.amp.autocast()
+                )
 
-                with torch.cuda.amp.autocast():
-                    images = [
-                        pipeline(**pipeline_args, generator=generator).images[0]
-                        for _ in range(args.num_validation_images)
-                    ]
+                with inference_ctx:
+                    images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in
+                              range(args.num_validation_images)]
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
@@ -2267,15 +2270,16 @@ def main(args):
             # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
             scheduler_args = {}
 
-            if "variance_type" in pipeline.scheduler.config:
-                variance_type = pipeline.scheduler.config.variance_type
+            if not args.do_edm_style_training:
+                if "variance_type" in pipeline.scheduler.config:
+                    variance_type = pipeline.scheduler.config.variance_type
 
-                if variance_type in ["learned", "learned_range"]:
-                    variance_type = "fixed_small"
+                    if variance_type in ["learned", "learned_range"]:
+                        variance_type = "fixed_small"
 
-                scheduler_args["variance_type"] = variance_type
+                    scheduler_args["variance_type"] = variance_type
 
-            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
 
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
