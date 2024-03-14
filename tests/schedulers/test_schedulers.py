@@ -782,7 +782,7 @@ class SchedulerCommonTest(unittest.TestCase):
             # no warning should be thrown
             assert cap_logger.out == ""
 
-            logger = logging.get_logger("diffusers.schedulers.schedulering_utils")
+            logger = logging.get_logger("diffusers.schedulers.scheduling_utils")
             # 30 for warning
             logger.setLevel(30)
             with CaptureLogger(logger) as cap_logger:
