@@ -1096,7 +1096,7 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
             # This parameter doesn't appear to be loaded from the config.
             # So when it is registered to config, it remains a tuple as this is the default in the class definition
             # from_pretrained, does load from config and converts to a list when registering to config
-            if param_name == "conditioning_embedding_out_channels":
+            if param_name == "conditioning_embedding_out_channels" and isinstance(param_value, tuple):
                 param_value = list(param_value)
 
             assert (
