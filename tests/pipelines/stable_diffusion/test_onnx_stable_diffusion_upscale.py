@@ -55,7 +55,7 @@ class OnnxStableDiffusionUpscalePipelineFastTests(OnnxPipelineTesterMixin, unitt
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

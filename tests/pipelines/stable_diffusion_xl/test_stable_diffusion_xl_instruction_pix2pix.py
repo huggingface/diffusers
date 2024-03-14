@@ -143,7 +143,7 @@ class StableDiffusionXLInstructPix2PixPipelineFastTests(
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "image_guidance_scale": 1,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
