@@ -320,7 +320,7 @@ class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_cascade_prior(self):
         pipe = StableCascadePriorPipeline.from_pretrained(
-            "stabilityai/stable-cascade-prior", torch_dtype=torch.bfloat16
+            "stabilityai/stable-cascade-prior", variant="bf16", torch_dtype=torch.bfloat16
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
