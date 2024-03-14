@@ -241,7 +241,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
             elif order == 1:
                 orders = [1] * steps
         else:
-            if order >= 3:
+            if order == 3:
                 orders = [1, 2, 3] * (steps // 3)
             elif order == 2:
                 orders = [1, 2] * (steps // 2)
