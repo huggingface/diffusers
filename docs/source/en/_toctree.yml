@@ -404,6 +404,10 @@
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler
       title: EulerDiscreteScheduler
+    - local: api/schedulers/edm_euler
+      title: EDMEulerScheduler
+    - local: api/schedulers/edm_multistep_dpm_solver
+      title: EDMDPMSolverMultistepScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
