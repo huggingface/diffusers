@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import contextlib
 import gc
 import hashlib
 import itertools
@@ -22,7 +23,6 @@ import logging
 import math
 import os
 import random
-import contextlib
 import re
 import shutil
 import warnings
@@ -2193,12 +2193,16 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
                 inference_ctx = (
-                    contextlib.nullcontext() if "playground" in args.pretrained_model_name_or_path else torch.cuda.amp.autocast()
+                    contextlib.nullcontext()
+                    if "playground" in args.pretrained_model_name_or_path
+                    else torch.cuda.amp.autocast()
                 )
 
                 with inference_ctx:
-                    images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in
-                              range(args.num_validation_images)]
+                    images = [
+                        pipeline(**pipeline_args, generator=generator).images[0]
+                        for _ in range(args.num_validation_images)
+                    ]
 
                 for tracker in accelerator.trackers:
                     if tracker.name == "tensorboard":
@@ -2279,7 +2283,9 @@ def main(args):
 
                     scheduler_args["variance_type"] = variance_type
 
-                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+                    pipeline.scheduler.config, **scheduler_args
+                )
 
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
