@@ -15,6 +15,7 @@
 import copy
 import gc
 import importlib
+import sys
 import time
 import unittest
 
@@ -31,23 +32,25 @@ from diffusers import (
     StableDiffusionXLPipeline,
     T2IAdapter,
 )
-from diffusers.utils.import_utils import is_accelerate_available, is_peft_available
+from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
     load_image,
     nightly,
     numpy_cosine_similarity_distance,
+    require_peft_backend,
     require_torch_gpu,
     slow,
+    torch_device,
 )
 
-from .utils import PeftLoraLoaderMixinTests, state_dicts_almost_equal
+
+sys.path.append(".")
+
+from utils import PeftLoraLoaderMixinTests, state_dicts_almost_equal  # noqa: E402
 
 
 if is_accelerate_available():
     from accelerate.utils import release_memory
-
-if is_peft_available():
-    pass
 
 
 class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
@@ -95,7 +98,8 @@ class StableDiffusionXLLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 @slow
 @require_torch_gpu
-class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
+@require_peft_backend
+class LoraSDXLIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -513,7 +517,7 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
         # 1. round
         pipe.load_lora_weights("Pclanglais/TintinIA", torch_dtype=torch.float16)
-        pipe.to("cuda")
+        pipe.to(torch_device)
         pipe.fuse_lora()
 
         generator = torch.Generator().manual_seed(0)
@@ -550,14 +554,13 @@ class LoraSDXLIntegrationTests(PeftLoraLoaderMixinTests, unittest.TestCase):
         release_memory(pipe)
 
     @nightly
-    @require_torch_gpu
     def test_integration_logits_multi_adapter(self):
         path = "stabilityai/stable-diffusion-xl-base-1.0"
         lora_id = "CiroN2022/toy-face"
 
         pipe = StableDiffusionXLPipeline.from_pretrained(path, torch_dtype=torch.float16)
         pipe.load_lora_weights(lora_id, weight_name="toy_face_sdxl.safetensors", adapter_name="toy")
-        pipe = pipe.to("cuda")
+        pipe = pipe.to(torch_device)
 
         self.assertTrue(
             self.check_if_lora_correctly_set(pipe.unet),

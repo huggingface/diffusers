@@ -26,16 +26,14 @@ from diffusers import (
     LCMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.utils.import_utils import is_accelerate_available, is_peft_available
+from diffusers.utils.import_utils import is_peft_available
 from diffusers.utils.testing_utils import (
     floats_tensor,
     require_peft_backend,
     require_peft_version_greater,
+    torch_device,
 )
 
-
-if is_accelerate_available():
-    pass
 
 if is_peft_available():
     from peft import LoraConfig
@@ -57,7 +55,6 @@ def state_dicts_almost_equal(sd1, sd2):
 
 @require_peft_backend
 class PeftLoraLoaderMixinTests:
-    torch_device = "cuda" if torch.cuda.is_available() else "cpu"
     pipeline_class = None
     scheduler_cls = None
     scheduler_kwargs = None
@@ -168,7 +165,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
 
             _, _, inputs = self.get_dummy_inputs()
@@ -183,7 +180,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -214,7 +211,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -261,7 +258,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -303,7 +300,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -346,7 +343,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -411,7 +408,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -435,7 +432,7 @@ class PeftLoraLoaderMixinTests:
                 pipe.save_pretrained(tmpdirname)
 
                 pipe_from_pretrained = self.pipeline_class.from_pretrained(tmpdirname)
-                pipe_from_pretrained.to(self.torch_device)
+                pipe_from_pretrained.to(torch_device)
 
             self.assertTrue(
                 self.check_if_lora_correctly_set(pipe_from_pretrained.text_encoder),
@@ -462,7 +459,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -535,7 +532,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -589,7 +586,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -635,7 +632,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -682,7 +679,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -732,7 +729,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -800,7 +797,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -890,7 +887,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -962,7 +959,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -1000,7 +997,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -1027,7 +1024,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
@@ -1065,7 +1062,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -1127,7 +1124,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
@@ -1163,7 +1160,7 @@ class PeftLoraLoaderMixinTests:
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, _, _ = self.get_dummy_components(scheduler_cls)
             pipe = self.pipeline_class(**components)
-            pipe = pipe.to(self.torch_device)
+            pipe = pipe.to(torch_device)
             pipe.set_progress_bar_config(disable=None)
             _pad_mode = "circular"
             set_pad_mode(pipe.vae, _pad_mode)

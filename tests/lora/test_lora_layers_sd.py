@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import gc
+import sys
 import unittest
 
 import numpy as np
@@ -30,23 +31,24 @@ from diffusers import (
     LCMScheduler,
     StableDiffusionPipeline,
 )
-from diffusers.utils.import_utils import is_accelerate_available, is_peft_available
+from diffusers.utils.import_utils import is_accelerate_available
 from diffusers.utils.testing_utils import (
     load_image,
     numpy_cosine_similarity_distance,
+    require_peft_backend,
     require_torch_gpu,
     slow,
     torch_device,
 )
 
-from .utils import PeftLoraLoaderMixinTests
+
+sys.path.append(".")
+
+from utils import PeftLoraLoaderMixinTests  # noqa: E402
 
 
 if is_accelerate_available():
     from accelerate.utils import release_memory
-
-if is_peft_available():
-    pass
 
 
 class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
@@ -95,7 +97,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float16)
         pipe.load_lora_weights(lora_id, adapter_name="adapter-1")
         pipe.load_lora_weights(lora_id, adapter_name="adapter-2")
-        pipe = pipe.to("cuda")
+        pipe = pipe.to(torch_device)
 
         self.assertTrue(
             self.check_if_lora_correctly_set(pipe.text_encoder),
@@ -133,7 +135,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
             if "adapter-1" in n and not isinstance(m, (nn.Dropout, nn.Identity)):
                 self.assertTrue(m.weight.device != torch.device("cpu"))
 
-        pipe.set_lora_device(["adapter-1", "adapter-2"], "cuda")
+        pipe.set_lora_device(["adapter-1", "adapter-2"], torch_device)
 
         for n, m in pipe.unet.named_modules():
             if ("adapter-1" in n or "adapter-2" in n) and not isinstance(m, (nn.Dropout, nn.Identity)):
@@ -146,6 +148,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
 
 @slow
 @require_torch_gpu
+@require_peft_backend
 class LoraIntegrationTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
@@ -158,7 +161,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
         pipe.load_lora_weights(lora_id)
-        pipe = pipe.to("cuda")
+        pipe = pipe.to(torch_device)
 
         self.assertTrue(
             self.check_if_lora_correctly_set(pipe.text_encoder),
@@ -190,7 +193,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
         pipe.load_lora_weights(lora_id)
-        pipe = pipe.to("cuda")
+        pipe = pipe.to(torch_device)
 
         self.assertTrue(
             self.check_if_lora_correctly_set(pipe.text_encoder),
@@ -481,7 +484,7 @@ class LoraIntegrationTests(unittest.TestCase):
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
         pipe = AutoPipelineForText2Image.from_pretrained(
             "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
-        ).to("cuda")
+        ).to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
         cached_file = hf_hub_download("hf-internal-testing/lcm-lora-test-sd-v1-5", "test_lora.safetensors")
@@ -495,7 +498,7 @@ class LoraIntegrationTests(unittest.TestCase):
         # Makes sure https://github.com/huggingface/diffusers/issues/7054 does not happen again
         pipe = AutoPipelineForText2Image.from_pretrained(
             "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
-        ).to("cuda")
+        ).to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
         cached_file = hf_hub_download("hf-internal-testing/lcm-lora-test-sd-v1-5", "test_lora.safetensors")
@@ -513,7 +516,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
     def test_sdv1_5_lcm_lora(self):
         pipe = DiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-        pipe.to("cuda")
+        pipe.to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
         generator = torch.Generator("cpu").manual_seed(0)
@@ -541,7 +544,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
     def test_sdv1_5_lcm_lora_img2img(self):
         pipe = AutoPipelineForImage2Image.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
-        pipe.to("cuda")
+        pipe.to(torch_device)
         pipe.scheduler = LCMScheduler.from_config(pipe.scheduler.config)
 
         init_image = load_image(
@@ -581,7 +584,7 @@ class LoraIntegrationTests(unittest.TestCase):
         This test simply checks that loading a LoRA with an empty network alpha works fine
         See: https://github.com/huggingface/diffusers/issues/5606
         """
-        pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5").to("cuda")
+        pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5").to(torch_device)
         pipeline.enable_sequential_cpu_offload()
         civitai_path = hf_hub_download("ybelkada/test-ahi-civitai", "ahi_lora_weights.safetensors")
         pipeline.load_lora_weights(civitai_path, adapter_name="ahri")
