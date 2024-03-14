@@ -257,9 +257,7 @@ class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_stable_cascade_decoder(self):
-        pipe = StableCascadeDecoderPipeline.from_pretrained(
-            "diffusers/StableCascade-decoder", torch_dtype=torch.bfloat16
-        )
+        pipe = StableCascadeDecoderPipeline.from_pretrained("stabilityai/stable-cascade", torch_dtype=torch.bfloat16)
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 

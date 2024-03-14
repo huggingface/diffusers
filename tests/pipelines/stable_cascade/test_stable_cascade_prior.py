@@ -319,7 +319,9 @@ class StableCascadePriorPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_stable_cascade_prior(self):
-        pipe = StableCascadePriorPipeline.from_pretrained("diffusers/StableCascade-prior", torch_dtype=torch.bfloat16)
+        pipe = StableCascadePriorPipeline.from_pretrained(
+            "stabilityai/stable-cascade-prior", torch_dtype=torch.bfloat16
+        )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
 
