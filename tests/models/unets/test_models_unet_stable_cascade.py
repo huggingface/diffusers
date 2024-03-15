@@ -50,9 +50,7 @@ class StableCascadeUNetModelSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-        unet = StableCascadeUNet.from_pretrained(
-            "stabilityai/stable-cascade-prior", subfolder="prior", revision="refs/pr/2", variant="bf16"
-        )
+        unet = StableCascadeUNet.from_pretrained("stabilityai/stable-cascade-prior", subfolder="prior", variant="bf16")
         unet_config = unet.config
         del unet
         gc.collect()
@@ -74,9 +72,7 @@ class StableCascadeUNetModelSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-        unet = StableCascadeUNet.from_pretrained(
-            "stabilityai/stable-cascade", subfolder="decoder", revision="refs/pr/44", variant="bf16"
-        )
+        unet = StableCascadeUNet.from_pretrained("stabilityai/stable-cascade", subfolder="decoder", variant="bf16")
         unet_config = unet.config
         del unet
         gc.collect()
