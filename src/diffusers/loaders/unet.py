@@ -561,6 +561,88 @@ class UNet2DConditionLoadersMixin:
             if isinstance(module, BaseTunerLayer):
                 module.unmerge()
 
+    @staticmethod
+    def _expand_lora_weight_dict(
+        weights, blocks_with_transformer: Dict[str, int], transformer_per_block: Dict[str, int]
+    ):
+        """
+        Expand input into a weight dict with a weight per transformer
+
+        Parameters:
+            blocks_with_transformer (`Dict[str, int]`):
+                Dict with keys 'up' and 'down', showing which blocks have transformer layers
+            transformer_per_block (`Dict[str, int]`):
+                Dict with keys 'up' and 'down', showing how many transformer layers each block has
+
+        E.g. turns
+            {
+                'down': 2,
+                'mid': 3,
+                'up': {
+                    'block_1': 4,
+                    'block_2': [5, 6, 7]
+                }
+            }
+        into
+            {
+                'down.block_1.0': 2,
+                'down.block_1.1': 2,
+                'down.block_2.0': 2,
+                'down.block_2.1': 2,
+                'mid': 3,
+                'up.block_0.0': 4,
+                'up.block_0.1': 4,
+                'up.block_0.2': 4,
+                'up.block_1.0': 5,
+                'up.block_1.1': 6,
+                'up.block_1.2': 7,
+            }
+        """
+        number = (float, int)
+
+        if sorted(blocks_with_transformer.keys()) != ["down", "up"]:
+            raise ValueError("blocks_with_transformer needs to be a dict with keys `'down' and `'up'`")
+
+        if sorted(transformer_per_block.keys()) != ["down", "up"]:
+            raise ValueError("transformer_per_block needs to be a dict with keys `'down' and `'up'`")
+
+        if isinstance(weights, number):
+            weights = {o: weights for o in ["down", "mid", "up"]}
+
+        for updown in ["up", "down"]:
+            # eg {"down": 1} to {"down": {"block_1": 1, "block_2": 1}}}
+            if isinstance(weights[updown], number):
+                weights[updown] = {f"block_{i}": weights[updown] for i in blocks_with_transformer[updown]}
+
+            # eg {"down": "block_1": 1}} to {"down": "block_1": [1, 1]}}
+            for i in blocks_with_transformer[updown]:
+                block = f"block_{i}"
+                if isinstance(weights[updown][block], number):
+                    weights[updown][block] = [weights[updown][block] for _ in range(transformer_per_block[updown])]
+
+            # eg {"down": "block_1": [1, 1]}}  to {"down.block_1.0": 1, "down.block_1.1": 1}
+            for i in blocks_with_transformer[updown]:
+                block = f"block_{i}"
+                for tf_idx, value in enumerate(weights[updown][block]):
+                    weights[f"{updown}.{block}.{tf_idx}"] = value
+
+            del weights[updown]
+
+        def layer_name(name):
+            """Translate user-friendly name (e.g. 'mid') into actual layer name (e.g. 'mid_block.attentions.0')"""
+            if name == "mid":
+                return "mid_block.attentions.0"
+
+            updown, block, attn = name.split(".")
+
+            updown = updown.replace("down", "down_blocks").replace("up", "up_blocks")
+            block = block.replace("block_", "")
+            attn = "attentions." + attn
+
+            return ".".join((updown, block, attn))
+
+        return {layer_name(name): weight for name, weight in weights}
+
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
@@ -606,6 +688,19 @@ class UNet2DConditionLoadersMixin:
             raise ValueError(
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
             )
+
+        blocks_with_transformer = {
+            "down": [i for i, block in enumerate(self.down_blocks) if hasattr(block, "attentions")],
+            "up": [i for i, block in enumerate(self.up_blocks) if hasattr(block, "attentions")],
+        }
+        transformer_per_block = {"down": self.config.layers_per_block, "up": self.config.layers_per_block + 1}
+
+        weights = [
+            UNet2DConditionLoadersMixin._expand_lora_weight_dict(
+                weight_for_adapter, blocks_with_transformer, transformer_per_block
+            )
+            for weight_for_adapter in weights
+        ]
 
         set_weights_and_activate_adapters(self, adapter_names, weights)
 

@@ -1033,17 +1033,27 @@ class LoraLoaderMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        adapter_weights: Optional[List[float]] = None,
+        adapter_weights: Optional[Union[List[float], List[Dict]]] = None,
     ):
+        unet_weights, text_encoder_weights = [], []
+
+        for weights in adapter_weights:
+            if isinstance(weights, dict):
+                unet_weights.append({k: v for k, v in weights.items() if k != "text_encoder"})
+                text_encoder_weights.append(weights["text_encoder"])
+            else:
+                unet_weights.append(weights)
+                text_encoder_weights.append(weights)
+
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         # Handle the UNET
-        unet.set_adapters(adapter_names, adapter_weights)
+        unet.set_adapters(adapter_names, unet_weights)
 
         # Handle the Text Encoder
         if hasattr(self, "text_encoder"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, adapter_weights)
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, text_encoder_weights)
         if hasattr(self, "text_encoder_2"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, adapter_weights)
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, text_encoder_weights)
 
     def disable_lora(self):
         if not USE_PEFT_BACKEND:
