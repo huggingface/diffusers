@@ -181,7 +181,7 @@ The Stable Diffusion pipelines are automatically supported in [Gradio](https://g
 pip install gradio
 ```
 
-Then, create a web demo around any Stable Diffusion-based pipeline. For example, to create an image generation pipeline in a single line of code by Gradio's [`Interface.from_pipeline`](https://www.gradio.app/docs/interface#interface-from-pipeline) function:
+Then, create a web demo around any Stable Diffusion-based pipeline. For example, you can create an image generation pipeline in a single line of code with Gradio's [`Interface.from_pipeline`](https://www.gradio.app/docs/interface#interface-from-pipeline) function:
 
 ```py
 from diffusers import StableDiffusionPipeline
