@@ -149,7 +149,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     _optional_components = []
     _exclude_from_cpu_offload = []
     _load_connected_pipes = False
-    _is_pipeline_device_mapped = False
     _is_onnx = False
 
     def register_modules(self, **kwargs):
@@ -397,7 +396,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 "It seems like you have activated sequential model offloading by calling `enable_sequential_cpu_offload`, but are now attempting to move the pipeline to GPU. This is not compatible with offloading. Please, move your pipeline `.to('cpu')` or consider removing the move altogether if you use sequential offloading."
             )
 
-        if self._is_pipeline_device_mapped:
+        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
+        if is_pipeline_device_mapped:
             raise ValueError(
                 "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`."
             )
@@ -1035,8 +1035,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # 11. Save where the model was instantiated from
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         if device_map is not None and isinstance(device_map, str) and device_map in ["balanced"]:
-            cls._is_pipeline_device_mapped = True
-            cls.hf_device_map = final_device_map
+            setattr(model, "hf_device_map", final_device_map)
         return model
 
     @property
@@ -1079,7 +1078,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 The PyTorch device type of the accelerator that shall be used in inference. If not specified, it will
                 default to "cuda".
         """
-        if self._is_pipeline_device_mapped:
+        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
+        if is_pipeline_device_mapped:
             raise ValueError(
                 "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_model_cpu_offload() isn't allowed."
             )
@@ -1180,7 +1180,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
 
-        if self._is_pipeline_device_mapped:
+        is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
+        if is_pipeline_device_mapped:
             raise ValueError(
                 "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_sequential_cpu_offload() isn't allowed."
             )
