@@ -163,7 +163,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
             "control_image": image,
         }
