@@ -1175,9 +1175,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
             cross_attention_kwargs["gligen"] = {"objs": self.position_net(**gligen_args)}
 
         # 3. down
-        # we're popping the `scale` instead of getting it because otherwise `scale` will be propagated 
+        # we're popping the `scale` instead of getting it because otherwise `scale` will be propagated
         # to the internal blocks and will raise deprecation warnings. this will be confusing for our users.
-        lora_scale = cross_attention_kwargs.pop("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+        if cross_attention_kwargs is not None and "scale" in cross_attention_kwargs:
+            lora_scale = cross_attention_kwargs.pop("scale", 1.0)
+        else:
+            lora_scale = 1.0
 
         if USE_PEFT_BACKEND:
             # weight the lora layers by setting `lora_scale` for each PEFT layer
