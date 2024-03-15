@@ -463,11 +463,19 @@ class SchedulerCommonTest(unittest.TestCase):
 
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.manual_seed(0)
-            output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
+            if scheduler_class == LMSDiscreteScheduler:
+                sample_scheduler = scheduler.scale_model_input(sample, time_step)
+                output = scheduler.step(residual, time_step, sample_scheduler, **kwargs).prev_sample
+            else:
+                output = scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.manual_seed(0)
-            new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
+            if scheduler_class == LMSDiscreteScheduler:
+                sample_new_scheduler = new_scheduler.scale_model_input(sample, time_step)
+                new_output = new_scheduler.step(residual, time_step, sample_new_scheduler, **kwargs).prev_sample
+            else:
+                new_output = new_scheduler.step(residual, time_step, sample, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
@@ -509,11 +517,19 @@ class SchedulerCommonTest(unittest.TestCase):
 
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.manual_seed(0)
-            output = scheduler.step(residual, timestep, sample, **kwargs).prev_sample
+            if scheduler_class == LMSDiscreteScheduler:
+                sample_scheduler = scheduler.scale_model_input(sample, timestep)
+                output = scheduler.step(residual, timestep, sample_scheduler, **kwargs).prev_sample
+            else:
+                output = scheduler.step(residual, timestep, sample, **kwargs).prev_sample
 
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.manual_seed(0)
-            new_output = new_scheduler.step(residual, timestep, sample, **kwargs).prev_sample
+            if scheduler_class == LMSDiscreteScheduler:
+                sample_new_scheduler = new_scheduler.scale_model_input(sample, timestep)
+                new_output = new_scheduler.step(residual, timestep, sample_new_scheduler, **kwargs).prev_sample
+            else:
+                new_output = new_scheduler.step(residual, timestep, sample, **kwargs).prev_sample
 
             assert torch.sum(torch.abs(output - new_output)) < 1e-5, "Scheduler outputs are not identical"
 
@@ -587,8 +603,14 @@ class SchedulerCommonTest(unittest.TestCase):
             elif num_inference_steps is not None and not hasattr(scheduler, "set_timesteps"):
                 kwargs["num_inference_steps"] = num_inference_steps
 
-            output_0 = scheduler.step(residual, timestep_0, sample, **kwargs).prev_sample
-            output_1 = scheduler.step(residual, timestep_1, sample, **kwargs).prev_sample
+            if scheduler_class == LMSDiscreteScheduler:
+                sample_0 = scheduler.scale_model_input(sample, timestep_0)
+                sample_1 = scheduler.scale_model_input(sample, timestep_1)
+                output_0 = scheduler.step(residual, timestep_0, sample_0, **kwargs).prev_sample
+                output_1 = scheduler.step(residual, timestep_1, sample_1, **kwargs).prev_sample
+            else:
+                output_0 = scheduler.step(residual, timestep_0, sample, **kwargs).prev_sample
+                output_1 = scheduler.step(residual, timestep_1, sample, **kwargs).prev_sample
 
             self.assertEqual(output_0.shape, sample.shape)
             self.assertEqual(output_0.shape, output_1.shape)
@@ -655,7 +677,11 @@ class SchedulerCommonTest(unittest.TestCase):
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.manual_seed(0)
-            outputs_dict = scheduler.step(residual, timestep, sample, **kwargs)
+            if scheduler_class == LMSDiscreteScheduler:
+                sample_scheduler = scheduler.scale_model_input(sample, timestep)
+                outputs_dict = scheduler.step(residual, timestep, sample_scheduler, **kwargs)
+            else:
+                outputs_dict = scheduler.step(residual, timestep, sample, **kwargs)
 
             if num_inference_steps is not None and hasattr(scheduler, "set_timesteps"):
                 scheduler.set_timesteps(num_inference_steps)
@@ -665,7 +691,11 @@ class SchedulerCommonTest(unittest.TestCase):
             # Set the seed before state as some schedulers are stochastic like EulerAncestralDiscreteScheduler, EulerDiscreteScheduler
             if "generator" in set(inspect.signature(scheduler.step).parameters.keys()):
                 kwargs["generator"] = torch.manual_seed(0)
-            outputs_tuple = scheduler.step(residual, timestep, sample, return_dict=False, **kwargs)
+            if scheduler_class == LMSDiscreteScheduler:
+                sample_new_scheduler = scheduler.scale_model_input(sample, timestep)
+                outputs_tuple = scheduler.step(residual, timestep, sample_new_scheduler, return_dict=False, **kwargs)
+            else:
+                outputs_tuple = scheduler.step(residual, timestep, sample, return_dict=False, **kwargs)
 
             recursive_check(outputs_tuple, outputs_dict)
 
