@@ -1427,8 +1427,6 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
 
 
 # (sayakpaul): This test suite was run in the DGX with two GPUs (1, 2).
-# The `test_components_put_in_right_devices` assertions depend on the device
-# on which the test is being run.
 @slow
 @require_torch_multi_gpu
 class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
