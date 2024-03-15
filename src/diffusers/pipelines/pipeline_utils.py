@@ -680,7 +680,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         if device_map is not None and not isinstance(device_map, str):
             raise ValueError("`device_map` must be a string.")
 
-        if device_map not in SUPPORTED_DEVICE_MAP:
+        if device_map is not None and device_map not in SUPPORTED_DEVICE_MAP:
             raise NotImplementedError(
                 f"{device_map} not supported. Supported strategies are: {', '.join(SUPPORTED_DEVICE_MAP)}"
             )
