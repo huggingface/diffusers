@@ -782,7 +782,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
         # for ip-adapter image_embeds has shape [batch_size, num_image, embed_dim]
-        image_embeds = floats_tensor((batch_size, 1, model.config.cross_attention_dim)).to(torch_device)
+        image_embeds = floats_tensor((batch_size, 1, model.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
         # make ip_adapter_1 and ip_adapter_2
@@ -854,7 +854,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         # update inputs_dict for ip-adapter
         batch_size = inputs_dict["encoder_hidden_states"].shape[0]
         # for ip-adapter-plus image_embeds has shape [batch_size, num_image, sequence_length, embed_dim]
-        image_embeds = floats_tensor((batch_size, 1, 1, model.config.cross_attention_dim)).to(torch_device)
+        image_embeds = floats_tensor((batch_size, 1, 1, model.cross_attention_dim)).to(torch_device)
         inputs_dict["added_cond_kwargs"] = {"image_embeds": [image_embeds]}
 
         # make ip_adapter_1 and ip_adapter_2

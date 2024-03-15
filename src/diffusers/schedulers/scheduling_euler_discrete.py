@@ -343,7 +343,7 @@ class EulerDiscreteScheduler(SchedulerMixin, ConfigMixin):
                 " 'linear' or 'log_linear'"
             )
 
-        if self.config.use_karras_sigmas:
+        if self.use_karras_sigmas:
             sigmas = self._convert_to_karras(in_sigmas=sigmas, num_inference_steps=self.num_inference_steps)
             timesteps = np.array([self._sigma_to_t(sigma, log_sigmas) for sigma in sigmas])
 
