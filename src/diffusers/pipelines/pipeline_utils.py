@@ -93,6 +93,8 @@ LIBRARIES = []
 for library in LOADABLE_CLASSES:
     LIBRARIES.append(library)
 
+SUPPORTED_DEVICE_MAP = ["balanced"]
+
 logger = logging.get_logger(__name__)
 
 
@@ -674,6 +676,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " `device_map=None`."
             )
 
+        if device_map is not None and not isinstance(device_map, str):
+            raise ValueError("`device_map` must be a string.")
+
+        if device_map not in SUPPORTED_DEVICE_MAP:
+            raise NotImplementedError(
+                f"{device_map} not supported. Supported strategies are: {', '.join(SUPPORTED_DEVICE_MAP)}"
+            )
+
         if low_cpu_mem_usage is False and device_map is not None:
             raise ValueError(
                 f"You cannot set `low_cpu_mem_usage` to False while using device_map={device_map} for loading and"
@@ -820,7 +830,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         ###### 6. device map delegation ######
         final_device_map = None
-        if device_map is not None and isinstance(device_map, str) and device_map in ["balanced"]:
+        if device_map is not None:
             # Load each module in the pipeline on a meta device so that we can derive the device map.
             init_empty_modules = {}
             for name, (library_name, class_name) in init_dict.items():
