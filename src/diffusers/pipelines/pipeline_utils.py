@@ -939,7 +939,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     provider=provider,
                     sess_options=sess_options,
                     device_map=current_device_map,
-                    device_map_strategy=device_map,
                     max_memory=max_memory,
                     offload_folder=offload_folder,
                     offload_state_dict=offload_state_dict,

@@ -488,7 +488,6 @@ def load_sub_model(
     provider: Any,
     sess_options: Any,
     device_map: Optional[Union[Dict[str, torch.device], str]],
-    device_map_strategy: Optional[str],
     max_memory: Optional[Dict[Union[int, str], Union[int, str]]],
     offload_folder: Optional[Union[str, os.PathLike]],
     offload_state_dict: bool,
@@ -595,7 +594,7 @@ def load_sub_model(
         # else load from the root directory
         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
-    if isinstance(loaded_sub_model, torch.nn.Module) and device_map_strategy in ["balanced"]:
+    if isinstance(loaded_sub_model, torch.nn.Module) and isinstance(device_map, dict):
         needs_offloading_to_cpu = device_map[""] == "cpu"
         if needs_offloading_to_cpu:
             dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, main_device=0)
