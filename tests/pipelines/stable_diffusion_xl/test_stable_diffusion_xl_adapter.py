@@ -290,7 +290,7 @@ class StableDiffusionXLAdapterPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 5.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

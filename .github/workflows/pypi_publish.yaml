@@ -52,7 +52,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -U setuptools wheel twine
+          pip install -U setuptools wheel twine torch
       
       - name: Build the dist files
         run: python setup.py bdist_wheel && python setup.py sdist
