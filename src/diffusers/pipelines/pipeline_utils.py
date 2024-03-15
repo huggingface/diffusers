@@ -145,6 +145,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
     config_name = "model_index.json"
     model_cpu_offload_seq = None
+    hf_device_map = None
     _optional_components = []
     _exclude_from_cpu_offload = []
     _load_connected_pipes = False
@@ -1035,6 +1036,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
         if device_map is not None and isinstance(device_map, str) and device_map in ["balanced"]:
             cls._is_pipeline_device_mapped = True
+            cls.hf_device_map = final_device_map
         return model
 
     @property
