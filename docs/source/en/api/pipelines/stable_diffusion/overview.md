@@ -175,8 +175,11 @@ inpaint = StableDiffusionInpaintPipeline(**text2img.components)
 
 ### Create web demos using `gradio`
 
-The Stable Diffusion pipelines are automatically supported in [the gradio library](https://github.com/gradio-app/gradio/), making it a breeze to create a web demo
-based on your pipeline. First, install `gradio` with: `pip install gradio`.
+The Stable Diffusion pipelines are automatically supported in [Gradio](https://github.com/gradio-app/gradio/), a library that makes creating beautiful and user-friendly machine learning apps on the web a breeze. First, make sure you have Gradio installed:
+
+```
+pip install gradio
+```
 
 Then, create a web demo around any Stable Diffusion-based pipeline. For example, to create an image generation pipeline in a single line of code:
 
