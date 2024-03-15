@@ -172,3 +172,26 @@ inpaint = StableDiffusionInpaintPipeline(**text2img.components)
 
 # now you can use text2img(...), img2img(...), inpaint(...) just like the call methods of each respective pipeline
 ```
+
+### Create web demos using `gradio`
+
+The Stable Diffusion pipelines are automatically supported in [the gradio library](https://github.com/gradio-app/gradio/), making it a breeze to create a web demo
+based on your pipeline. First, install `gradio` with: `pip install gradio`.
+
+Then, create a web demo around an image generation pipeline (or any other Stable Diffusion pipeline) in a single line of code:
+
+```py
+from diffusers import StableDiffusionPipeline
+import gradio as gr
+
+pipe = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4")
+
+gr.Interface.from_pipeline(pipe).launch()
+```
+
+which opens an intuitive drag-and-drop interface in your browser:
+
+![](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/gradio-panda.png)
+
+By default, the web demo runs on a local server. If you'd like to share it with others, you can generate a temporary public
+link by setting `share=True` in `launch()`. Or, you can host your demo on [Hugging Face Spaces](https://huggingface.co/spaces)https://huggingface.co/spaces for a permanent link. 
