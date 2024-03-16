@@ -158,7 +158,7 @@ class UniDiffuserPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -199,7 +199,7 @@ class UniDiffuserPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "prompt_latents": latents.get("prompt_latents"),
             "vae_latents": latents.get("vae_latents"),
             "clip_latents": latents.get("clip_latents"),
@@ -590,7 +590,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 8.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         if generate_latents:
             latents = self.get_fixed_latents(device, seed=seed)
@@ -706,7 +706,7 @@ class UniDiffuserPipelineNightlyTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 8.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         if generate_latents:
             latents = self.get_fixed_latents(device, seed=seed)
