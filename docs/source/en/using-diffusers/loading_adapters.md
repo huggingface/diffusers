@@ -167,7 +167,7 @@ scales = {
     # "mid"  # because "mid" is not given, all transformers in the mid part will use the default scale 1.0
     "up": {
         "block_0": 0.6,  # all 3 transformers in the 0th block in the up-part will use scale 0.6
-        "block_1": [0.4, 0.8, 1.0],  # the 3 transformers in the 1st block in the up-part will use scales 0.4m 0.8 and 1.0 respectively
+        "block_1": [0.4, 0.8, 1.0],  # the 3 transformers in the 1st block in the up-part will use scales 0.4, 0.8 and 1.0 respectively
     }
 }
 pipe.load_lora_weights("my_adapter", scales)
