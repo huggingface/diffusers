@@ -52,7 +52,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -U setuptools wheel twine torch
+          pip install -U setuptools wheel twine
+          pip install -U torch --index-url https://download.pytorch.org/whl/cpu
+          pip install -U transformers
       
       - name: Build the dist files
         run: python setup.py bdist_wheel && python setup.py sdist
