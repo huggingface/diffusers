@@ -701,6 +701,8 @@ class UNet2DConditionLoadersMixin:
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
             )
 
+        # Set missing value to default of 1.0
+        weights = [weight or 1.0 for weight in weights]
         blocks_with_transformer = {
             "down": [i for i, block in enumerate(self.down_blocks) if hasattr(block, "attentions")],
             "up": [i for i, block in enumerate(self.up_blocks) if hasattr(block, "attentions")],

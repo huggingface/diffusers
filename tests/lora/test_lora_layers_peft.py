@@ -988,16 +988,22 @@ class PeftLoraLoaderMixinTests:
 
             layers_per_block = unet.config.layers_per_block
 
+            text_encoder_opts = [None, value]
+            text_encoder_2_opts = [None, value]
             mid_opts = [None, value]
             down_opts = [None] + updown_options(down_blocks_with_tf, layers_per_block, value)
             up_opts = [None] + updown_options(up_blocks_with_tf, layers_per_block + 1, value)
 
             opts = []
 
-            for d, m, u in product(down_opts, mid_opts, up_opts):
-                if all(o is None for o in (d, m, u)):
+            for t1, t2, d, m, u in product(text_encoder_opts, text_encoder_2_opts, down_opts, mid_opts, up_opts):
+                if all(o is None for o in (t1, t2, d, m, u)):
                     continue
                 opt = {}
+                if t1 is not None:
+                    opt["text_encoder"] = t1
+                if t2 is not None:
+                    opt["text_encoder_2"] = t2
                 if d is not None:
                     opt["down"] = d
                 if m is not None:
@@ -1022,6 +1028,9 @@ class PeftLoraLoaderMixinTests:
 
         for scale_dict in all_possible_dict_opts(pipe.unet, value=1234):
             # test if lora block scales can be set with this scale_dict
+            if not self.has_two_text_encoders and "text_encoder_2" in scale_dict:
+                del scale_dict["text_encoder_2"]
+
             pipe.set_adapters("adapter-1", scale_dict)
 
     def test_simple_inference_with_text_unet_multi_adapter_delete_adapter(self):

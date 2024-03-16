@@ -163,6 +163,7 @@ pipe = ... # create pipeline
 pipe.load_lora_weights(..., adapter_name="my_adapter") 
 scales = {
     "text_encoder": 0.5,
+    "text_encoder_2": 0.5,  # only usable if pipe has a 2nd text encoder
     "down": 0.9,  # all transformers in the down-part will use scale 0.9
     # "mid"  # because "mid" is not given, all transformers in the mid part will use the default scale 1.0
     "up": {
