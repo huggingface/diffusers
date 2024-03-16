@@ -21,13 +21,13 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadeDecoderPipeline
-from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    load_image,
+    load_numpy,
     load_pt,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     skip_mps,
     slow,
@@ -258,7 +258,7 @@ class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_cascade_decoder(self):
         pipe = StableCascadeDecoderPipeline.from_pretrained(
-            "diffusers/StableCascade-decoder", torch_dtype=torch.bfloat16
+            "stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.bfloat16
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -271,18 +271,16 @@ class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
         )
 
         image = pipe(
-            prompt=prompt, image_embeddings=image_embedding, num_inference_steps=10, generator=generator
+            prompt=prompt,
+            image_embeddings=image_embedding,
+            output_type="np",
+            num_inference_steps=2,
+            generator=generator,
         ).images[0]
 
-        assert image.size == (1024, 1024)
-
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/t2i.png"
+        assert image.shape == (1024, 1024, 3)
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/stable_cascade_decoder_image.npy"
         )
-
-        image_processor = VaeImageProcessor()
-
-        image_np = image_processor.pil_to_numpy(image)
-        expected_image_np = image_processor.pil_to_numpy(expected_image)
-
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=53e-2))
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
+        assert max_diff < 1e-4
