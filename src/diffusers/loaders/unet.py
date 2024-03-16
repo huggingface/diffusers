@@ -561,9 +561,8 @@ class UNet2DConditionLoadersMixin:
             if isinstance(module, BaseTunerLayer):
                 module.unmerge()
 
-    @staticmethod
-    def _expand_lora_weight_dict(
-        weights, blocks_with_transformer: Dict[str, int], transformer_per_block: Dict[str, int]
+    def _expand_lora_scales_dict(
+        self, scales, blocks_with_transformer: Dict[str, int], transformer_per_block: Dict[str, int]
     ):
         """
         Expand input into a weight dict with a weight per transformer
@@ -606,27 +605,33 @@ class UNet2DConditionLoadersMixin:
         if sorted(transformer_per_block.keys()) != ["down", "up"]:
             raise ValueError("transformer_per_block needs to be a dict with keys `'down' and `'up'`")
 
-        if isinstance(weights, number):
-            weights = {o: weights for o in ["down", "mid", "up"]}
+        if isinstance(scales, number):
+            scales = {o: scales for o in ["down", "mid", "up"]}
+
+        if "mid" not in scales:
+            scales["mid"] = 1
 
         for updown in ["up", "down"]:
+            if updown not in scales:
+                scales[updown] = 1
+
             # eg {"down": 1} to {"down": {"block_1": 1, "block_2": 1}}}
-            if isinstance(weights[updown], number):
-                weights[updown] = {f"block_{i}": weights[updown] for i in blocks_with_transformer[updown]}
+            if isinstance(scales[updown], number):
+                scales[updown] = {f"block_{i}": scales[updown] for i in blocks_with_transformer[updown]}
 
             # eg {"down": "block_1": 1}} to {"down": "block_1": [1, 1]}}
             for i in blocks_with_transformer[updown]:
                 block = f"block_{i}"
-                if isinstance(weights[updown][block], number):
-                    weights[updown][block] = [weights[updown][block] for _ in range(transformer_per_block[updown])]
+                if isinstance(scales[updown][block], number):
+                    scales[updown][block] = [scales[updown][block] for _ in range(transformer_per_block[updown])]
 
             # eg {"down": "block_1": [1, 1]}}  to {"down.block_1.0": 1, "down.block_1.1": 1}
             for i in blocks_with_transformer[updown]:
                 block = f"block_{i}"
-                for tf_idx, value in enumerate(weights[updown][block]):
-                    weights[f"{updown}.{block}.{tf_idx}"] = value
+                for tf_idx, value in enumerate(scales[updown][block]):
+                    scales[f"{updown}.{block}.{tf_idx}"] = value
 
-            del weights[updown]
+            del scales[updown]
 
         def layer_name(name):
             """Translate user-friendly name (e.g. 'mid') into actual layer name (e.g. 'mid_block.attentions.0')"""
@@ -641,7 +646,14 @@ class UNet2DConditionLoadersMixin:
 
             return ".".join((updown, block, attn))
 
-        return {layer_name(name): weight for name, weight in weights}
+        state_dict = self.state_dict()
+        for layer in scales.keys():
+            if not any(layer_name(layer) in module for module in state_dict.keys()):
+                raise ValueError(
+                    f"Can't set lora scale for layer {layer}. It either doesn't exist in this unet or has not attentions."
+                )
+
+        return {layer_name(name): weight for name, weight in scales.items()}
 
     def set_adapters(
         self,
@@ -681,7 +693,7 @@ class UNet2DConditionLoadersMixin:
 
         if weights is None:
             weights = [1.0] * len(adapter_names)
-        elif isinstance(weights, float):
+        elif isinstance(weights, (float, dict)):
             weights = [weights] * len(adapter_names)
 
         if len(adapter_names) != len(weights):
@@ -696,9 +708,7 @@ class UNet2DConditionLoadersMixin:
         transformer_per_block = {"down": self.config.layers_per_block, "up": self.config.layers_per_block + 1}
 
         weights = [
-            UNet2DConditionLoadersMixin._expand_lora_weight_dict(
-                weight_for_adapter, blocks_with_transformer, transformer_per_block
-            )
+            self._expand_lora_weight_dict(weight_for_adapter, blocks_with_transformer, transformer_per_block)
             for weight_for_adapter in weights
         ]
 

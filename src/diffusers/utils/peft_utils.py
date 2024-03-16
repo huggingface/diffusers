@@ -230,7 +230,6 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
     def get_module_weight(weight_for_adapter, module_name):
         for layer_name, weight_ in weight_for_adapter.items():
             if layer_name in module_name:
-                print(f"Setting weight to {weight_} as {layer_name} in {module_name}")
                 return weight_
         raise RuntimeError(f"No LoRA weight found for module {module_name}, which should never happen.")
 

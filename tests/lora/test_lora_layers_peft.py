@@ -19,6 +19,7 @@ import os
 import tempfile
 import time
 import unittest
+from itertools import product
 
 import numpy as np
 import torch
@@ -816,6 +817,212 @@ class PeftLoraLoaderMixinTests:
                 np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
                 "output with no lora and output with lora disabled should give same results",
             )
+
+    def test_simple_inference_with_text_unet_block_scale(self):
+        """
+        Tests a simple inference with lora attached to text encoder and unet, attaches
+        one adapter and set differnt weights for different blocks (i.e. block lora)
+        """
+        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(self.torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
+            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+            if self.has_two_text_encoders:
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                self.assertTrue(
+                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+
+            # todo umer: check all possible inputs options
+
+            weights_1 = {
+                "down": 5,
+            }
+            pipe.set_adapters("adapter-1", weights_1)
+            output_weights_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            weights_2 = {
+                "up": 5,
+            }
+            pipe.set_adapters("adapter-1", weights_2)
+            output_weights_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            self.assertFalse(
+                np.allclose(output_weights_1, output_weights_2, atol=1e-3, rtol=1e-3),
+                "LoRA weights 1 and 2 should give different results",
+            )
+            self.assertFalse(
+                np.allclose(output_no_lora, output_weights_1, atol=1e-3, rtol=1e-3),
+                "No adapter and LoRA weights 1 should give different results",
+            )
+            self.assertFalse(
+                np.allclose(output_no_lora, output_weights_2, atol=1e-3, rtol=1e-3),
+                "No adapter and LoRA weights 2 should give different results",
+            )
+
+            pipe.disable_lora()
+            output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            self.assertTrue(
+                np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
+                "output with no lora and output with lora disabled should give same results",
+            )
+
+    def test_simple_inference_with_text_unet_multi_adapter_block_lora(self):
+        """
+        Tests a simple inference with lora attached to text encoder and unet, attaches
+        multiple adapters and set differnt weights for different blocks (i.e. block lora)
+        """
+        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(self.torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+            output_no_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+            pipe.text_encoder.add_adapter(text_lora_config, "adapter-2")
+
+            pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+            pipe.unet.add_adapter(unet_lora_config, "adapter-2")
+
+            self.assertTrue(
+                self.check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
+            )
+            self.assertTrue(self.check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+            if self.has_two_text_encoders:
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+                pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-2")
+                self.assertTrue(
+                    self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+
+            scales_1 = {"down": 5}
+            scales_2 = {"down": 5, "mid": 5}
+
+            pipe.set_adapters("adapter-1", scales_1)
+
+            output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            pipe.set_adapters("adapter-2", scales_2)
+            output_adapter_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            pipe.set_adapters(["adapter-1", "adapter-2"], [scales_1, scales_2])
+
+            output_adapter_mixed = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            # Fuse and unfuse should lead to the same results
+            self.assertFalse(
+                np.allclose(output_adapter_1, output_adapter_2, atol=1e-3, rtol=1e-3),
+                "Adapter 1 and 2 should give different results",
+            )
+
+            self.assertFalse(
+                np.allclose(output_adapter_1, output_adapter_mixed, atol=1e-3, rtol=1e-3),
+                "Adapter 1 and mixed adapters should give different results",
+            )
+
+            self.assertFalse(
+                np.allclose(output_adapter_2, output_adapter_mixed, atol=1e-3, rtol=1e-3),
+                "Adapter 2 and mixed adapters should give different results",
+            )
+
+            pipe.disable_lora()
+
+            output_disabled = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            self.assertTrue(
+                np.allclose(output_no_lora, output_disabled, atol=1e-3, rtol=1e-3),
+                "output with no lora and output with lora disabled should give same results",
+            )
+
+    def test_simple_inference_with_text_unet_block_scale_for_all_dict_options(self):
+        """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""
+
+        def updown_options(blocks_with_tf, layers_per_block, value):
+            """
+            Generate every possible combination for how a lora weight dict for the up/down part can be.
+            E.g. 2, {"block_1": 2}, {"block_1": [2,2,2]}, {"block_1": 2, "block_2": [2,2,2]}, ...
+            """
+            num_val = value
+            list_val = [value] * layers_per_block
+
+            node_opts = [None, num_val, list_val]
+            node_opts_foreach_block = [node_opts] * len(blocks_with_tf)
+
+            updown_opts = [num_val]
+            for nodes in product(*node_opts_foreach_block):
+                if all(n is None for n in nodes):
+                    continue
+                opt = {}
+                for b, n in zip(blocks_with_tf, nodes):
+                    if n is not None:
+                        opt["block_" + str(b)] = n
+                updown_opts.append(opt)
+            return updown_opts
+
+        def all_possible_dict_opts(unet, value):
+            """
+            Generate every possible combination for how a lora weight dict can be.
+            E.g. 2, {"down": 2}, {"down": [2,2,2]}, {"mid": 2, "up": [2,2,2]}, ...
+            """
+
+            down_blocks_with_tf = [i for i, d in enumerate(unet.down_blocks) if hasattr(d, "attentions")]
+            up_blocks_with_tf = [i for i, u in enumerate(unet.up_blocks) if hasattr(u, "attentions")]
+
+            layers_per_block = unet.config.layers_per_block
+
+            mid_opts = [None, value]
+            down_opts = [None] + updown_options(down_blocks_with_tf, layers_per_block, value)
+            up_opts = [None] + updown_options(up_blocks_with_tf, layers_per_block + 1, value)
+
+            opts = []
+
+            for d, m, u in product(down_opts, mid_opts, up_opts):
+                if all(o is None for o in (d, m, u)):
+                    continue
+                opt = {}
+                if d is not None:
+                    opt["down"] = d
+                if m is not None:
+                    opt["mid"] = m
+                if u is not None:
+                    opt["up"] = u
+                opts.append(opt)
+
+            return opts
+
+        components, text_lora_config, unet_lora_config = self.get_dummy_components(self.scheduler_cls)
+        pipe = self.pipeline_class(**components)
+        pipe = pipe.to(self.torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+        pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
+        pipe.unet.add_adapter(unet_lora_config, "adapter-1")
+
+        if self.has_two_text_encoders:
+            pipe.text_encoder_2.add_adapter(text_lora_config, "adapter-1")
+
+        for scale_dict in all_possible_dict_opts(pipe.unet, value=1234):
+            # test if lora block scales can be set with this scale_dict
+            pipe.set_adapters("adapter-1", scale_dict)
 
     def test_simple_inference_with_text_unet_multi_adapter_delete_adapter(self):
         """

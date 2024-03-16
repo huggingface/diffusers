@@ -959,7 +959,7 @@ class LoraLoaderMixin:
         self,
         adapter_names: Union[List[str], str],
         text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
-        text_encoder_weights: List[float] = None,
+        text_encoder_weights: Optional[Union[float, List[float]]] = None,
     ):
         """
         Sets the adapter layers for the text encoder.
@@ -986,6 +986,9 @@ class LoraLoaderMixin:
                 raise ValueError(
                     f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
                 )
+
+            weights = [{"text_model": w} if w is not None else {"text_model": 1.0} for w in weights]
+
             return weights
 
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
@@ -1035,15 +1038,28 @@ class LoraLoaderMixin:
         adapter_names: Union[List[str], str],
         adapter_weights: Optional[Union[List[float], List[Dict]]] = None,
     ):
-        unet_weights, text_encoder_weights = [], []
+        adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
 
-        for weights in adapter_weights:
-            if isinstance(weights, dict):
-                unet_weights.append({k: v for k, v in weights.items() if k != "text_encoder"})
-                text_encoder_weights.append(weights["text_encoder"])
-            else:
-                unet_weights.append(weights)
-                text_encoder_weights.append(weights)
+        if adapter_weights is None:
+            unet_weights, text_encoder_weights = None, None
+        else:
+            if isinstance(adapter_weights, (float, dict)):
+                adapter_weights = [adapter_weights] * len(adapter_names)
+
+            unet_weights, text_encoder_weights = [], []
+            for weights in adapter_weights:
+                if isinstance(weights, dict):
+                    unet_weight = {k: v for k, v in weights.items() if k != "text_encoder"}
+                    if len(unet_weight) == 0:
+                        unet_weight = None
+                    text_encoder_weight = weights.get("text_encoder", None)
+
+                    unet_weights.append(unet_weight)
+                    text_encoder_weights.append(text_encoder_weight)
+
+                else:
+                    unet_weights.append(weights)
+                    text_encoder_weights.append(weights)
 
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         # Handle the UNET
