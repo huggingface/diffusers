@@ -54,7 +54,8 @@ pipe = DiffusionPipeline.from_pretrained(
 
 # load resadapter
 unet_groupnorm_state_dict = torch.load(f"{resadapter_dir}/groupnorm_state_dict.pt")
-pipe.load_lora_weights(resadapter_dir)
+pipe.load_lora_weights(resadapter_dir, adapter_name="resadapter")
+pipe.set_adapters(["resadapter"], adapter_weights=[0.9])
 pipe.unet.load_state_dict(unet_groupnorm_state_dict)
 
 # inference
@@ -66,6 +67,7 @@ image = pipe(
     negative_prompt=negative_prompt,
     num_inference_steps=30,
     num_images_per_prompt=1,
+    guidance_scale=8.0,
     generator=torch.Generator().manual_seed(42),
     height=768,
     width=768,
