@@ -170,7 +170,7 @@ scales = {
         "block_1": [0.4, 0.8, 1.0],  # the 3 transformers in the 1st block in the up-part will use scales 0.4m 0.8 and 1.0 respectively
     }
 }
-pipe.load_lora_weights("my_adapter", scales) 
+pipe.load_lora_weights("my_adapter", scales)
 ```
 </Tip>
 

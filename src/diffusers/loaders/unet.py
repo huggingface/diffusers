@@ -708,7 +708,7 @@ class UNet2DConditionLoadersMixin:
         transformer_per_block = {"down": self.config.layers_per_block, "up": self.config.layers_per_block + 1}
 
         weights = [
-            self._expand_lora_weight_dict(weight_for_adapter, blocks_with_transformer, transformer_per_block)
+            self._expand_lora_scales_dict(weight_for_adapter, blocks_with_transformer, transformer_per_block)
             for weight_for_adapter in weights
         ]
 

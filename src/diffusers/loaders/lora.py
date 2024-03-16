@@ -1049,6 +1049,14 @@ class LoraLoaderMixin:
             unet_weights, text_encoder_weights = [], []
             for weights in adapter_weights:
                 if isinstance(weights, dict):
+                    valid_keys = ["text_encoder", "down", "mid", "up"]
+
+                    for k in weights.keys():
+                        if k not in valid_keys:
+                            raise ValueError(
+                                f"Got invalid key '{k}' in lora weight dict. Allowed keys are 'text_encoder', 'down', 'mid', 'up'."
+                            )
+
                     unet_weight = {k: v for k, v in weights.items() if k != "text_encoder"}
                     if len(unet_weight) == 0:
                         unet_weight = None
