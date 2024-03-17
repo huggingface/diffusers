@@ -3750,12 +3750,13 @@ If a community script doesn't work as expected, please open an issue and ping th
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
-| Using IP-Adapter with negative noise                                                                                                  | Using negative noise with IP-adapter to better control the generation (see the [original post](https://github.com/huggingface/diffusers/discussions/7167) on the forum for more details)                                                                                                                                                                                                                                                    | [IP-Adapter Negative Noise](#ip-adapter-negative-noise)                                   | | [Álvaro Somoza](https://github.com/asomoza) and [Matteo Spinelli](https://github.com/cubiq) |
+| Using IP-Adapter with negative noise                                                                                                  | Using negative noise with IP-adapter to better control the generation (see the [original post](https://github.com/huggingface/diffusers/discussions/7167) on the forum for more details)                                                                                                                                                                                                                                                    | [IP-Adapter Negative Noise](#ip-adapter-negative-noise)                                   | | [Álvaro Somoza](https://github.com/asomoza)|
+| asymmetric tiling                                                                                                  |configure seamless image tiling independently for the X and Y axes                                                                                                                                                                                                      | [Asymmetric Tiling](#asymmetric-tiling )                                   | | [alexisrolland](https://github.com/alexisrolland)|
 
 
 ## Example usages
 
-### IP-Adapter Negative Noise
+### IP Adapter Negative Noise
 
 Diffusers pipelines are fully integrated with IP-Adapter, which allows you to prompt the diffusion model with an image. However, it does not support negative image prompts the same way it supports negative text prompts: it does not accept a `negative_ip_adapter_adapter` argument; when you pass an `ip_adapter_image,` it will create a zero-filled tensor as a negative image. This script shows you how to create a negative noise from `ip_adapter_image` and use it to significantly improve the generation quality while preserving the composition of images.
 
@@ -3914,4 +3915,62 @@ image = pipeline(
 ).images[0]
 
 image.save("result.png")
+```
+
+### Asymmetric Tiling
+Stable Diffusion is not trained to generate seamless textures, However, you can a simple script to make your generation tile-abe. This script is contributed by @alexisrolland[https://github.com/alexisrolland]. See more details in the [this issue](https://github.com/huggingface/diffusers/issues/556)
+
+
+|Generated|Tiled|
+|---|---|
+|![20240313003235_573631814](https://github.com/huggingface/diffusers/assets/5442875/eca174fb-06a4-464e-a3a7-00dbb024543e)|![wall](https://github.com/huggingface/diffusers/assets/5442875/b4aa774b-2a6a-4316-a8eb-8f30b5f4d024)|
+
+
+```
+import torch
+from typing import Optional
+from diffusers import StableDiffusionPipeline
+from diffusers.models.lora import LoRACompatibleConv
+
+def seamless_tiling(pipeline, x_axis, y_axis):
+    def asymmetric_conv2d_convforward(self, input: torch.Tensor, weight: torch.Tensor, bias: Optional[torch.Tensor] = None):
+        self.paddingX = (self._reversed_padding_repeated_twice[0], self._reversed_padding_repeated_twice[1], 0, 0)
+        self.paddingY = (0, 0, self._reversed_padding_repeated_twice[2], self._reversed_padding_repeated_twice[3])
+        working = torch.nn.functional.pad(input, self.paddingX, mode=x_mode)
+        working = torch.nn.functional.pad(working, self.paddingY, mode=y_mode)
+        return torch.nn.functional.conv2d(working, weight, bias, self.stride, torch.nn.modules.utils._pair(0), self.dilation, self.groups)
+    x_mode = 'circular' if x_axis else 'constant'
+    y_mode = 'circular' if y_axis else 'constant'
+    targets = [pipeline.vae, pipeline.text_encoder, pipeline.unet]
+    convolution_layers = []
+    for target in targets:
+        for module in target.modules():
+            if isinstance(module, torch.nn.Conv2d):
+                convolution_layers.append(module)
+    for layer in convolution_layers:
+        if isinstance(layer, LoRACompatibleConv) and layer.lora_layer is None:
+            layer.lora_layer = lambda * x: 0
+        layer._conv_forward = asymmetric_conv2d_convforward.__get__(layer, torch.nn.Conv2d)
+    return pipeline
+
+pipeline = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True)
+pipeline.enable_model_cpu_offload()
+prompt = ["texture of a red brick wall"]
+seed = 123456
+generator = torch.Generator(device='cuda').manual_seed(seed)
+
+pipeline = seamless_tiling(pipeline=pipeline, x_axis=True, y_axis=True)
+image = pipeline(
+    prompt=prompt,
+    width=512,
+    height=512,
+    num_inference_steps=20,
+    guidance_scale=7,
+    num_images_per_prompt=1,
+    generator=generator
+).images[0]
+seamless_tiling(pipeline=pipeline, x_axis=False, y_axis=False)
+
+torch.cuda.empty_cache()
+image.save('image.png')
 ```
