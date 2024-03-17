@@ -178,9 +178,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
         rescale_betas_zero_snr (`bool`, defaults to `False`):
             Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
             dark samples instead of limiting it to samples with medium brightness. Loosely related to
@@ -899,6 +897,7 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
         timestep: int,
         sample: torch.FloatTensor,
         generator=None,
+        variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
@@ -914,6 +913,9 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
+            variance_noise (`torch.FloatTensor`):
+                Alternative to generating noise with `generator` by directly providing the noise for the variance
+                itself. Useful for methods such as [`LEdits++`].
             return_dict (`bool`):
                 Whether or not to return a [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`.
 
@@ -948,11 +950,12 @@ class DPMSolverMultistepScheduler(SchedulerMixin, ConfigMixin):
 
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
-
-        if self.config.algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+        if self.config.algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"] and variance_noise is None:
             noise = randn_tensor(
                 model_output.shape, generator=generator, device=model_output.device, dtype=torch.float32
             )
+        elif self.config.algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+            noise = variance_noise.to(device=model_output.device, dtype=torch.float32)
         else:
             noise = None
 

@@ -172,7 +172,7 @@ class ControlNetPipelineSDXLFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": init_image,
             "mask_image": mask_image,
             "control_image": control_image,

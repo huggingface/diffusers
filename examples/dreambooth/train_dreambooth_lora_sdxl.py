@@ -114,7 +114,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# {'SDXL' if 'playgroundai' not in base_model else 'Playground'} LoRA DreamBooth - {repo_id}
+# {'SDXL' if 'playground' not in base_model else 'Playground'} LoRA DreamBooth - {repo_id}
 
 <Gallery />
 
@@ -139,7 +139,7 @@ Weights for this model are available in Safetensors format.
 [Download]({repo_id}/tree/main) them in the Files & versions tab.
 
 """
-    if "playgroundai" in args.pretrained_model_name_or_path:
+    if "playground" in base_model:
         model_description += """\n
 ## License
 
@@ -148,7 +148,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++" if "playgroundai" not in base_model else "playground-v2dot5-community",
+        license="openrail++" if "playground" not in base_model else "playground-v2dot5-community",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -162,7 +162,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         "lora" if not use_dora else "dora",
         "template:sd-lora",
     ]
-    if "playgroundai" in base_model:
+    if "playground" in base_model:
         tags.extend(["playground", "playground-diffusers"])
     else:
         tags.extend(["stable-diffusion-xl", "stable-diffusion-xl-diffusers"])
@@ -206,7 +206,7 @@ def log_validation(
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
     inference_ctx = (
-        contextlib.nullcontext() if "playgroundai" in args.pretrained_model_name_or_path else torch.cuda.amp.autocast()
+        contextlib.nullcontext() if "playground" in args.pretrained_model_name_or_path else torch.cuda.amp.autocast()
     )
 
     with inference_ctx:
@@ -647,6 +647,15 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+    parser.add_argument(
+        "--use_dora",
+        action="store_true",
+        default=False,
+        help=(
+            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -868,6 +877,8 @@ def collate_fn(examples, with_prior_preservation=False):
     if with_prior_preservation:
         pixel_values += [example["class_images"] for example in examples]
         prompts += [example["class_prompt"] for example in examples]
+        original_sizes += [example["original_size"] for example in examples]
+        crop_top_lefts += [example["crop_top_left"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -1130,7 +1141,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, "
                     "please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
@@ -1147,6 +1158,7 @@ def main(args):
     # now we will add new LoRA weights to the attention layers
     unet_lora_config = LoraConfig(
         r=args.rank,
+        use_dora=args.use_dora,
         lora_alpha=args.rank,
         init_lora_weights="gaussian",
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
@@ -1158,6 +1170,7 @@ def main(args):
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
+            use_dora=args.use_dora,
             lora_alpha=args.rank,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
@@ -1304,14 +1317,14 @@ def main(args):
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
-        logger.warn(
+        logger.warning(
             f"Unsupported choice of optimizer: {args.optimizer}.Supported optimizers include [adamW, prodigy]."
             "Defaulting to adamW"
         )
         args.optimizer = "adamw"
 
     if args.use_8bit_adam and not args.optimizer.lower() == "adamw":
-        logger.warn(
+        logger.warning(
             f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
             f"set to {args.optimizer.lower()}"
         )
@@ -1345,11 +1358,11 @@ def main(args):
         optimizer_class = prodigyopt.Prodigy
 
         if args.learning_rate <= 0.1:
-            logger.warn(
+            logger.warning(
                 "Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
             )
         if args.train_text_encoder and args.text_encoder_lr:
-            logger.warn(
+            logger.warning(
                 f"Learning rates were provided both for the unet and the text encoder- e.g. text_encoder_lr:"
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
@@ -1496,7 +1509,7 @@ def main(args):
     if accelerator.is_main_process:
         tracker_name = (
             "dreambooth-lora-sd-xl"
-            if "playgroundai" not in args.pretrained_model_name_or_path
+            if "playground" not in args.pretrained_model_name_or_path
             else "dreambooth-lora-playground"
         )
         accelerator.init_trackers(tracker_name, config=vars(args))
