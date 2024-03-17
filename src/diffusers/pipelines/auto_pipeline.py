@@ -57,6 +57,7 @@ from .stable_diffusion_xl import (
     StableDiffusionXLPipeline,
 )
 from .wuerstchen import WuerstchenCombinedPipeline, WuerstchenDecoderPipeline
+from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 
 
 AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
@@ -70,6 +71,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
         ("wuerstchen", WuerstchenCombinedPipeline),
+        ("cascade", StableCascadeCombinedPipeline),
         ("lcm", LatentConsistencyModelPipeline),
         ("pixart", PixArtAlphaPipeline),
     ]
@@ -106,6 +108,7 @@ _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyPipeline),
         ("kandinsky22", KandinskyV22Pipeline),
         ("wuerstchen", WuerstchenDecoderPipeline),
+        ("cascade", StableCascadeDecoderPipeline),
     ]
 )
 _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
