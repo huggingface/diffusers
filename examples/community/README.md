@@ -1887,7 +1887,7 @@ In the above code, the `prompt2` is appended to the `prompt`, which is more than
 
 For more results, checkout [PR #6114](https://github.com/huggingface/diffusers/pull/6114).
 
-## Example Images Mixing (with CoCa)
+### Example Images Mixing (with CoCa)
 ```python
 import requests
 from io import BytesIO
@@ -2934,7 +2934,7 @@ pipe(prompt =prompt, rp_args = rp_args)
 
 The Pipeline supports `compel` syntax. Input prompts using the `compel` structure will be automatically applied and processed.
 
-## Diffusion Posterior Sampling Pipeline
+### Diffusion Posterior Sampling Pipeline
 * Reference paper
     ```
     @article{chung2022diffusion,
