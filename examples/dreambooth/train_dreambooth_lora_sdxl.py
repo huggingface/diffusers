@@ -165,7 +165,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     ]
     if "playground" in base_model:
         tags.extend(["playground", "playground-diffusers", "edm-training"])
-    elif args.do_edm_style_training:
+    elif edm_training:
         tags.extend(["stable-diffusion-xl", "stable-diffusion-xl-diffusers", "edm-training"])
     else:
         tags.extend(["stable-diffusion-xl", "stable-diffusion-xl-diffusers"])
