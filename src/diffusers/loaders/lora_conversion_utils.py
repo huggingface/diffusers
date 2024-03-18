@@ -128,6 +128,9 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
     te_state_dict = {}
     te2_state_dict = {}
     network_alphas = {}
+    is_unet_dora_lora = any("dora_scale" in k and "lora_unet_" in k for k in state_dict)
+    is_te_dora_lora = any("dora_scale" in k and ("lora_te_" in k or "lora_te1_" in k) for k in state_dict)
+    is_te2_dora_lora = any("dora_scale" in k and "lora_te2_" in k for k in state_dict)
 
     # every down weight has a corresponding up weight and potentially an alpha weight
     lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
@@ -198,6 +201,12 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
                 unet_state_dict[diffusers_name] = state_dict.pop(key)
                 unet_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
+            if is_unet_dora_lora:
+                key_to_replace = "_lora.down." if "_lora.down." in diffusers_name else ".lora.down."
+                unet_state_dict[diffusers_name.replace(key_to_replace, ".lora_magnitude_vector.")] = state_dict.pop(
+                    key.replace("lora_down.weight", "dora_scale")
+                )
+
         elif lora_name.startswith("lora_te_"):
             diffusers_name = key.replace("lora_te_", "").replace("_", ".")
             diffusers_name = diffusers_name.replace("text.model", "text_model")
@@ -215,6 +224,12 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
                 diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
                 te_state_dict[diffusers_name] = state_dict.pop(key)
                 te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+
+            if is_te_dora_lora:
+                key_to_replace = "_lora.down." if "_lora.down." in diffusers_name else ".lora_linear_layer."
+                te_state_dict[diffusers_name.replace(key_to_replace, ".lora_magnitude_vector.")] = state_dict.pop(
+                    key.replace("lora_down.weight", "dora_scale")
+                )
 
         # (sayakpaul): Duplicate code. Needs to be cleaned.
         elif lora_name.startswith("lora_te1_"):
@@ -235,6 +250,12 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
                 te_state_dict[diffusers_name] = state_dict.pop(key)
                 te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
 
+            if is_te_dora_lora:
+                key_to_replace = "_lora.down." if "_lora.down." in diffusers_name else ".lora_linear_layer."
+                te_state_dict[diffusers_name.replace(key_to_replace, ".lora_magnitude_vector.")] = state_dict.pop(
+                    key.replace("lora_down.weight", "dora_scale")
+                )
+
         # (sayakpaul): Duplicate code. Needs to be cleaned.
         elif lora_name.startswith("lora_te2_"):
             diffusers_name = key.replace("lora_te2_", "").replace("_", ".")
@@ -253,6 +274,12 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
                 diffusers_name = diffusers_name.replace(".lora.", ".lora_linear_layer.")
                 te2_state_dict[diffusers_name] = state_dict.pop(key)
                 te2_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict.pop(lora_name_up)
+
+            if is_te2_dora_lora:
+                key_to_replace = "_lora.down." if "_lora.down." in diffusers_name else ".lora_linear_layer."
+                te2_state_dict[diffusers_name.replace(key_to_replace, ".lora_magnitude_vector.")] = state_dict.pop(
+                    key.replace("lora_down.weight", "dora_scale")
+                )
 
         # Rename the alphas so that they can be mapped appropriately.
         if lora_name_alpha in state_dict:

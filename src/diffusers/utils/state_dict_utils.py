@@ -46,6 +46,7 @@ UNET_TO_DIFFUSERS = {
     ".to_v_lora.up": ".to_v.lora_B",
     ".lora.up": ".lora_B",
     ".lora.down": ".lora_A",
+    ".to_out.lora_magnitude_vector": ".to_out.0.lora_magnitude_vector",
 }
 
 
@@ -103,6 +104,10 @@ DIFFUSERS_OLD_TO_DIFFUSERS = {
     ".to_v_lora.down": ".v_proj.lora_linear_layer.down",
     ".to_out_lora.up": ".out_proj.lora_linear_layer.up",
     ".to_out_lora.down": ".out_proj.lora_linear_layer.down",
+    ".to_k.lora_magnitude_vector": ".k_proj.lora_magnitude_vector",
+    ".to_v.lora_magnitude_vector": ".v_proj.lora_magnitude_vector",
+    ".to_q.lora_magnitude_vector": ".q_proj.lora_magnitude_vector",
+    ".to_out.lora_magnitude_vector": ".out_proj.lora_magnitude_vector",
 }
 
 PEFT_TO_KOHYA_SS = {
