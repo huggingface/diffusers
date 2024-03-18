@@ -846,16 +846,18 @@ class PeftLoraLoaderMixinTests:
                     self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                 )
 
-            # todo umer: check all possible inputs options
-
             weights_1 = {
-                "down": 5,
+                "unet" : {
+                    "down": 5,
+                }
             }
             pipe.set_adapters("adapter-1", weights_1)
             output_weights_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
             weights_2 = {
-                "up": 5,
+                "unet" : {
+                    "up": 5,
+                }
             }
             pipe.set_adapters("adapter-1", weights_2)
             output_weights_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
@@ -913,9 +915,17 @@ class PeftLoraLoaderMixinTests:
                     self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                 )
 
-            scales_1 = {"down": 5}
-            scales_2 = {"down": 5, "mid": 5}
-
+            scales_1 = {
+                "unet" : {
+                    "down": 5
+                }
+            }
+            scales_2 = {
+                "unet" : {
+                    "down": 5,
+                    "mid": 5
+                }
+            }
             pipe.set_adapters("adapter-1", scales_1)
 
             output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
@@ -1004,12 +1014,16 @@ class PeftLoraLoaderMixinTests:
                     opt["text_encoder"] = t1
                 if t2 is not None:
                     opt["text_encoder_2"] = t2
+                if all(o is None for o in (d, m, u)):
+                    # no unet scaling
+                    continue
+                opt["unet"] = {}
                 if d is not None:
-                    opt["down"] = d
+                    opt["unet"]["down"] = d
                 if m is not None:
-                    opt["mid"] = m
+                    opt["unet"]["mid"] = m
                 if u is not None:
-                    opt["up"] = u
+                    opt["unet"]["up"] = u
                 opts.append(opt)
 
             return opts

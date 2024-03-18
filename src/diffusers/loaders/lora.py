@@ -1036,15 +1036,15 @@ class LoraLoaderMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        adapter_weights: Optional[Union[List[float], List[Dict]]] = None,
+        adapter_weights: Optional[Union[List[float], float, List[Dict], Dict]] = None,
     ):
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
 
-        number = (float, int)
-        has_2nd_text_encoder = hasattr(self, "text_encoder_2")
+        allowed_numeric_dtypes = (float, int)
+        has_second_text_encoder = hasattr(self, "text_encoder_2")
 
         # Expand weights into a list, one entry per adapter
-        if adapter_weights is None or isinstance(adapter_weights, (number, dict)):
+        if adapter_weights is None or isinstance(adapter_weights, (allowed_numeric_dtypes, dict)):
             adapter_weights = [adapter_weights] * len(adapter_names)
 
         if len(adapter_names) != len(adapter_weights):
@@ -1053,14 +1053,14 @@ class LoraLoaderMixin:
             )
 
         # Normalize into dicts
-        allowed_keys = ["text_encoder", "down", "mid", "up"]
-        if has_2nd_text_encoder:
+        allowed_keys = ["text_encoder", "unet"]
+        if has_second_text_encoder:
             allowed_keys.append("text_encoder_2")
 
         def ensure_is_dict(weight):
             if isinstance(weight, dict):
                 return weight
-            elif isinstance(weight, number):
+            elif isinstance(weight, allowed_numeric_dtypes):
                 return {key: weight for key in allowed_keys}
             elif weight is None:
                 return {key: 1.0 for key in allowed_keys}
@@ -1078,20 +1078,18 @@ class LoraLoaderMixin:
 
         # Decompose weights into weights for unet, text_encoder and text_encoder_2
         unet_weights, text_encoder_weights = [], []
-        if has_2nd_text_encoder:
+        if has_second_text_encoder:
             text_encoder_2_weights = []
 
         for weights in adapter_weights:
-            unet_weight = {k: v for k, v in weights.items() if "text_encoder" not in k}
-            if len(unet_weight) == 0:
-                unet_weight = None
+            unet_weight = weights.get("unet", None)
             text_encoder_weight = weights.get("text_encoder", None)
-            if has_2nd_text_encoder:
+            if has_second_text_encoder:
                 text_encoder_2_weight = weights.get("text_encoder_2", None)
 
             unet_weights.append(unet_weight)
             text_encoder_weights.append(text_encoder_weight)
-            if has_2nd_text_encoder:
+            if has_second_text_encoder:
                 text_encoder_2_weights.append(text_encoder_2_weight)
 
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet

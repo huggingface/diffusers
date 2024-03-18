@@ -565,7 +565,7 @@ class UNet2DConditionLoadersMixin:
         self, scales, blocks_with_transformer: Dict[str, int], transformer_per_block: Dict[str, int]
     ):
         """
-        Expand input into a weight dict with a weight per transformer
+        Expands the inputs into a more granular dictionary. See the example below for more details. 
 
         Parameters:
             blocks_with_transformer (`Dict[str, int]`):
@@ -597,7 +597,7 @@ class UNet2DConditionLoadersMixin:
                 'up.block_1.2': 7,
             }
         """
-        number = (float, int)
+        allowed_numeric_dtypes = (float, int)
 
         if sorted(blocks_with_transformer.keys()) != ["down", "up"]:
             raise ValueError("blocks_with_transformer needs to be a dict with keys `'down' and `'up'`")
@@ -605,7 +605,7 @@ class UNet2DConditionLoadersMixin:
         if sorted(transformer_per_block.keys()) != ["down", "up"]:
             raise ValueError("transformer_per_block needs to be a dict with keys `'down' and `'up'`")
 
-        if isinstance(scales, number):
+        if isinstance(scales, allowed_numeric_dtypes):
             scales = {o: scales for o in ["down", "mid", "up"]}
 
         if "mid" not in scales:
@@ -616,13 +616,13 @@ class UNet2DConditionLoadersMixin:
                 scales[updown] = 1
 
             # eg {"down": 1} to {"down": {"block_1": 1, "block_2": 1}}}
-            if isinstance(scales[updown], number):
+            if isinstance(scales[updown], allowed_numeric_dtypes):
                 scales[updown] = {f"block_{i}": scales[updown] for i in blocks_with_transformer[updown]}
 
             # eg {"down": "block_1": 1}} to {"down": "block_1": [1, 1]}}
             for i in blocks_with_transformer[updown]:
                 block = f"block_{i}"
-                if isinstance(scales[updown][block], number):
+                if isinstance(scales[updown][block], allowed_numeric_dtypes):
                     scales[updown][block] = [scales[updown][block] for _ in range(transformer_per_block[updown])]
 
             # eg {"down": "block_1": [1, 1]}}  to {"down.block_1.0": 1, "down.block_1.1": 1}
@@ -658,7 +658,7 @@ class UNet2DConditionLoadersMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        weights: Optional[Union[List[float], float]] = None,
+        weights: Optional[Union[List[float], float, List[Dict], Dict]] = None,
     ):
         """
         Set the currently active adapters for use in the UNet.
