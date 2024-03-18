@@ -1782,7 +1782,9 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             )
 
         new_pipeline = pipeline_class(**pipeline_kwargs)
-        new_pipeline.register_to_config(_name_or_path=pretrained_model_name_or_path, **unused_original_config)
+        if pretrained_model_name_or_path is not None:
+            new_pipeline.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        new_pipeline.register_to_config(**unused_original_config)
 
         if torch_dtype is not None:
             new_pipeline.to(dtype=torch_dtype)
