@@ -386,8 +386,7 @@ class TCDScheduler(SchedulerMixin, ConfigMixin):
                 timestep spacing strategy of equal spacing between timesteps on the training/distillation timestep
                 schedule is used. If `timesteps` is passed, `num_inference_steps` must be `None`.
             strength (`float`, *optional*, defaults to 1.0):
-                The strength of the timestep schedule. This is used to scale the number of timesteps used for inference
-                when using img2img, inpaint, etc.
+                Used to determine the number of timesteps used for inference when using img2img, inpaint, etc.
         """
         # 0. Check inputs
         if num_inference_steps is None and timesteps is None:
