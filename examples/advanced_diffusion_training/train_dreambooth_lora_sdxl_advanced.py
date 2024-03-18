@@ -100,6 +100,7 @@ def determine_scheduler_type(pretrained_model_name_or_path, revision):
 def save_model_card(
     repo_id: str,
     use_dora: bool,
+    edm_training: bool,
     images=None,
     base_model=str,
     train_text_encoder=False,
@@ -110,8 +111,25 @@ def save_model_card(
     repo_folder=None,
     vae_path=None,
 ):
-    img_str = "widget:\n"
+    # tags for the model card
     lora = "lora" if not use_dora else "dora"
+    base_model_tag = "playground" if "playground" in base_model else "stable-diffusion-xl"
+    tags_str = f"""
+tags:
+- {base_model_tag}
+- {base_model_tag}-diffusers
+- diffusers-training
+- text-to-image
+- diffusers
+- {lora}
+- template:sd-lora
+    """
+    if edm_training:
+        tags_str += f"""
+            - edm-training
+            """
+    # images
+    img_str = "widget:\n"
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"""
@@ -161,14 +179,7 @@ to trigger concept `{key}` → use `{tokens}` in your prompt \n
 """
 
     yaml = f"""---
-tags:
-- stable-diffusion-xl
-- stable-diffusion-xl-diffusers
-- diffusers-training
-- text-to-image
-- diffusers
-- {lora}
-- template:sd-lora
+{tags_str}
 {img_str}
 base_model: {base_model}
 instance_prompt: {instance_prompt}
@@ -2340,6 +2351,7 @@ def main(args):
         save_model_card(
             model_id if not args.push_to_hub else repo_id,
             use_dora=args.use_dora,
+            edm_training=args.do_edm_style_training,
             images=images,
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,
