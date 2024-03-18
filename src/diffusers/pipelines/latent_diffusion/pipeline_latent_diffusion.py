@@ -80,7 +80,7 @@ class LDMClassToImagePipeline(DiffusionPipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: Union[int, List[int]],
+        prompt: Union[int, List[int]] = None,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: Optional[int] = 50,
@@ -88,6 +88,7 @@ class LDMClassToImagePipeline(DiffusionPipeline):
         eta: Optional[float] = 0.0,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
+        prompt_embeds: Optional[torch.FloatTensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
@@ -152,7 +153,8 @@ class LDMClassToImagePipeline(DiffusionPipeline):
         elif isinstance(prompt, list):
             batch_size = len(prompt)
         else:
-            raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+            # raise ValueError(f"`prompt` has to be of type `str` or `list` but is {type(prompt)}")
+            batch_size = prompt_embeds.shape[0]
 
         if height % 8 != 0 or width % 8 != 0:
             raise ValueError(f"`height` and `width` have to be divisible by 8 but are {height} and {width}.")
@@ -163,7 +165,9 @@ class LDMClassToImagePipeline(DiffusionPipeline):
 
 
         # get prompt text embeddings        
-        prompt_embeds = self.class_embedder(torch.tensor(prompt).to(self._execution_device))
+        if prompt_embeds is None:
+            prompt_embeds = self.class_embedder(torch.tensor(prompt).to(self._execution_device))
+        prompt_embeds = prompt_embeds.to(dtype=self.class_embedder.dtype, device=self._execution_device)
 
         # get the initial random noise unless the user supplied it
         latents_shape = (batch_size, self.unet.config.in_channels, height // self.vae_scale_factor, width // self.vae_scale_factor)
@@ -222,6 +226,7 @@ class LDMClassToImagePipeline(DiffusionPipeline):
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
+        
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
