@@ -206,7 +206,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
             dimensions: ``batch x channels x height x width``.
     """
 
-    # checkpoint. TOD(Yiyi) - need to clean this up later
+    # checkpoint. #TODO(Yiyi) - need to clean this up later
     if image is None:
         raise ValueError("`image` input cannot be undefined.")
 
@@ -277,7 +277,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
         # images are in latent space and thus can't
         # be masked set masked_image to None
         # we assume that the checkpoint is not an inpainting
-        # checkpoint. TOD(Yiyi) - need to clean this up later
+        # checkpoint. #TODO(Yiyi) - need to clean this up later
         masked_image = None
     else:
         masked_image = image * (mask < 0.5)
