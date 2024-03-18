@@ -12,6 +12,7 @@ env:
   PYTEST_TIMEOUT: 600
   RUN_SLOW: yes
   RUN_NIGHTLY: yes
+  SLACK_API_TOKEN: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
 
 jobs:
   run_nightly_tests:
@@ -78,7 +79,8 @@ jobs:
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
             --make-reports=tests_${{ matrix.config.report }} \
-            tests/
+            --report-log=${{ matrix.config.report }}.log \
+            tests/ 
 
       - name: Run nightly Flax TPU tests
         if: ${{ matrix.config.framework == 'flax' }}
@@ -89,6 +91,7 @@ jobs:
           python -m pytest -n 0 \
             -s -v -k "Flax" \
             --make-reports=tests_${{ matrix.config.report }} \
+            --report-log=${{ matrix.config.report }}.log \
             tests/
 
       - name: Run nightly ONNXRuntime CUDA tests
@@ -100,6 +103,7 @@ jobs:
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "Onnx" \
             --make-reports=tests_${{ matrix.config.report }} \
+            --report-log=${{ matrix.config.report }}.log \ 
             tests/
 
       - name: Failure short reports
@@ -112,6 +116,12 @@ jobs:
         with:
           name: ${{ matrix.config.report }}_test_reports
           path: reports
+      
+      - name: Generate Report and Notify Channel
+        if: always()
+        run: |
+          pip install slack_sdk tabulate
+          python scripts/log_reports.py >> $GITHUB_STEP_SUMMARY
 
   run_nightly_tests_apple_m1:
     name: Nightly PyTorch MPS tests on MacOS
@@ -152,7 +162,9 @@ jobs:
           HF_HOME: /System/Volumes/Data/mnt/cache
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
-          ${CONDA_RUN} python -m pytest -n 1 -s -v --make-reports=tests_torch_mps tests/
+          ${CONDA_RUN} python -m pytest -n 1 -s -v --make-reports=tests_torch_mps \
+            --report-log=tests_torch_mps.log \
+            tests/
 
       - name: Failure short reports
         if: ${{ failure() }}
@@ -164,3 +176,9 @@ jobs:
         with:
           name: torch_mps_test_reports
           path: reports
+
+      - name: Generate Report and Notify Channel
+        if: always()
+        run: |
+          pip install slack_sdk tabulate
+          python scripts/log_reports.py >> $GITHUB_STEP_SUMMARY
