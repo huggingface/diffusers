@@ -101,6 +101,7 @@ def save_model_card(
     repo_id: str,
     use_dora: bool,
     edm_training: bool,
+    scheduler_type: str,
     images=None,
     base_model=str,
     train_text_encoder=False,
@@ -127,6 +128,9 @@ tags:
     if edm_training:
         tags_str += f"""
             - edm-training
+            inference:
+                parameters:
+                    scheduler: {scheduler_type}
             """
     # images
     img_str = "widget:\n"
@@ -2352,6 +2356,7 @@ def main(args):
             model_id if not args.push_to_hub else repo_id,
             use_dora=args.use_dora,
             edm_training=args.do_edm_style_training,
+            scheduler_type=scheduler_type,
             images=images,
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,
