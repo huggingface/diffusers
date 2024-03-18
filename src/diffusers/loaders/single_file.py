@@ -65,17 +65,14 @@ def build_sub_model_components(
         return {"unet": unet}
 
     if component_name == "vae":
-        scaling_factor = kwargs.get("scaling_factor", None)
-        vae_components = create_diffusers_vae_model_from_ldm(
-            pipeline_class_name,
-            original_config,
-            checkpoint,
-            image_size,
-            scaling_factor,
-            torch_dtype,
-            model_type=model_type,
+        from ..models import AutoencoderKL
+        vae = AutoencoderKL.from_single_file(
+            checkpoint=checkpoint,
+            config=original_config,
+            torch_dtype=torch_dtype,
+            **kwargs,
         )
-        return vae_components
+        return {"vae": vae}
 
     if component_name == "scheduler":
         scheduler_type = kwargs.get("scheduler_type", "ddim")

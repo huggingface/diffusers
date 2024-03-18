@@ -1355,6 +1355,42 @@ def create_diffusers_unet_from_ldm(
     return model
 
 
+def create_diffusers_vae_from_ldm(
+    cls,
+    checkpoint,
+    config,
+    torch_dtype,
+    **kwargs,
+):
+    config = fetch_original_config(checkpoint) if config is None else config
+
+    image_size = kwargs.get("image_size", None)
+    image_size = set_image_size(cls, config, checkpoint, image_size=image_size)
+    scaling_factor = kwargs.get("scaling_factor", None)
+
+    model_config = create_vae_diffusers_config(config, image_size=image_size, scaling_factor=scaling_factor)
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        model = cls.from_config(model_config, **kwargs)
+
+    diffusers_format_checkpoint = convert_ldm_vae_checkpoint(checkpoint, model_config)
+    if is_accelerate_available():
+        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
+
+    else:
+        model.load_state_dict(diffusers_format_checkpoint)
+
+    if torch_dtype is not None:
+        model.to(torch_dtype)
+
+    return model
+
+
 def create_diffusers_unet_model_from_ldm(
     pipeline_class_name,
     original_config,
