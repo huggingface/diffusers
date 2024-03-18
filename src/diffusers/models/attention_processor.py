@@ -767,7 +767,8 @@ class AttnProcessor:
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
+            # encoder_hidden_states = hidden_states
+            encoder_hidden_states = torch.nn.functional.avg_pool2d(hidden_states, kernel_size=4)
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
@@ -1259,7 +1260,8 @@ class AttnProcessor2_0:
         query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
-            encoder_hidden_states = hidden_states
+            # encoder_hidden_states = hidden_states
+            encoder_hidden_states = torch.nn.functional.avg_pool2d(hidden_states, kernel_size=4)
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
