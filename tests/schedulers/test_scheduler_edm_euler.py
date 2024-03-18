@@ -140,7 +140,7 @@ class EDMEulerSchedulerTest(SchedulerCommonTest):
         self.assertEqual(output_0.shape, sample.shape)
         self.assertEqual(output_0.shape, output_1.shape)
 
-    # Override test_from_save_pretrined to use EDMEulerScheduler-specific logic
+    # Override test_from_save_pretrained to use EDMEulerScheduler-specific logic
     def test_scheduler_outputs_equivalence(self):
         def set_nan_tensor_to_zero(t):
             t[t != t] = 0
