@@ -911,6 +911,7 @@ def main(args):
         )
         precomputed_dataset = precomputed_dataset.with_transform(preprocess_train)
 
+    del compute_vae_encodings_fn, compute_embeddings_fn, text_encoder_one, text_encoder_two
     del text_encoders, tokenizers, vae
     gc.collect()
     torch.cuda.empty_cache()
