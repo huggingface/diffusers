@@ -67,6 +67,9 @@ CHECKPOINT_KEY_NAMES = {
     "v2": "model.diffusion_model.input_blocks.2.1.transformer_blocks.0.attn2.to_k.weight",
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
+    "upscale": "model.diffusion_model.input_blocks.10.0.skip_connection.bias",
+    "_upscale": "low_scale_model.alphas_cumprod",
+    "controlnet": "control_model.time_embed.0.weight",
 }
 
 SCHEDULER_DEFAULT_CONFIG = {
@@ -323,7 +326,7 @@ def fetch_ldm_config_and_checkpoint(
         local_files_only=local_files_only,
         revision=revision,
     )
-    original_config = fetch_original_config(class_name, checkpoint, original_config_file)
+    original_config = fetch_original_config(checkpoint, original_config_file)
 
     return original_config, checkpoint
 
@@ -362,7 +365,7 @@ def load_single_file_model_checkpoint(
     return checkpoint
 
 
-def infer_original_config_file(class_name, checkpoint):
+def infer_original_config_file(checkpoint):
     if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
         config_url = CONFIG_URLS["v2"]
 
@@ -372,21 +375,20 @@ def infer_original_config_file(class_name, checkpoint):
     elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
         config_url = CONFIG_URLS["xl_refiner"]
 
-    elif class_name == "StableDiffusionUpscalePipeline":
+    elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
         config_url = CONFIG_URLS["upscale"]
 
-    elif class_name == "ControlNetModel":
+    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
         config_url = CONFIG_URLS["controlnet"]
 
     else:
         config_url = CONFIG_URLS["v1"]
-
     original_config_file = BytesIO(requests.get(config_url).content)
 
     return original_config_file
 
 
-def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=None):
+def fetch_original_config(checkpoint, original_config_file=None):
     def is_valid_url(url):
         result = urlparse(url)
         if result.scheme and result.netloc:
@@ -395,7 +397,7 @@ def fetch_original_config(pipeline_class_name, checkpoint, original_config_file=
         return False
 
     if original_config_file is None:
-        original_config_file = infer_original_config_file(pipeline_class_name, checkpoint)
+        original_config_file = infer_original_config_file(checkpoint)
 
     elif os.path.isfile(original_config_file):
         with open(original_config_file, "r") as fp:
@@ -1278,29 +1280,11 @@ def create_text_encoder_from_open_clip_checkpoint(
 
 def create_diffusers_unet_from_stable_cascade(
     cls,
-    pretrained_model_link_or_path,
+    checkpoint,
     config,
-    resume_download,
-    force_download,
-    proxies,
-    token,
-    cache_dir,
-    local_files_only,
-    revision,
     torch_dtype,
     **kwargs,
 ):
-    checkpoint = load_single_file_model_checkpoint(
-        pretrained_model_link_or_path,
-        resume_download=resume_download,
-        force_download=force_download,
-        proxies=proxies,
-        token=token,
-        cache_dir=cache_dir,
-        local_files_only=local_files_only,
-        revision=revision,
-    )
-
     if config is None:
         config = infer_stable_cascade_single_file_config(checkpoint)
         model_config = cls.load_config(**config, **kwargs)
@@ -1312,7 +1296,49 @@ def create_diffusers_unet_from_stable_cascade(
         model = cls.from_config(model_config, **kwargs)
 
     diffusers_format_checkpoint = convert_stable_cascade_unet_single_file_to_diffusers(checkpoint)
+    if is_accelerate_available():
+        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
 
+    else:
+        model.load_state_dict(diffusers_format_checkpoint)
+
+    if torch_dtype is not None:
+        model.to(torch_dtype)
+
+    return model
+
+
+def create_diffusers_unet_from_ldm(
+    cls,
+    checkpoint,
+    config,
+    torch_dtype,
+    **kwargs,
+):
+    extract_ema = kwargs.get("extract_ema", False)
+    image_size = kwargs.get("image_size", None)
+    upcast_attention = kwargs.get("upcast_attention", None)
+    num_in_channels = kwargs.get("num_in_channels", None)
+
+    config = fetch_original_config(checkpoint) if config is None else config
+
+    image_size = set_image_size(cls, config, checkpoint, image_size=image_size)
+    model_config = create_unet_diffusers_config(config, image_size=image_size)
+    if num_in_channels is not None:
+        model_config["in_channels"] = num_in_channels
+
+    if upcast_attention is not None:
+        model_config["upcast_attention"] = upcast_attention
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        model = cls.from_config(model_config, **kwargs)
+
+    diffusers_format_checkpoint = convert_ldm_unet_checkpoint(checkpoint, model_config, extract_ema=extract_ema)
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
         if len(unexpected_keys) > 0:
@@ -1342,26 +1368,13 @@ def create_diffusers_unet_model_from_ldm(
 ):
     from ..models import UNet2DConditionModel
 
-    if num_in_channels is None:
-        if pipeline_class_name in [
-            "StableDiffusionInpaintPipeline",
-            "StableDiffusionControlNetInpaintPipeline",
-            "StableDiffusionXLInpaintPipeline",
-            "StableDiffusionXLControlNetInpaintPipeline",
-        ]:
-            num_in_channels = 9
-
-        elif pipeline_class_name == "StableDiffusionUpscalePipeline":
-            num_in_channels = 7
-
-        else:
-            num_in_channels = 4
-
     image_size = set_image_size(
         pipeline_class_name, original_config, checkpoint, image_size=image_size, model_type=model_type
     )
     unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
-    unet_config["in_channels"] = num_in_channels
+    if num_in_channels is not None:
+        unet_config["in_channels"] = num_in_channels
+
     if upcast_attention is not None:
         unet_config["upcast_attention"] = upcast_attention
 

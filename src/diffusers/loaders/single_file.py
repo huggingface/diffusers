@@ -16,7 +16,6 @@ from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import is_transformers_available, logging
 from .single_file_utils import (
-    create_diffusers_unet_model_from_ldm,
     create_diffusers_vae_model_from_ldm,
     create_scheduler_from_ldm,
     create_text_encoders_and_tokenizers_from_ldm,
@@ -55,20 +54,15 @@ def build_sub_model_components(
         return {}
 
     if component_name == "unet":
-        num_in_channels = kwargs.pop("num_in_channels", None)
-        upcast_attention = kwargs.pop("upcast_attention", None)
+        from ..models.unets import UNet2DConditionModel
 
-        unet_components = create_diffusers_unet_model_from_ldm(
-            pipeline_class_name,
-            original_config,
-            checkpoint,
-            num_in_channels=num_in_channels,
-            image_size=image_size,
+        unet = UNet2DConditionModel.from_single_file(
+            checkpoint=checkpoint,
+            config=original_config,
             torch_dtype=torch_dtype,
-            model_type=model_type,
-            upcast_attention=upcast_attention,
+            **kwargs,
         )
-        return unet_components
+        return {"unet": unet}
 
     if component_name == "vae":
         scaling_factor = kwargs.get("scaling_factor", None)

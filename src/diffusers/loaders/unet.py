@@ -43,9 +43,9 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from .single_file_utils import (
+    create_diffusers_unet_from_ldm,
     create_diffusers_unet_from_stable_cascade,
-    create_diffusers_unet_model_from_ldm,
-    fetch_ldm_config_and_checkpoint,
+    load_single_file_model_checkpoint,
 )
 from .utils import AttnProcsLayers
 
@@ -67,6 +67,10 @@ CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
 
 COMPATIBLE_SINGLE_FILE_CLASSES = ["StableCascadeUNet", "UNet2DConditionModel"]
+SINGLE_FILE_LOADABLE_CLASSES = {
+    "StableCascadeUNet": create_diffusers_unet_from_stable_cascade,
+    "UNet2DConditionModel": create_diffusers_unet_from_ldm,
+}
 
 
 class UNet2DConditionLoadersMixin:
@@ -912,7 +916,7 @@ class FromOriginalUNetMixin:
 
     @classmethod
     @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
+    def from_single_file(cls, pretrained_model_link_or_path: Optional[str] = None, **kwargs):
         r"""
         Instantiate a UNet from pretrained weights saved in the original `.ckpt`, `.bin`, or
         `.safetensors` format. The model is set in evaluation mode (`model.eval()`) by default.
@@ -955,12 +959,19 @@ class FromOriginalUNetMixin:
 
         """
         class_name = cls.__name__
-        if class_name not in COMPATIBLE_SINGLE_FILE_CLASSES:
+        if class_name not in SINGLE_FILE_LOADABLE_CLASSES:
             raise ValueError(
-                f"FromOriginalUNetMixin is currently only compatible with {', '.join(COMPATIBLE_SINGLE_FILE_CLASSES)}"
+                f"FromOriginalUNetMixin is currently only compatible with {', '.join(SINGLE_FILE_LOADABLE_CLASSES.keys())}"
+            )
+
+        checkpoint = kwargs.pop("checkpoint", None)
+        if pretrained_model_link_or_path is None and checkpoint is None:
+            raise ValueError(
+                "Please provide either a `pretrained_model_link_or_path` or a `checkpoint` to load the model from."
             )
 
         config = kwargs.pop("config", None)
+
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -970,42 +981,25 @@ class FromOriginalUNetMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        if class_name == "StableCascadeUNet":
-            return create_diffusers_unet_from_stable_cascade(
-                cls,
+        if checkpoint is None:
+            checkpoint = load_single_file_model_checkpoint(
                 pretrained_model_link_or_path,
-                config,
-                resume_download,
-                force_download,
-                proxies,
-                token,
-                cache_dir,
-                local_files_only,
-                revision,
-                torch_dtype,
-                **kwargs,
-            )
-        else:
-            original_config, checkpoint = fetch_ldm_config_and_checkpoint(
-                pretrained_model_link_or_path=pretrained_model_link_or_path,
-                class_name=kwargs.get("pipeline_class_name", None),
-                original_config_file=kwargs.get("original_config_file", None),
                 resume_download=resume_download,
                 force_download=force_download,
                 proxies=proxies,
                 token=token,
-                revision=revision,
-                local_files_only=local_files_only,
                 cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                revision=revision,
             )
-            return create_diffusers_unet_model_from_ldm(
-                pipeline_class_name=kwargs.get("pipeline_class_name", None),
-                original_config=original_config,
-                checkpoint=checkpoint,
-                num_in_channels=kwargs.get("num_in_channels", 4),
-                upcast_attention=kwargs.get("upcast_attention", None),
-                extract_ema=kwargs.get("upcast_attention", False),
-                image_size=kwargs.get("image_size", None),
-                torch_dtype=torch_dtype,
-                model_type=kwargs.pop("model_type", None),
-            )["unet"]
+
+        model_loading_fn = SINGLE_FILE_LOADABLE_CLASSES[class_name]
+        model = model_loading_fn(
+            cls,
+            checkpoint=checkpoint,
+            config=config,
+            torch_dtype=torch_dtype,
+            **kwargs,
+        )
+
+        return model
