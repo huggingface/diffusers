@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,12 +14,15 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import contextlib
 import gc
 import hashlib
 import itertools
+import json
 import logging
 import math
 import os
+import random
 import re
 import shutil
 import warnings
@@ -36,7 +39,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import DistributedDataParallelKwargs, ProjectConfiguration, set_seed
-from huggingface_hub import create_repo, upload_folder
+from huggingface_hub import create_repo, hf_hub_download, upload_folder
 from packaging import version
 from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
@@ -45,6 +48,7 @@ from PIL.ImageOps import exif_transpose
 from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
+from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
 
@@ -53,6 +57,8 @@ from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
     DPMSolverMultistepScheduler,
+    EDMEulerScheduler,
+    EulerDiscreteScheduler,
     StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
@@ -72,13 +78,28 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.26.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
 
+def determine_scheduler_type(pretrained_model_name_or_path, revision):
+    model_index_filename = "model_index.json"
+    if os.path.isdir(pretrained_model_name_or_path):
+        model_index = os.path.join(pretrained_model_name_or_path, model_index_filename)
+    else:
+        model_index = hf_hub_download(
+            repo_id=pretrained_model_name_or_path, filename=model_index_filename, revision=revision
+        )
+
+    with open(model_index, "r") as f:
+        scheduler_type = json.load(f)["scheduler"][1]
+    return scheduler_type
+
+
 def save_model_card(
     repo_id: str,
+    use_dora: bool,
     images=None,
     base_model=str,
     train_text_encoder=False,
@@ -90,6 +111,7 @@ def save_model_card(
     vae_path=None,
 ):
     img_str = "widget:\n"
+    lora = "lora" if not use_dora else "dora"
     for i, image in enumerate(images):
         image.save(os.path.join(repo_folder, f"image_{i}.png"))
         img_str += f"""
@@ -121,7 +143,7 @@ def save_model_card(
         diffusers_imports_pivotal = """from huggingface_hub import hf_hub_download
 from safetensors.torch import load_file
         """
-        diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id='{repo_id}', filename='{embeddings_filename}.safetensors' repo_type="model")
+        diffusers_example_pivotal = f"""embedding_path = hf_hub_download(repo_id='{repo_id}', filename='{embeddings_filename}.safetensors', repo_type="model")
 state_dict = load_file(embedding_path)
 pipeline.load_textual_inversion(state_dict["clip_l"], token=[{ti_keys}], text_encoder=pipeline.text_encoder, tokenizer=pipeline.tokenizer)
 pipeline.load_textual_inversion(state_dict["clip_g"], token=[{ti_keys}], text_encoder=pipeline.text_encoder_2, tokenizer=pipeline.tokenizer_2)
@@ -142,9 +164,10 @@ to trigger concept `{key}` → use `{tokens}` in your prompt \n
 tags:
 - stable-diffusion-xl
 - stable-diffusion-xl-diffusers
+- diffusers-training
 - text-to-image
 - diffusers
-- lora
+- {lora}
 - template:sd-lora
 {img_str}
 base_model: {base_model}
@@ -366,6 +389,11 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
+        "--do_edm_style_training",
+        action="store_true",
+        help="Flag to conduct training using the EDM formulation as introduced in https://arxiv.org/abs/2206.00364.",
+    )
+    parser.add_argument(
         "--with_prior_preservation",
         default=False,
         action="store_true",
@@ -398,18 +426,6 @@ def parse_args(input_args=None):
         ),
     )
     parser.add_argument(
-        "--crops_coords_top_left_h",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
-    )
-    parser.add_argument(
-        "--crops_coords_top_left_w",
-        type=int,
-        default=0,
-        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
-    )
-    parser.add_argument(
         "--center_crop",
         default=False,
         action="store_true",
@@ -417,6 +433,11 @@ def parse_args(input_args=None):
             "Whether to center crop the input images to the resolution. If not set, the images will be randomly"
             " cropped. The images will be resized to the resolution first before cropping."
         ),
+    )
+    parser.add_argument(
+        "--random_flip",
+        action="store_true",
+        help="whether to randomly flip images horizontally",
     )
     parser.add_argument(
         "--train_text_encoder",
@@ -659,11 +680,21 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
+    parser.add_argument("--noise_offset", type=float, default=0, help="The scale of noise offset.")
     parser.add_argument(
         "--rank",
         type=int,
         default=4,
         help=("The dimension of the LoRA update matrices."),
+    )
+    parser.add_argument(
+        "--use_dora",
+        action="store_true",
+        default=False,
+        help=(
+            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
+        ),
     )
     parser.add_argument(
         "--cache_latents",
@@ -901,6 +932,41 @@ class DreamBoothDataset(Dataset):
         self.instance_images = []
         for img in instance_images:
             self.instance_images.extend(itertools.repeat(img, repeats))
+
+        # image processing to prepare for using SD-XL micro-conditioning
+        self.original_sizes = []
+        self.crop_top_lefts = []
+        self.pixel_values = []
+        train_resize = transforms.Resize(size, interpolation=transforms.InterpolationMode.BILINEAR)
+        train_crop = transforms.CenterCrop(size) if center_crop else transforms.RandomCrop(size)
+        train_flip = transforms.RandomHorizontalFlip(p=1.0)
+        train_transforms = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Normalize([0.5], [0.5]),
+            ]
+        )
+        for image in self.instance_images:
+            image = exif_transpose(image)
+            if not image.mode == "RGB":
+                image = image.convert("RGB")
+            self.original_sizes.append((image.height, image.width))
+            image = train_resize(image)
+            if args.random_flip and random.random() < 0.5:
+                # flip
+                image = train_flip(image)
+            if args.center_crop:
+                y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
+                x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+                image = train_crop(image)
+            else:
+                y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                image = crop(image, y1, x1, h, w)
+            crop_top_left = (y1, x1)
+            self.crop_top_lefts.append(crop_top_left)
+            image = train_transforms(image)
+            self.pixel_values.append(image)
+
         self.num_instance_images = len(self.instance_images)
         self._length = self.num_instance_images
 
@@ -908,6 +974,32 @@ class DreamBoothDataset(Dataset):
             self.class_data_root = Path(class_data_root)
             self.class_data_root.mkdir(parents=True, exist_ok=True)
             self.class_images_path = list(self.class_data_root.iterdir())
+
+            self.original_sizes_class_imgs = []
+            self.crop_top_lefts_class_imgs = []
+            self.pixel_values_class_imgs = []
+            self.class_images = [Image.open(path) for path in self.class_images_path]
+            for image in self.class_images:
+                image = exif_transpose(image)
+                if not image.mode == "RGB":
+                    image = image.convert("RGB")
+                self.original_sizes_class_imgs.append((image.height, image.width))
+                image = train_resize(image)
+                if args.random_flip and random.random() < 0.5:
+                    # flip
+                    image = train_flip(image)
+                if args.center_crop:
+                    y1 = max(0, int(round((image.height - args.resolution) / 2.0)))
+                    x1 = max(0, int(round((image.width - args.resolution) / 2.0)))
+                    image = train_crop(image)
+                else:
+                    y1, x1, h, w = train_crop.get_params(image, (args.resolution, args.resolution))
+                    image = crop(image, y1, x1, h, w)
+                crop_top_left = (y1, x1)
+                self.crop_top_lefts_class_imgs.append(crop_top_left)
+                image = train_transforms(image)
+                self.pixel_values_class_imgs.append(image)
+
             if class_num is not None:
                 self.num_class_images = min(len(self.class_images_path), class_num)
             else:
@@ -930,12 +1022,9 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = self.instance_images[index % self.num_instance_images]
-        instance_image = exif_transpose(instance_image)
-
-        if not instance_image.mode == "RGB":
-            instance_image = instance_image.convert("RGB")
-        example["instance_images"] = self.image_transforms(instance_image)
+        example["instance_images"] = self.pixel_values[index % self.num_instance_images]
+        example["original_size"] = self.original_sizes[index % self.num_instance_images]
+        example["crop_top_left"] = self.crop_top_lefts[index % self.num_instance_images]
 
         if self.custom_instance_prompts:
             caption = self.custom_instance_prompts[index % self.num_instance_images]
@@ -952,13 +1041,10 @@ class DreamBoothDataset(Dataset):
             example["instance_prompt"] = self.instance_prompt
 
         if self.class_data_root:
-            class_image = Image.open(self.class_images_path[index % self.num_class_images])
-            class_image = exif_transpose(class_image)
-
-            if not class_image.mode == "RGB":
-                class_image = class_image.convert("RGB")
-            example["class_images"] = self.image_transforms(class_image)
             example["class_prompt"] = self.class_prompt
+            example["class_images"] = self.pixel_values_class_imgs[index % self.num_class_images]
+            example["class_original_size"] = self.original_sizes_class_imgs[index % self.num_class_images]
+            example["class_crop_top_left"] = self.crop_top_lefts_class_imgs[index % self.num_class_images]
 
         return example
 
@@ -966,17 +1052,26 @@ class DreamBoothDataset(Dataset):
 def collate_fn(examples, with_prior_preservation=False):
     pixel_values = [example["instance_images"] for example in examples]
     prompts = [example["instance_prompt"] for example in examples]
+    original_sizes = [example["original_size"] for example in examples]
+    crop_top_lefts = [example["crop_top_left"] for example in examples]
 
     # Concat class and instance examples for prior preservation.
     # We do this to avoid doing two forward passes.
     if with_prior_preservation:
         pixel_values += [example["class_images"] for example in examples]
         prompts += [example["class_prompt"] for example in examples]
+        original_sizes += [example["class_original_size"] for example in examples]
+        crop_top_lefts += [example["class_crop_top_left"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    batch = {"pixel_values": pixel_values, "prompts": prompts}
+    batch = {
+        "pixel_values": pixel_values,
+        "prompts": prompts,
+        "original_sizes": original_sizes,
+        "crop_top_lefts": crop_top_lefts,
+    }
     return batch
 
 
@@ -1040,6 +1135,14 @@ def encode_prompt(text_encoders, tokenizers, prompt, text_input_ids_list=None):
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+    if args.do_edm_style_training and args.snr_gamma is not None:
+        raise ValueError("Min-SNR formulation is not supported when conducting EDM-style training.")
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -1156,7 +1259,19 @@ def main(args):
     )
 
     # Load scheduler and models
-    noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+    scheduler_type = determine_scheduler_type(args.pretrained_model_name_or_path, args.revision)
+    if "EDM" in scheduler_type:
+        args.do_edm_style_training = True
+        noise_scheduler = EDMEulerScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+        logger.info("Performing EDM-style training!")
+    elif args.do_edm_style_training:
+        noise_scheduler = EulerDiscreteScheduler.from_pretrained(
+            args.pretrained_model_name_or_path, subfolder="scheduler"
+        )
+        logger.info("Performing EDM-style training!")
+    else:
+        noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
@@ -1174,7 +1289,12 @@ def main(args):
         revision=args.revision,
         variant=args.variant,
     )
-    vae_scaling_factor = vae.config.scaling_factor
+    latents_mean = latents_std = None
+    if hasattr(vae.config, "latents_mean") and vae.config.latents_mean is not None:
+        latents_mean = torch.tensor(vae.config.latents_mean).view(1, 4, 1, 1)
+    if hasattr(vae.config, "latents_std") and vae.config.latents_std is not None:
+        latents_std = torch.tensor(vae.config.latents_std).view(1, 4, 1, 1)
+
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
@@ -1198,7 +1318,9 @@ def main(args):
             args.instance_prompt = args.instance_prompt.replace(token_abs, "".join(token_replacement))
             if args.with_prior_preservation:
                 args.class_prompt = args.class_prompt.replace(token_abs, "".join(token_replacement))
-
+            if args.validation_prompt:
+                args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
+                print("validation prompt:", args.validation_prompt)
         # initialize the new tokens for textual inversion
         embedding_handler = TokenEmbeddingsHandler(
             [text_encoder_one, text_encoder_two], [tokenizer_one, tokenizer_two]
@@ -1237,7 +1359,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, "
                     "please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
@@ -1255,6 +1377,7 @@ def main(args):
     unet_lora_config = LoraConfig(
         r=args.rank,
         lora_alpha=args.rank,
+        use_dora=args.use_dora,
         init_lora_weights="gaussian",
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
     )
@@ -1266,6 +1389,7 @@ def main(args):
         text_lora_config = LoraConfig(
             r=args.rank,
             lora_alpha=args.rank,
+            use_dora=args.use_dora,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
         )
@@ -1440,14 +1564,14 @@ def main(args):
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
-        logger.warn(
+        logger.warning(
             f"Unsupported choice of optimizer: {args.optimizer}.Supported optimizers include [adamW, prodigy]."
             "Defaulting to adamW"
         )
         args.optimizer = "adamw"
 
     if args.use_8bit_adam and not args.optimizer.lower() == "adamw":
-        logger.warn(
+        logger.warning(
             f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
             f"set to {args.optimizer.lower()}"
         )
@@ -1481,11 +1605,11 @@ def main(args):
         optimizer_class = prodigyopt.Prodigy
 
         if args.learning_rate <= 0.1:
-            logger.warn(
+            logger.warning(
                 "Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
             )
         if args.train_text_encoder and args.text_encoder_lr:
-            logger.warn(
+            logger.warning(
                 f"Learning rates were provided both for the unet and the text encoder- e.g. text_encoder_lr:"
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
@@ -1539,11 +1663,11 @@ def main(args):
     # pooled text embeddings
     # time ids
 
-    def compute_time_ids():
+    def compute_time_ids(crops_coords_top_left, original_size=None):
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
-        original_size = (args.resolution, args.resolution)
+        if original_size is None:
+            original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
-        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
         add_time_ids = torch.tensor([add_time_ids])
         add_time_ids = add_time_ids.to(accelerator.device, dtype=weight_dtype)
@@ -1560,9 +1684,6 @@ def main(args):
                 pooled_prompt_embeds = pooled_prompt_embeds.to(accelerator.device)
             return prompt_embeds, pooled_prompt_embeds
 
-    # Handle instance prompt.
-    instance_time_ids = compute_time_ids()
-
     # If no type of tuning is done on the text_encoder and custom instance prompts are NOT
     # provided (i.e. the --instance_prompt is used for all images), we encode the instance prompt once to avoid
     # the redundant encoding.
@@ -1573,7 +1694,6 @@ def main(args):
 
     # Handle class prompt for prior-preservation.
     if args.with_prior_preservation:
-        class_time_ids = compute_time_ids()
         if freeze_text_encoder:
             class_prompt_hidden_states, class_pooled_prompt_embeds = compute_text_embeddings(
                 args.class_prompt, text_encoders, tokenizers
@@ -1588,9 +1708,6 @@ def main(args):
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
     # have to pass them to the dataloader.
-    add_time_ids = instance_time_ids
-    if args.with_prior_preservation:
-        add_time_ids = torch.cat([add_time_ids, class_time_ids], dim=0)
 
     # if --train_text_encoder_ti we need add_special_tokens to be True fo textual inversion
     add_special_tokens = True if args.train_text_encoder_ti else False
@@ -1612,12 +1729,6 @@ def main(args):
                 class_tokens_two = tokenize_prompt(tokenizer_two, args.class_prompt, add_special_tokens)
                 tokens_one = torch.cat([tokens_one, class_tokens_one], dim=0)
                 tokens_two = torch.cat([tokens_two, class_tokens_two], dim=0)
-
-    if args.train_text_encoder_ti and args.validation_prompt:
-        # replace instances of --token_abstraction in validation prompt with the new tokens: "<si><si+1>" etc.
-        for token_abs, token_replacement in train_dataset.token_abstraction_dict.items():
-            args.validation_prompt = args.validation_prompt.replace(token_abs, "".join(token_replacement))
-    print("validation prompt:", args.validation_prompt)
 
     if args.cache_latents:
         latents_cache = []
@@ -1721,6 +1832,19 @@ def main(args):
         disable=not accelerator.is_local_main_process,
     )
 
+    def get_sigmas(timesteps, n_dim=4, dtype=torch.float32):
+        # TODO: revisit other sampling algorithms
+        sigmas = noise_scheduler.sigmas.to(device=accelerator.device, dtype=dtype)
+        schedule_timesteps = noise_scheduler.timesteps.to(accelerator.device)
+        timesteps = timesteps.to(accelerator.device)
+
+        step_indices = [(schedule_timesteps == t).nonzero().item() for t in timesteps]
+
+        sigma = sigmas[step_indices].flatten()
+        while len(sigma.shape) < n_dim:
+            sigma = sigma.unsqueeze(-1)
+        return sigma
+
     if args.train_text_encoder:
         num_train_epochs_text_encoder = int(args.train_text_encoder_frac * args.num_train_epochs)
     elif args.train_text_encoder_ti:  # args.train_text_encoder_ti
@@ -1772,47 +1896,83 @@ def main(args):
                     pixel_values = batch["pixel_values"].to(dtype=vae.dtype)
                     model_input = vae.encode(pixel_values).latent_dist.sample()
 
-                model_input = model_input * vae_scaling_factor
-                if args.pretrained_vae_model_name_or_path is None:
-                    model_input = model_input.to(weight_dtype)
+                if latents_mean is None and latents_std is None:
+                    model_input = model_input * vae.config.scaling_factor
+                    if args.pretrained_vae_model_name_or_path is None:
+                        model_input = model_input.to(weight_dtype)
+                else:
+                    latents_mean = latents_mean.to(device=model_input.device, dtype=model_input.dtype)
+                    latents_std = latents_std.to(device=model_input.device, dtype=model_input.dtype)
+                    model_input = (model_input - latents_mean) * vae.config.scaling_factor / latents_std
+                    model_input = model_input.to(dtype=weight_dtype)
 
                 # Sample noise that we'll add to the latents
                 noise = torch.randn_like(model_input)
+                if args.noise_offset:
+                    # https://www.crosslabs.org//blog/diffusion-with-offset-noise
+                    noise += args.noise_offset * torch.randn(
+                        (model_input.shape[0], model_input.shape[1], 1, 1), device=model_input.device
+                    )
+
                 bsz = model_input.shape[0]
+
                 # Sample a random timestep for each image
-                timesteps = torch.randint(
-                    0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
-                )
-                timesteps = timesteps.long()
+                if not args.do_edm_style_training:
+                    timesteps = torch.randint(
+                        0, noise_scheduler.config.num_train_timesteps, (bsz,), device=model_input.device
+                    )
+                    timesteps = timesteps.long()
+                else:
+                    # in EDM formulation, the model is conditioned on the pre-conditioned noise levels
+                    # instead of discrete timesteps, so here we sample indices to get the noise levels
+                    # from `scheduler.timesteps`
+                    indices = torch.randint(0, noise_scheduler.config.num_train_timesteps, (bsz,))
+                    timesteps = noise_scheduler.timesteps[indices].to(device=model_input.device)
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
                 noisy_model_input = noise_scheduler.add_noise(model_input, noise, timesteps)
+                # For EDM-style training, we first obtain the sigmas based on the continuous timesteps.
+                # We then precondition the final model inputs based on these sigmas instead of the timesteps.
+                # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                if args.do_edm_style_training:
+                    sigmas = get_sigmas(timesteps, len(noisy_model_input.shape), noisy_model_input.dtype)
+                    if "EDM" in scheduler_type:
+                        inp_noisy_latents = noise_scheduler.precondition_inputs(noisy_model_input, sigmas)
+                    else:
+                        inp_noisy_latents = noisy_model_input / ((sigmas**2 + 1) ** 0.5)
+
+                # time ids
+                add_time_ids = torch.cat(
+                    [
+                        compute_time_ids(original_size=s, crops_coords_top_left=c)
+                        for s, c in zip(batch["original_sizes"], batch["crop_top_lefts"])
+                    ]
+                )
 
                 # Calculate the elements to repeat depending on the use of prior-preservation and custom captions.
                 if not train_dataset.custom_instance_prompts:
                     elems_to_repeat_text_embeds = bsz // 2 if args.with_prior_preservation else bsz
-                    elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 else:
                     elems_to_repeat_text_embeds = 1
-                    elems_to_repeat_time_ids = bsz // 2 if args.with_prior_preservation else bsz
 
                 # Predict the noise residual
                 if freeze_text_encoder:
                     unet_added_conditions = {
-                        "time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1),
+                        "time_ids": add_time_ids,
+                        # "time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1),
                         "text_embeds": unet_add_text_embeds.repeat(elems_to_repeat_text_embeds, 1),
                     }
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
-                        noisy_model_input,
+                        inp_noisy_latents if args.do_edm_style_training else noisy_model_input,
                         timesteps,
                         prompt_embeds_input,
                         added_cond_kwargs=unet_added_conditions,
                     ).sample
                 else:
-                    unet_added_conditions = {"time_ids": add_time_ids.repeat(elems_to_repeat_time_ids, 1)}
+                    unet_added_conditions = {"time_ids": add_time_ids}
                     prompt_embeds, pooled_prompt_embeds = encode_prompt(
                         text_encoders=[text_encoder_one, text_encoder_two],
                         tokenizers=None,
@@ -1824,14 +1984,42 @@ def main(args):
                     )
                     prompt_embeds_input = prompt_embeds.repeat(elems_to_repeat_text_embeds, 1, 1)
                     model_pred = unet(
-                        noisy_model_input, timesteps, prompt_embeds_input, added_cond_kwargs=unet_added_conditions
+                        inp_noisy_latents if args.do_edm_style_training else noisy_model_input,
+                        timesteps,
+                        prompt_embeds_input,
+                        added_cond_kwargs=unet_added_conditions,
                     ).sample
+
+                weighting = None
+                if args.do_edm_style_training:
+                    # Similar to the input preconditioning, the model predictions are also preconditioned
+                    # on noised model inputs (before preconditioning) and the sigmas.
+                    # Follow: Section 5 of https://arxiv.org/abs/2206.00364.
+                    if "EDM" in scheduler_type:
+                        model_pred = noise_scheduler.precondition_outputs(noisy_model_input, model_pred, sigmas)
+                    else:
+                        if noise_scheduler.config.prediction_type == "epsilon":
+                            model_pred = model_pred * (-sigmas) + noisy_model_input
+                        elif noise_scheduler.config.prediction_type == "v_prediction":
+                            model_pred = model_pred * (-sigmas / (sigmas**2 + 1) ** 0.5) + (
+                                noisy_model_input / (sigmas**2 + 1)
+                            )
+                    # We are not doing weighting here because it tends result in numerical problems.
+                    # See: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
+                    # There might be other alternatives for weighting as well:
+                    # https://github.com/huggingface/diffusers/pull/7126#discussion_r1505404686
+                    if "EDM" not in scheduler_type:
+                        weighting = (sigmas**-2.0).float()
 
                 # Get the target for loss depending on the prediction type
                 if noise_scheduler.config.prediction_type == "epsilon":
-                    target = noise
+                    target = model_input if args.do_edm_style_training else noise
                 elif noise_scheduler.config.prediction_type == "v_prediction":
-                    target = noise_scheduler.get_velocity(model_input, noise, timesteps)
+                    target = (
+                        model_input
+                        if args.do_edm_style_training
+                        else noise_scheduler.get_velocity(model_input, noise, timesteps)
+                    )
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
@@ -1841,10 +2029,28 @@ def main(args):
                     target, target_prior = torch.chunk(target, 2, dim=0)
 
                     # Compute prior loss
-                    prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
+                    if weighting is not None:
+                        prior_loss = torch.mean(
+                            (weighting.float() * (model_pred_prior.float() - target_prior.float()) ** 2).reshape(
+                                target_prior.shape[0], -1
+                            ),
+                            1,
+                        )
+                        prior_loss = prior_loss.mean()
+                    else:
+                        prior_loss = F.mse_loss(model_pred_prior.float(), target_prior.float(), reduction="mean")
 
                 if args.snr_gamma is None:
-                    loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
+                    if weighting is not None:
+                        loss = torch.mean(
+                            (weighting.float() * (model_pred.float() - target.float()) ** 2).reshape(
+                                target.shape[0], -1
+                            ),
+                            1,
+                        )
+                        loss = loss.mean()
+                    else:
+                        loss = F.mse_loss(model_pred.float(), target.float(), reduction="mean")
                 else:
                     # Compute loss-weights as per Section 3.4 of https://arxiv.org/abs/2303.09556.
                     # Since we predict the noise instead of x_0, the original formulation is slightly changed.
@@ -1954,6 +2160,8 @@ def main(args):
                 pipeline = StableDiffusionXLPipeline.from_pretrained(
                     args.pretrained_model_name_or_path,
                     vae=vae,
+                    tokenizer=tokenizer_one,
+                    tokenizer_2=tokenizer_two,
                     text_encoder=accelerator.unwrap_model(text_encoder_one),
                     text_encoder_2=accelerator.unwrap_model(text_encoder_two),
                     unet=accelerator.unwrap_model(unet),
@@ -1965,17 +2173,18 @@ def main(args):
                 # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
                 scheduler_args = {}
 
-                if "variance_type" in pipeline.scheduler.config:
-                    variance_type = pipeline.scheduler.config.variance_type
+                if not args.do_edm_style_training:
+                    if "variance_type" in pipeline.scheduler.config:
+                        variance_type = pipeline.scheduler.config.variance_type
 
-                    if variance_type in ["learned", "learned_range"]:
-                        variance_type = "fixed_small"
+                        if variance_type in ["learned", "learned_range"]:
+                            variance_type = "fixed_small"
 
-                    scheduler_args["variance_type"] = variance_type
+                        scheduler_args["variance_type"] = variance_type
 
-                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
-                    pipeline.scheduler.config, **scheduler_args
-                )
+                    pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+                        pipeline.scheduler.config, **scheduler_args
+                    )
 
                 pipeline = pipeline.to(accelerator.device)
                 pipeline.set_progress_bar_config(disable=True)
@@ -1983,8 +2192,13 @@ def main(args):
                 # run inference
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
+                inference_ctx = (
+                    contextlib.nullcontext()
+                    if "playground" in args.pretrained_model_name_or_path
+                    else torch.cuda.amp.autocast()
+                )
 
-                with torch.cuda.amp.autocast():
+                with inference_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator).images[0]
                         for _ in range(args.num_validation_images)
@@ -2033,6 +2247,11 @@ def main(args):
             text_encoder_lora_layers=text_encoder_lora_layers,
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
+
+        if args.train_text_encoder_ti:
+            embeddings_path = f"{args.output_dir}/{args.output_dir}_emb.safetensors"
+            embedding_handler.save_embeddings(embeddings_path)
+
         images = []
         if args.validation_prompt and args.num_validation_images > 0:
             # Final inference
@@ -2055,18 +2274,40 @@ def main(args):
             # We train on the simplified learning objective. If we were previously predicting a variance, we need the scheduler to ignore it
             scheduler_args = {}
 
-            if "variance_type" in pipeline.scheduler.config:
-                variance_type = pipeline.scheduler.config.variance_type
+            if not args.do_edm_style_training:
+                if "variance_type" in pipeline.scheduler.config:
+                    variance_type = pipeline.scheduler.config.variance_type
 
-                if variance_type in ["learned", "learned_range"]:
-                    variance_type = "fixed_small"
+                    if variance_type in ["learned", "learned_range"]:
+                        variance_type = "fixed_small"
 
-                scheduler_args["variance_type"] = variance_type
+                    scheduler_args["variance_type"] = variance_type
 
-            pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config, **scheduler_args)
+                pipeline.scheduler = DPMSolverMultistepScheduler.from_config(
+                    pipeline.scheduler.config, **scheduler_args
+                )
 
             # load attention processors
             pipeline.load_lora_weights(args.output_dir)
+
+            # load new tokens
+            if args.train_text_encoder_ti:
+                state_dict = load_file(embeddings_path)
+                all_new_tokens = []
+                for key, value in token_abstraction_dict.items():
+                    all_new_tokens.extend(value)
+                pipeline.load_textual_inversion(
+                    state_dict["clip_l"],
+                    token=all_new_tokens,
+                    text_encoder=pipeline.text_encoder,
+                    tokenizer=pipeline.tokenizer,
+                )
+                pipeline.load_textual_inversion(
+                    state_dict["clip_g"],
+                    token=all_new_tokens,
+                    text_encoder=pipeline.text_encoder_2,
+                    tokenizer=pipeline.tokenizer_2,
+                )
 
             # run inference
             pipeline = pipeline.to(accelerator.device)
@@ -2090,11 +2331,6 @@ def main(args):
                         }
                     )
 
-        if args.train_text_encoder_ti:
-            embedding_handler.save_embeddings(
-                f"{args.output_dir}/{args.output_dir}_emb.safetensors",
-            )
-
         # Conver to WebUI format
         lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
         peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
@@ -2103,6 +2339,7 @@ def main(args):
 
         save_model_card(
             model_id if not args.push_to_hub else repo_id,
+            use_dora=args.use_dora,
             images=images,
             base_model=args.pretrained_model_name_or_path,
             train_text_encoder=args.train_text_encoder,

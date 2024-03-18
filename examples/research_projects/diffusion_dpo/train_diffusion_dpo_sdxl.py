@@ -118,9 +118,16 @@ def log_validation(args, unet, vae, accelerator, weight_dtype, epoch, is_final_v
     images = []
     context = contextlib.nullcontext() if is_final_validation else torch.cuda.amp.autocast()
 
+    guidance_scale = 5.0
+    num_inference_steps = 25
+    if args.is_turbo:
+        guidance_scale = 0.0
+        num_inference_steps = 4
     for prompt in VALIDATION_PROMPTS:
         with context:
-            image = pipeline(prompt, num_inference_steps=25, generator=generator).images[0]
+            image = pipeline(
+                prompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator
+            ).images[0]
             images.append(image)
 
     tracker_key = "test" if is_final_validation else "validation"
@@ -141,7 +148,10 @@ def log_validation(args, unet, vae, accelerator, weight_dtype, epoch, is_final_v
     if is_final_validation:
         pipeline.disable_lora()
         no_lora_images = [
-            pipeline(prompt, num_inference_steps=25, generator=generator).images[0] for prompt in VALIDATION_PROMPTS
+            pipeline(
+                prompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator
+            ).images[0]
+            for prompt in VALIDATION_PROMPTS
         ]
 
         for tracker in accelerator.trackers:
@@ -424,6 +434,11 @@ def parse_args(input_args=None):
         "--enable_xformers_memory_efficient_attention", action="store_true", help="Whether or not to use xformers."
     )
     parser.add_argument(
+        "--is_turbo",
+        action="store_true",
+        help=("Use if tuning SDXL Turbo instead of SDXL"),
+    )
+    parser.add_argument(
         "--rank",
         type=int,
         default=4,
@@ -443,6 +458,9 @@ def parse_args(input_args=None):
 
     if args.dataset_name is None:
         raise ValueError("Must provide a `dataset_name`.")
+
+    if args.is_turbo:
+        assert "turbo" in args.pretrained_model_name_or_path
 
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
@@ -491,6 +509,12 @@ def encode_prompt(text_encoders, text_input_ids_list):
 
 
 def main(args):
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -554,6 +578,36 @@ def main(args):
 
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
+
+    def enforce_zero_terminal_snr(scheduler):
+        # Modified from https://github.com/huggingface/diffusers/blob/main/src/diffusers/schedulers/scheduling_ddpm.py#L93
+        # Original implementation https://arxiv.org/pdf/2305.08891.pdf
+        # Turbo needs zero terminal SNR
+        # Turbo: https://static1.squarespace.com/static/6213c340453c3f502425776e/t/65663480a92fba51d0e1023f/1701197769659/adversarial_diffusion_distillation.pdf
+        # Convert betas to alphas_bar_sqrt
+        alphas = 1 - scheduler.betas
+        alphas_bar = alphas.cumprod(0)
+        alphas_bar_sqrt = alphas_bar.sqrt()
+
+        # Store old values.
+        alphas_bar_sqrt_0 = alphas_bar_sqrt[0].clone()
+        alphas_bar_sqrt_T = alphas_bar_sqrt[-1].clone()
+        # Shift so last timestep is zero.
+        alphas_bar_sqrt -= alphas_bar_sqrt_T
+        # Scale so first timestep is back to old value.
+        alphas_bar_sqrt *= alphas_bar_sqrt_0 / (alphas_bar_sqrt_0 - alphas_bar_sqrt_T)
+
+        alphas_bar = alphas_bar_sqrt**2
+        alphas = alphas_bar[1:] / alphas_bar[:-1]
+        alphas = torch.cat([alphas_bar[0:1], alphas])
+
+        alphas_cumprod = torch.cumprod(alphas, dim=0)
+        scheduler.alphas_cumprod = alphas_cumprod
+        return
+
+    if args.is_turbo:
+        enforce_zero_terminal_snr(noise_scheduler)
+
     text_encoder_one = text_encoder_cls_one.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision, variant=args.variant
     )
@@ -618,7 +672,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -741,7 +795,7 @@ def main(args):
             combined_im = train_resize(combined_im)
 
             # Flipping.
-            if not args.no_flip and random.random() < 0.5:
+            if not args.no_hflip and random.random() < 0.5:
                 combined_im = train_flip(combined_im)
 
             # Cropping.
@@ -903,6 +957,10 @@ def main(args):
                 timesteps = torch.randint(
                     0, noise_scheduler.config.num_train_timesteps, (bsz,), device=latents.device, dtype=torch.long
                 ).repeat(2)
+                if args.is_turbo:
+                    # Learn a 4 timestep schedule
+                    timesteps_0_to_3 = timesteps % 4
+                    timesteps = 250 * timesteps_0_to_3 + 249
 
                 # Add noise to the model input according to the noise magnitude at each timestep
                 # (this is the forward diffusion process)
@@ -975,7 +1033,7 @@ def main(args):
                 # Final loss.
                 scale_term = -0.5 * args.beta_dpo
                 inside_term = scale_term * (model_diff - ref_diff)
-                loss = -1 * F.logsigmoid(inside_term.mean())
+                loss = -1 * F.logsigmoid(inside_term).mean()
 
                 implicit_acc = (inside_term > 0).sum().float() / inside_term.size(0)
                 implicit_acc += 0.5 * (inside_term == 0).sum().float() / inside_term.size(0)

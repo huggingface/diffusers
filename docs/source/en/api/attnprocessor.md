@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -20,14 +20,14 @@ An attention processor is a class for applying different types of attention mech
 ## AttnProcessor2_0
 [[autodoc]] models.attention_processor.AttnProcessor2_0
 
-## FusedAttnProcessor2_0
-[[autodoc]] models.attention_processor.FusedAttnProcessor2_0
+## AttnAddedKVProcessor
+[[autodoc]] models.attention_processor.AttnAddedKVProcessor
 
-## LoRAAttnProcessor
-[[autodoc]] models.attention_processor.LoRAAttnProcessor
+## AttnAddedKVProcessor2_0
+[[autodoc]] models.attention_processor.AttnAddedKVProcessor2_0
 
-## LoRAAttnProcessor2_0
-[[autodoc]] models.attention_processor.LoRAAttnProcessor2_0
+## CrossFrameAttnProcessor
+[[autodoc]] pipelines.text_to_video_synthesis.pipeline_text_to_video_zero.CrossFrameAttnProcessor
 
 ## CustomDiffusionAttnProcessor
 [[autodoc]] models.attention_processor.CustomDiffusionAttnProcessor
@@ -35,26 +35,23 @@ An attention processor is a class for applying different types of attention mech
 ## CustomDiffusionAttnProcessor2_0
 [[autodoc]] models.attention_processor.CustomDiffusionAttnProcessor2_0
 
-## AttnAddedKVProcessor
-[[autodoc]] models.attention_processor.AttnAddedKVProcessor
+## CustomDiffusionXFormersAttnProcessor
+[[autodoc]] models.attention_processor.CustomDiffusionXFormersAttnProcessor
 
-## AttnAddedKVProcessor2_0
-[[autodoc]] models.attention_processor.AttnAddedKVProcessor2_0
+## FusedAttnProcessor2_0
+[[autodoc]] models.attention_processor.FusedAttnProcessor2_0
 
 ## LoRAAttnAddedKVProcessor
 [[autodoc]] models.attention_processor.LoRAAttnAddedKVProcessor
 
-## XFormersAttnProcessor
-[[autodoc]] models.attention_processor.XFormersAttnProcessor
-
 ## LoRAXFormersAttnProcessor
 [[autodoc]] models.attention_processor.LoRAXFormersAttnProcessor
-
-## CustomDiffusionXFormersAttnProcessor
-[[autodoc]] models.attention_processor.CustomDiffusionXFormersAttnProcessor
 
 ## SlicedAttnProcessor
 [[autodoc]] models.attention_processor.SlicedAttnProcessor
 
 ## SlicedAttnAddedKVProcessor
 [[autodoc]] models.attention_processor.SlicedAttnAddedKVProcessor
+
+## XFormersAttnProcessor
+[[autodoc]] models.attention_processor.XFormersAttnProcessor

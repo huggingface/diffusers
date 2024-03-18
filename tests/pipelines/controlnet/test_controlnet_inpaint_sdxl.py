@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 Harutatsu Akiyama, Jinbin Bai, and HuggingFace Inc.
+# Copyright 2024 Harutatsu Akiyama, Jinbin Bai, and HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -172,7 +172,7 @@ class ControlNetPipelineSDXLFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": init_image,
             "mask_image": mask_image,
             "control_image": control_image,

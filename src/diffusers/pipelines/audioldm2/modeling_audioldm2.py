@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,7 +35,7 @@ from ...models.embeddings import (
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from ...models.transformer_2d import Transformer2DModel
+from ...models.transformers.transformer_2d import Transformer2DModel
 from ...models.unets.unet_2d_blocks import DownBlock2D, UpBlock2D
 from ...models.unets.unet_2d_condition import UNet2DConditionOutput
 from ...utils import BaseOutput, is_torch_version, logging

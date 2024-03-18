@@ -5,7 +5,6 @@ from typing import Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 import torch
-from torchvision import transforms
 
 from .models import UNet2DConditionModel
 from .utils import (
@@ -13,6 +12,8 @@ from .utils import (
     convert_state_dict_to_peft,
     deprecate,
     is_peft_available,
+    is_torch_npu_available,
+    is_torchvision_available,
     is_transformers_available,
 )
 
@@ -22,6 +23,12 @@ if is_transformers_available():
 
 if is_peft_available():
     from peft import set_peft_model_state_dict
+
+if is_torchvision_available():
+    from torchvision import transforms
+
+if is_torch_npu_available():
+    import torch_npu  # noqa: F401
 
 
 def set_seed(seed: int):
@@ -33,8 +40,11 @@ def set_seed(seed: int):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    # ^^ safe to call this function even if cuda is not available
+    if is_torch_npu_available():
+        torch.npu.manual_seed_all(seed)
+    else:
+        torch.cuda.manual_seed_all(seed)
+        # ^^ safe to call this function even if cuda is not available
 
 
 def compute_snr(noise_scheduler, timesteps):
@@ -79,6 +89,11 @@ def resolve_interpolation_mode(interpolation_type: str):
         `torchvision.transforms.InterpolationMode`: an `InterpolationMode` enum used by torchvision's `resize`
         transform.
     """
+    if not is_torchvision_available():
+        raise ImportError(
+            "Please make sure to install `torchvision` to be able to use the `resolve_interpolation_mode()` function."
+        )
+
     if interpolation_type == "bilinear":
         interpolation_mode = transforms.InterpolationMode.BILINEAR
     elif interpolation_type == "bicubic":

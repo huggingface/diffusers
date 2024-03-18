@@ -1,4 +1,4 @@
-# Copyright 2023 ParaDiGMS authors and The HuggingFace Team. All rights reserved.
+# Copyright 2024 ParaDiGMS authors and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -173,9 +173,7 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2. of [Common Diffusion Noise Schedules and Sample
             Steps are Flawed](https://arxiv.org/abs/2305.08891) for more information.
         steps_offset (`int`, default `0`):
-            an offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False`, to make the last step use step 0 for the previous alpha product, as done in
-            stable diffusion.
+            An offset added to the inference steps, as required by some model families.
         rescale_betas_zero_snr (`bool`, defaults to `False`):
             Whether to rescale the betas to have zero terminal SNR. This enables the model to generate very bright and
             dark samples instead of limiting it to samples with medium brightness. Loosely related to
@@ -594,7 +592,10 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         timesteps: torch.IntTensor,
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as original_samples
-        alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device, dtype=original_samples.dtype)
+        # Move the self.alphas_cumprod to device to avoid redundant CPU to GPU data movement
+        # for the subsequent add_noise calls
+        self.alphas_cumprod = self.alphas_cumprod.to(device=original_samples.device)
+        alphas_cumprod = self.alphas_cumprod.to(dtype=original_samples.dtype)
         timesteps = timesteps.to(original_samples.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
@@ -615,7 +616,8 @@ class DDPMParallelScheduler(SchedulerMixin, ConfigMixin):
         self, sample: torch.FloatTensor, noise: torch.FloatTensor, timesteps: torch.IntTensor
     ) -> torch.FloatTensor:
         # Make sure alphas_cumprod and timestep have same device and dtype as sample
-        alphas_cumprod = self.alphas_cumprod.to(device=sample.device, dtype=sample.dtype)
+        self.alphas_cumprod = self.alphas_cumprod.to(device=sample.device)
+        alphas_cumprod = self.alphas_cumprod.to(dtype=sample.dtype)
         timesteps = timesteps.to(sample.device)
 
         sqrt_alpha_prod = alphas_cumprod[timesteps] ** 0.5
