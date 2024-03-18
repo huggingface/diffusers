@@ -124,7 +124,7 @@ tags:
 - diffusers
 - {lora}
 - template:sd-lora
-    """
+"""
     if edm_training:
         tags_str += f"""
             - edm-training
