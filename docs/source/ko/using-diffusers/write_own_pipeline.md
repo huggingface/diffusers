@@ -210,7 +210,7 @@ Stable Diffusion 은 text-to-image *latent diffusion* 모델입니다. latent di
 
 ```py
 >>> latents = torch.randn(
-...     (batch_size, unet.in_channels, height // 8, width // 8),
+...     (batch_size, unet.config.in_channels, height // 8, width // 8),
 ...     generator=generator,
 ...     device=torch_device,
 ... )
