@@ -143,7 +143,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
             "num_inference_steps": 2,
             "inpaint_strength": 1.0,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return inputs
@@ -165,7 +165,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
             "num_maps_per_mask": 2,
             "mask_encode_strength": 1.0,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return inputs
@@ -186,7 +186,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
             "inpaint_strength": 1.0,
             "guidance_scale": 6.0,
             "decode_latents": True,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -417,7 +417,7 @@ class StableDiffusionDiffEditPipelineNightlyTests(unittest.TestCase):
             negative_prompt=source_prompt,
             inpaint_strength=0.7,
             num_inference_steps=25,
-            output_type="numpy",
+            output_type="np",
         ).images[0]
 
         expected_image = (
