@@ -1,5 +1,5 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
-# `TemporalConvLayer` Copyright 2023 Alibaba DAMO-VILAB, The ModelScope Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
+# `TemporalConvLayer` Copyright 2024 Alibaba DAMO-VILAB, The ModelScope Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import USE_PEFT_BACKEND
+from ..utils import deprecate
 from .activations import get_activation
 from .attention_processor import SpatialNorm
 from .downsampling import (  # noqa
@@ -30,7 +30,6 @@ from .downsampling import (  # noqa
     KDownsample2D,
     downsample_2d,
 )
-from .lora import LoRACompatibleConv, LoRACompatibleLinear
 from .normalization import AdaGroupNorm
 from .upsampling import (  # noqa
     FirUpsample2D,
@@ -102,7 +101,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         self.output_scale_factor = output_scale_factor
         self.time_embedding_norm = time_embedding_norm
 
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        conv_cls = nn.Conv2d
 
         if groups_out is None:
             groups_out = groups
@@ -149,12 +148,11 @@ class ResnetBlockCondNorm2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(
-        self,
-        input_tensor: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        scale: float = 1.0,
-    ) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states, temb)
@@ -166,26 +164,24 @@ class ResnetBlockCondNorm2D(nn.Module):
             if hidden_states.shape[0] >= 64:
                 input_tensor = input_tensor.contiguous()
                 hidden_states = hidden_states.contiguous()
-            input_tensor = self.upsample(input_tensor, scale=scale)
-            hidden_states = self.upsample(hidden_states, scale=scale)
+            input_tensor = self.upsample(input_tensor)
+            hidden_states = self.upsample(hidden_states)
 
         elif self.downsample is not None:
-            input_tensor = self.downsample(input_tensor, scale=scale)
-            hidden_states = self.downsample(hidden_states, scale=scale)
+            input_tensor = self.downsample(input_tensor)
+            hidden_states = self.downsample(hidden_states)
 
-        hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
+        hidden_states = self.conv1(hidden_states)
 
         hidden_states = self.norm2(hidden_states, temb)
 
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
+        hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
-            input_tensor = (
-                self.conv_shortcut(input_tensor, scale) if not USE_PEFT_BACKEND else self.conv_shortcut(input_tensor)
-            )
+            input_tensor = self.conv_shortcut(input_tensor)
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 
@@ -267,8 +263,8 @@ class ResnetBlock2D(nn.Module):
         self.time_embedding_norm = time_embedding_norm
         self.skip_time_act = skip_time_act
 
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
+        linear_cls = nn.Linear
+        conv_cls = nn.Conv2d
 
         if groups_out is None:
             groups_out = groups
@@ -326,12 +322,11 @@ class ResnetBlock2D(nn.Module):
                 bias=conv_shortcut_bias,
             )
 
-    def forward(
-        self,
-        input_tensor: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        scale: float = 1.0,
-    ) -> torch.FloatTensor:
+    def forward(self, input_tensor: torch.FloatTensor, temb: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         hidden_states = input_tensor
 
         hidden_states = self.norm1(hidden_states)
@@ -342,38 +337,18 @@ class ResnetBlock2D(nn.Module):
             if hidden_states.shape[0] >= 64:
                 input_tensor = input_tensor.contiguous()
                 hidden_states = hidden_states.contiguous()
-            input_tensor = (
-                self.upsample(input_tensor, scale=scale)
-                if isinstance(self.upsample, Upsample2D)
-                else self.upsample(input_tensor)
-            )
-            hidden_states = (
-                self.upsample(hidden_states, scale=scale)
-                if isinstance(self.upsample, Upsample2D)
-                else self.upsample(hidden_states)
-            )
+            input_tensor = self.upsample(input_tensor)
+            hidden_states = self.upsample(hidden_states)
         elif self.downsample is not None:
-            input_tensor = (
-                self.downsample(input_tensor, scale=scale)
-                if isinstance(self.downsample, Downsample2D)
-                else self.downsample(input_tensor)
-            )
-            hidden_states = (
-                self.downsample(hidden_states, scale=scale)
-                if isinstance(self.downsample, Downsample2D)
-                else self.downsample(hidden_states)
-            )
+            input_tensor = self.downsample(input_tensor)
+            hidden_states = self.downsample(hidden_states)
 
-        hidden_states = self.conv1(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv1(hidden_states)
+        hidden_states = self.conv1(hidden_states)
 
         if self.time_emb_proj is not None:
             if not self.skip_time_act:
                 temb = self.nonlinearity(temb)
-            temb = (
-                self.time_emb_proj(temb, scale)[:, :, None, None]
-                if not USE_PEFT_BACKEND
-                else self.time_emb_proj(temb)[:, :, None, None]
-            )
+            temb = self.time_emb_proj(temb)[:, :, None, None]
 
         if self.time_embedding_norm == "default":
             if temb is not None:
@@ -393,12 +368,10 @@ class ResnetBlock2D(nn.Module):
         hidden_states = self.nonlinearity(hidden_states)
 
         hidden_states = self.dropout(hidden_states)
-        hidden_states = self.conv2(hidden_states, scale) if not USE_PEFT_BACKEND else self.conv2(hidden_states)
+        hidden_states = self.conv2(hidden_states)
 
         if self.conv_shortcut is not None:
-            input_tensor = (
-                self.conv_shortcut(input_tensor, scale) if not USE_PEFT_BACKEND else self.conv_shortcut(input_tensor)
-            )
+            input_tensor = self.conv_shortcut(input_tensor)
 
         output_tensor = (input_tensor + hidden_states) / self.output_scale_factor
 

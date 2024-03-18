@@ -1,4 +1,4 @@
-__version__ = "0.26.0.dev0"
+__version__ = "0.27.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -86,6 +86,7 @@ else:
             "MotionAdapter",
             "MultiAdapter",
             "PriorTransformer",
+            "StableCascadeUNet",
             "T2IAdapter",
             "T5FilmDecoder",
             "Transformer2DModel",
@@ -128,6 +129,7 @@ else:
             "PNDMPipeline",
             "RePaintPipeline",
             "ScoreSdeVePipeline",
+            "StableDiffusionMixin",
         ]
     )
     _import_structure["schedulers"].extend(
@@ -144,6 +146,8 @@ else:
             "DPMSolverMultistepInverseScheduler",
             "DPMSolverMultistepScheduler",
             "DPMSolverSinglestepScheduler",
+            "EDMDPMSolverMultistepScheduler",
+            "EDMEulerScheduler",
             "EulerAncestralDiscreteScheduler",
             "EulerDiscreteScheduler",
             "HeunDiscreteScheduler",
@@ -157,6 +161,7 @@ else:
             "SASolverScheduler",
             "SchedulerMixin",
             "ScoreSdeVeScheduler",
+            "TCDScheduler",
             "UnCLIPScheduler",
             "UniPCMultistepScheduler",
             "VQDiffusionScheduler",
@@ -248,6 +253,8 @@ else:
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
             "LDMTextToImagePipeline",
+            "LEditsPPPipelineStableDiffusion",
+            "LEditsPPPipelineStableDiffusionXL",
             "MusicLDMPipeline",
             "PaintByExamplePipeline",
             "PIAPipeline",
@@ -255,6 +262,9 @@ else:
             "SemanticStableDiffusionPipeline",
             "ShapEImg2ImgPipeline",
             "ShapEPipeline",
+            "StableCascadeCombinedPipeline",
+            "StableCascadeDecoderPipeline",
+            "StableCascadePriorPipeline",
             "StableDiffusionAdapterPipeline",
             "StableDiffusionAttendAndExcitePipeline",
             "StableDiffusionControlNetImg2ImgPipeline",
@@ -512,6 +522,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PNDMPipeline,
             RePaintPipeline,
             ScoreSdeVePipeline,
+            StableDiffusionMixin,
         )
         from .schedulers import (
             AmusedScheduler,
@@ -526,6 +537,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             DPMSolverMultistepInverseScheduler,
             DPMSolverMultistepScheduler,
             DPMSolverSinglestepScheduler,
+            EDMDPMSolverMultistepScheduler,
+            EDMEulerScheduler,
             EulerAncestralDiscreteScheduler,
             EulerDiscreteScheduler,
             HeunDiscreteScheduler,
@@ -539,6 +552,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SASolverScheduler,
             SchedulerMixin,
             ScoreSdeVeScheduler,
+            TCDScheduler,
             UnCLIPScheduler,
             UniPCMultistepScheduler,
             VQDiffusionScheduler,
@@ -611,6 +625,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
             LDMTextToImagePipeline,
+            LEditsPPPipelineStableDiffusion,
+            LEditsPPPipelineStableDiffusionXL,
             MusicLDMPipeline,
             PaintByExamplePipeline,
             PIAPipeline,
@@ -618,6 +634,9 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             SemanticStableDiffusionPipeline,
             ShapEImg2ImgPipeline,
             ShapEPipeline,
+            StableCascadeCombinedPipeline,
+            StableCascadeDecoderPipeline,
+            StableCascadePriorPipeline,
             StableDiffusionAdapterPipeline,
             StableDiffusionAttendAndExcitePipeline,
             StableDiffusionControlNetImg2ImgPipeline,

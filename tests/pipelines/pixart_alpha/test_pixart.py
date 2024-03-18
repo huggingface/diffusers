@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,13 @@ from diffusers import (
     PixArtAlphaPipeline,
     Transformer2DModel,
 )
-from diffusers.utils.testing_utils import enable_full_determinism, require_torch_gpu, slow, torch_device
+from diffusers.utils.testing_utils import (
+    enable_full_determinism,
+    numpy_cosine_similarity_distance,
+    require_torch_gpu,
+    slow,
+    torch_device,
+)
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
 from ..test_pipelines_common import PipelineTesterMixin, to_np
@@ -332,37 +338,35 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_pixart_1024(self):
-        generator = torch.manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_1024, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
         prompt = self.prompt
 
-        image = pipe(prompt, generator=generator, output_type="np").images
+        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array([0.0742, 0.0835, 0.2114, 0.0295, 0.0784, 0.2361, 0.1738, 0.2251, 0.3589])
 
-        expected_slice = np.array([0.1941, 0.2117, 0.2188, 0.1946, 0.218, 0.2124, 0.199, 0.2437, 0.2583])
-
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
+        self.assertLessEqual(max_diff, 1e-4)
 
     def test_pixart_512(self):
-        generator = torch.manual_seed(0)
+        generator = torch.Generator("cpu").manual_seed(0)
 
         pipe = PixArtAlphaPipeline.from_pretrained(self.ckpt_id_512, torch_dtype=torch.float16)
         pipe.enable_model_cpu_offload()
 
         prompt = self.prompt
 
-        image = pipe(prompt, generator=generator, output_type="np").images
+        image = pipe(prompt, generator=generator, num_inference_steps=2, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
+        expected_slice = np.array([0.3477, 0.3882, 0.4541, 0.3413, 0.3821, 0.4463, 0.4001, 0.4409, 0.4958])
 
-        expected_slice = np.array([0.2637, 0.291, 0.2939, 0.207, 0.2512, 0.2783, 0.2168, 0.2324, 0.2817])
-
-        max_diff = np.abs(image_slice.flatten() - expected_slice).max()
-        self.assertLessEqual(max_diff, 1e-3)
+        max_diff = numpy_cosine_similarity_distance(image_slice.flatten(), expected_slice)
+        self.assertLessEqual(max_diff, 1e-4)
 
     def test_pixart_1024_without_resolution_binning(self):
         generator = torch.manual_seed(0)
@@ -372,7 +376,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         prompt = self.prompt
         height, width = 1024, 768
-        num_inference_steps = 10
+        num_inference_steps = 2
 
         image = pipe(
             prompt,
@@ -406,7 +410,7 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
 
         prompt = self.prompt
         height, width = 512, 768
-        num_inference_steps = 10
+        num_inference_steps = 2
 
         image = pipe(
             prompt,

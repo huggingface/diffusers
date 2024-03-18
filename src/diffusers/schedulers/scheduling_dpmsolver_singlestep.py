@@ -1,4 +1,4 @@
-# Copyright 2023 TSAIL Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 TSAIL Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -151,7 +151,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         sample_max_value: float = 1.0,
         algorithm_type: str = "dpmsolver++",
         solver_type: str = "midpoint",
-        lower_order_final: bool = True,
+        lower_order_final: bool = False,
         use_karras_sigmas: Optional[bool] = False,
         final_sigmas_type: Optional[str] = "zero",  # "zero", "sigma_min"
         lambda_min_clipped: float = -float("inf"),
@@ -223,6 +223,8 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         """
         steps = num_inference_steps
         order = self.config.solver_order
+        if order > 3:
+            raise ValueError("Order > 3 is not supported by this scheduler")
         if self.config.lower_order_final:
             if order == 3:
                 if steps % 3 == 0:
@@ -233,7 +235,7 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
                     orders = [1, 2, 3] * (steps // 3) + [1, 2]
             elif order == 2:
                 if steps % 2 == 0:
-                    orders = [1, 2] * (steps // 2)
+                    orders = [1, 2] * (steps // 2 - 1) + [1, 1]
                 else:
                     orders = [1, 2] * (steps // 2) + [1]
             elif order == 1:
@@ -319,13 +321,13 @@ class DPMSolverSinglestepScheduler(SchedulerMixin, ConfigMixin):
         self.sample = None
 
         if not self.config.lower_order_final and num_inference_steps % self.config.solver_order != 0:
-            logger.warn(
-                "Changing scheduler {self.config} to have `lower_order_final` set to True to handle uneven amount of inference steps. Please make sure to always use an even number of `num_inference steps when using `lower_order_final=True`."
+            logger.warning(
+                "Changing scheduler {self.config} to have `lower_order_final` set to True to handle uneven amount of inference steps. Please make sure to always use an even number of `num_inference steps when using `lower_order_final=False`."
             )
             self.register_to_config(lower_order_final=True)
 
         if not self.config.lower_order_final and self.config.final_sigmas_type == "zero":
-            logger.warn(
+            logger.warning(
                 " `last_sigmas_type='zero'` is not supported for `lower_order_final=False`. Changing scheduler {self.config} to have `lower_order_final` set to True."
             )
             self.register_to_config(lower_order_final=True)

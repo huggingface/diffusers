@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -155,7 +155,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
             "image": self.dummy_image.cpu(),
             "generator": generator,
             "num_inference_steps": 2,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -209,6 +209,7 @@ class StableDiffusionLatentUpscalePipelineFastTests(
             "KDPM2DiscreteScheduler",
             "KDPM2AncestralDiscreteScheduler",
             "DPMSolverSDEScheduler",
+            "EDMEulerScheduler",
         ]
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
