@@ -72,6 +72,7 @@ from .pipeline_loading_utils import (
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
+    _get_custom_pipeline_class,
     _get_pipeline_class,
     _unwrap_model,
     is_safetensors_compatible,
@@ -118,7 +119,6 @@ class AudioPipelineOutput(BaseOutput):
     """
 
     audios: np.ndarray
-
 
 
 class DiffusionPipeline(ConfigMixin, PushToHubMixin):
@@ -1675,12 +1675,14 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         ```
         """
 
-        if hasattr(pipeline, "_all_hooks") and len(pipeline._all_hooks) > 0:
+        pipeline_is_offloaded = True if hasattr(pipeline, "_all_hooks") and len(pipeline._all_hooks) > 0 else False
+        if pipeline_is_offloaded:
             # `enable_model_cpu_offload` has be called on the pipeline, offload model and remove hook from model
             for hook in pipeline._all_hooks:
                 # offload model and remove hook from model
                 hook.offload()
                 hook.remove()
+
         original_config = dict(pipeline.config)
         torch_dtype = kwargs.pop("torch_dtype", None)
 

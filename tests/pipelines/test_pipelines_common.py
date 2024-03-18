@@ -26,6 +26,7 @@ from diffusers import (
     DDIMScheduler,
     DiffusionPipeline,
     StableDiffusionPipeline,
+    StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
@@ -1040,6 +1041,82 @@ class PipelineTesterMixin:
 
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(to_np(output_with_slicing[0]), to_np(output_without_slicing[0]))
+
+    def _modify_inputs_for_test_from_pipe(self, inputs):
+        inputs["output_type"] = "np"
+        inputs["return_dict"] = False
+        return inputs
+
+    def _get_dummy_inputs_pipe_original(self, device, seed=0):
+        if str(device).startswith("mps"):
+            generator = torch.manual_seed(seed)
+        else:
+            generator = torch.Generator(device=torch_device).manual_seed(seed)
+        inputs = {
+            "prompt": "A painting of a squirrel eating a burger",
+            "generator": generator,
+            "num_inference_steps": 2,
+            "guidance_scale": 6.0,
+            "output_type": "np",
+        }
+        return inputs
+
+    def test_from_pipe(self):
+        # Only test if the pipeline is a member of Stable Diffusion family
+        if not isinstance(self.pipeline_class, StableDiffusionMixin):
+            return
+
+        if "xl" in self.pipeline_class.__name__.lower():
+            original_pipeline_class = StableDiffusionPipeline
+            original_repo = "hf-internal-testing/tiny-stable-diffusion-pipe"
+        else:
+            original_pipeline_class = StableDiffusionXLPipeline
+            original_repo = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+
+        # original pipeline: (sd/sdxl)
+        pipe_original = original_pipeline_class.from_pretraine(original_repo)
+        pipe_original.to(torch_device)
+        pipe_original.set_progress_bar_config(disable=None)
+
+        original_config = dict(pipe_original.config)
+
+        inputs = self._get_dummy_inputs_pipe_original(torch_device)
+        output_original = pipe_original(**inputs).images
+
+        # pipe1: self.pipeline_class
+        components = self.get_dummy_components()
+        pipe1 = self.pipeline_class(**components)
+        pipe1.to(torch_device)
+        pipe1.set_progress_bar_config(disable=None)
+
+        inputs = self._modify_inputs_for_test_from_pipe(self.get_dummy_inputs(torch_device))
+        output1 = pipe1(**inputs)[0]
+
+        # pipe2: sd/sdxl -> self.pipeline_class
+        additional_components = {
+            key: component for key, component in components.items() if key not in pipe_original.component()
+        }
+        pipe2 = self.pipeline_class.from_pipe(pipe_original, **additional_components)
+        pipe2.to(torch_device)
+        pipe2.set_progress_bar_config(disable=None)
+
+        inputs = self._modify_inputs_for_test_from_pipe(self.get_dummy_inputs(torch_device))
+        output2 = pipe2(**inputs)[0]
+
+        # pipe_original_2: self.pipeline_class -> sd/sdxl
+        pipe_original_2 = original_pipeline_class.from_pipe(pipe2, **additional_components)
+        pipe_original_2.to(torch_device)
+        pipe_original_2.set_progress_bar_config(disable=None)
+
+        inputs = self._get_dummy_inputs_pipe_original(torch_device)
+        output_original2 = pipe_original_2(**inputs).images
+
+        assert dict(pipe1.config) == original_config
+        assert dict(pipe2.config) == original_config
+        assert dict(pipe_original_2.config) == original_config
+
+        assert np.abs(output_original - output_original2).max() < 1e-3
+        assert np.abs(output1 - output2).max() < 1e-3
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
