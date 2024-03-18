@@ -1075,7 +1075,7 @@ class PipelineTesterMixin:
         components = self.get_dummy_components()
         original_pipe_components = {}
         additional_components = {}
-        original_expected_modules, _ = DiffusionPipeline._get_signature_keys(original_pipeline_class)
+        original_expected_modules, _ = original_pipeline_class._get_signature_keys(original_pipeline_class)
 
         for k, v in components.items():
             if k in original_expected_modules:
@@ -1123,6 +1123,16 @@ class PipelineTesterMixin:
 
         assert np.abs(output_original - output_original2).max() < 1e-3
         assert np.abs(output1 - output2).max() < 1e-3
+
+        # test with enalbe_model_cpu_offload
+        pipe_original.enable_model_cpu_offload()
+        pipe3 = self.pipeline_class.from_pipe(pipe_original, **additional_components)
+        pipe3.enble_model_cpu_offload()
+        pipe3.set_progress_bar_config(disable=None)
+
+        inputs = get_dummy_inputs(torch_device)
+        output3 = pipe3(**inputs)[0]
+        assert np.abs(output1 - output3).max() < 1e-3
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
