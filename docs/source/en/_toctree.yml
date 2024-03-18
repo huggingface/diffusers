@@ -400,14 +400,14 @@
       title: DPMSolverSDEScheduler
     - local: api/schedulers/singlestep_dpm_solver
       title: DPMSolverSinglestepScheduler
+    - local: api/schedulers/edm_multistep_dpm_solver
+      title: EDMDPMSolverMultistepScheduler
+    - local: api/schedulers/edm_euler
+      title: EDMEulerScheduler
     - local: api/schedulers/euler_ancestral
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler
       title: EulerDiscreteScheduler
-    - local: api/schedulers/edm_euler
-      title: EDMEulerScheduler
-    - local: api/schedulers/edm_multistep_dpm_solver
-      title: EDMDPMSolverMultistepScheduler
     - local: api/schedulers/heun
       title: HeunDiscreteScheduler
     - local: api/schedulers/ipndm
