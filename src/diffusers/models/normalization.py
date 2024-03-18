@@ -43,7 +43,9 @@ class AdaLayerNorm(nn.Module):
 
     def forward(self, x: torch.Tensor, timestep: torch.Tensor) -> torch.Tensor:
         emb = self.linear(self.silu(self.emb(timestep)))
-        scale, shift = torch.chunk(emb, 2)
+        scale, shift = torch.chunk(emb, 2,dim=1)
+        scale=scale.unsqueeze(1).expand_as(x)
+        shift=shift.unsqueeze(1).expand_as(x)
         x = self.norm(x) * (1 + scale) + shift
         return x
 
