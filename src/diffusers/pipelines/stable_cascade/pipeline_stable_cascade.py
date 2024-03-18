@@ -168,8 +168,8 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
         prompt_embeds_pooled = prompt_embeds_pooled.to(dtype=self.text_encoder.dtype, device=device)
-        prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
-        prompt_embeds_pooled = prompt_embeds_pooled.repeat_interleave(num_images_per_prompt, dim=0)
+        prompt_embeds = prompt_embeds.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
+        prompt_embeds_pooled = prompt_embeds_pooled.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
 
         if negative_prompt_embeds is None and do_classifier_free_guidance:
             uncond_tokens: List[str]
@@ -419,7 +419,6 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         latents = self.prepare_latents(
             image_embeddings, num_images_per_prompt, dtype, device, generator, latents, self.scheduler
         )
-
         # 6. Run denoising loop
         self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
