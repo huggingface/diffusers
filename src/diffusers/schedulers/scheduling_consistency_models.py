@@ -104,7 +104,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
@@ -233,7 +233,7 @@ class CMStochasticIterativeScheduler(SchedulerMixin, ConfigMixin):
         sigmas = self._convert_to_karras(ramp)
         timesteps = self.sigma_to_t(sigmas)
 
-        sigmas = np.concatenate([sigmas, [self.sigma_min]]).astype(np.float32)
+        sigmas = np.concatenate([sigmas, [self.config.sigma_min]]).astype(np.float32)
         self.sigmas = torch.from_numpy(sigmas).to(device=device)
 
         if str(device).startswith("mps"):
