@@ -1026,7 +1026,7 @@ class StableDiffusionInpaintPipeline(
                 `padding_mask_crop` is not `None`, it will first find a rectangular region with the same aspect ration of the image and
                 contains all masked area, and then expand that area based on `padding_mask_crop`. The image and mask_image will then be cropped based on
                 the expanded area before resizing to the original image size for inpainting. This is useful when the masked area is small while the image is large
-                and contain information inreleant for inpainging, such as background.
+                and contain information irrelevant for inpainting, such as background.
             strength (`float`, *optional*, defaults to 1.0):
                 Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
                 starting point and more noise is added the higher the `strength`. The number of denoising steps depends
