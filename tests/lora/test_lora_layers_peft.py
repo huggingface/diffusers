@@ -1323,6 +1323,7 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         expected_slice_scale = np.array([0.307, 0.283, 0.310, 0.310, 0.300, 0.314, 0.336, 0.314, 0.321])
 
         predicted_slice = images[0, -3:, -3:, -1].flatten()
+        print(", ".join([str(x) for x in predicted_slice.tolist()]))
 
         self.assertTrue(np.allclose(expected_slice_scale, predicted_slice, atol=1e-3, rtol=1e-3))
 
