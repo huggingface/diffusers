@@ -107,7 +107,12 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
         if file_extension == SAFETENSORS_FILE_EXTENSION:
             return safetensors.torch.load_file(checkpoint_file, device="cpu")
         else:
-            return torch.load(checkpoint_file, map_location="cpu")
+            weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
+            return torch.load(
+                checkpoint_file,
+                map_location="cpu",
+                **weights_only_kwarg,
+            )
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
