@@ -15,7 +15,6 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-import copy
 import torch.nn as nn
 import torch.utils.checkpoint
 
