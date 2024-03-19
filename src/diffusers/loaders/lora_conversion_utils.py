@@ -14,7 +14,7 @@
 
 import re
 
-from ..utils import logging
+from ..utils import is_peft_version, logging
 
 
 logger = logging.get_logger(__name__)
@@ -131,6 +131,12 @@ def _convert_kohya_lora_to_diffusers(state_dict, unet_name="unet", text_encoder_
     is_unet_dora_lora = any("dora_scale" in k and "lora_unet_" in k for k in state_dict)
     is_te_dora_lora = any("dora_scale" in k and ("lora_te_" in k or "lora_te1_" in k) for k in state_dict)
     is_te2_dora_lora = any("dora_scale" in k and "lora_te2_" in k for k in state_dict)
+
+    if is_unet_dora_lora or is_te_dora_lora or is_te2_dora_lora:
+        if is_peft_version("<", "0.9.0"):
+            raise ValueError(
+                "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+            )
 
     # every down weight has a corresponding up weight and potentially an alpha weight
     lora_keys = [k for k in state_dict.keys() if k.endswith("lora_down.weight")]
