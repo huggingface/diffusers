@@ -716,7 +716,7 @@ class SchedulerCommonTest(unittest.TestCase):
                 # Get valid timestep based on sigma_max, which should always be in timestep schedule.
                 scaled_sigma_max = scheduler.sigma_to_t(scheduler.config.sigma_max)
                 scaled_sample = scheduler.scale_model_input(sample, scaled_sigma_max)
-            if scheduler_class == EDMEulerScheduler:
+            elif scheduler_class == EDMEulerScheduler:
                 scaled_sample = scheduler.scale_model_input(sample, scheduler.timesteps[-1])
             else:
                 scaled_sample = scheduler.scale_model_input(sample, 0.0)
@@ -782,7 +782,7 @@ class SchedulerCommonTest(unittest.TestCase):
             # no warning should be thrown
             assert cap_logger.out == ""
 
-            logger = logging.get_logger("diffusers.schedulers.schedulering_utils")
+            logger = logging.get_logger("diffusers.schedulers.scheduling_utils")
             # 30 for warning
             logger.setLevel(30)
             with CaptureLogger(logger) as cap_logger:
