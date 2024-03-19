@@ -768,10 +768,14 @@ class DEISMultistepScheduler(SchedulerMixin, ConfigMixin):
             schedule_timesteps = self.timesteps.to(original_samples.device)
             timesteps = timesteps.to(original_samples.device)
 
-        # begin_index is None when the scheduler is used for training
+        # begin_index is None when the scheduler is used for training or pipeline does not implement set_begin_index
         if self.begin_index is None:
             step_indices = [self.index_for_timestep(t, schedule_timesteps) for t in timesteps]
+        elif self.step_index is not None:
+        # add_noise is called after first denoising step (for inpainting)
+            step_indices = [self.step_index] * timesteps.shape[0]
         else:
+        # add noise is called bevore first denoising step to create inital latent(img2img)
             step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
