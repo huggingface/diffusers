@@ -19,18 +19,18 @@ import gc
 import os
 from collections import OrderedDict
 from copy import copy
-from typing import List, Optional, Union, Tuple
+from typing import List, Optional, Tuple, Union
 
 import numpy as np
-import PIL.Image
-from packaging import version
 import onnx
 import onnx_graphsurgeon as gs
+import PIL.Image
 import tensorrt as trt
 import torch
 from huggingface_hub import snapshot_download
 from huggingface_hub.utils import validate_hf_hub_args
 from onnx import shape_inference
+from packaging import version
 from polygraphy import cuda
 from polygraphy.backend.common import bytes_from_path
 from polygraphy.backend.onnx.loader import fold_constants
@@ -42,21 +42,21 @@ from polygraphy.backend.trt import (
     network_from_onnx_path,
     save_engine,
 )
-from diffusers.utils.torch_utils import randn_tensor
-from diffusers.image_processor import VaeImageProcessor
 from polygraphy.backend.trt import util as trt_util
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer, CLIPVisionModelWithProjection
 
+from diffusers.configuration_utils import FrozenDict, deprecate
+from diffusers.image_processor import VaeImageProcessor
+from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
 from diffusers.pipelines.stable_diffusion import (
     StableDiffusionPipelineOutput,
     StableDiffusionSafetyChecker,
 )
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
-from diffusers.configuration_utils import FrozenDict, deprecate
 from diffusers.schedulers import DDIMScheduler
 from diffusers.utils import logging
+from diffusers.utils.torch_utils import randn_tensor
 
 
 """
@@ -594,7 +594,9 @@ def make_VAE(model, device, max_batch_size, embedding_dim, inpaint=False):
     return VAE(model, device=device, max_batch_size=max_batch_size, embedding_dim=embedding_dim)
 
 
-class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin):
+class TensorRTStableDiffusionPipeline(
+    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, IPAdapterMixin, FromSingleFileMixin
+):
     r"""
     Pipeline for text-to-image generation using TensorRT accelerated Stable Diffusion.
 
@@ -683,13 +685,13 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
 
         if hasattr(scheduler.config, "steps_offset") and scheduler.config.steps_offset != 1:
             deprecation_message = (
-                 f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
-                 f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
-                 "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
-                 " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
-                 " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
-                 " file"
-             )
+                f"The configuration file of this scheduler: {scheduler} is outdated. `steps_offset`"
+                f" should be set to 1 instead of {scheduler.config.steps_offset}. Please make sure "
+                "to update the config accordingly as leaving `steps_offset` might led to incorrect results"
+                " in future versions. If you have downloaded this checkpoint from the Hugging Face Hub,"
+                " it would be very nice if you could open a Pull request for the `scheduler/scheduler_config.json`"
+                " file"
+            )
             deprecate("steps_offset!=1", "1.0.0", deprecation_message, standard_warn=False)
             new_config = dict(scheduler.config)
             new_config["steps_offset"] = 1
@@ -702,7 +704,8 @@ class TensorRTStableDiffusionPipeline(DiffusionPipeline, TextualInversionLoaderM
                 " sure to update the config accordingly as not setting `skip_prk_steps` in the config might lead to"
                 " incorrect results in future versions. If you have downloaded this checkpoint from the Hugging Face"
                 " Hub, it would be very nice if you could open a Pull request for the"
-                " `scheduler/scheduler_config.json` file")
+                " `scheduler/scheduler_config.json` file"
+            )
             deprecate(
                 "skip_prk_steps not set",
                 "1.0.0",
