@@ -100,8 +100,10 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         )
         self.register_to_config(latent_dim_scale=latent_dim_scale)
 
-    def prepare_latents(self, image_embeddings, num_images_per_prompt, dtype, device, generator, latents, scheduler):
-        batch_size, channels, height, width = image_embeddings.shape
+    def prepare_latents(
+        self, batch_size, image_embeddings, num_images_per_prompt, dtype, device, generator, latents, scheduler
+    ):
+        _, channels, height, width = image_embeddings.shape
         latents_shape = (
             batch_size * num_images_per_prompt,
             4,
@@ -168,8 +170,8 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
 
         prompt_embeds = prompt_embeds.to(dtype=self.text_encoder.dtype, device=device)
         prompt_embeds_pooled = prompt_embeds_pooled.to(dtype=self.text_encoder.dtype, device=device)
-        prompt_embeds = prompt_embeds.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
-        prompt_embeds_pooled = prompt_embeds_pooled.repeat_interleave(batch_size * num_images_per_prompt, dim=0)
+        prompt_embeds = prompt_embeds.repeat_interleave(num_images_per_prompt, dim=0)
+        prompt_embeds_pooled = prompt_embeds_pooled.repeat_interleave(num_images_per_prompt, dim=0)
 
         if negative_prompt_embeds is None and do_classifier_free_guidance:
             uncond_tokens: List[str]
@@ -383,7 +385,19 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         )
         if isinstance(image_embeddings, list):
             image_embeddings = torch.cat(image_embeddings, dim=0)
-        batch_size = image_embeddings.shape[0]
+
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        # Compute the effective number of images per prompt
+        # We must account for the fact that the image embeddings from the prior can be generated with num_images_per_prompt > 1
+        # This results in a case where a single prompt is associated with multiple image embeddings
+        # Divide the number of image embeddings by the batch size to determine if this is the case.
+        num_images_per_prompt = num_images_per_prompt * (image_embeddings.shape[0] // batch_size)
 
         # 2. Encode caption
         if prompt_embeds is None and negative_prompt_embeds is None:
@@ -417,8 +431,9 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
 
         # 5. Prepare latents
         latents = self.prepare_latents(
-            image_embeddings, num_images_per_prompt, dtype, device, generator, latents, self.scheduler
+            batch_size, image_embeddings, num_images_per_prompt, dtype, device, generator, latents, self.scheduler
         )
+
         # 6. Run denoising loop
         self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
