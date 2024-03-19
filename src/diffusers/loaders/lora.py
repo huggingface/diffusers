@@ -36,6 +36,7 @@ from ..utils import (
     get_adapter_name,
     get_peft_kwargs,
     is_accelerate_available,
+    is_peft_version,
     is_transformers_available,
     logging,
     recurse_remove_peft_layers,
@@ -451,6 +452,13 @@ class LoraLoaderMixin:
                     rank[key] = val.shape[1]
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
+                    raise ValueError(
+                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                    )
+                else:
+                    lora_config_kwargs.pop("use_dora")
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
@@ -572,6 +580,13 @@ class LoraLoaderMixin:
                     }
 
                 lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
+                if "use_dora" in lora_config_kwargs:
+                    if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
+                        raise ValueError(
+                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                        )
+                    else:
+                        lora_config_kwargs.pop("use_dora")
                 lora_config = LoraConfig(**lora_config_kwargs)
 
                 # adapter_name
@@ -654,6 +669,13 @@ class LoraLoaderMixin:
                     rank[key] = val.shape[1]
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict)
+            if "use_dora" in lora_config_kwargs:
+                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
+                    raise ValueError(
+                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                    )
+                else:
+                    lora_config_kwargs.pop("use_dora")
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
