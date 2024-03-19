@@ -14,6 +14,7 @@
 import inspect
 import os
 from pathlib import Path
+from types import NoneType
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
@@ -959,7 +960,7 @@ class LoraLoaderMixin:
         self,
         adapter_names: Union[List[str], str],
         text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
-        text_encoder_weights: Optional[Union[float, List[float]]] = None,
+        text_encoder_weights: Optional[Union[float, List[float], List[NoneType]]] = None,
     ):
         """
         Sets the adapter layers for the text encoder.
@@ -977,17 +978,16 @@ class LoraLoaderMixin:
             raise ValueError("PEFT backend is required for this method.")
 
         def process_weights(adapter_names, weights):
-            if weights is None:
-                weights = [1.0] * len(adapter_names)
-            elif isinstance(weights, float):
-                weights = [weights]
+            if not isinstance(weights, list):
+                weights = [weights] * len(adapter_names)
 
             if len(adapter_names) != len(weights):
                 raise ValueError(
                     f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
                 )
 
-            weights = [{"text_model": w} if w is not None else {"text_model": 1.0} for w in weights]
+            weights = [w or 1.0 for w in weights]  # Set None values to default of 1.0
+            weights = [{"text_model": w} for w in weights]
 
             return weights
 
@@ -1036,15 +1036,13 @@ class LoraLoaderMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        adapter_weights: Optional[Union[List[float], float, List[Dict], Dict]] = None,
+        adapter_weights: Optional[Union[float, Dict, List[float], List[Dict]]] = None,
     ):
+
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
 
-        allowed_numeric_dtypes = (float, int)
-        has_second_text_encoder = hasattr(self, "text_encoder_2")
-
         # Expand weights into a list, one entry per adapter
-        if adapter_weights is None or isinstance(adapter_weights, (allowed_numeric_dtypes, dict)):
+        if not isinstance(adapter_weights, list):
             adapter_weights = [adapter_weights] * len(adapter_names)
 
         if len(adapter_names) != len(adapter_weights):
@@ -1052,45 +1050,28 @@ class LoraLoaderMixin:
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(adapter_weights)}"
             )
 
-        # Normalize into dicts
-        allowed_keys = ["text_encoder", "unet"]
-        if has_second_text_encoder:
-            allowed_keys.append("text_encoder_2")
-
-        def ensure_is_dict(weight):
-            if isinstance(weight, dict):
-                return weight
-            elif isinstance(weight, allowed_numeric_dtypes):
-                return {key: weight for key in allowed_keys}
-            elif weight is None:
-                return {key: 1.0 for key in allowed_keys}
-            else:
-                raise RuntimeError(f"lora weight has wrong type {type(weight)}.")
-
-        adapter_weights = [ensure_is_dict(weight) for weight in adapter_weights]
-
-        for weights in adapter_weights:
-            for k in weights.keys():
-                if k not in allowed_keys:
-                    raise ValueError(
-                        f"Got invalid key '{k}' in lora weight dict. Allowed keys are 'text_encoder', 'text_encoder_2', 'down', 'mid', 'up'."
-                    )
-
         # Decompose weights into weights for unet, text_encoder and text_encoder_2
-        unet_weights, text_encoder_weights = [], []
-        if has_second_text_encoder:
-            text_encoder_2_weights = []
+        unet_weights, text_encoder_weights, text_encoder_2_weights = [], [], []
 
-        for weights in adapter_weights:
-            unet_weight = weights.get("unet", None)
-            text_encoder_weight = weights.get("text_encoder", None)
-            if has_second_text_encoder:
-                text_encoder_2_weight = weights.get("text_encoder_2", None)
+        for adapter_name, weights in zip(adapter_names, adapter_weights):
+            if isinstance(weights, dict):
+                unet_weight = weights.pop("unet", None)
+                text_encoder_weight = weights.pop("text_encoder", None)
+                text_encoder_2_weight = weights.pop("text_encoder_2", None)
+
+                if len(weights) >0:
+                    raise ValueError(f"Got invalid key '{weights.keys()}' in lora weight dict for adapter {adapter_name}.")
+
+                if  text_encoder_2_weight is not None and not hasattr(self, "text_encoder_2"):
+                    logger.warning("Lora weight dict contains text_encoder_2 weights but will be ignored because pipeline does not have text_encoder_2.")
+            else:
+               unet_weight = weights
+               text_encoder_weight = weights
+               text_encoder_2_weight = weights
 
             unet_weights.append(unet_weight)
             text_encoder_weights.append(text_encoder_weight)
-            if has_second_text_encoder:
-                text_encoder_2_weights.append(text_encoder_2_weight)
+            text_encoder_2_weights.append(text_encoder_2_weight)
 
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         # Handle the UNET

@@ -17,6 +17,7 @@ from collections import defaultdict
 from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
+from types import NoneType
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
@@ -562,25 +563,35 @@ class UNet2DConditionLoadersMixin:
                 module.unmerge()
 
     def _expand_lora_scales_dict(
-        self, scales, blocks_with_transformer: Dict[str, int], transformer_per_block: Dict[str, int]
+        self, scales: Union[float, Dict], blocks_with_transformer: Dict[str, int], transformer_per_block: Dict[str, int]
     ):
         """
-        Expands the inputs into a more granular dictionary. See the example below for more details. 
+        Expands the inputs into a more granular dictionary. See the example below for more details.
 
         Parameters:
+            scales (`Union[float, Dict]`):
+                Scales dict to expand.
             blocks_with_transformer (`Dict[str, int]`):
                 Dict with keys 'up' and 'down', showing which blocks have transformer layers
             transformer_per_block (`Dict[str, int]`):
                 Dict with keys 'up' and 'down', showing how many transformer layers each block has
 
         E.g. turns
-            {
+            scales = {
                 'down': 2,
                 'mid': 3,
                 'up': {
-                    'block_1': 4,
-                    'block_2': [5, 6, 7]
+                    'block_0': 4,
+                    'block_1': [5, 6, 7]
                 }
+            }
+            blocks_with_transformer = {
+                'down': [1,2],
+                'up': [0,1]
+            }
+            transformer_per_block = {
+                'down': 2,
+                'up': 3
             }
         into
             {
@@ -597,15 +608,13 @@ class UNet2DConditionLoadersMixin:
                 'up.block_1.2': 7,
             }
         """
-        allowed_numeric_dtypes = (float, int)
-
         if sorted(blocks_with_transformer.keys()) != ["down", "up"]:
             raise ValueError("blocks_with_transformer needs to be a dict with keys `'down' and `'up'`")
 
         if sorted(transformer_per_block.keys()) != ["down", "up"]:
             raise ValueError("transformer_per_block needs to be a dict with keys `'down' and `'up'`")
 
-        if isinstance(scales, allowed_numeric_dtypes):
+        if not isinstance(scales, dict):
             scales = {o: scales for o in ["down", "mid", "up"]}
 
         if "mid" not in scales:
@@ -616,13 +625,13 @@ class UNet2DConditionLoadersMixin:
                 scales[updown] = 1
 
             # eg {"down": 1} to {"down": {"block_1": 1, "block_2": 1}}}
-            if isinstance(scales[updown], allowed_numeric_dtypes):
+            if not isinstance(scales[updown], dict):
                 scales[updown] = {f"block_{i}": scales[updown] for i in blocks_with_transformer[updown]}
 
             # eg {"down": "block_1": 1}} to {"down": "block_1": [1, 1]}}
             for i in blocks_with_transformer[updown]:
                 block = f"block_{i}"
-                if isinstance(scales[updown][block], allowed_numeric_dtypes):
+                if not isinstance(scales[updown][block], dict):
                     scales[updown][block] = [scales[updown][block] for _ in range(transformer_per_block[updown])]
 
             # eg {"down": "block_1": [1, 1]}}  to {"down.block_1.0": 1, "down.block_1.1": 1}
@@ -650,7 +659,7 @@ class UNet2DConditionLoadersMixin:
         for layer in scales.keys():
             if not any(layer_name(layer) in module for module in state_dict.keys()):
                 raise ValueError(
-                    f"Can't set lora scale for layer {layer}. It either doesn't exist in this unet or has not attentions."
+                    f"Can't set lora scale for layer {layer}. It either doesn't exist in this unet or it has no attentions."
                 )
 
         return {layer_name(name): weight for name, weight in scales.items()}
@@ -658,7 +667,7 @@ class UNet2DConditionLoadersMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        weights: Optional[Union[List[float], float, List[Dict], Dict]] = None,
+        weights: Optional[Union[float, Dict, List[float], List[Dict], List[NoneType]]] = None,
     ):
         """
         Set the currently active adapters for use in the UNet.
@@ -691,9 +700,8 @@ class UNet2DConditionLoadersMixin:
 
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
 
-        if weights is None:
-            weights = [1.0] * len(adapter_names)
-        elif isinstance(weights, (float, dict)):
+        # Expand weights into a list, one entry per adapter
+        if not isinstance(weights, list):
             weights = [weights] * len(adapter_names)
 
         if len(adapter_names) != len(weights):
@@ -701,8 +709,7 @@ class UNet2DConditionLoadersMixin:
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
             )
 
-        # Set missing value to default of 1.0
-        weights = [weight or 1.0 for weight in weights]
+        weights = [weight or 1.0 for weight in weights]  # Set None values to default of 1.0
         blocks_with_transformer = {
             "down": [i for i, block in enumerate(self.down_blocks) if hasattr(block, "attentions")],
             "up": [i for i, block in enumerate(self.up_blocks) if hasattr(block, "attentions")],
