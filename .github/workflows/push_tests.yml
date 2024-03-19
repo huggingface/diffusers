@@ -34,14 +34,15 @@ jobs:
         with:
           python-version: "3.8"
       - name: Install dependencies
-        run: pip install huggingface_hub
+        run: |
+          pip install -e .
+          pip install huggingface_hub
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
           matrix=$(python utils/fetch_torch_cuda_pipeline_test_matrix.py)
           echo $matrix
           echo "pipeline_test_matrix=$matrix" >> $GITHUB_OUTPUT
-
       - name: Pipeline Tests Artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
