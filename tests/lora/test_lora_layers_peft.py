@@ -91,7 +91,7 @@ class PeftLoraLoaderMixinTests:
     vae_kwargs = None
 
     def get_dummy_components(self, scheduler_cls=None):
-        scheduler_cls = self.scheduler_cls if scheduler_cls is None else LCMScheduler
+        scheduler_cls = self.scheduler_cls if scheduler_cls is None else scheduler_cls
         rank = 4
 
         torch.manual_seed(0)
