@@ -29,6 +29,7 @@ from diffusers import (
     AutoencoderKL,
     DDIMScheduler,
     DPMSolverMultistepScheduler,
+    EulerAncestralDiscreteScheduler,
     LCMScheduler,
     LMSDiscreteScheduler,
     PNDMScheduler,
@@ -558,8 +559,6 @@ class StableDiffusionSimpleInpaintPipelineFastTests(StableDiffusionInpaintPipeli
         assert np.abs(image_slice1.flatten() - image_slice2.flatten()).max() > 1e-2
 
     def test_stable_diffusion_inpaint_euler(self):
-        from diffusers import EulerAncestralDiscreteScheduler
-
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components(time_cond_proj_dim=256)
         sd_pipe = StableDiffusionInpaintPipeline(**components)
