@@ -1301,6 +1301,11 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         pipe = pipe.to("cuda")
 
         self.assertTrue(
+            self.check_if_lora_correctly_set(pipe.unet),
+            "Lora not correctly set in UNet",
+        )
+
+        self.assertTrue(
             self.check_if_lora_correctly_set(pipe.text_encoder),
             "Lora not correctly set in text encoder 2",
         )
