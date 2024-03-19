@@ -1,4 +1,4 @@
-__version__ = "0.27.0.dev0"
+__version__ = "0.28.0.dev0"
 
 from typing import TYPE_CHECKING
 
@@ -253,6 +253,8 @@ else:
             "LatentConsistencyModelImg2ImgPipeline",
             "LatentConsistencyModelPipeline",
             "LDMTextToImagePipeline",
+            "LEditsPPPipelineStableDiffusion",
+            "LEditsPPPipelineStableDiffusionXL",
             "MusicLDMPipeline",
             "PaintByExamplePipeline",
             "PIAPipeline",
@@ -623,6 +625,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LatentConsistencyModelImg2ImgPipeline,
             LatentConsistencyModelPipeline,
             LDMTextToImagePipeline,
+            LEditsPPPipelineStableDiffusion,
+            LEditsPPPipelineStableDiffusionXL,
             MusicLDMPipeline,
             PaintByExamplePipeline,
             PIAPipeline,

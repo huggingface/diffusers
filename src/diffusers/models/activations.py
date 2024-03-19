@@ -17,8 +17,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from ..utils import USE_PEFT_BACKEND
-from .lora import LoRACompatibleLinear
+from ..utils import deprecate
 
 
 ACTIVATION_FUNCTIONS = {
@@ -87,9 +86,7 @@ class GEGLU(nn.Module):
 
     def __init__(self, dim_in: int, dim_out: int, bias: bool = True):
         super().__init__()
-        linear_cls = LoRACompatibleLinear if not USE_PEFT_BACKEND else nn.Linear
-
-        self.proj = linear_cls(dim_in, dim_out * 2, bias=bias)
+        self.proj = nn.Linear(dim_in, dim_out * 2, bias=bias)
 
     def gelu(self, gate: torch.Tensor) -> torch.Tensor:
         if gate.device.type != "mps":
@@ -97,9 +94,12 @@ class GEGLU(nn.Module):
         # mps: gelu is not implemented for float16
         return F.gelu(gate.to(dtype=torch.float32)).to(dtype=gate.dtype)
 
-    def forward(self, hidden_states, scale: float = 1.0):
-        args = () if USE_PEFT_BACKEND else (scale,)
-        hidden_states, gate = self.proj(hidden_states, *args).chunk(2, dim=-1)
+    def forward(self, hidden_states, *args, **kwargs):
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
+        hidden_states, gate = self.proj(hidden_states).chunk(2, dim=-1)
         return hidden_states * self.gelu(gate)
 
 

@@ -51,7 +51,7 @@ if is_wandb_available():
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -180,7 +180,7 @@ def log_validation(
                 }
             )
         else:
-            logger.warn(f"image logging not implemented for {tracker.name}")
+            logger.warning(f"image logging not implemented for {tracker.name}")
 
     del pipeline
     torch.cuda.empty_cache()

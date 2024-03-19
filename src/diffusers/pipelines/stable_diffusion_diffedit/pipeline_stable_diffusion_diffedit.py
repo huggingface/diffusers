@@ -716,15 +716,12 @@ class StableDiffusionDiffEditPipeline(
                     f" `source_negative_prompt_embeds` {source_negative_prompt_embeds.shape}."
                 )
 
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_img2img.StableDiffusionImg2ImgPipeline.get_timesteps
     def get_timesteps(self, num_inference_steps, strength, device):
         # get the original timestep using init_timestep
         init_timestep = min(int(num_inference_steps * strength), num_inference_steps)
 
         t_start = max(num_inference_steps - init_timestep, 0)
         timesteps = self.scheduler.timesteps[t_start * self.scheduler.order :]
-        if hasattr(self.scheduler, "set_begin_index"):
-            self.scheduler.set_begin_index(t_start * self.scheduler.order)
 
         return timesteps, num_inference_steps - t_start
 
@@ -1304,7 +1301,7 @@ class StableDiffusionDiffEditPipeline(
         callback: Optional[Callable[[int, int, torch.FloatTensor], None]] = None,
         callback_steps: int = 1,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        clip_ckip: int = None,
+        clip_skip: int = None,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -1426,7 +1423,7 @@ class StableDiffusionDiffEditPipeline(
             prompt_embeds=prompt_embeds,
             negative_prompt_embeds=negative_prompt_embeds,
             lora_scale=text_encoder_lora_scale,
-            clip_skip=clip_ckip,
+            clip_skip=clip_skip,
         )
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
