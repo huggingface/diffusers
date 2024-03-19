@@ -238,7 +238,7 @@ We also want to thank @heejkoo for the very helpful overview of papers, code and
 
 ```bibtex
 @misc{von-platen-etal-2022-diffusers,
-  author = {Patrick von Platen and Suraj Patil and Anton Lozhkov and Pedro Cuenca and Nathan Lambert and Kashif Rasul and Mishig Davaadorj and Dhruv Nair and Sayak Paul and William Berman and Yiyi Xu Thomas Wolf},
+  author = {Patrick von Platen and Suraj Patil and Anton Lozhkov and Pedro Cuenca and Nathan Lambert and Kashif Rasul and Mishig Davaadorj and Dhruv Nair and Sayak Paul and William Berman and Yiyi Xu and Steven Liu and Thomas Wolf},
   title = {Diffusers: State-of-the-art diffusion models},
   year = {2022},
   publisher = {GitHub},
