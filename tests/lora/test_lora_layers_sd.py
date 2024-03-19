@@ -165,7 +165,7 @@ class LoraIntegrationTests(unittest.TestCase):
 
         self.assertTrue(
             check_if_lora_correctly_set(pipe.text_encoder),
-            "Lora not correctly set in text encoder 2",
+            "Lora not correctly set in text encoder",
         )
 
         prompt = "a red sks dog"
