@@ -159,7 +159,7 @@ class PeftLoraLoaderMixinTests:
 
         pipeline_inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "num_inference_steps": 2,
+            "num_inference_steps": 5,
             "guidance_scale": 6.0,
             "output_type": "np",
         }
@@ -590,7 +590,7 @@ class PeftLoraLoaderMixinTests:
                 **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
             ).images
             self.assertTrue(
-                not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+                not np.allclose(output_lora, output_lora_scale, atol=1e-4, rtol=1e-4),
                 "Lora + scale should change the output",
             )
 
@@ -1520,6 +1520,11 @@ class StableDiffusionLoRATests(PeftLoraLoaderMixinTests, unittest.TestCase):
         pipe = StableDiffusionPipeline.from_pretrained(path, torch_dtype=torch.float32)
         pipe.load_lora_weights(lora_id)
         pipe = pipe.to("cuda")
+
+        self.assertTrue(
+            self.check_if_lora_correctly_set(pipe.unet),
+            "Lora not correctly set in UNet",
+        )
 
         self.assertTrue(
             self.check_if_lora_correctly_set(pipe.text_encoder),

@@ -654,7 +654,7 @@ class IFInpaintingPipeline(DiffusionPipeline, LoraLoaderMixin):
 
             for image_ in image:
                 image_ = image_.convert("RGB")
-                image_ = resize(image_, self.unet.sample_size)
+                image_ = resize(image_, self.unet.config.sample_size)
                 image_ = np.array(image_)
                 image_ = image_.astype(np.float32)
                 image_ = image_ / 127.5 - 1
@@ -701,7 +701,7 @@ class IFInpaintingPipeline(DiffusionPipeline, LoraLoaderMixin):
 
             for mask_image_ in mask_image:
                 mask_image_ = mask_image_.convert("L")
-                mask_image_ = resize(mask_image_, self.unet.sample_size)
+                mask_image_ = resize(mask_image_, self.unet.config.sample_size)
                 mask_image_ = np.array(mask_image_)
                 mask_image_ = mask_image_[None, None, :]
                 new_mask_image.append(mask_image_)
