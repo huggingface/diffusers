@@ -1178,11 +1178,12 @@ class UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin,
         # we're popping the `scale` instead of getting it because otherwise `scale` will be propagated
         # to the internal blocks and will raise deprecation warnings. this will be confusing for our users.
         if cross_attention_kwargs is not None:
-            lora_scale = cross_attention_kwargs.get("scale", 1.0)
+            lora_scale = cross_attention_kwargs.pop("scale", 1.0)
         else:
             lora_scale = 1.0
 
         if USE_PEFT_BACKEND:
+            print(f"lora scale: {lora_scale}")
             # weight the lora layers by setting `lora_scale` for each PEFT layer
             scale_lora_layers(self, lora_scale)
 
