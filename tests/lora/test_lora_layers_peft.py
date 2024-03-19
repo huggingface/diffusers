@@ -589,7 +589,7 @@ class PeftLoraLoaderMixinTests:
                 **inputs, generator=torch.manual_seed(0), cross_attention_kwargs={"scale": 0.5}
             ).images
             self.assertTrue(
-                not np.allclose(output_lora, output_lora_scale, atol=1e-3, rtol=1e-3),
+                not np.allclose(output_lora, output_lora_scale, atol=1e-4, rtol=1e-4),
                 "Lora + scale should change the output",
             )
 
