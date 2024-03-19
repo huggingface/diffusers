@@ -32,10 +32,10 @@ from diffusers.utils.import_utils import is_invisible_watermark_available
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import (
+    FromSingleFileMixin,
     IPAdapterMixin,
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
-    FromSingleFileMixin
 )
 from ...models import AutoencoderKL, ControlNetModel, ImageProjection, UNet2DConditionModel
 from ...models.attention_processor import (
