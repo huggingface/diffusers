@@ -429,7 +429,7 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
               style="width: 300px;" />
         </td>
     </tr>
-<table>
+</table>
 
 ## Using AnimateLCM
 
