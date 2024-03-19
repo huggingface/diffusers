@@ -270,7 +270,7 @@ class ConfigTester(unittest.TestCase):
             config.save_config(tmpdirname)
 
             # now loading it with SampleObject2 should put f into `_use_default_values`
-            config = SampleObject2.from_config(tmpdirname)
+            config = SampleObject2.from_config(SampleObject2.load_config(tmpdirname))
 
             assert "f" in config.config._use_default_values
             assert config.config.f == [1, 3]
