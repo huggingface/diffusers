@@ -847,7 +847,7 @@ class PeftLoraLoaderMixinTests:
                 )
 
             weights_1 = {
-                "unet" : {
+                "unet": {
                     "down": 5,
                 }
             }
@@ -855,7 +855,7 @@ class PeftLoraLoaderMixinTests:
             output_weights_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
             weights_2 = {
-                "unet" : {
+                "unet": {
                     "up": 5,
                 }
             }
@@ -915,17 +915,8 @@ class PeftLoraLoaderMixinTests:
                     self.check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                 )
 
-            scales_1 = {
-                "unet" : {
-                    "down": 5
-                }
-            }
-            scales_2 = {
-                "unet" : {
-                    "down": 5,
-                    "mid": 5
-                }
-            }
+            scales_1 = {"unet": {"down": 5}}
+            scales_2 = {"unet": {"down": 5, "mid": 5}}
             pipe.set_adapters("adapter-1", scales_1)
 
             output_adapter_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
@@ -990,7 +981,7 @@ class PeftLoraLoaderMixinTests:
         def all_possible_dict_opts(unet, value):
             """
             Generate every possible combination for how a lora weight dict can be.
-            E.g. 2, {"down": 2}, {"down": [2,2,2]}, {"mid": 2, "up": [2,2,2]}, ...
+            E.g. 2, {"unet: {"down": 2}}, {"unet: {"down": [2,2,2]}}, {"unet: {"mid": 2, "up": [2,2,2]}}, ...
             """
 
             down_blocks_with_tf = [i for i, d in enumerate(unet.down_blocks) if hasattr(d, "attentions")]

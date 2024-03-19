@@ -1038,7 +1038,6 @@ class LoraLoaderMixin:
         adapter_names: Union[List[str], str],
         adapter_weights: Optional[Union[float, Dict, List[float], List[Dict]]] = None,
     ):
-
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
 
         # Expand weights into a list, one entry per adapter
@@ -1059,15 +1058,19 @@ class LoraLoaderMixin:
                 text_encoder_weight = weights.pop("text_encoder", None)
                 text_encoder_2_weight = weights.pop("text_encoder_2", None)
 
-                if len(weights) >0:
-                    raise ValueError(f"Got invalid key '{weights.keys()}' in lora weight dict for adapter {adapter_name}.")
+                if len(weights) > 0:
+                    raise ValueError(
+                        f"Got invalid key '{weights.keys()}' in lora weight dict for adapter {adapter_name}."
+                    )
 
-                if  text_encoder_2_weight is not None and not hasattr(self, "text_encoder_2"):
-                    logger.warning("Lora weight dict contains text_encoder_2 weights but will be ignored because pipeline does not have text_encoder_2.")
+                if text_encoder_2_weight is not None and not hasattr(self, "text_encoder_2"):
+                    logger.warning(
+                        "Lora weight dict contains text_encoder_2 weights but will be ignored because pipeline does not have text_encoder_2."
+                    )
             else:
-               unet_weight = weights
-               text_encoder_weight = weights
-               text_encoder_2_weight = weights
+                unet_weight = weights
+                text_encoder_weight = weights
+                text_encoder_2_weight = weights
 
             unet_weights.append(unet_weight)
             text_encoder_weights.append(text_encoder_weight)

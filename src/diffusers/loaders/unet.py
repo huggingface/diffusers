@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import inspect
 import os
 from collections import defaultdict
@@ -563,7 +564,10 @@ class UNet2DConditionLoadersMixin:
                 module.unmerge()
 
     def _expand_lora_scales_dict(
-        self, scales: Union[float, Dict], blocks_with_transformer: Dict[str, int], transformer_per_block: Dict[str, int]
+        self,
+        scales: Union[float, Dict],
+        blocks_with_transformer: Dict[str, int],
+        transformer_per_block: Dict[str, int],
     ):
         """
         Expands the inputs into a more granular dictionary. See the example below for more details.
@@ -614,6 +618,8 @@ class UNet2DConditionLoadersMixin:
         if sorted(transformer_per_block.keys()) != ["down", "up"]:
             raise ValueError("transformer_per_block needs to be a dict with keys `'down' and `'up'`")
 
+        scales = copy.deepcopy(scales)
+
         if not isinstance(scales, dict):
             scales = {o: scales for o in ["down", "mid", "up"]}
 
@@ -631,7 +637,7 @@ class UNet2DConditionLoadersMixin:
             # eg {"down": "block_1": 1}} to {"down": "block_1": [1, 1]}}
             for i in blocks_with_transformer[updown]:
                 block = f"block_{i}"
-                if not isinstance(scales[updown][block], dict):
+                if not isinstance(scales[updown][block], list):
                     scales[updown][block] = [scales[updown][block] for _ in range(transformer_per_block[updown])]
 
             # eg {"down": "block_1": [1, 1]}}  to {"down.block_1.0": 1, "down.block_1.1": 1}
