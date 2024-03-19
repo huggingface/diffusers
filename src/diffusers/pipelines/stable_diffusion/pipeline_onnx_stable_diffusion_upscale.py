@@ -469,7 +469,7 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
-            self.num_latent_channels,
+            self.config.num_latent_channels,
             height,
             width,
             latents_dtype,
@@ -498,12 +498,12 @@ class OnnxStableDiffusionUpscalePipeline(DiffusionPipeline):
 
         # 7. Check that sizes of image and latents match
         num_channels_image = image.shape[1]
-        if self.num_latent_channels + num_channels_image != self.num_unet_input_channels:
+        if self.config.num_latent_channels + num_channels_image != self.config.num_unet_input_channels:
             raise ValueError(
                 "Incorrect configuration settings! The config of `pipeline.unet` expects"
-                f" {self.num_unet_input_channels} but received `num_channels_latents`: {self.num_latent_channels} +"
+                f" {self.config.num_unet_input_channels} but received `num_channels_latents`: {self.config.num_latent_channels} +"
                 f" `num_channels_image`: {num_channels_image} "
-                f" = {self.num_latent_channels + num_channels_image}. Please verify the config of"
+                f" = {self.config.num_latent_channels + num_channels_image}. Please verify the config of"
                 " `pipeline.unet` or your `image` input."
             )
 
