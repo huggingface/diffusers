@@ -503,7 +503,7 @@ class StableDiffusionXLMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -708,7 +708,7 @@ class StableDiffusionXLMultiControlNetOneModelPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet = ControlNetModel(
@@ -1002,6 +1002,11 @@ class ControlNetSDXLPipelineSlowTests(unittest.TestCase):
         for param_name, param_value in single_file_pipe.unet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
+
+            # Upcast attention might be set to None in a config file, which is incorrect. It should default to False in the model
+            if param_name == "upcast_attention" and pipe.unet.config[param_name] is None:
+                pipe.unet.config[param_name] = False
+
             assert (
                 pipe.unet.config[param_name] == param_value
             ), f"{param_name} differs between single file loading and pretrained loading"
