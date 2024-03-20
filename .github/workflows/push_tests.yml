@@ -21,10 +21,7 @@ env:
 jobs:
   setup_torch_cuda_pipeline_matrix:
     name: Setup Torch Pipelines CUDA Slow Tests Matrix
-    runs-on: [single-gpu, nvidia-gpu, t4, ci]
-    container:
-      image: diffusers/diffusers-pytorch-cpu # this is a CPU image, but we need it to fetch the matrix
-      options: --shm-size "16gb" --ipc host
+    runs-on: ubuntu-latest
     outputs:
       pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
     steps:
@@ -32,24 +29,20 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
       - name: Install dependencies
         run: |
-          apt-get update && apt-get install libsndfile1-dev libgl1 -y
-          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-          python -m uv pip install -e [quality,test]
-          python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
-
-      - name: Environment
-        run: |
-          python utils/print_env.py
-
+          pip install -e .
+          pip install huggingface_hub
       - name: Fetch Pipeline Matrix
         id: fetch_pipeline_matrix
         run: |
           matrix=$(python utils/fetch_torch_cuda_pipeline_test_matrix.py)
           echo $matrix
           echo "pipeline_test_matrix=$matrix" >> $GITHUB_OUTPUT
-
       - name: Pipeline Tests Artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v2
