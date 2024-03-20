@@ -64,7 +64,7 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -103,7 +103,14 @@ Special VAE used for training: {vae_path}.
         inference=True,
     )
 
-    tags = ["stable-diffusion-xl", "stable-diffusion-xl-diffusers", "text-to-image", "diffusers", "lora"]
+    tags = [
+        "stable-diffusion-xl",
+        "stable-diffusion-xl-diffusers",
+        "text-to-image",
+        "diffusers",
+        "diffusers-training",
+        "lora",
+    ]
     model_card = populate_model_card(model_card, tags=tags)
 
     model_card.save(os.path.join(repo_folder, "README.md"))
@@ -370,7 +377,7 @@ def parse_args(input_args=None):
         "--prediction_type",
         type=str,
         default=None,
-        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.",
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediction_type` is chosen.",
     )
     parser.add_argument(
         "--hub_model_id",
@@ -417,6 +424,11 @@ def parse_args(input_args=None):
         type=int,
         default=4,
         help=("The dimension of the LoRA update matrices."),
+    )
+    parser.add_argument(
+        "--debug_loss",
+        action="store_true",
+        help="debug loss for each image, if filenames are awailable in the dataset",
     )
 
     if input_args is not None:
@@ -585,7 +597,7 @@ def main(args):
     text_encoder_two.requires_grad_(False)
     unet.requires_grad_(False)
 
-    # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+    # For mixed precision training we cast all non-trainable weights (vae, non-lora text_encoder and non-lora unet) to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -596,6 +608,7 @@ def main(args):
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     # The VAE is in float32 to avoid NaN losses.
     unet.to(accelerator.device, dtype=weight_dtype)
+
     if args.pretrained_vae_model_name_or_path is None:
         vae.to(accelerator.device, dtype=torch.float32)
     else:
@@ -609,7 +622,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -648,7 +661,7 @@ def main(args):
     def save_model_hook(models, weights, output_dir):
         if accelerator.is_main_process:
             # there are only two options here. Either are just the unet attn processor layers
-            # or there are the unet and text encoder atten layers
+            # or there are the unet and text encoder attn layers
             unet_lora_layers_to_save = None
             text_encoder_one_lora_layers_to_save = None
             text_encoder_two_lora_layers_to_save = None
@@ -883,13 +896,17 @@ def main(args):
         tokens_one, tokens_two = tokenize_captions(examples)
         examples["input_ids_one"] = tokens_one
         examples["input_ids_two"] = tokens_two
+        if args.debug_loss:
+            fnames = [os.path.basename(image.filename) for image in examples[image_column] if image.filename]
+            if fnames:
+                examples["filenames"] = fnames
         return examples
 
     with accelerator.main_process_first():
         if args.max_train_samples is not None:
             dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
         # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
+        train_dataset = dataset["train"].with_transform(preprocess_train, output_all_columns=True)
 
     def collate_fn(examples):
         pixel_values = torch.stack([example["pixel_values"] for example in examples])
@@ -898,13 +915,18 @@ def main(args):
         crop_top_lefts = [example["crop_top_lefts"] for example in examples]
         input_ids_one = torch.stack([example["input_ids_one"] for example in examples])
         input_ids_two = torch.stack([example["input_ids_two"] for example in examples])
-        return {
+        result = {
             "pixel_values": pixel_values,
             "input_ids_one": input_ids_one,
             "input_ids_two": input_ids_two,
             "original_sizes": original_sizes,
             "crop_top_lefts": crop_top_lefts,
         }
+
+        filenames = [example["filenames"] for example in examples if "filenames" in example]
+        if filenames:
+            result["filenames"] = filenames
+        return result
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
@@ -1098,7 +1120,9 @@ def main(args):
                     loss = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                     loss = loss.mean(dim=list(range(1, len(loss.shape)))) * mse_loss_weights
                     loss = loss.mean()
-
+                if args.debug_loss and "filenames" in batch:
+                    for fname in batch["filenames"]:
+                        accelerator.log({"loss_for_" + fname: loss}, step=global_step)
                 # Gather the losses across all processes for logging (if we use distributed training).
                 avg_loss = accelerator.gather(loss.repeat(args.train_batch_size)).mean()
                 train_loss += avg_loss.item() / args.gradient_accumulation_steps

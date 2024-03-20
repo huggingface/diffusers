@@ -273,7 +273,6 @@ Lastly, convert the image to a `PIL.Image` to see your generated image!
 ```py
 >>> image = (image / 2 + 0.5).clamp(0, 1).squeeze()
 >>> image = (image.permute(1, 2, 0) * 255).to(torch.uint8).cpu().numpy()
->>> images = (image * 255).round().astype("uint8")
 >>> image = Image.fromarray(image)
 >>> image
 ```

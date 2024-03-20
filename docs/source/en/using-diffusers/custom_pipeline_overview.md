@@ -239,5 +239,7 @@ pipeline.to("cuda")
 prompt = "柴犬、カラフルアート"
 
 image = pipeline(prompt=prompt).images[0]
-
 ```
+
+> [!TIP]
+> When using `trust_remote_code=True`, it is also strongly encouraged to pass a commit hash as a `revision` to make sure the author of the models did not update the code with some malicious new lines (unless you fully trust the authors of the models).

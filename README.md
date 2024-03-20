@@ -77,7 +77,7 @@ Please refer to the [How to use Stable Diffusion in Apple Silicon](https://huggi
 
 ## Quickstart
 
-Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 19000+ checkpoints):
+Generating outputs is super easy with 🤗 Diffusers. To generate an image from text, use the `from_pretrained` method to load any pretrained diffusion model (browse the [Hub](https://huggingface.co/models?library=diffusers&sort=downloads) for 22000+ checkpoints):
 
 ```python
 from diffusers import DiffusionPipeline
@@ -219,7 +219,7 @@ Also, say 👋 in our public Discord channel <a href="https://discord.gg/G7tWnz9
 - https://github.com/deep-floyd/IF
 - https://github.com/bentoml/BentoML
 - https://github.com/bmaltais/kohya_ss
-- +8000 other amazing GitHub repositories 💪
+- +9000 other amazing GitHub repositories 💪
 
 Thank you for using us ❤️.
 
@@ -238,7 +238,7 @@ We also want to thank @heejkoo for the very helpful overview of papers, code and
 
 ```bibtex
 @misc{von-platen-etal-2022-diffusers,
-  author = {Patrick von Platen and Suraj Patil and Anton Lozhkov and Pedro Cuenca and Nathan Lambert and Kashif Rasul and Mishig Davaadorj and Thomas Wolf},
+  author = {Patrick von Platen and Suraj Patil and Anton Lozhkov and Pedro Cuenca and Nathan Lambert and Kashif Rasul and Mishig Davaadorj and Dhruv Nair and Sayak Paul and William Berman and Yiyi Xu and Steven Liu and Thomas Wolf},
   title = {Diffusers: State-of-the-art diffusion models},
   year = {2022},
   publisher = {GitHub},
