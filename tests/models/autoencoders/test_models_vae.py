@@ -384,12 +384,10 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
         return self.init_dict, self.inputs_dict()
 
     @unittest.skip
-    def test_training(self):
-        ...
+    def test_training(self): ...
 
     @unittest.skip
-    def test_ema_training(self):
-        ...
+    def test_ema_training(self): ...
 
 
 class AutoncoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):

@@ -140,7 +140,7 @@ class PeftLoraLoaderMixinTests:
 
         pipeline_inputs = {
             "prompt": "A painting of a squirrel eating a burger",
-            "num_inference_steps": 2,
+            "num_inference_steps": 5,
             "guidance_scale": 6.0,
             "output_type": "np",
         }
