@@ -1082,13 +1082,19 @@ class PipelineTesterMixin:
                 original_pipe_components[k] = v
             else:
                 additional_components[k] = v
+        for k in original_expected_modules:
+            if k not in original_pipe_components:
+                if k in original_pipeline_class._optional_components:
+                    original_pipe_components[k] = None
+                else:
+                    raise ValueError(f"missing expected module {k}")
 
         # original pipeline: (sd/sdxl)
         pipe_original = original_pipeline_class(**original_pipe_components)
         pipe_original.to(torch_device)
         pipe_original.set_progress_bar_config(disable=None)
 
-        original_config = dict(pipe_original.config)
+        original_config = {k: v for k, v in pipe_original.config.items() if not k.startswith("_")}
 
         inputs = get_dummy_inputs_pipe_original(torch_device)
         output_original = pipe_original(**inputs).images
@@ -1098,6 +1104,7 @@ class PipelineTesterMixin:
         pipe1 = self.pipeline_class(**components)
         pipe1.to(torch_device)
         pipe1.set_progress_bar_config(disable=None)
+        pipe1_config = {k: v for k, v in pipe1.config.items() if not k.startswith("_")}
 
         inputs = get_dummy_inputs(torch_device)
         output1 = pipe1(**inputs)[0]
@@ -1106,6 +1113,7 @@ class PipelineTesterMixin:
         pipe2 = self.pipeline_class.from_pipe(pipe_original, **additional_components)
         pipe2.to(torch_device)
         pipe2.set_progress_bar_config(disable=None)
+        pipe2_config = {k: v for k, v in pipe2.config.items() if not k.startswith("_")}
 
         inputs = get_dummy_inputs(torch_device)
         output2 = pipe2(**inputs)[0]
@@ -1114,12 +1122,13 @@ class PipelineTesterMixin:
         pipe_original_2 = original_pipeline_class.from_pipe(pipe2)
         pipe_original_2.to(torch_device)
         pipe_original_2.set_progress_bar_config(disable=None)
+        pipe_original_2_config = {k: v for k, v in pipe_original_2.config.items() if not k.startswith("_")}
 
         inputs = get_dummy_inputs_pipe_original(torch_device)
         output_original2 = pipe_original_2(**inputs).images
 
-        assert dict(pipe1.config) == dict(pipe2.config)
-        assert dict(pipe_original_2.config) == original_config
+        assert pipe1_config == pipe2_config
+        assert pipe_original_2_config == original_config
 
         assert np.abs(output_original - output_original2).max() < 1e-3
         assert np.abs(output1 - output2).max() < 1e-3
