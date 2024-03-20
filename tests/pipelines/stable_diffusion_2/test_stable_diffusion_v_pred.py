@@ -308,7 +308,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
 
-        output = sd_pipe([prompt], generator=generator, num_inference_steps=5, output_type="numpy")
+        output = sd_pipe([prompt], generator=generator, num_inference_steps=5, output_type="np")
         image = output.images
 
         image_slice = image[0, 253:256, 253:256, -1]
@@ -335,7 +335,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         prompt = "a photograph of an astronaut riding a horse"
         generator = torch.manual_seed(0)
         image = sd_pipe(
-            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=5, output_type="numpy"
+            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=5, output_type="np"
         ).images
 
         image_slice = image[0, 253:256, 253:256, -1]
@@ -357,7 +357,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_attention_slicing()
         generator = torch.manual_seed(0)
         output_chunked = pipe(
-            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="np"
         )
         image_chunked = output_chunked.images
 
@@ -369,7 +369,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         # disable slicing
         pipe.disable_attention_slicing()
         generator = torch.manual_seed(0)
-        output = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy")
+        output = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="np")
         image = output.images
 
         # make sure that more than 3.0 GB is allocated

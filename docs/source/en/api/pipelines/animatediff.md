@@ -408,6 +408,29 @@ Make sure to check out the Schedulers [guide](../../using-diffusers/schedulers) 
 
 </Tip>
 
+<table>
+    <tr>
+      <th align=center>Without FreeInit enabled</th>
+      <th align=center>With FreeInit enabled</th>
+    </tr>
+    <tr>
+        <td align=center>
+          panda playing a guitar
+          <br />
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-no-freeinit.gif"
+              alt="panda playing a guitar"
+              style="width: 300px;" />
+        </td>
+        <td align=center>
+          panda playing a guitar
+          <br/>
+          <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/animatediff-freeinit.gif"
+              alt="panda playing a guitar"
+              style="width: 300px;" />
+        </td>
+    </tr>
+</table>
+
 ## Using AnimateLCM
 
 [AnimateLCM](https://animatelcm.github.io/) is a motion module checkpoint and an [LCM LoRA](https://huggingface.co/docs/diffusers/using-diffusers/inference_with_lcm_lora) that have been created using a consistency learning strategy that decouples the distillation of the image generation priors and the motion generation priors.
