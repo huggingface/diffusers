@@ -26,7 +26,7 @@ from packaging import version
 from torch import nn
 
 from .. import __version__
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -282,7 +282,7 @@ class LoraLoaderMixin:
                     subfolder=subfolder,
                     user_agent=user_agent,
                 )
-                state_dict = torch.load(model_file, map_location="cpu")
+                state_dict = load_state_dict(model_file)
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
