@@ -84,6 +84,9 @@ class MotionAdapter(ModelMixin, ConfigMixin):
     def __init__(
         self,
         block_out_channels: Tuple[int, ...] = (320, 640, 1280, 1280),
+        motion_activation_fn: str = "geglu",
+        motion_attention_bias: bool = False,
+        motion_cross_attention_dim: Optional[int] = None,
         motion_layers_per_block: int = 2,
         motion_mid_block_layers_per_block: int = 1,
         motion_num_attention_heads: int = 8,
@@ -92,11 +95,17 @@ class MotionAdapter(ModelMixin, ConfigMixin):
         use_motion_mid_block: bool = True,
         conv_in_channels: Optional[int] = None,
     ):
-        """Container to store AnimateDiff Motion Modules
+        r"""Container to store AnimateDiff Motion Modules
 
         Args:
             block_out_channels (`Tuple[int]`, *optional*, defaults to `(320, 640, 1280, 1280)`):
-            The tuple of output channels for each UNet block.
+                The tuple of output channels for each UNet block.
+            motion_activation_fn (`str`, *optional*, defaults to "geglu"):
+                The activation function to use in the motion module.
+            motion_attention_bias (`bool`, *optional*, defaults to False):
+                Whether to use bias in the attention layers of the motion module.
+            motion_cross_attention_dim (`int`, *optional*, defaults to None):
+                The dimension of the cross attention layer in the motion module.
             motion_layers_per_block (`int`, *optional*, defaults to 2):
                 The number of motion layers per UNet block.
             motion_mid_block_layers_per_block (`int`, *optional*, defaults to 1):
@@ -127,9 +136,9 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                 MotionModules(
                     in_channels=output_channel,
                     norm_num_groups=motion_norm_num_groups,
-                    cross_attention_dim=None,
-                    activation_fn="geglu",
-                    attention_bias=False,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    activation_fn=motion_activation_fn,
+                    attention_bias=motion_attention_bias,
                     num_attention_heads=motion_num_attention_heads,
                     max_seq_length=motion_max_seq_length,
                     layers_per_block=motion_layers_per_block,
@@ -140,9 +149,9 @@ class MotionAdapter(ModelMixin, ConfigMixin):
             self.mid_block = MotionModules(
                 in_channels=block_out_channels[-1],
                 norm_num_groups=motion_norm_num_groups,
-                cross_attention_dim=None,
-                activation_fn="geglu",
-                attention_bias=False,
+                cross_attention_dim=motion_cross_attention_dim,
+                activation_fn=motion_activation_fn,
+                attention_bias=motion_attention_bias,
                 num_attention_heads=motion_num_attention_heads,
                 layers_per_block=motion_mid_block_layers_per_block,
                 max_seq_length=motion_max_seq_length,
@@ -158,9 +167,9 @@ class MotionAdapter(ModelMixin, ConfigMixin):
                 MotionModules(
                     in_channels=output_channel,
                     norm_num_groups=motion_norm_num_groups,
-                    cross_attention_dim=None,
-                    activation_fn="geglu",
-                    attention_bias=False,
+                    cross_attention_dim=motion_cross_attention_dim,
+                    activation_fn=motion_activation_fn,
+                    attention_bias=motion_attention_bias,
                     num_attention_heads=motion_num_attention_heads,
                     max_seq_length=motion_max_seq_length,
                     layers_per_block=motion_layers_per_block + 1,
