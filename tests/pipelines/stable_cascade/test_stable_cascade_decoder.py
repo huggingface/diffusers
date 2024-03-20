@@ -33,6 +33,7 @@ from diffusers.utils.testing_utils import (
     slow,
     torch_device,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -245,6 +246,66 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
         )
 
         assert np.abs(decoder_output_prompt.images - decoder_output_prompt_embeds.images).max() < 1e-5
+
+    def test_stable_cascade_decoder_single_prompt_multiple_image_embeddings(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = StableCascadeDecoderPipeline(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prior_num_images_per_prompt = 2
+        decoder_num_images_per_prompt = 2
+        prompt = ["a cat"]
+        batch_size = len(prompt)
+
+        generator = torch.Generator(device)
+        image_embeddings = randn_tensor(
+            (batch_size * prior_num_images_per_prompt, 4, 4, 4), generator=generator.manual_seed(0)
+        )
+        decoder_output = pipe(
+            image_embeddings=image_embeddings,
+            prompt=prompt,
+            num_inference_steps=1,
+            output_type="np",
+            guidance_scale=0.0,
+            generator=generator.manual_seed(0),
+            num_images_per_prompt=decoder_num_images_per_prompt,
+        )
+
+        assert decoder_output.images.shape[0] == (
+            batch_size * prior_num_images_per_prompt * decoder_num_images_per_prompt
+        )
+
+    def test_stable_cascade_decoder_single_prompt_multiple_image_embeddings_with_guidance(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = StableCascadeDecoderPipeline(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prior_num_images_per_prompt = 2
+        decoder_num_images_per_prompt = 2
+        prompt = ["a cat"]
+        batch_size = len(prompt)
+
+        generator = torch.Generator(device)
+        image_embeddings = randn_tensor(
+            (batch_size * prior_num_images_per_prompt, 4, 4, 4), generator=generator.manual_seed(0)
+        )
+        decoder_output = pipe(
+            image_embeddings=image_embeddings,
+            prompt=prompt,
+            num_inference_steps=1,
+            output_type="np",
+            guidance_scale=2.0,
+            generator=generator.manual_seed(0),
+            num_images_per_prompt=decoder_num_images_per_prompt,
+        )
+
+        assert decoder_output.images.shape[0] == (
+            batch_size * prior_num_images_per_prompt * decoder_num_images_per_prompt
+        )
 
 
 @slow
