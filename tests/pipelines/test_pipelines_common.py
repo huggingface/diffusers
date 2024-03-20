@@ -1100,7 +1100,6 @@ class PipelineTesterMixin:
         output_original = pipe_original(**inputs).images
 
         # pipe1: self.pipeline_class
-        components = self.get_dummy_components()
         pipe1 = self.pipeline_class(**components)
         pipe1.to(torch_device)
         pipe1.set_progress_bar_config(disable=None)
@@ -1136,7 +1135,7 @@ class PipelineTesterMixin:
         # test with enalbe_model_cpu_offload
         pipe_original.enable_model_cpu_offload()
         pipe3 = self.pipeline_class.from_pipe(pipe_original, **additional_components)
-        pipe3.enble_model_cpu_offload()
+        pipe3.enable_model_cpu_offload()
         pipe3.set_progress_bar_config(disable=None)
 
         inputs = get_dummy_inputs(torch_device)
