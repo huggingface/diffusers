@@ -1,6 +1,9 @@
 name: Slow Tests on main
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - main
