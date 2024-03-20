@@ -67,7 +67,7 @@ jobs:
     runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
-      options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+      options: --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
     steps:
       - name: Checkout diffusers
         uses: actions/checkout@v3
