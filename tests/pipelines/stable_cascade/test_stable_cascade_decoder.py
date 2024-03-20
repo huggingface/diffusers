@@ -21,18 +21,19 @@ import torch
 from transformers import CLIPTextConfig, CLIPTextModelWithProjection, CLIPTokenizer
 
 from diffusers import DDPMWuerstchenScheduler, StableCascadeDecoderPipeline
-from diffusers.image_processor import VaeImageProcessor
 from diffusers.models import StableCascadeUNet
 from diffusers.pipelines.wuerstchen import PaellaVQModel
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
-    load_image,
+    load_numpy,
     load_pt,
+    numpy_cosine_similarity_distance,
     require_torch_gpu,
     skip_mps,
     slow,
     torch_device,
 )
+from diffusers.utils.torch_utils import randn_tensor
 
 from ..test_pipelines_common import PipelineTesterMixin
 
@@ -246,6 +247,66 @@ class StableCascadeDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 
         assert np.abs(decoder_output_prompt.images - decoder_output_prompt_embeds.images).max() < 1e-5
 
+    def test_stable_cascade_decoder_single_prompt_multiple_image_embeddings(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = StableCascadeDecoderPipeline(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prior_num_images_per_prompt = 2
+        decoder_num_images_per_prompt = 2
+        prompt = ["a cat"]
+        batch_size = len(prompt)
+
+        generator = torch.Generator(device)
+        image_embeddings = randn_tensor(
+            (batch_size * prior_num_images_per_prompt, 4, 4, 4), generator=generator.manual_seed(0)
+        )
+        decoder_output = pipe(
+            image_embeddings=image_embeddings,
+            prompt=prompt,
+            num_inference_steps=1,
+            output_type="np",
+            guidance_scale=0.0,
+            generator=generator.manual_seed(0),
+            num_images_per_prompt=decoder_num_images_per_prompt,
+        )
+
+        assert decoder_output.images.shape[0] == (
+            batch_size * prior_num_images_per_prompt * decoder_num_images_per_prompt
+        )
+
+    def test_stable_cascade_decoder_single_prompt_multiple_image_embeddings_with_guidance(self):
+        device = "cpu"
+        components = self.get_dummy_components()
+
+        pipe = StableCascadeDecoderPipeline(**components)
+        pipe.set_progress_bar_config(disable=None)
+
+        prior_num_images_per_prompt = 2
+        decoder_num_images_per_prompt = 2
+        prompt = ["a cat"]
+        batch_size = len(prompt)
+
+        generator = torch.Generator(device)
+        image_embeddings = randn_tensor(
+            (batch_size * prior_num_images_per_prompt, 4, 4, 4), generator=generator.manual_seed(0)
+        )
+        decoder_output = pipe(
+            image_embeddings=image_embeddings,
+            prompt=prompt,
+            num_inference_steps=1,
+            output_type="np",
+            guidance_scale=2.0,
+            generator=generator.manual_seed(0),
+            num_images_per_prompt=decoder_num_images_per_prompt,
+        )
+
+        assert decoder_output.images.shape[0] == (
+            batch_size * prior_num_images_per_prompt * decoder_num_images_per_prompt
+        )
+
 
 @slow
 @require_torch_gpu
@@ -258,7 +319,7 @@ class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
 
     def test_stable_cascade_decoder(self):
         pipe = StableCascadeDecoderPipeline.from_pretrained(
-            "diffusers/StableCascade-decoder", torch_dtype=torch.bfloat16
+            "stabilityai/stable-cascade", variant="bf16", torch_dtype=torch.bfloat16
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -271,18 +332,16 @@ class StableCascadeDecoderPipelineIntegrationTests(unittest.TestCase):
         )
 
         image = pipe(
-            prompt=prompt, image_embeddings=image_embedding, num_inference_steps=10, generator=generator
+            prompt=prompt,
+            image_embeddings=image_embedding,
+            output_type="np",
+            num_inference_steps=2,
+            generator=generator,
         ).images[0]
 
-        assert image.size == (1024, 1024)
-
-        expected_image = load_image(
-            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/t2i.png"
+        assert image.shape == (1024, 1024, 3)
+        expected_image = load_numpy(
+            "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/stable_cascade/stable_cascade_decoder_image.npy"
         )
-
-        image_processor = VaeImageProcessor()
-
-        image_np = image_processor.pil_to_numpy(image)
-        expected_image_np = image_processor.pil_to_numpy(expected_image)
-
-        self.assertTrue(np.allclose(image_np, expected_image_np, atol=53e-2))
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
+        assert max_diff < 1e-4

@@ -20,15 +20,15 @@ from .transformers.transformer_temporal import (
 
 
 class TransformerTemporalModelOutput(TransformerTemporalModelOutput):
-    deprecation_message = "Importing `TransformerTemporalModelOutput` from `diffusers.models.transformer_temporal` is deprecated and this will be removed in a future version. Please use `from diffusers.models.transformers.tranformer_temporal import TransformerTemporalModelOutput`, instead."
+    deprecation_message = "Importing `TransformerTemporalModelOutput` from `diffusers.models.transformer_temporal` is deprecated and this will be removed in a future version. Please use `from diffusers.models.transformers.transformer_temporal import TransformerTemporalModelOutput`, instead."
     deprecate("TransformerTemporalModelOutput", "0.29", deprecation_message)
 
 
 class TransformerTemporalModel(TransformerTemporalModel):
-    deprecation_message = "Importing `TransformerTemporalModel` from `diffusers.models.transformer_temporal` is deprecated and this will be removed in a future version. Please use `from diffusers.models.transformers.tranformer_temporal import TransformerTemporalModel`, instead."
+    deprecation_message = "Importing `TransformerTemporalModel` from `diffusers.models.transformer_temporal` is deprecated and this will be removed in a future version. Please use `from diffusers.models.transformers.transformer_temporal import TransformerTemporalModel`, instead."
     deprecate("TransformerTemporalModel", "0.29", deprecation_message)
 
 
 class TransformerSpatioTemporalModel(TransformerSpatioTemporalModel):
-    deprecation_message = "Importing `TransformerSpatioTemporalModel` from `diffusers.models.transformer_temporal` is deprecated and this will be removed in a future version. Please use `from diffusers.models.transformers.tranformer_temporal import TransformerSpatioTemporalModel`, instead."
+    deprecation_message = "Importing `TransformerSpatioTemporalModel` from `diffusers.models.transformer_temporal` is deprecated and this will be removed in a future version. Please use `from diffusers.models.transformers.transformer_temporal import TransformerSpatioTemporalModel`, instead."
     deprecate("TransformerTemporalModelOutput", "0.29", deprecation_message)
