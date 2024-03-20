@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import copy
 import inspect
 import os
 from pathlib import Path
@@ -986,7 +987,7 @@ class LoraLoaderMixin:
                     f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
                 )
 
-            weights = [w or 1.0 for w in weights]  # Set None values to default of 1.0
+            weights = [w if w is not None else 1.0 for w in weights]  # Set None values to default of 1.0
             weights = [{"text_model": w} for w in weights]
 
             return weights
@@ -1039,6 +1040,8 @@ class LoraLoaderMixin:
         adapter_weights: Optional[Union[float, Dict, List[float], List[Dict]]] = None,
     ):
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
+
+        adapter_weights = copy.deepcopy(adapter_weights)
 
         # Expand weights into a list, one entry per adapter
         if not isinstance(adapter_weights, list):

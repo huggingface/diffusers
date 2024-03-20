@@ -563,24 +563,15 @@ class UNet2DConditionLoadersMixin:
             if isinstance(module, BaseTunerLayer):
                 module.unmerge()
 
-    def _expand_lora_scales_dict(
-        self,
-        scales: Union[float, Dict],
-        blocks_with_transformer: Dict[str, int],
-        transformer_per_block: Dict[str, int],
-    ):
+    def _expand_lora_scales_dict(self, scales: Union[float, Dict]):
         """
         Expands the inputs into a more granular dictionary. See the example below for more details.
 
         Parameters:
             scales (`Union[float, Dict]`):
                 Scales dict to expand.
-            blocks_with_transformer (`Dict[str, int]`):
-                Dict with keys 'up' and 'down', showing which blocks have transformer layers
-            transformer_per_block (`Dict[str, int]`):
-                Dict with keys 'up' and 'down', showing how many transformer layers each block has
 
-        E.g. turns
+        E.g. turns todo umer
             scales = {
                 'down': 2,
                 'mid': 3,
@@ -589,14 +580,7 @@ class UNet2DConditionLoadersMixin:
                     'block_1': [5, 6, 7]
                 }
             }
-            blocks_with_transformer = {
-                'down': [1,2],
-                'up': [0,1]
-            }
-            transformer_per_block = {
-                'down': 2,
-                'up': 3
-            }
+
         into
             {
                 'down.block_1.0': 2,
@@ -612,63 +596,83 @@ class UNet2DConditionLoadersMixin:
                 'up.block_1.2': 7,
             }
         """
-        if sorted(blocks_with_transformer.keys()) != ["down", "up"]:
-            raise ValueError("blocks_with_transformer needs to be a dict with keys `'down' and `'up'`")
-
-        if sorted(transformer_per_block.keys()) != ["down", "up"]:
-            raise ValueError("transformer_per_block needs to be a dict with keys `'down' and `'up'`")
-
         scales = copy.deepcopy(scales)
 
-        if not isinstance(scales, dict):
-            scales = {o: scales for o in ["down", "mid", "up"]}
+        def expand_and_set_defaults(inner_dict, keys):
+            if not isinstance(inner_dict, dict):
+                inner_dict = {o: inner_dict for o in keys}
+            for o in keys:
+                inner_dict.setdefault(o, 1.0)
+            return inner_dict
 
-        if "mid" not in scales:
-            scales["mid"] = 1
+        # top level
+        scales = expand_and_set_defaults(scales, ["down", "mid", "up"])
 
+        # down part, block level
+        keys = [f"block_{i}" for i in range(len(self.down_blocks))]
+        scales["down"] = expand_and_set_defaults(scales["down"], keys)
+
+        # up part, block level
+        keys = [f"block_{i}" for i in range(len(self.up_blocks))]
+        scales["up"] = expand_and_set_defaults(scales["up"], keys)
+
+        # mid part, layer level
+        mid_resnets = len(self.mid_block.resnets)
+        keys = [f"resnets_{i}" for i in range(mid_resnets)] + [f"attention_{i}" for i in range(mid_resnets - 1)]
+        scales["mid"] = expand_and_set_defaults(scales["mid"], keys)
+
+        # down/up part, layer level
         for updown in ["up", "down"]:
-            if updown not in scales:
-                scales[updown] = 1
+            blocks = self.down_blocks if updown == "down" else self.up_blocks
+            updownsampler_name = "downsampler" if updown == "down" else "upsampler"
 
-            # eg {"down": 1} to {"down": {"block_1": 1, "block_2": 1}}}
-            if not isinstance(scales[updown], dict):
-                scales[updown] = {f"block_{i}": scales[updown] for i in blocks_with_transformer[updown]}
+            for i, block in enumerate(blocks):
+                block_name = f"block_{i}"
+                n_res = len(block.resnets)
+                has_attns = hasattr(block, "attentions") and getattr(block, "attentions") is not None
+                has_updown = hasattr(block, updownsampler_name) and getattr(block, updownsampler_name) is not None
 
-            # eg {"down": "block_1": 1}} to {"down": "block_1": [1, 1]}}
-            for i in blocks_with_transformer[updown]:
-                block = f"block_{i}"
-                if not isinstance(scales[updown][block], list):
-                    scales[updown][block] = [scales[updown][block] for _ in range(transformer_per_block[updown])]
+                keys = [f"resnets_{i}" for i in range(n_res)]
+                if has_attns:
+                    keys += [f"attention_{i}" for i in range(n_res)]
+                if has_updown:
+                    keys += ["downsampler"] if updown == "down" else ["upsampler"]
 
-            # eg {"down": "block_1": [1, 1]}}  to {"down.block_1.0": 1, "down.block_1.1": 1}
-            for i in blocks_with_transformer[updown]:
-                block = f"block_{i}"
-                for tf_idx, value in enumerate(scales[updown][block]):
-                    scales[f"{updown}.{block}.{tf_idx}"] = value
+                scales[updown][block_name] = expand_and_set_defaults(scales[updown][block_name], keys)
 
-            del scales[updown]
+        def flatten_dict(d, parent_key="", sep="."):
+            items = []
+            for k, v in d.items():
+                new_key = f"{parent_key}{sep}{k}" if parent_key else k
+                if isinstance(v, dict):
+                    items.extend(flatten_dict(v, new_key, sep=sep).items())
+                else:
+                    items.append((new_key, v))
+            return dict(items)
 
-        def layer_name(name):
-            """Translate user-friendly name (e.g. 'mid') into actual layer name (e.g. 'mid_block.attentions.0')"""
-            if name == "mid":
-                return "mid_block.attentions.0"
+        def module_name(name):
+            """Translate user-friendly name (e.g. 'down.block_0.resnet_0') into actual module name (e.g. 'down_blocks.0.resnets.0')"""
 
-            updown, block, attn = name.split(".")
+            if "mid" in name:
+                upmiddown, module = name.split(".")
+                block = ""
+            else:
+                upmiddown, block, module = name.split(".")
 
-            updown = updown.replace("down", "down_blocks").replace("up", "up_blocks")
-            block = block.replace("block_", "")
-            attn = "attentions." + attn
+            upmiddown = upmiddown.replace("down", "down_blocks").replace("mid", "mid_block").replace("up", "up_blocks")
+            block = ("." + block.replace("block_", "")) if block != "" else ""
+            module = "." + module.replace("_", ".")
 
-            return ".".join((updown, block, attn))
+            return upmiddown + block + module
+
+        scales = flatten_dict(scales)
 
         state_dict = self.state_dict()
-        for layer in scales.keys():
-            if not any(layer_name(layer) in module for module in state_dict.keys()):
-                raise ValueError(
-                    f"Can't set lora scale for layer {layer}. It either doesn't exist in this unet or it has no attentions."
-                )
+        for module in scales.keys():
+            if not any(module_name(module) in module_ for module_ in state_dict.keys()):
+                raise ValueError(f"Can't set lora scale for module {module}. It doesn't exist in this unet.")
 
-        return {layer_name(name): weight for name, weight in scales.items()}
+        return {module_name(k): v for k, v in flatten_dict(scales).items()}
 
     def set_adapters(
         self,
@@ -715,7 +719,7 @@ class UNet2DConditionLoadersMixin:
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
             )
 
-        weights = [weight or 1.0 for weight in weights]  # Set None values to default of 1.0
+        weights = [w if w is not None else 1.0 for w in weights]  # Set None values to default of 1.0
         blocks_with_transformer = {
             "down": [i for i, block in enumerate(self.down_blocks) if hasattr(block, "attentions")],
             "up": [i for i, block in enumerate(self.up_blocks) if hasattr(block, "attentions")],
