@@ -35,7 +35,6 @@ def slerp(val, low, high):
 
 
 class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
-
     """
     Pipeline for prompt-to-prompt interpolation on CLIP text embeddings and using the UnCLIP / Dall-E to decode them to images.
 
