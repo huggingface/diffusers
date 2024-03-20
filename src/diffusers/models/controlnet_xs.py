@@ -880,97 +880,36 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
 
         # Cross Control
         # Let's first define variables to shorten notation
-        base_down_subblocks = self.base_down_subblocks
-        ctrl_down_subblocks = self.control_addon.down_subblocks
-
-        down_zero_convs_b2c = self.control_addon.down_zero_convs_b2c
-        down_zero_convs_c2b = self.control_addon.down_zero_convs_c2b
-        mid_zero_convs_c2b = self.control_addon.mid_zero_convs_c2b
-        up_zero_convs_c2b = self.control_addon.up_zero_convs_c2b
-
-        if not do_control:
-            # Run the base model without control
-
-            # 1 - conv in & down
-            h_base = self.base_conv_in(h_base)
-            hs_base.append(h_base)
-
-            for b in base_down_subblocks:
-                if isinstance(b, CrossAttnDownSubBlock2D):
-                    additional_params = [temb, cemb, attention_mask, cross_attention_kwargs]
-                else:
-                    additional_params = []
-                h_base = b(h_base, *additional_params)
-                hs_base.append(h_base)
-
-            # 2 - mid
-            h_base = self.base_mid_block(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
-
-            # 3 - up
-            for b, skip_b in zip(self.base_up_subblocks, reversed(hs_base)):
-                h_base = torch.cat([h_base, skip_b], dim=1)  # concat info from base encoder
-                h_base = b(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
-
-            h_base = self.base_conv_norm_out(h_base)
-            h_base = self.base_conv_act(h_base)
-            h_base = self.base_conv_out(h_base)
-
-            if not return_dict:
-                return h_base
-
-            return ControlNetXSOutput(sample=h_base)
 
         guided_hint = self.control_addon.controlnet_cond_embedding(controlnet_cond)
 
         # 1 - conv in & down
-        # The base -> ctrl connections are "delayed" by 1 subblock, because we want to "wait" to ensure the new information from the last ctrl -> base connection is also considered.
-        # Therefore, the connections iterate over:
-        #       ctrl -> base:   conv_in | subblock 1  |  ...  | subblock n
-        #       base -> ctrl:           | subblock 1  |  ...  | subblock n | mid block
 
         h_base = self.base_conv_in(h_base)
         h_ctrl = self.control_addon.conv_in(h_ctrl)
         if guided_hint is not None:
             h_ctrl += guided_hint
-        h_base = h_base + down_zero_convs_c2b[0](h_ctrl) * conditioning_scale  # add ctrl -> base
+        h_base = h_base + self.pre_zero_convs_c2b(h_ctrl) * conditioning_scale  # add ctrl -> base # todo umer: define self.pre_zero_convs_c2b
 
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
 
-        for b, c, b2c, c2b in zip(
-            base_down_subblocks,
-            ctrl_down_subblocks,
-            down_zero_convs_b2c[:-1],
-            down_zero_convs_c2b[1:],
-        ):
-            if isinstance(b, CrossAttnDownSubBlock2D):
-                additional_params = [temb, cemb, attention_mask, cross_attention_kwargs]
-            else:
-                additional_params = []
-
-            h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)  # concat base -> ctrl
-            h_base = b(h_base, *additional_params)  # apply base subblock
-            h_ctrl = c(h_ctrl, *additional_params)  # apply ctrl subblock
-            h_base = h_base + c2b(h_ctrl) * conditioning_scale  # add ctrl -> base
-
-            hs_base.append(h_base)
-            hs_ctrl.append(h_ctrl)
-        h_ctrl = torch.cat([h_ctrl, down_zero_convs_b2c[-1](h_base)], dim=1)  # concat base -> ctrl
+        for down in self.down_blocks: # todo umer: define self.down_blocks
+            h_base,h_ctrl,residual_hb,residual_hc = down(h_base,h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs)
+            hs_base.extend(residual_hb)
+            hs_ctrl.extend(residual_hc)
 
         # 2 - mid
-        h_base = self.base_mid_block(h_base, temb, cemb, attention_mask, cross_attention_kwargs)  # apply base subblock
-        h_ctrl = self.control_addon.mid_block(
-            h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs
-        )  # apply ctrl subblock
-        h_base = h_base + mid_zero_convs_c2b(h_ctrl) * conditioning_scale  # add ctrl -> base
+        h_base,h_ctrl = self.mid_block(h_base,h_ctrl, temb, cemb, attention_mask, cross_attention_kwargs) # todo umer: define self.mid_block
 
         # 3 - up
-        for b, c2b, skip_c, skip_b in zip(
-            self.base_up_subblocks, up_zero_convs_c2b, reversed(hs_ctrl), reversed(hs_base)
-        ):
-            h_base = h_base + c2b(skip_c) * conditioning_scale  # add info from ctrl encoder
-            h_base = torch.cat([h_base, skip_b], dim=1)  # concat info from base encoder+ctrl encoder
-            h_base = b(h_base, temb, cemb, attention_mask, cross_attention_kwargs)
+        for up in self.up_blocks: # todo umer: define self.up_blocks
+            n_resnets = len(up.resnets)
+            skips_hb = hs_base[-n_resnets:]
+            skips_hc = hs_ctrl[-n_resnets:]
+            hs_base = hs_base[:-n_resnets]
+            hs_ctrl = hs_ctrl[:-n_resnets]
+            h_base = up(h_base,h_ctrl,skips_hb,skips_hc,temb, cemb, attention_mask, cross_attention_kwargs)
 
         # 4 - conv out
         h_base = self.base_conv_norm_out(h_base)
@@ -1000,7 +939,7 @@ def find_largest_factor(number, max_factor):
         factor -= 1
 
 
-class CrossAttnDownSubBlock2D(nn.Module):
+class ControlNetXSCrossAttnDownBlock2D(nn.Module):
     def __init__(
         self,
         is_empty: bool = False,
@@ -1008,48 +947,93 @@ class CrossAttnDownSubBlock2D(nn.Module):
         out_channels: Optional[int] = None,
         temb_channels: Optional[int] = None,
         max_norm_num_groups: Optional[int] = 32,
-        has_crossattn=False,
-        transformer_layers_per_block: Optional[Union[int, Tuple[int]]] = 1,
+        has_crossattn=True,
+        transformer_layers_per_block: Optional[Union[int, Tuple[int], Tuple[Tuple[int]]]] = 1,
         num_attention_heads: Optional[int] = 1,
         cross_attention_dim: Optional[int] = 1024,
+        add_downsample: bool = True,
         upcast_attention: Optional[bool] = False,
     ):
         super().__init__()
-        self.gradient_checkpointing = False
+        base_resnets = []
+        base_attentions = []
+        ctrl_resnets =[]
+        ctrl_attentions = []
 
-        if is_empty:
-            # modules will be set manually, see `CrossAttnSubBlock2D.from_modules`
-            return
+        num_layers = 2 # only support sd + sdxl
 
-        self.in_channels = in_channels
-        self.out_channels = out_channels
+        self.has_cross_attention = has_crossattn
+        self.num_attention_heads = num_attention_heads
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
-        self.resnet = ResnetBlock2D(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            temb_channels=temb_channels,
-            groups=find_largest_factor(in_channels, max_factor=max_norm_num_groups),
-            groups_out=find_largest_factor(out_channels, max_factor=max_norm_num_groups),
-            eps=1e-5,
-        )
-
-        if has_crossattn:
-            self.attention = Transformer2DModel(
-                num_attention_heads,
-                out_channels // num_attention_heads,
-                in_channels=out_channels,
-                num_layers=transformer_layers_per_block,
-                cross_attention_dim=cross_attention_dim,
-                use_linear_projection=True,
-                upcast_attention=upcast_attention,
-                norm_num_groups=find_largest_factor(out_channels, max_factor=max_norm_num_groups),
+        for i in range(num_layers):
+            in_channels = in_channels if i == 0 else out_channels
+            base_resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                )
             )
+            ctrl_resnets.append(
+                ResnetBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                    groups=find_largest_factor(in_channels, max_factor=max_norm_num_groups),
+                    groups_out=find_largest_factor(out_channels, max_factor=max_norm_num_groups),
+                    eps=1e-5,
+                )
+            )
+
+            if has_crossattn:
+                base_attentions.append(
+                    Transformer2DModel(
+                            num_attention_heads,
+                            out_channels // num_attention_heads,
+                            in_channels=out_channels,
+                            num_layers=transformer_layers_per_block[i],
+                            cross_attention_dim=cross_attention_dim,
+                            use_linear_projection=True,
+                            upcast_attention=upcast_attention,
+                    )
+                )
+                ctrl_attentions.append(
+                    Transformer2DModel(
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
+                        num_layers=transformer_layers_per_block,
+                        cross_attention_dim=cross_attention_dim,
+                        use_linear_projection=True,
+                        upcast_attention=upcast_attention,
+                        norm_num_groups=find_largest_factor(out_channels, max_factor=max_norm_num_groups),
+                    )
+                )
+
+        self.base_resnets = nn.ModuleList(base_resnets)
+        self.ctrl_resnets = nn.ModuleList(ctrl_resnets)
+        self.base_attentions = nn.ModuleList(base_attentions) if has_crossattn else [None]*num_layers
+        self.ctrl_attentions = nn.ModuleList(ctrl_attentions) if has_crossattn else [None]*num_layers
+
+        if add_downsample:
+            self.base_downsamplers = Downsample2D(out_channels, use_conv=True, out_channels=out_channels, name="op")
+            self.ctrl_downsamplers = Downsample2D(out_channels, use_conv=True, out_channels=out_channels, name="op")
         else:
-            self.attention = None
+            self.base_downsamplers = None
+            self.ctrl_downsamplers = None
+
+        # todo umer: connections b2c, c2b
+        self.b2c = None
+        self.c2b = None
+
+        self.gradient_checkpointing = False
 
     @classmethod
     def from_modules(cls, resnet: ResnetBlock2D, attention: Optional[Transformer2DModel] = None):
         """Create empty subblock and set resnet and attention manually"""
+        # todo umer
         subblock = cls(is_empty=True)
         subblock.resnet = resnet
         subblock.attention = attention
@@ -1059,100 +1043,144 @@ class CrossAttnDownSubBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
+        hidden_states_base: torch.FloatTensor,
+        hidden_states_ctrl: torch.FloatTensor,
+        conditioning_scale: Optional[float] = 1.0,
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]: # todo umer: output type hint correct?
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
 
-        if self.training and self.gradient_checkpointing:
+        h_base = hidden_states_base
+        h_ctrl = hidden_states_ctrl
 
-            def create_custom_forward(module, return_dict=None):
-                def custom_forward(*inputs):
-                    if return_dict is not None:
-                        return module(*inputs, return_dict=return_dict)
-                    else:
-                        return module(*inputs)
+        base_output_states = ()
+        ctrl_output_states = ()
 
-                return custom_forward
+        base_blocks = list(zip(self.base_resnets, self.base_attentions))
+        ctrl_blocks = list(zip(self.ctrl_resnets, self.ctrl_attentions))
 
-            if self.resnet is not None:
-                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(self.resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
-            if self.attention is not None:
-                hidden_states = self.attention(
-                    hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    attention_mask=attention_mask,
-                    encoder_attention_mask=encoder_attention_mask,
-                    return_dict=False,
-                )[0]
-        else:
-            if self.resnet is not None:
-                hidden_states = self.resnet(hidden_states, temb, scale=lora_scale)
-            if self.attention is not None:
-                hidden_states = self.attention(
-                    hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    attention_mask=attention_mask,
-                    encoder_attention_mask=encoder_attention_mask,
-                    return_dict=False,
-                )[0]
+        for (b_res, b_attn), (c_res, c_attn), b2c, c2b in zip(base_blocks, ctrl_blocks, self.b2c, self.c2b):
+            if self.training and self.gradient_checkpointing:
+                raise NotImplementedError("todo umer")
+            else:
+                # concat base -> ctrl
+                h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
 
-        return hidden_states
+                # apply base subblock
+                h_base = b_res(h_base, temb)
+                if b_attn is not None:
+                    h_base = b_attn(
+                        h_base,
+                        encoder_hidden_states=encoder_hidden_states,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        attention_mask=attention_mask,
+                        encoder_attention_mask=encoder_attention_mask,
+                        return_dict=False,
+                    )[0]
+
+                # apply ctrl subblock
+                h_ctrl = c_res(h_ctrl, temb)
+                if c_attn is not None:
+                    h_ctrl = c_attn(
+                        h_ctrl,
+                        encoder_hidden_states=encoder_hidden_states,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        attention_mask=attention_mask,
+                        encoder_attention_mask=encoder_attention_mask,
+                        return_dict=False,
+                    )[0]
+
+                # add ctrl -> base
+                h_base = h_base + c2b(h_ctrl) * conditioning_scale
+
+            base_output_states = base_output_states + (h_base,)
+            ctrl_output_states = ctrl_output_states + (h_ctrl,)
+
+        if self.base_downsamplers is not None:  # if we have a base_downsampler, then also a ctrl_downsampler
+            # concat base -> ctrl
+            h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
+            # apply base subblock
+            h_base = self.base_downsamplers(h_base)
+            # apply ctrl subblock
+            h_ctrl = self.ctrl_downsamplers(h_ctrl)
+            # add ctrl -> base
+            h_base = h_base + c2b(h_ctrl) * conditioning_scale
+
+            base_output_states = base_output_states + (h_base,)
+            ctrl_output_states = ctrl_output_states + (h_ctrl,)
+
+        return h_base, h_ctrl,base_output_states, ctrl_output_states
 
 
-class DownSubBlock2D(nn.Module):
+class ControlNetXSCrossAttnUplock2D(nn.Module):
     def __init__(
         self,
         is_empty: bool = False,
         in_channels: Optional[int] = None,
         out_channels: Optional[int] = None,
+        prev_output_channel: Optional[int] = None,
+        temb_channels: Optional[int] = None,
+        has_crossattn=True,
+        transformer_layers_per_block: Optional[Union[int, Tuple[int], Tuple[Tuple[int]]]] = 1,
+        num_attention_heads: Optional[int] = 1,
+        cross_attention_dim: Optional[int] = 1024,
+        add_upsample: bool = True,
+        upcast_attention: bool = False,
     ):
         super().__init__()
-        self.gradient_checkpointing = False
+        resnets = []
+        attentions = []
 
-        if is_empty:
-            # downsampler will be set manually, see `DownSubBlock2D.from_modules`
-            return
+        num_layers = 3 # only support sd + sdxl
 
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.downsampler = Downsample2D(in_channels, use_conv=True, out_channels=out_channels, name="op")
+        self.has_cross_attention = has_crossattn
+        self.num_attention_heads = num_attention_heads
 
-    @classmethod
-    def from_modules(cls, downsampler: Downsample2D):
-        """Create empty subblock and set downsampler manually"""
-        subblock = cls(is_empty=True)
-        subblock.downsampler = downsampler
-        subblock.in_channels = downsampler.channels
-        subblock.out_channels = downsampler.out_channels
-        return subblock
+        if isinstance(transformer_layers_per_block, int):
+            transformer_layers_per_block = [transformer_layers_per_block] * num_layers
 
-    def forward(
-        self,
-        hidden_states: torch.FloatTensor,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
-        return self.downsampler(hidden_states)
+        for i in range(num_layers):
+            res_skip_channels = in_channels if (i == num_layers - 1) else out_channels
+            resnet_in_channels = prev_output_channel if i == 0 else out_channels
 
+            resnets.append(
+                ResnetBlock2D(
+                    in_channels=resnet_in_channels + res_skip_channels,
+                    out_channels=out_channels,
+                    temb_channels=temb_channels,
+                )
+            )
 
-class CrossAttnUpSubBlock2D(nn.Module):
-    def __init__(self):
-        """
-        In the context of ControlNet-XS, `CrossAttnUpSubBlock2D` are only loaded from existing modules, and not created from scratch.
-        Therefore, `__init__` is left almost empty.
-        """
-        super().__init__()
+            if has_crossattn:
+                attentions.append(
+                    Transformer2DModel(
+                        num_attention_heads,
+                        out_channels // num_attention_heads,
+                        in_channels=out_channels,
+                        num_layers=transformer_layers_per_block[i],
+                        cross_attention_dim=cross_attention_dim,
+                        use_linear_projection=True,
+                        upcast_attention=upcast_attention,
+                    )
+                )
+
+        self.resnets = nn.ModuleList(resnets)
+        self.attentions = nn.ModuleList(attentions) if has_crossattn else [None]*num_layers
+
+        if add_upsample:
+            self.upsamplers = Upsample2D(out_channels, use_conv=True, out_channels=out_channels)
+        else:
+            self.upsamplers = None
+
+        # todo umer: c2b
+        self.c2b = None
+
         self.gradient_checkpointing = False
 
     @classmethod
@@ -1163,6 +1191,7 @@ class CrossAttnUpSubBlock2D(nn.Module):
         upsampler: Optional[Upsample2D] = None,
     ):
         """Create empty subblock and set resnet, attention and upsampler manually"""
+        # todo umer
         subblock = cls()
         subblock.resnet = resnet
         subblock.attention = attention
@@ -1174,55 +1203,44 @@ class CrossAttnUpSubBlock2D(nn.Module):
     def forward(
         self,
         hidden_states: torch.FloatTensor,
+        res_hidden_states_tuple_base: Tuple[torch.FloatTensor, ...],
+        res_hidden_states_tuple_cltr: Tuple[torch.FloatTensor, ...],
         temb: Optional[torch.FloatTensor] = None,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
+        upsample_size: Optional[int] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
+    ) -> torch.FloatTensor: # todo umer: output type hint correct?
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
 
-        if self.training and self.gradient_checkpointing:
+        for resnet, attn, c2b, res_h_base, res_h_ctrl in zip(self.resnets, self.attentions, self.c2b, reversed(res_hidden_states_tuple_base), reversed(res_hidden_states_tuple_cltr)):
+            hidden_states += c2b(res_h_ctrl)
+            hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
 
-            def create_custom_forward(module, return_dict=None):
-                def custom_forward(*inputs):
-                    if return_dict is not None:
-                        return module(*inputs, return_dict=return_dict)
-                    else:
-                        return module(*inputs)
+            if self.training and self.gradient_checkpointing:
+                raise NotImplementedError("todo umer")
+            else:
+                hidden_states = resnet(hidden_states, temb)
+                if attn is not None:
+                    hidden_states = attn(
+                        hidden_states,
+                        encoder_hidden_states=encoder_hidden_states,
+                        cross_attention_kwargs=cross_attention_kwargs,
+                        attention_mask=attention_mask,
+                        encoder_attention_mask=encoder_attention_mask,
+                        return_dict=False,
+                    )[0]
 
-                return custom_forward
+        if self.upsampler is not None:
+            c2b = self.c2b[-1]
+            res_h_base = res_hidden_states_tuple_base[0]
+            res_h_ctrl = res_hidden_states_tuple_cltr[0]
 
-            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-            hidden_states = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(self.resnet),
-                hidden_states,
-                temb,
-                **ckpt_kwargs,
-            )
-            if self.attention is not None:
-                hidden_states = self.attention(
-                    hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    attention_mask=attention_mask,
-                    encoder_attention_mask=encoder_attention_mask,
-                    return_dict=False,
-                )[0]
-            if self.upsampler is not None:
-                hidden_states = self.upsampler(hidden_states)
-        else:
-            hidden_states = self.resnet(hidden_states, temb, scale=lora_scale)
-            if self.attention is not None:
-                hidden_states = self.attention(
-                    hidden_states,
-                    encoder_hidden_states=encoder_hidden_states,
-                    cross_attention_kwargs=cross_attention_kwargs,
-                    attention_mask=attention_mask,
-                    encoder_attention_mask=encoder_attention_mask,
-                    return_dict=False,
-                )[0]
-            if self.upsampler is not None:
-                hidden_states = self.upsampler(hidden_states)
+            hidden_states += c2b(res_h_ctrl)
+            hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
+            hidden_states = self.upsampler(hidden_states, upsample_size)
 
         return hidden_states
