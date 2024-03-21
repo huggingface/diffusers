@@ -759,7 +759,6 @@ def main(args):
         # Double on channel dim, jpg_y then jpg_w
         im_tup_iterator = zip(*all_pixel_values)
         combined_pixel_values = []
-        labels = []
         for im_tup, label_0 in zip(im_tup_iterator, examples["label_0"]):
             # We randomize selection and rejection.
             if label_0 == 0.5:
@@ -772,7 +771,6 @@ def main(args):
                 im_tup = im_tup[::-1]
 
             combined_im = torch.cat(im_tup, dim=0)  # no batch dim
-            labels.append(label_0)
 
             # Resize.
             combined_im = train_resize(combined_im)
@@ -790,13 +788,12 @@ def main(args):
                 y1, x1, h, w = train_crop.get_params(combined_im, (args.resolution, args.resolution))
                 combined_im = crop(combined_im, y1, x1, h, w)
 
-                crop_top_left = (y1, x1)
-                crop_top_lefts.append(crop_top_left)
-                combined_im = normalize(combined_im)
-                combined_pixel_values.append(combined_im)
+            crop_top_left = (y1, x1)
+            crop_top_lefts.append(crop_top_left)
+            combined_im = normalize(combined_im)
+            combined_pixel_values.append(combined_im)
 
         examples["pixel_values"] = combined_pixel_values
-        examples["labels"] = labels
         examples["original_sizes"] = original_sizes
         examples["crop_top_lefts"] = crop_top_lefts
         tokens_one, tokens_two = tokenize_captions([tokenizer_one, tokenizer_two], examples)
