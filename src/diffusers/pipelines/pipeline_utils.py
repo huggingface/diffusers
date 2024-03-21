@@ -1680,10 +1680,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         Examples:
 
         ```py
-        >>> from diffusers import StableDiffusionPipeline
+        >>> from diffusers import StableDiffusionPipeline, StableDiffusionSAGPipeline
 
         >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
-        >>> new_pipe = StableDiffusionPipeline.from_pipe(pipe)
+        >>> new_pipe = StableDiffusionSAGPipeline.from_pipe(pipe)
         ```
         """
 
@@ -1718,7 +1718,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             }
         )
 
-        signature_types = cls._get_signature_types()
+        signature_types = pipeline_class._get_signature_types()
 
         pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
         # allow users pass modules in `kwargs` to override the original pipeline's components
@@ -1732,7 +1732,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 else:
                     logger.warn(
                         f"component {k} is not switched over to new pipeline because type does not match the expected."
-                        f" k is {type(v)} while the new pipeline expect {signature_types[k]}."
+                        f" {k} is {type(v)} while the new pipeline expect {signature_types[k]}."
                         f" please pass the correct type of component to the new pipeline. `from_pipe(..., {k}={k})`"
                     )
 

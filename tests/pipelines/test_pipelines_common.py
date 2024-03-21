@@ -1044,7 +1044,7 @@ class PipelineTesterMixin:
         if test_mean_pixel_difference:
             assert_mean_pixel_difference(to_np(output_with_slicing[0]), to_np(output_without_slicing[0]))
 
-    def test_from_pipe(self):
+    def test_from_pipe_consistent(self):
         if not self.test_from_pipe:
             return
 
