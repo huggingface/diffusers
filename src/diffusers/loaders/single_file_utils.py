@@ -68,8 +68,18 @@ CHECKPOINT_KEY_NAMES = {
     "xl_base": "conditioner.embedders.1.model.transformer.resblocks.9.mlp.c_proj.bias",
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
     "upscale": "model.diffusion_model.input_blocks.10.0.skip_connection.bias",
-    "_upscale": "low_scale_model.alphas_cumprod",
     "controlnet": "control_model.time_embed.0.weight",
+    "playground-v2-5": "edm_mean"
+}
+
+DIFFUSERS_DEFAULT_CONFIGS = {
+    "xl_base" : {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-base-1.0"},
+    "xl_refiner" : {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-refiner"},
+    "playground-v2-5" : {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
+    "upscale" : {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
+    "controlnet" : {"pretrained_model_name_or_path": "diffusers/controlnet"},
+    "v2" : {"pretrained_model_name_or_path": "diffusers/stable-diffusion-2"},
+    "v1": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
 }
 
 SCHEDULER_DEFAULT_CONFIG = {
@@ -365,29 +375,6 @@ def load_single_file_model_checkpoint(
     return checkpoint
 
 
-def infer_original_config_file(checkpoint):
-    if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
-        config_url = CONFIG_URLS["v2"]
-
-    elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
-        config_url = CONFIG_URLS["xl"]
-
-    elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
-        config_url = CONFIG_URLS["xl_refiner"]
-
-    elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
-        config_url = CONFIG_URLS["upscale"]
-
-    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
-        config_url = CONFIG_URLS["controlnet"]
-
-    else:
-        config_url = CONFIG_URLS["v1"]
-    original_config_file = BytesIO(requests.get(config_url).content)
-
-    return original_config_file
-
-
 def fetch_original_config(checkpoint, original_config_file=None):
     def is_valid_url(url):
         result = urlparse(url)
@@ -396,10 +383,7 @@ def fetch_original_config(checkpoint, original_config_file=None):
 
         return False
 
-    if original_config_file is None:
-        original_config_file = infer_original_config_file(checkpoint)
-
-    elif os.path.isfile(original_config_file):
+    if os.path.isfile(original_config_file):
         with open(original_config_file, "r") as fp:
             original_config_file = fp.read()
 
@@ -414,13 +398,32 @@ def fetch_original_config(checkpoint, original_config_file=None):
     return original_config
 
 
-def fetch_model_config(checkpoint, config=None):
-    def is_valid_url(url):
-        result = urlparse(url)
-        if result.scheme and result.netloc:
-            return True
+def fetch_diffusers_model_config(checkpoint, subfolder=None):
+    if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["v2"]
 
-        return False
+    elif CHECKPOINT_KEY_NAMES["playground-v2-5"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["playground-v2-5"]
+
+    elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["xl_base"]
+
+    elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["xl_refiner"]
+
+    elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["upscale"]
+
+    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["controlnet"]
+
+    else:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["v1"]
+
+    if subfolder:
+        model_config["subfolder"] = subfolder
+
+    return model_config
 
 
 def infer_model_type(original_config, checkpoint, model_type=None):
@@ -1324,24 +1327,30 @@ def create_diffusers_unet_from_stable_cascade(
 def create_diffusers_unet_from_ldm(
     cls,
     checkpoint,
-    config,
-    torch_dtype,
+    config=None,
+    original_config=None,
+    torch_dtype=None,
     **kwargs,
 ):
-    extract_ema = kwargs.get("extract_ema", False)
-    image_size = kwargs.get("image_size", None)
-    upcast_attention = kwargs.get("upcast_attention", None)
     num_in_channels = kwargs.get("num_in_channels", None)
 
-    config = fetch_original_config(checkpoint) if config is None else config
+    if original_config is not None:
+        extract_ema = kwargs.get("extract_ema", False)
+        image_size = kwargs.get("image_size", None)
+        image_size = set_image_size(cls, config, checkpoint, image_size=image_size)
 
-    image_size = set_image_size(cls, config, checkpoint, image_size=image_size)
-    model_config = create_unet_diffusers_config(config, image_size=image_size)
+        model_config = create_unet_diffusers_config(original_config, image_size=image_size)
+
+    elif config is not None:
+        model_config = cls.load_config(**config)
+
+    else:
+        config = fetch_diffusers_model_config(checkpoint, subfolder="unet")
+        model_config = cls.load_config(**config)
+
     if num_in_channels is not None:
+        #TODO: Add deprecation warning
         model_config["in_channels"] = num_in_channels
-
-    if upcast_attention is not None:
-        model_config["upcast_attention"] = upcast_attention
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
@@ -1361,23 +1370,46 @@ def create_diffusers_unet_from_ldm(
     if torch_dtype is not None:
         model.to(torch_dtype)
 
+    model.eval()
+
     return model
 
 
 def create_diffusers_vae_from_ldm(
     cls,
     checkpoint,
-    config,
-    torch_dtype,
+    config=None,
+    original_config=None,
+    torch_dtype=None,
     **kwargs,
 ):
-    config = fetch_original_config(checkpoint) if config is None else config
 
-    image_size = kwargs.get("image_size", None)
-    image_size = set_image_size(cls, config, checkpoint, image_size=image_size)
-    scaling_factor = kwargs.get("scaling_factor", None)
+    if original_config is not None:
+        scaling_factor = kwargs.get("scaling_factor", None)
+        image_size = kwargs.get("image_size", None)
+        image_size = set_image_size(cls, original_config, checkpoint, image_size=image_size)
 
-    model_config = create_vae_diffusers_config(config, image_size=image_size, scaling_factor=scaling_factor)
+        if "edm_mean" in checkpoint and "edm_std" in checkpoint:
+            latent_mean = checkpoint["edm_mean"]
+            latent_std = checkpoint["edm_std"]
+        else:
+            latent_mean = None
+            latent_std = None
+
+        model_config = create_vae_diffusers_config(
+            original_config,
+            image_size=image_size,
+            scaling_factor=scaling_factor,
+            latents_mean=latent_mean,
+            latents_std=latent_std
+        )
+
+    elif config is not None:
+        model_config = cls.load_config(**config)
+
+    else:
+        config = fetch_diffusers_model_config(checkpoint, subfolder="vae")
+        model_config = cls.load_config(**config)
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():

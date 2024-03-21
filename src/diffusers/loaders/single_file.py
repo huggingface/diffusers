@@ -16,7 +16,6 @@ from huggingface_hub.utils import validate_hf_hub_args
 
 from ..utils import is_transformers_available, logging
 from .single_file_utils import (
-    create_diffusers_vae_model_from_ldm,
     create_scheduler_from_ldm,
     create_text_encoders_and_tokenizers_from_ldm,
     fetch_ldm_config_and_checkpoint,
