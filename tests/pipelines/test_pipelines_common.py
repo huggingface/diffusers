@@ -573,6 +573,8 @@ class PipelineTesterMixin:
 
     test_xformers_attention = True
 
+    test_from_pipe = False
+
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
         generator = torch.Generator(device).manual_seed(seed)
@@ -1044,11 +1046,18 @@ class PipelineTesterMixin:
 
     def test_from_pipe(self):
         # Only test if the pipeline is a member of Stable Diffusion family
-        if not issubclass(self.pipeline_class, StableDiffusionMixin):
-            return
+        # if not self.test_from_pipe:
+        #     return
+
         signature_types = self.pipeline_class._get_signature_types()
-        if signature_types["unet"] == "UNet2DConditionModel" and signature_types["vae"] == "AutoencoderKL":
+        if (
+            issubclass(self.pipeline_class, StableDiffusionMixin)
+            and signature_types["unet"] == "UNet2DConditionModel"
+            and signature_types["vae"] == "AutoencoderKL"
+        ):
             assert 1 == 2
+        else:
+            return
 
         if "xl" in self.pipeline_class.__name__.lower():
             original_pipeline_class = StableDiffusionXLPipeline
