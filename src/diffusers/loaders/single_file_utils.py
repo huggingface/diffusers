@@ -414,6 +414,15 @@ def fetch_original_config(checkpoint, original_config_file=None):
     return original_config
 
 
+def fetch_model_config(checkpoint, config=None):
+    def is_valid_url(url):
+        result = urlparse(url)
+        if result.scheme and result.netloc:
+            return True
+
+        return False
+
+
 def infer_model_type(original_config, checkpoint, model_type=None):
     if model_type is not None:
         return model_type
