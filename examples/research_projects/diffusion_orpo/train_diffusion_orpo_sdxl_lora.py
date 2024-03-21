@@ -319,7 +319,7 @@ def parse_args(input_args=None):
         help="Whether or not to use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
     parser.add_argument(
-        "--beta_dpo",
+        "--beta_orpo",
         type=int,
         default=5000,
         help="DPO KL Divergence penalty.",
@@ -981,27 +981,8 @@ def main(args):
                 raw_model_loss = 0.5 * (model_losses_w.mean() + model_losses_l.mean())
                 model_diff = model_losses_w - model_losses_l  # These are both LBS (as is t)
 
-                # Reference model predictions.
-                accelerator.unwrap_model(unet).disable_adapters()
-                with torch.no_grad():
-                    ref_preds = unet(
-                        noisy_model_input,
-                        timesteps,
-                        prompt_embeds,
-                        added_cond_kwargs={"time_ids": add_time_ids, "text_embeds": pooled_prompt_embeds},
-                    ).sample
-                    ref_loss = F.mse_loss(ref_preds.float(), target.float(), reduction="none")
-                    ref_loss = ref_loss.mean(dim=list(range(1, len(ref_loss.shape))))
-
-                    ref_losses_w, ref_losses_l = ref_loss.chunk(2)
-                    ref_diff = ref_losses_w - ref_losses_l
-                    raw_ref_loss = ref_loss.mean()
-
-                # Re-enable adapters.
-                accelerator.unwrap_model(unet).enable_adapters()
-
                 # Final loss.
-                scale_term = -0.5 * args.beta_dpo
+                scale_term = -0.5 * args.beta_orpo
                 inside_term = scale_term * (model_diff - ref_diff)
                 loss = -1 * F.logsigmoid(inside_term).mean()
 
