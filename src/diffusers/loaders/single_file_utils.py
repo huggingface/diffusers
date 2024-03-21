@@ -77,7 +77,7 @@ DIFFUSERS_DEFAULT_CONFIGS = {
     "xl_refiner" : {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-refiner"},
     "playground-v2-5" : {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
     "upscale" : {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
-    "controlnet" : {"pretrained_model_name_or_path": "diffusers/controlnet"},
+    "controlnet" : {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
     "v2" : {"pretrained_model_name_or_path": "diffusers/stable-diffusion-2"},
     "v1": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
 }
@@ -1357,6 +1357,56 @@ def create_diffusers_unet_from_ldm(
         model = cls.from_config(model_config, **kwargs)
 
     diffusers_format_checkpoint = convert_ldm_unet_checkpoint(checkpoint, model_config, extract_ema=extract_ema)
+    if is_accelerate_available():
+        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
+
+    else:
+        model.load_state_dict(diffusers_format_checkpoint)
+
+    if torch_dtype is not None:
+        model.to(torch_dtype)
+
+    model.eval()
+
+    return model
+
+
+def create_diffusers_controlnet_from_ldm(
+    cls,
+    checkpoint,
+    config=None,
+    original_config=None,
+    torch_dtype=None,
+    **kwargs,
+):
+    num_in_channels = kwargs.get("num_in_channels", None)
+
+    if original_config is not None:
+        image_size = kwargs.get("image_size", None)
+        image_size = set_image_size(cls, config, checkpoint, image_size=image_size)
+
+        model_config = create_controlnet_diffusers_config(original_config, image_size=image_size)
+
+    elif config is not None:
+        model_config = cls.load_config(**config)
+
+    else:
+        config = fetch_diffusers_model_config(checkpoint)
+        model_config = cls.load_config(**config)
+
+    if num_in_channels is not None:
+        #TODO: Add deprecation warning
+        model_config["in_channels"] = num_in_channels
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        model = cls.from_config(model_config, **kwargs)
+
+    diffusers_format_checkpoint = convert_controlnet_checkpoint(checkpoint, model_config)
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
         if len(unexpected_keys) > 0:
