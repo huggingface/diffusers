@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-""" Conversion script for the LoRA's safetensors checkpoints. """
+"""Conversion script for the LoRA's safetensors checkpoints."""
 
 import argparse
 

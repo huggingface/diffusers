@@ -76,7 +76,7 @@ class StableUnCLIPPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInver
         prior_text_encoder ([`CLIPTextModelWithProjection`]):
             Frozen [`CLIPTextModelWithProjection`] text-encoder.
         prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         prior_scheduler ([`KarrasDiffusionSchedulers`]):
             Scheduler used in the prior denoising process.
         image_normalizer ([`StableUnCLIPImageNormalizer`]):

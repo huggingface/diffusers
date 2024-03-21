@@ -46,6 +46,7 @@ from .kandinsky2_2 import (
 from .kandinsky3 import Kandinsky3Img2ImgPipeline, Kandinsky3Pipeline
 from .latent_consistency_models import LatentConsistencyModelImg2ImgPipeline, LatentConsistencyModelPipeline
 from .pixart_alpha import PixArtAlphaPipeline
+from .stable_cascade import StableCascadeCombinedPipeline, StableCascadeDecoderPipeline
 from .stable_diffusion import (
     StableDiffusionImg2ImgPipeline,
     StableDiffusionInpaintPipeline,
@@ -70,6 +71,7 @@ AUTO_TEXT2IMAGE_PIPELINES_MAPPING = OrderedDict(
         ("stable-diffusion-controlnet", StableDiffusionControlNetPipeline),
         ("stable-diffusion-xl-controlnet", StableDiffusionXLControlNetPipeline),
         ("wuerstchen", WuerstchenCombinedPipeline),
+        ("cascade", StableCascadeCombinedPipeline),
         ("lcm", LatentConsistencyModelPipeline),
         ("pixart", PixArtAlphaPipeline),
     ]
@@ -106,6 +108,7 @@ _AUTO_TEXT2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
         ("kandinsky", KandinskyPipeline),
         ("kandinsky22", KandinskyV22Pipeline),
         ("wuerstchen", WuerstchenDecoderPipeline),
+        ("cascade", StableCascadeDecoderPipeline),
     ]
 )
 _AUTO_IMAGE2IMAGE_DECODER_PIPELINES_MAPPING = OrderedDict(
