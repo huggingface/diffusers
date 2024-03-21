@@ -138,13 +138,13 @@ For even more customization, you can control how strongly the adapter affects ea
 For example, here's how you can turn on the adapter for the `text_encoder` and `down` parts, but turn it off for the `mid` and `up` parts:
 ```python
 pipe.enable_lora()  # enable lora again, after we disabled it above
+prompt = "toy_face of a hacker with a hoodie, pixel art"
 
 adapter_weight_scales = {
     "text_encoder": 1,
     "unet": { "down": 1, "mid": 0, "up": 0}
 }
 pipe.set_adapters("pixel", adapter_weight_scales)
-prompt = "a hacker with a hoodie"
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
