@@ -1472,7 +1472,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 optional_parameters.remove(name)
 
         return expected_modules, optional_parameters
-    
+
     @classmethod
     def _get_signature_types(cls):
         signature_types = {}
