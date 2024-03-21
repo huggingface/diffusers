@@ -130,6 +130,7 @@ prompt = "toy_face of a hacker with a hoodie"
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
+
 ![no-lora](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_20_1.png)
 
 ### Customize adapters strength
@@ -148,6 +149,7 @@ pipe.set_adapters("pixel", adapter_weight_scales)
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
+
 ![block-lora-text-and-down](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_block_down.png)
 
 Let's see how turning off the `down` part and turning on the `mid` and `up` part respectively changes the image.
@@ -160,6 +162,7 @@ pipe.set_adapters("pixel", adapter_weight_scales)
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
+
 ![block-lora-text-and-mid](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_block_mid.png)
 
 ```python
@@ -171,6 +174,7 @@ pipe.set_adapters("pixel", adapter_weight_scales)
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
+
 ![block-lora-text-and-up](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_block_up.png)
 
 Looks cool!
@@ -193,6 +197,7 @@ pipe.set_adapters(["toy", "pixel"], [adapter_weight_scales_toy, adapter_weight_s
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
+
 ![block-lora-mixed](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_block_mixed.png)
 
 ## Manage active adapters
