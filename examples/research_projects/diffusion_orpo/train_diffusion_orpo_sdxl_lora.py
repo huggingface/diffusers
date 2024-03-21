@@ -322,7 +322,7 @@ def parse_args(input_args=None):
         "--beta_orpo",
         type=int,
         default=5000,
-        help="DPO KL Divergence penalty.",
+        help="ORPO contribution factor.",
     )
     parser.add_argument(
         "--learning_rate",
@@ -759,11 +759,20 @@ def main(args):
         # Double on channel dim, jpg_y then jpg_w
         im_tup_iterator = zip(*all_pixel_values)
         combined_pixel_values = []
+        labels = []
         for im_tup, label_0 in zip(im_tup_iterator, examples["label_0"]):
+            # We randomize selection and rejection.
+            if label_0 == 0.5:
+                if random.random() < 0.5:
+                    label_0 = 0
+                else:
+                    label_0 = 1
+
             if label_0 == 0:
                 im_tup = im_tup[::-1]
 
             combined_im = torch.cat(im_tup, dim=0)  # no batch dim
+            labels.append(label_0)
 
             # Resize.
             combined_im = train_resize(combined_im)
@@ -781,12 +790,13 @@ def main(args):
                 y1, x1, h, w = train_crop.get_params(combined_im, (args.resolution, args.resolution))
                 combined_im = crop(combined_im, y1, x1, h, w)
 
-            crop_top_left = (y1, x1)
-            crop_top_lefts.append(crop_top_left)
-            combined_im = normalize(combined_im)
-            combined_pixel_values.append(combined_im)
+                crop_top_left = (y1, x1)
+                crop_top_lefts.append(crop_top_left)
+                combined_im = normalize(combined_im)
+                combined_pixel_values.append(combined_im)
 
         examples["pixel_values"] = combined_pixel_values
+        examples["labels"] = labels
         examples["original_sizes"] = original_sizes
         examples["crop_top_lefts"] = crop_top_lefts
         tokens_one, tokens_two = tokenize_captions([tokenizer_one, tokenizer_two], examples)
@@ -972,23 +982,25 @@ def main(args):
                 else:
                     raise ValueError(f"Unknown prediction type {noise_scheduler.config.prediction_type}")
 
-                # Compute losses.
+                # ODDS ratio loss.
+                # In the diffusion formulation, we're assuming that the MSE loss
+                # approximates the logp.
                 model_losses = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                 model_losses = model_losses.mean(dim=list(range(1, len(model_losses.shape))))
                 model_losses_w, model_losses_l = model_losses.chunk(2)
+                log_odds = (model_losses_w - model_losses_l) - (
+                    torch.log(1 - torch.exp(model_losses_w)) - torch.log(1 - torch.exp(model_losses_l))
+                )
 
-                # For logging
-                raw_model_loss = 0.5 * (model_losses_w.mean() + model_losses_l.mean())
-                model_diff = model_losses_w - model_losses_l  # These are both LBS (as is t)
+                # Ratio loss.
+                sig_ratio = F.sigmoid(log_odds)
+                ratio = torch.log(sig_ratio)
+                ratio_losses = args.beta_orpo * ratio
 
-                # Final loss.
-                scale_term = -0.5 * args.beta_orpo
-                inside_term = scale_term * (model_diff - ref_diff)
-                loss = -1 * F.logsigmoid(inside_term).mean()
+                # Full ORPO loss
+                loss = model_losses_w.mean() - ratio_losses.mean()
 
-                implicit_acc = (inside_term > 0).sum().float() / inside_term.size(0)
-                implicit_acc += 0.5 * (inside_term == 0).sum().float() / inside_term.size(0)
-
+                # Backprop.
                 accelerator.backward(loss)
                 if accelerator.sync_gradients:
                     accelerator.clip_grad_norm_(params_to_optimize, args.max_grad_norm)
@@ -1032,13 +1044,7 @@ def main(args):
                             args, unet=unet, vae=vae, accelerator=accelerator, weight_dtype=weight_dtype, epoch=epoch
                         )
 
-            logs = {
-                "loss": loss.detach().item(),
-                "raw_model_loss": raw_model_loss.detach().item(),
-                "ref_loss": raw_ref_loss.detach().item(),
-                "implicit_acc": implicit_acc.detach().item(),
-                "lr": lr_scheduler.get_last_lr()[0],
-            }
+            logs = {"loss": loss.detach().item(), "lr": lr_scheduler.get_last_lr()[0]}
             progress_bar.set_postfix(**logs)
             accelerator.log(logs, step=global_step)
 
