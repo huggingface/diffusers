@@ -1,0 +1,78 @@
+name: Slow Tests on main
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+    paths:
+      - "src/diffusers/**.py"
+      - "examples/**.py"
+      - "tests/**.py"
+
+env:
+  DIFFUSERS_IS_CI: yes
+  HF_HOME: /mnt/cache
+  OMP_NUM_THREADS: 8
+  MKL_NUM_THREADS: 8
+  PYTEST_TIMEOUT: 600
+  RUN_SLOW: yes
+  PIPELINE_USAGE_CUTOFF: 50000
+
+jobs:
+  torch_pipelines_cuda_tests:
+    name: Torch Pipelines CUDA Slow Tests
+    strategy:
+      fail-fast: false
+    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+    container:
+      image: diffusers/diffusers-pytorch-cuda
+      options: --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: NVIDIA-SMI
+        run: |
+          nvidia-smi
+      - name: Install dependencies
+        run: |
+          apt-get update && apt-get install libsndfile1-dev libgl1 -y
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+          python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate.git
+      - name: Environment
+        run: |
+          python utils/print_env.py
+      - name: Slow PyTorch CUDA checkpoint tests on Ubuntu
+        env:
+          HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
+          # https://pytorch.org/docs/stable/notes/randomness.html#avoiding-nondeterministic-algorithms
+          CUBLAS_WORKSPACE_CONFIG: :16:8
+        run: |
+          python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
+            -s -v -k "not Flax and not Onnx" \
+            tests/pipelines/text_to_video_synthesis/test_text_to_video.py::TextToVideoSDPipelineSlowTests::test_two_step_model
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: |
+          cat reports/tests_pipeline_${{ matrix.module }}_cuda_stats.txt
+          cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
+
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: pipeline_${{ matrix.module }}_test_reports
+          path: reports
+
+      - name: Tailscale
+        uses: huggingface/tailscale-action@main
+        with:
+          authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
+          debugEnabled: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
+          slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
