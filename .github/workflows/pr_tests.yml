@@ -112,8 +112,8 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
-        python -m uv pip install accelerate
+        python -m uv pip install -e [quality,test] --prerelease=allow
+        python -m uv pip install accelerate --prerelease=allow
 
     - name: Environment
       run: |
@@ -201,7 +201,7 @@ jobs:
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m uv pip install -e [quality,test]
+        python -m uv pip install -e [quality,test] --prerelease=allow
 
     - name: Environment
       run: |
