@@ -147,7 +147,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             "Accelerate version": accelerate_version,
             "Accelerate config": f"{accelerate_config_str}",
             "PEFT version": peft_version,
-            "SafeTensors version": f"{safetensors_version}",
+            "Safetensors version": f"{safetensors_version}",
             "xFormers version": xformers_version,
             "Using GPU in script?": "<fill in>",
             "Using distributed or parallel set-up in script?": "<fill in>",
