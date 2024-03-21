@@ -1052,8 +1052,8 @@ class PipelineTesterMixin:
         signature_types = self.pipeline_class._get_signature_types()
         if (
             issubclass(self.pipeline_class, StableDiffusionMixin)
-            and signature_types["unet"] == "UNet2DConditionModel"
-            and signature_types["vae"] == "AutoencoderKL"
+            and UNet2DConditionModel in signature_types["unet"]
+            and AutoencoderKL in signature_types["vae"]
         ):
             assert 1 == 2
         else:
