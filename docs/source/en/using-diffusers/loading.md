@@ -60,6 +60,23 @@ repo_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(repo_id)
 ```
 
+You can estimate the memory requirements of a pipeline you want to load beforehand with [this Space](https://huggingface.co/spaces/diffusers/compute-pipeline-size/).
+
+<div class="block dark:hidden">
+	<iframe 
+        src="https://diffusers-compute-pipeline-size.hf.space?__theme=light"
+        width="850"
+        height="1600"
+    ></iframe>
+</div>
+<div class="hidden dark:block">
+    <iframe 
+        src="https://diffusers-compute-pipeline-size.hf.space?__theme=dark"
+        width="850"
+        height="1600"
+    ></iframe>
+</div>
+
 ### Local pipeline
 
 To load a diffusion pipeline locally, use [`git-lfs`](https://git-lfs.github.com/) to manually download the checkpoint (in this case, [`runwayml/stable-diffusion-v1-5`](https://huggingface.co/runwayml/stable-diffusion-v1-5)) to your local disk. This creates a local folder, `./stable-diffusion-v1-5`, on your disk:
