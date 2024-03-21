@@ -393,6 +393,9 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     ):
         has_motion_adapter = motion_adapter is not None
 
+        if has_motion_adapter:
+            motion_adapter.to(device=unet.device)
+
         # based on https://github.com/guoyww/AnimateDiff/blob/895f3220c06318ea0760131ec70408b466c49333/animatediff/models/unet.py#L459
         config = dict(unet.config)
         config["_class_name"] = cls.__name__

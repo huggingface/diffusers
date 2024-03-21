@@ -57,6 +57,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
         []
     )  # TO-DO: update image_params once pipeline is refactored with VaeImageProcessor.preprocess
     image_latents_params = frozenset([])
+    test_from_pipe = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)

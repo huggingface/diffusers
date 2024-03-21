@@ -49,6 +49,7 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
     image_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
     generator_device = "cpu"
+    test_from_pipe = True
 
     def get_dummy_components(self, seed=0):
         torch.manual_seed(seed)

@@ -1045,18 +1045,7 @@ class PipelineTesterMixin:
             assert_mean_pixel_difference(to_np(output_with_slicing[0]), to_np(output_without_slicing[0]))
 
     def test_from_pipe(self):
-        # Only test if the pipeline is a member of Stable Diffusion family
-        # if not self.test_from_pipe:
-        #     return
-
-        signature_types = self.pipeline_class._get_signature_types()
-        if (
-            issubclass(self.pipeline_class, StableDiffusionMixin)
-            and UNet2DConditionModel in signature_types["unet"]
-            and AutoencoderKL in signature_types["vae"]
-        ):
-            assert 1 == 2
-        else:
+        if not self.test_from_pipe:
             return
 
         if "xl" in self.pipeline_class.__name__.lower():
@@ -1071,22 +1060,22 @@ class PipelineTesterMixin:
             return inputs
 
         def get_dummy_inputs_pipe_original(device, seed=0):
-            if str(device).startswith("mps"):
-                generator = torch.manual_seed(seed)
-            else:
-                generator = torch.Generator(device=torch_device).manual_seed(seed)
-            inputs = {
-                "prompt": "A painting of a squirrel eating a burger",
-                "generator": generator,
-                "num_inference_steps": 2,
-                "guidance_scale": 6.0,
-                "output_type": "np",
-            }
+            inputs = {}
+            for k, v in get_dummy_inputs(device).items():
+                if k in set(inspect.signature(original_pipeline_class.__call__).parameters.keys()):
+                    inputs[k] = v
+
             return inputs
 
+        # pipeline components
         components = self.get_dummy_components()
+        # pipeline components that are also expected to be in the original pipeline
         original_pipe_components = {}
+        # additional components that are not in the pipeline, but expected in the original pipeline
+        original_pipe_additional_components = {}
+        # additional components that are in the pipeline, but not expected in the original pipeline
         additional_components = {}
+        # components expected in the original pipeline
         original_expected_modules, _ = original_pipeline_class._get_signature_keys(original_pipeline_class)
 
         for k, v in components.items():
@@ -1097,21 +1086,21 @@ class PipelineTesterMixin:
         for k in original_expected_modules:
             if k not in original_pipe_components:
                 if k in original_pipeline_class._optional_components:
-                    original_pipe_components[k] = None
+                    original_pipe_additional_components[k] = None
                 else:
                     raise ValueError(f"missing expected module {k}")
 
         # original pipeline: (sd/sdxl)
-        pipe_original = original_pipeline_class(**original_pipe_components)
+        pipe_original = original_pipeline_class(**original_pipe_components, **original_pipe_additional_components)
         pipe_original.to(torch_device)
         pipe_original.set_progress_bar_config(disable=None)
 
         original_config = {k: v for k, v in pipe_original.config.items() if not k.startswith("_")}
 
         inputs = get_dummy_inputs_pipe_original(torch_device)
-        output_original = pipe_original(**inputs).images
+        output_original = pipe_original(**inputs)[0]
 
-        # pipe1: self.pipeline_class
+        # pipe1: pipeline
         pipe1 = self.pipeline_class(**components)
         pipe1.to(torch_device)
         pipe1.set_progress_bar_config(disable=None)
@@ -1120,7 +1109,7 @@ class PipelineTesterMixin:
         inputs = get_dummy_inputs(torch_device)
         output1 = pipe1(**inputs)[0]
 
-        # pipe2: sd/sdxl -> self.pipeline_class
+        # pipe2 (created with `from_pipe`): original pipeline(sd/sdxl) -> pipeline
         pipe2 = self.pipeline_class.from_pipe(pipe_original, **additional_components)
         pipe2.to(torch_device)
         pipe2.set_progress_bar_config(disable=None)
@@ -1129,14 +1118,29 @@ class PipelineTesterMixin:
         inputs = get_dummy_inputs(torch_device)
         output2 = pipe2(**inputs)[0]
 
-        # pipe_original_2: self.pipeline_class -> sd/sdxl
-        pipe_original_2 = original_pipeline_class.from_pipe(pipe2)
+        # pipe_original_2 (created with `from_pipe`): pipeline ->  original pipeline (sd/sdxl)
+
+        ## for pipelines such as animtediff and pia, the unet changes from UNet2DConditionModel to UNetMotionModel during __init__
+        changed_components = {}
+        original_signature_types = original_pipeline_class._get_signature_types()
+        for k, v in pipe2.components.items():
+            if (
+                k in original_expected_modules
+                and v is not None
+                and isinstance(v, torch.nn.Module)
+                and type(v) not in original_signature_types[k]
+            ):
+                changed_components[k] = original_pipe_components[k]
+
+        pipe_original_2 = original_pipeline_class.from_pipe(
+            pipe2, **changed_components, **original_pipe_additional_components
+        )
         pipe_original_2.to(torch_device)
         pipe_original_2.set_progress_bar_config(disable=None)
         pipe_original_2_config = {k: v for k, v in pipe_original_2.config.items() if not k.startswith("_")}
 
         inputs = get_dummy_inputs_pipe_original(torch_device)
-        output_original2 = pipe_original_2(**inputs).images
+        output_original2 = pipe_original_2(**inputs)[0]
 
         assert pipe1_config == pipe2_config
         assert pipe_original_2_config == original_config

@@ -56,6 +56,7 @@ class AdapterTests:
     pipeline_class = StableDiffusionAdapterPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
     batch_params = TEXT_GUIDED_IMAGE_VARIATION_BATCH_PARAMS
+    test_from_pipe = True
 
     def get_dummy_components(self, adapter_type, time_cond_proj_dim=None):
         torch.manual_seed(0)
