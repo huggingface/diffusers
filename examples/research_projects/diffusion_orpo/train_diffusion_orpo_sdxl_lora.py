@@ -985,13 +985,10 @@ def main(args):
                 model_losses = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                 model_losses = model_losses.mean(dim=list(range(1, len(model_losses.shape))))
                 model_losses_w, model_losses_l = model_losses.chunk(2)
-                log_odds = (model_losses_w - model_losses_l) - (
-                    torch.log(1 - torch.exp(model_losses_w)) - torch.log(1 - torch.exp(model_losses_l))
-                )
+                log_odds = model_losses_w - model_losses_l
 
                 # Ratio loss.
-                sig_ratio = F.sigmoid(log_odds)
-                ratio = torch.log(sig_ratio)
+                ratio = F.logsigmoid(log_odds)
                 ratio_losses = args.beta_orpo * ratio
 
                 # Full ORPO loss
