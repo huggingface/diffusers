@@ -776,9 +776,9 @@ class TokenEmbeddingsHandler:
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
-            self.embeddings_settings[
-                f"original_embeddings_{idx}"
-            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            self.embeddings_settings[f"original_embeddings_{idx}"] = (
+                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            )
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)
