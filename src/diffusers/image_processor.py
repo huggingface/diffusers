@@ -173,8 +173,9 @@ class VaeImageProcessor(ConfigMixin):
     @staticmethod
     def get_crop_region(mask_image: PIL.Image.Image, width: int, height: int, pad=0):
         """
-        Finds a rectangular region that contains all masked ares in an image, and expands region to match the aspect ratio of the original image;
-        for example, if user drew mask in a 128x32 region, and the dimensions for processing are 512x512, the region will be expanded to 128x128.
+        Finds a rectangular region that contains all masked ares in an image, and expands region to match the aspect
+        ratio of the original image; for example, if user drew mask in a 128x32 region, and the dimensions for
+        processing are 512x512, the region will be expanded to 128x128.
 
         Args:
             mask_image (PIL.Image.Image): Mask image.
@@ -183,7 +184,8 @@ class VaeImageProcessor(ConfigMixin):
             pad (int, optional): Padding to be added to the crop region. Defaults to 0.
 
         Returns:
-            tuple: (x1, y1, x2, y2) represent a rectangular region that contains all masked ares in an image and matches the original aspect ratio.
+            tuple: (x1, y1, x2, y2) represent a rectangular region that contains all masked ares in an image and
+            matches the original aspect ratio.
         """
 
         mask_image = mask_image.convert("L")
@@ -265,7 +267,8 @@ class VaeImageProcessor(ConfigMixin):
         height: int,
     ) -> PIL.Image.Image:
         """
-        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image within the dimensions, filling empty with data from image.
+        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center
+        the image within the dimensions, filling empty with data from image.
 
         Args:
             image: The image to resize.
@@ -309,7 +312,8 @@ class VaeImageProcessor(ConfigMixin):
         height: int,
     ) -> PIL.Image.Image:
         """
-        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image within the dimensions, cropping the excess.
+        Resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center
+        the image within the dimensions, cropping the excess.
 
         Args:
             image: The image to resize.
@@ -346,12 +350,12 @@ class VaeImageProcessor(ConfigMixin):
                 The width to resize to.
             resize_mode (`str`, *optional*, defaults to `default`):
                 The resize mode to use, can be one of `default` or `fill`. If `default`, will resize the image to fit
-                within the specified width and height, and it may not maintaining the original aspect ratio.
-                If `fill`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, filling empty with data from image.
-                If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, cropping the excess.
-                Note that resize_mode `fill` and `crop` are only supported for PIL image input.
+                within the specified width and height, and it may not maintaining the original aspect ratio. If `fill`,
+                will resize the image to fit within the specified width and height, maintaining the aspect ratio, and
+                then center the image within the dimensions, filling empty with data from image. If `crop`, will resize
+                the image to fit within the specified width and height, maintaining the aspect ratio, and then center
+                the image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
+                supported for PIL image input.
 
         Returns:
             `PIL.Image.Image`, `np.ndarray` or `torch.Tensor`:
@@ -456,19 +460,21 @@ class VaeImageProcessor(ConfigMixin):
 
         Args:
             image (`pipeline_image_input`):
-                The image input, accepted formats are PIL images, NumPy arrays, PyTorch tensors; Also accept list of supported formats.
+                The image input, accepted formats are PIL images, NumPy arrays, PyTorch tensors; Also accept list of
+                supported formats.
             height (`int`, *optional*, defaults to `None`):
-                The height in preprocessed image. If `None`, will use the `get_default_height_width()` to get default height.
+                The height in preprocessed image. If `None`, will use the `get_default_height_width()` to get default
+                height.
             width (`int`, *optional*`, defaults to `None`):
-                The width in preprocessed. If `None`, will use  get_default_height_width()` to get the default width.
+                The width in preprocessed. If `None`, will use get_default_height_width()` to get the default width.
             resize_mode (`str`, *optional*, defaults to `default`):
-                The resize mode, can be one of `default` or `fill`. If `default`, will resize the image to fit
-                within the specified width and height, and it may not maintaining the original aspect ratio.
-                If `fill`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, filling empty with data from image.
-                If `crop`, will resize the image to fit within the specified width and height, maintaining the aspect ratio, and then center the image
-                within the dimensions, cropping the excess.
-                Note that resize_mode `fill` and `crop` are only supported for PIL image input.
+                The resize mode, can be one of `default` or `fill`. If `default`, will resize the image to fit within
+                the specified width and height, and it may not maintaining the original aspect ratio. If `fill`, will
+                resize the image to fit within the specified width and height, maintaining the aspect ratio, and then
+                center the image within the dimensions, filling empty with data from image. If `crop`, will resize the
+                image to fit within the specified width and height, maintaining the aspect ratio, and then center the
+                image within the dimensions, cropping the excess. Note that resize_mode `fill` and `crop` are only
+                supported for PIL image input.
             crops_coords (`List[Tuple[int, int, int, int]]`, *optional*, defaults to `None`):
                 The crop coordinates for each image in the batch. If `None`, will not crop the image.
         """
@@ -930,8 +936,8 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
     @staticmethod
     def downsample(mask: torch.FloatTensor, batch_size: int, num_queries: int, value_embed_dim: int):
         """
-        Downsamples the provided mask tensor to match the expected dimensions for scaled dot-product attention.
-        If the aspect ratio of the mask does not match the aspect ratio of the output image, a warning is issued.
+        Downsamples the provided mask tensor to match the expected dimensions for scaled dot-product attention. If the
+        aspect ratio of the mask does not match the aspect ratio of the output image, a warning is issued.
 
         Args:
             mask (`torch.FloatTensor`):

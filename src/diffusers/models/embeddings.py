@@ -796,16 +796,13 @@ class IPAdapterPlusImageProjection(nn.Module):
 
     Args:
     ----
-        embed_dims (int): The feature dimension. Defaults to 768.
-        output_dims (int): The number of output channels, that is the same
-            number of the channels in the
-            `unet.config.cross_attention_dim`. Defaults to 1024.
-        hidden_dims (int): The number of hidden channels. Defaults to 1280.
-        depth (int): The number of blocks. Defaults to 8.
-        dim_head (int): The number of head channels. Defaults to 64.
-        heads (int): Parallel attention heads. Defaults to 16.
-        num_queries (int): The number of queries. Defaults to 8.
-        ffn_ratio (float): The expansion ratio of feedforward network hidden
+        embed_dims (int): The feature dimension. Defaults to 768. output_dims (int): The number of output channels,
+        that is the same
+            number of the channels in the `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int): The number of hidden channels. Defaults to 1280. depth (int): The number of blocks. Defaults
+        to 8. dim_head (int): The number of head channels. Defaults to 64. heads (int): Parallel attention heads.
+        Defaults to 16. num_queries (int): The number of queries. Defaults to 8. ffn_ratio (float): The expansion ratio
+        of feedforward network hidden
             layer channels. Defaults to 4.
     """
 

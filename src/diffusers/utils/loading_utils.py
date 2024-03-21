@@ -16,8 +16,8 @@ def load_image(
         image (`str` or `PIL.Image.Image`):
             The image to convert to the PIL Image format.
         convert_method (Callable[[PIL.Image.Image], PIL.Image.Image], optional):
-            A conversion method to apply to the image after loading it.
-            When set to `None` the image will be converted "RGB".
+            A conversion method to apply to the image after loading it. When set to `None` the image will be converted
+            "RGB".
 
     Returns:
         `PIL.Image.Image`:

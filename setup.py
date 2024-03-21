@@ -130,6 +130,7 @@ _deps = [
     "torchvision",
     "transformers>=4.25.1",
     "urllib3<=2.0.0",
+    "black",
 ]
 
 # this is a lookup table with items like:
@@ -201,8 +202,9 @@ class DepsTableUpdateCommand(Command):
 
 
 extras = {}
-extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder")
-extras["docs"] = deps_list("hf-doc-builder")
+# `hf-doc-builder` has a dependency on `black`. See huggingface/doc-builder#434.
+extras["quality"] = deps_list("urllib3", "isort", "ruff", "hf-doc-builder", "black")
+extras["docs"] = deps_list("hf-doc-builder", "black")
 extras["training"] = deps_list("accelerate", "datasets", "protobuf", "tensorboard", "Jinja2", "peft")
 extras["test"] = deps_list(
     "compel",

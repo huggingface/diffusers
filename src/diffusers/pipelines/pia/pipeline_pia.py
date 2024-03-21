@@ -61,6 +61,7 @@ EXAMPLE_DOC_STRING = """
         ...     PIAPipeline,
         ... )
         >>> from diffusers.utils import export_to_gif, load_image
+
         >>> adapter = MotionAdapter.from_pretrained("../checkpoints/pia-diffusers")
         >>> pipe = PIAPipeline.from_pretrained("SG161222/Realistic_Vision_V6.0_B1_noVAE", motion_adapter=adapter)
         >>> pipe.scheduler = EulerDiscreteScheduler.from_config(pipe.scheduler.config)
@@ -788,7 +789,8 @@ class PIAPipeline(
                 The input image to be used for video generation.
             prompt (`str` or `List[str]`, *optional*):
                 The prompt or prompts to guide image generation. If not defined, you need to pass `prompt_embeds`.
-            strength (`float`, *optional*, defaults to 1.0): Indicates extent to transform the reference `image`. Must be between 0 and 1.
+            strength (`float`, *optional*, defaults to 1.0):
+                Indicates extent to transform the reference `image`. Must be between 0 and 1.
             height (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The height in pixels of the generated video.
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
@@ -825,16 +827,15 @@ class PIAPipeline(
             ip_adapter_image: (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
-                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
-                if `do_classifier_free_guidance` is set to `True`.
-                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
+                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
+                contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             motion_scale: (`int`, *optional*, defaults to 0):
-                Parameter that controls the amount and type of motion that is added to the image. Increasing the value increases the amount of motion, while specific
-                ranges of values control the type of motion that is added. Must be between 0 and 8.
-                Set between 0-2 to only increase the amount of motion.
-                Set between 3-5 to create looping motion.
-                Set between 6-8 to perform motion with image style transfer.
+                Parameter that controls the amount and type of motion that is added to the image. Increasing the value
+                increases the amount of motion, while specific ranges of values control the type of motion that is
+                added. Must be between 0 and 8. Set between 0-2 to only increase the amount of motion. Set between 3-5
+                to create looping motion. Set between 6-8 to perform motion with image style transfer.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated video. Choose between `torch.FloatTensor`, `PIL.Image` or
                 `np.array`.
@@ -861,8 +862,8 @@ class PIAPipeline(
 
         Returns:
             [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] or `tuple`:
-                If `return_dict` is `True`, [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] is
-                returned, otherwise a `tuple` is returned where the first element is a list with the generated frames.
+                If `return_dict` is `True`, [`~pipelines.pia.pipeline_pia.PIAPipelineOutput`] is returned, otherwise a
+                `tuple` is returned where the first element is a list with the generated frames.
         """
         # 0. Default height and width to unet
         height = height or self.unet.config.sample_size * self.vae_scale_factor

@@ -1301,9 +1301,9 @@ class AttnProcessor2_0:
 
 class FusedAttnProcessor2_0:
     r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    It uses fused projection layers. For self-attention modules, all projection matrices (i.e., query,
-    key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). It uses
+    fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
+    For cross-attention modules, key and value projection matrices are fused.
 
     <Tip warning={true}>
 

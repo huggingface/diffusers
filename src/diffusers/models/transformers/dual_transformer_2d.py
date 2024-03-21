@@ -120,7 +120,8 @@ class DualTransformer2DModel(nn.Module):
                 `self.processor` in
                 [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+                Whether or not to return a [`models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                tuple.
 
         Returns:
             [`~models.transformer_2d.Transformer2DModelOutput`] or `tuple`:

@@ -80,7 +80,8 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         prior ([`StableCascadeUNet`]):
             The Stable Cascade prior to approximate the image embedding from the text and/or image embedding.
         text_encoder ([`CLIPTextModelWithProjection`]):
-            Frozen text-encoder ([laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)).
+            Frozen text-encoder
+            ([laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)).
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `image_encoder`.
         image_encoder ([`CLIPVisionModelWithProjection`]):
@@ -420,11 +421,11 @@ class StableCascadePriorPipeline(DiffusionPipeline):
                 argument.
             negative_prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt` input
-                argument.
+                weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt`
+                input argument.
             image_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated image embeddings. Can be used to easily tweak image inputs, *e.g.* prompt weighting.
-                If not provided, image embeddings will be generated from `image` input argument if existing.
+                Pre-generated image embeddings. Can be used to easily tweak image inputs, *e.g.* prompt weighting. If
+                not provided, image embeddings will be generated from `image` input argument if existing.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -452,9 +453,9 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`StableCascadePriorPipelineOutput`] or `tuple` [`StableCascadePriorPipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
-            generated image embeddings.
+            [`StableCascadePriorPipelineOutput`] or `tuple` [`StableCascadePriorPipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated image
+            embeddings.
         """
 
         # 0. Define commonly used variables

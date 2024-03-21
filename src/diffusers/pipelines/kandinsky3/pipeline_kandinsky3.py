@@ -24,7 +24,9 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import AutoPipelineForText2Image
         >>> import torch
 
-        >>> pipe = AutoPipelineForText2Image.from_pretrained("kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16)
+        >>> pipe = AutoPipelineForText2Image.from_pretrained(
+        ...     "kandinsky-community/kandinsky-3", variant="fp16", torch_dtype=torch.float16
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "A photograph of the inside of a subway train. There are raccoons sitting on the seats. One of them is reading a newspaper. The window shows the city in the background."
