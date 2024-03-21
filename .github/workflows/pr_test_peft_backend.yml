@@ -103,4 +103,4 @@ jobs:
         python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
           -s -v \
           --make-reports=tests_${{ matrix.config.report }} \
-          tests/lora/test_lora_layers_peft.py
+          tests/lora/

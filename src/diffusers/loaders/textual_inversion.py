@@ -18,6 +18,7 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from torch import nn
 
+from ..models.modeling_utils import load_state_dict
 from ..utils import _get_model_file, is_accelerate_available, is_transformers_available, logging
 
 
@@ -100,7 +101,7 @@ def load_textual_inversion_state_dicts(pretrained_model_name_or_paths, **kwargs)
                     subfolder=subfolder,
                     user_agent=user_agent,
                 )
-                state_dict = torch.load(model_file, map_location="cpu")
+                state_dict = load_state_dict(model_file)
         else:
             state_dict = pretrained_model_name_or_path
 

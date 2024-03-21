@@ -1260,7 +1260,7 @@ class StableDiffusionXLInpaintPipeline(
                 with the same aspect ration of the image and contains all masked area, and then expand that area based
                 on `padding_mask_crop`. The image and mask_image will then be cropped based on the expanded area before
                 resizing to the original image size for inpainting. This is useful when the masked area is small while
-                the image is large and contain information inreleant for inpainging, such as background.
+                the image is large and contain information irrelevant for inpainting, such as background.
             strength (`float`, *optional*, defaults to 0.9999):
                 Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
                 between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
