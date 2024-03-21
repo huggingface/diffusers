@@ -182,7 +182,7 @@ Stable Diffusion is not trained to generate seamless textures. However, you can 
 |![20240313003235_573631814](https://github.com/huggingface/diffusers/assets/5442875/eca174fb-06a4-464e-a3a7-00dbb024543e)|![wall](https://github.com/huggingface/diffusers/assets/5442875/b4aa774b-2a6a-4316-a8eb-8f30b5f4d024)|
 
 
-```
+```py
 import torch
 from typing import Optional
 from diffusers import StableDiffusionPipeline
