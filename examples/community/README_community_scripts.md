@@ -1,7 +1,7 @@
 # Community Scripts
 
-**Community scripts** consist inference examples using diffusers pipelines that have been added by the community. 
-Please have a look at the following tables to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
+**Community scripts** consist of inference examples using Diffusers pipelines that have been added by the community. 
+Please have a look at the following table to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste code example that you can try out.
 If a community script doesn't work as expected, please open an issue and ping the author on it.
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
