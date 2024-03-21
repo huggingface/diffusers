@@ -1519,7 +1519,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
             # Don't download index files of forbidden patterns either
             ignore_patterns = ignore_patterns + [f"{i}.index.*json" for i in ignore_patterns]
-
             re_ignore_pattern = [re.compile(fnmatch.translate(p)) for p in ignore_patterns]
             re_allow_pattern = [re.compile(fnmatch.translate(p)) for p in allow_patterns]
 

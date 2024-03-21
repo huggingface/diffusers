@@ -20,6 +20,7 @@ import os
 import re
 from collections import OrderedDict
 from functools import partial
+from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import safetensors
@@ -107,7 +108,12 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
         if file_extension == SAFETENSORS_FILE_EXTENSION:
             return safetensors.torch.load_file(checkpoint_file, device="cpu")
         else:
-            return torch.load(checkpoint_file, map_location="cpu")
+            weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
+            return torch.load(
+                checkpoint_file,
+                map_location="cpu",
+                **weights_only_kwarg,
+            )
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
@@ -367,18 +373,18 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Save the model
         if safe_serialization:
             safetensors.torch.save_file(
-                state_dict, os.path.join(save_directory, weights_name), metadata={"format": "pt"}
+                state_dict, Path(save_directory, weights_name).as_posix(), metadata={"format": "pt"}
             )
         else:
-            torch.save(state_dict, os.path.join(save_directory, weights_name))
+            torch.save(state_dict, Path(save_directory, weights_name).as_posix())
 
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
+        logger.info(f"Model weights saved in {Path(save_directory, weights_name).as_posix()}")
 
         if push_to_hub:
             # Create a new empty model card and eventually tag it
             model_card = load_or_create_model_card(repo_id, token=token)
             model_card = populate_model_card(model_card)
-            model_card.save(os.path.join(save_directory, "README.md"))
+            model_card.save(Path(save_directory, "README.md").as_posix())
 
             self._upload_folder(
                 save_directory,
