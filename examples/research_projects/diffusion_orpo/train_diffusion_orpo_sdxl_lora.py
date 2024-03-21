@@ -320,8 +320,8 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--beta_orpo",
-        type=int,
-        default=5000,
+        type=float,
+        default=0.1,
         help="ORPO contribution factor.",
     )
     parser.add_argument(
