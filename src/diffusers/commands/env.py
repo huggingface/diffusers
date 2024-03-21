@@ -60,7 +60,6 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
     def run(self):
         hub_version = huggingface_hub.__version__
 
-        safetensors_version = "not installed"
         if is_safetensors_available():
             import safetensors
 
@@ -69,6 +68,8 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             import safetensors
 
             safetensors_version = f"{safetensors.__version__} but is ignored because of PyTorch version too old."
+        else:
+            safetensors_version = "not installed"
 
         pt_version = "not installed"
         pt_cuda_available = "NA"
