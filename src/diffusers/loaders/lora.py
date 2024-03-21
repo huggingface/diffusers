@@ -15,7 +15,6 @@ import copy
 import inspect
 import os
 from pathlib import Path
-from types import NoneType
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
@@ -961,7 +960,7 @@ class LoraLoaderMixin:
         self,
         adapter_names: Union[List[str], str],
         text_encoder: Optional["PreTrainedModel"] = None,  # noqa: F821
-        text_encoder_weights: Optional[Union[float, List[float], List[NoneType]]] = None,
+        text_encoder_weights: Optional[Union[float, List[float], List[None]]] = None,
     ):
         """
         Sets the adapter layers for the text encoder.

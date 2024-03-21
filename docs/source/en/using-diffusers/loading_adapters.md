@@ -192,6 +192,12 @@ scales_2 = { ... }
 pipe.set_adapters(["my_adapter_1", "my_adapter_2"], [scales_1, scales_2])
 ```
 
+<Tip warning={true}>
+
+Currently, [`~loaders.LoraLoaderMixin.set_adapters`] only supports scaling attention weights. If a LoRa has other parts (e.g., resnets or down-/upsamplers), they will keep a scale of 1.0.
+
+</Tip>
+
 ### Kohya and TheLastBen
 
 Other popular LoRA trainers from the community include those by [Kohya](https://github.com/kohya-ss/sd-scripts/) and [TheLastBen](https://github.com/TheLastBen/fast-stable-diffusion). These trainers create different LoRA checkpoints than those trained by 🤗 Diffusers, but they can still be loaded in the same way.

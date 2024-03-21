@@ -18,7 +18,6 @@ from collections import defaultdict
 from contextlib import nullcontext
 from functools import partial
 from pathlib import Path
-from types import NoneType
 from typing import Callable, Dict, List, Optional, Union
 
 import safetensors
@@ -677,7 +676,7 @@ class UNet2DConditionLoadersMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        weights: Optional[Union[float, Dict, List[float], List[Dict], List[NoneType]]] = None,
+        weights: Optional[Union[float, Dict, List[float], List[Dict], List[None]]] = None,
     ):
         """
         Set the currently active adapters for use in the UNet.
