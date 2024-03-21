@@ -23,6 +23,7 @@ TODO:
 6. Integrate to training x
 7. Test
 """
+
 import copy
 import random
 
