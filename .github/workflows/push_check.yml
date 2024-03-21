@@ -31,6 +31,13 @@ jobs:
       image: diffusers/diffusers-pytorch-cuda
       options: --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
     steps:
+      - name: Tailscale
+        uses: huggingface/tailscale-action@main
+        with:
+          authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
+          debugEnabled: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
+          slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
       - name: Checkout diffusers
         uses: actions/checkout@v3
         with:
@@ -55,24 +62,8 @@ jobs:
         run: |
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
-            tests/pipelines/text_to_video_synthesis/
-      - name: Failure short reports
-        if: ${{ failure() }}
-        run: |
-          cat reports/tests_pipeline_${{ matrix.module }}_cuda_stats.txt
-          cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
-
-      - name: Test suite reports artifacts
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v2
-        with:
-          name: pipeline_${{ matrix.module }}_test_reports
-          path: reports
-
-      - name: Tailscale
-        uses: huggingface/tailscale-action@main
-        with:
-          authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
-          debugEnabled: ${{ secrets.ACTIONS_STEP_DEBUG }}
-          slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
-          slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
+            tests/pipelines/kandinsky2_2
+      - name: Wait for SSH
+        run : |
+          sleep 30s
+          while [ "$(last | grep '^runner.*still logged in$')" ]; do sleep 1m; done
