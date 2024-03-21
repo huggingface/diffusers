@@ -45,7 +45,7 @@ Make sure to include the token `toy_face` in the prompt and then you can perform
 ```python
 prompt = "toy_face of a hacker with a hoodie"
 
-lora_scale= 0.9
+lora_scale = 0.9
 image = pipe(
     prompt, num_inference_steps=30, cross_attention_kwargs={"scale": lora_scale}, generator=torch.manual_seed(0)
 ).images[0]
@@ -114,7 +114,7 @@ To return to only using one adapter, use the [`~diffusers.loaders.UNet2DConditio
 pipe.set_adapters("toy")
 
 prompt = "toy_face of a hacker with a hoodie"
-lora_scale= 0.9
+lora_scale = 0.9
 image = pipe(
     prompt, num_inference_steps=30, cross_attention_kwargs={"scale": lora_scale}, generator=torch.manual_seed(0)
 ).images[0]
@@ -127,10 +127,10 @@ Or to disable all adapters entirely, use the [`~diffusers.loaders.UNet2DConditio
 pipe.disable_lora()
 
 prompt = "toy_face of a hacker with a hoodie"
-lora_scale= 0.9
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
+![no-lora](https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/peft_integration/diffusers_peft_lora_inference_20_1.png)
 
 ### Customize adapters strength
 For even more customization, you can control how strongly the adapter affects each part of the pipeline. For this, pass a dictionary with the control strengths (called "scales") to [`~diffusers.loaders.UNet2DConditionLoadersMixin.set_adapters`].
