@@ -174,7 +174,7 @@ image.save("result.png")
 ```
 
 ### Asymmetric Tiling
-Stable Diffusion is not trained to generate seamless textures, However, you can a simple script to make your generation tile-abe. This script is contributed by [alexisrolland](https://github.com/alexisrolland). See more details in the [this issue](https://github.com/huggingface/diffusers/issues/556)
+Stable Diffusion is not trained to generate seamless textures. However, you can use this simple script to add tiling to your generation. This script is contributed by [alexisrolland](https://github.com/alexisrolland). See more details in the [this issue](https://github.com/huggingface/diffusers/issues/556)
 
 
 |Generated|Tiled|
