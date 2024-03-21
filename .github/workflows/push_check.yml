@@ -55,7 +55,7 @@ jobs:
         run: |
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
-            tests/pipelines/text_to_video_synthesis/test_text_to_video.py::TextToVideoSDPipelineSlowTests::test_two_step_model
+            tests/pipelines/text_to_video_synthesis/
       - name: Failure short reports
         if: ${{ failure() }}
         run: |
