@@ -465,7 +465,7 @@ class LMSDiscreteScheduler(SchedulerMixin, ConfigMixin):
             # add_noise is called after first denoising step (for inpainting)
             step_indices = [self.step_index] * timesteps.shape[0]
         else:
-            # add noise is called bevore first denoising step to create inital latent(img2img)
+            # add noise is called before first denoising step to create initial latent(img2img)
             step_indices = [self.begin_index] * timesteps.shape[0]
 
         sigma = sigmas[step_indices].flatten()
