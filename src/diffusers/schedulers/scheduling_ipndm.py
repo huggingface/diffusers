@@ -61,7 +61,7 @@ class IPNDMScheduler(SchedulerMixin, ConfigMixin):
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
