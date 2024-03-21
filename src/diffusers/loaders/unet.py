@@ -581,36 +581,40 @@ class UNet2DConditionLoadersMixin:
                 Dict with keys 'up' and 'down', showing how many transformer layers each block has
 
         E.g. turns
-            scales = {
-                'down': 2,
-                'mid': 3,
-                'up': {
-                    'block_0': 4,
-                    'block_1': [5, 6, 7]
-                }
+        ```python
+        scales = {
+            'down': 2,
+            'mid': 3,
+            'up': {
+                'block_0': 4,
+                'block_1': [5, 6, 7]
             }
-            blocks_with_transformer = {
-                'down': [1,2],
-                'up': [0,1]
-            }
-            transformer_per_block = {
-                'down': 2,
-                'up': 3
-            }
+        }
+        blocks_with_transformer = {
+            'down': [1,2],
+            'up': [0,1]
+        }
+        transformer_per_block = {
+            'down': 2,
+            'up': 3
+        }
+        ```
         into
-            {
-                'down.block_1.0': 2,
-                'down.block_1.1': 2,
-                'down.block_2.0': 2,
-                'down.block_2.1': 2,
-                'mid': 3,
-                'up.block_0.0': 4,
-                'up.block_0.1': 4,
-                'up.block_0.2': 4,
-                'up.block_1.0': 5,
-                'up.block_1.1': 6,
-                'up.block_1.2': 7,
-            }
+        ```python
+        {
+            'down.block_1.0': 2,
+            'down.block_1.1': 2,
+            'down.block_2.0': 2,
+            'down.block_2.1': 2,
+            'mid': 3,
+            'up.block_0.0': 4,
+            'up.block_0.1': 4,
+            'up.block_0.2': 4,
+            'up.block_1.0': 5,
+            'up.block_1.1': 6,
+            'up.block_1.2': 7,
+        }
+        ```
         """
         if sorted(blocks_with_transformer.keys()) != ["down", "up"]:
             raise ValueError("blocks_with_transformer needs to be a dict with keys `'down' and `'up'`")
@@ -707,6 +711,7 @@ class UNet2DConditionLoadersMixin:
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
 
         # Expand weights into a list, one entry per adapter
+        # examples for e.g. 2 adapters:  [7,7] -> [7,7] ; None -> [None, None]
         if not isinstance(weights, list):
             weights = [weights] * len(adapter_names)
 
@@ -715,13 +720,17 @@ class UNet2DConditionLoadersMixin:
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
             )
 
-        weights = [w if w is not None else 1.0 for w in weights]  # Set None values to default of 1.0
+        # Set None values to default of 1.0
+        # e.g. [7,7] -> [7,7] ; [None, None] -> [1.0, 1.0]
+        weights = [w if w is not None else 1.0 for w in weights]
+
         blocks_with_transformer = {
             "down": [i for i, block in enumerate(self.down_blocks) if hasattr(block, "attentions")],
             "up": [i for i, block in enumerate(self.up_blocks) if hasattr(block, "attentions")],
         }
         transformer_per_block = {"down": self.config.layers_per_block, "up": self.config.layers_per_block + 1}
 
+        # e.g. [7,7] -> [{...}, {...}]
         weights = [
             self._expand_lora_scales_dict(weight_for_adapter, blocks_with_transformer, transformer_per_block)
             for weight_for_adapter in weights

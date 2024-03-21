@@ -774,9 +774,7 @@ class PeftLoraLoaderMixinTests:
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
             pipe.unet.add_adapter(unet_lora_config, "adapter-1")
 
-            self.assertTrue(
-                check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-            )
+            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
             self.assertTrue(check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -785,11 +783,11 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                 )
 
-            weights_1 = { "unet": { "down": 5 } }
+            weights_1 = {"text_encoder": 2, "unet": {"down": 5}}
             pipe.set_adapters("adapter-1", weights_1)
             output_weights_1 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
-            weights_2 = { "unet": {  "up": 5  }  }
+            weights_2 = {"unet": {"up": 5}}
             pipe.set_adapters("adapter-1", weights_2)
             output_weights_2 = pipe(**inputs, generator=torch.manual_seed(0)).images
 
@@ -834,9 +832,7 @@ class PeftLoraLoaderMixinTests:
             pipe.unet.add_adapter(unet_lora_config, "adapter-1")
             pipe.unet.add_adapter(unet_lora_config, "adapter-2")
 
-            self.assertTrue(
-                check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder"
-            )
+            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
             self.assertTrue(check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
 
             if self.has_two_text_encoders:
@@ -846,7 +842,7 @@ class PeftLoraLoaderMixinTests:
                     check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
                 )
 
-            scales_1 = {"unet": {"down": 5}}
+            scales_1 = {"text_encoder": 2, "unet": {"down": 5}}
             scales_2 = {"unet": {"down": 5, "mid": 5}}
             pipe.set_adapters("adapter-1", scales_1)
 
@@ -967,7 +963,7 @@ class PeftLoraLoaderMixinTests:
             if not self.has_two_text_encoders and "text_encoder_2" in scale_dict:
                 del scale_dict["text_encoder_2"]
 
-            pipe.set_adapters("adapter-1", scale_dict)
+            pipe.set_adapters("adapter-1", scale_dict)  # test will fail if this line throws an error
 
     def test_simple_inference_with_text_unet_multi_adapter_delete_adapter(self):
         """

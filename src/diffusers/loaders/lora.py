@@ -979,6 +979,8 @@ class LoraLoaderMixin:
             raise ValueError("PEFT backend is required for this method.")
 
         def process_weights(adapter_names, weights):
+            # Expand weights into a list, one entry per adapter
+            # e.g. for 2 adapters:  7 -> [7,7] ; [3, None] -> [3, None]
             if not isinstance(weights, list):
                 weights = [weights] * len(adapter_names)
 
@@ -987,7 +989,11 @@ class LoraLoaderMixin:
                     f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(weights)}"
                 )
 
-            weights = [w if w is not None else 1.0 for w in weights]  # Set None values to default of 1.0
+            # Set None values to default of 1.0
+            # e.g. [7,7] -> [7,7] ; [3, None] -> [3,1]
+            weights = [w if w is not None else 1.0 for w in weights]
+
+            # e.g. [3,1] -> [{"text_model": 3} , {"text_model": 1} ]
             weights = [{"text_model": w} for w in weights]
 
             return weights
@@ -1053,7 +1059,7 @@ class LoraLoaderMixin:
             )
 
         # Decompose weights into weights for unet, text_encoder and text_encoder_2
-        unet_weights, text_encoder_weights, text_encoder_2_weights = [], [], []
+        unet_lora_weights, text_encoder_lora_weights, text_encoder_2_lora_weights = [], [], []
 
         for adapter_name, weights in zip(adapter_names, adapter_weights):
             if isinstance(weights, dict):
@@ -1075,19 +1081,19 @@ class LoraLoaderMixin:
                 text_encoder_weight = weights
                 text_encoder_2_weight = weights
 
-            unet_weights.append(unet_weight)
-            text_encoder_weights.append(text_encoder_weight)
-            text_encoder_2_weights.append(text_encoder_2_weight)
+            unet_lora_weights.append(unet_weight)
+            text_encoder_lora_weights.append(text_encoder_weight)
+            text_encoder_2_lora_weights.append(text_encoder_2_weight)
 
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         # Handle the UNET
-        unet.set_adapters(adapter_names, unet_weights)
+        unet.set_adapters(adapter_names, unet_lora_weights)
 
         # Handle the Text Encoder
         if hasattr(self, "text_encoder"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, text_encoder_weights)
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder, text_encoder_lora_weights)
         if hasattr(self, "text_encoder_2"):
-            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, text_encoder_2_weights)
+            self.set_adapters_for_text_encoder(adapter_names, self.text_encoder_2, text_encoder_2_lora_weights)
 
     def disable_lora(self):
         if not USE_PEFT_BACKEND:
