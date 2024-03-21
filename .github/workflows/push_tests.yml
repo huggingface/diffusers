@@ -60,7 +60,7 @@ jobs:
       fail-fast: false
       matrix:
         module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
-    runs-on: [single-gpu, nvidia-gpu, t4, ci]
+    runs-on: [multi-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
       options: --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
