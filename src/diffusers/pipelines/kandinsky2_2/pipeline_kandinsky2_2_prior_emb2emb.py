@@ -108,7 +108,7 @@ class KandinskyV22PriorEmb2EmbPipeline(DiffusionPipeline):
 
     Args:
         prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
         text_encoder ([`CLIPTextModelWithProjection`]):

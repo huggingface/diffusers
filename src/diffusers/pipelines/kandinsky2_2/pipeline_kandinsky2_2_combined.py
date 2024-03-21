@@ -119,7 +119,7 @@ class KandinskyV22CombinedPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
         prior_prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         prior_image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
         prior_text_encoder ([`CLIPTextModelWithProjection`]):
@@ -346,7 +346,7 @@ class KandinskyV22Img2ImgCombinedPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
         prior_prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         prior_image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
         prior_text_encoder ([`CLIPTextModelWithProjection`]):
@@ -594,7 +594,7 @@ class KandinskyV22InpaintCombinedPipeline(DiffusionPipeline):
         movq ([`VQModel`]):
             MoVQ Decoder to generate the image from the latents.
         prior_prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         prior_image_encoder ([`CLIPVisionModelWithProjection`]):
             Frozen image-encoder.
         prior_text_encoder ([`CLIPTextModelWithProjection`]):
