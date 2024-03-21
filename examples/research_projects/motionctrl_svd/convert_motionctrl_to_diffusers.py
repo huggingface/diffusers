@@ -2,23 +2,18 @@
 # To be invoked as `python3 scripts/convert_motionctrl_to_diffusers.py` in diffusers root directory
 
 import argparse
-import os
-import sys
 
 import torch
 import yaml
 from safetensors.torch import load_file
 from transformers import CLIPImageProcessor, CLIPVisionModelWithProjection
+from unet_motionctrl import UNetSpatioTemporalConditionMotionCtrlModel
 from yaml.loader import FullLoader
 
 from diffusers import StableVideoDiffusionPipeline
 from diffusers.models import AutoencoderKLTemporalDecoder
 from diffusers.schedulers import EulerDiscreteScheduler
 from diffusers.utils import is_accelerate_available, logging
-
-
-sys.path.append(os.getcwd())
-from examples.community.pipeline_stable_video_motionctrl_diffusion import UNetSpatioTemporalConditionMotionCtrlModel
 
 
 if is_accelerate_available():
