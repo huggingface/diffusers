@@ -177,7 +177,9 @@ class FreeInitMixin:
 
         # Coarse-to-Fine Sampling for faster inference (can lead to lower quality)
         if self._free_init_use_fast_sampling:
-            num_inference_steps = int(num_inference_steps / self._free_init_num_iters * (free_init_iteration + 1))
+            num_inference_steps = max(
+                1, int(num_inference_steps / self._free_init_num_iters * (free_init_iteration + 1))
+            )
             self.scheduler.set_timesteps(num_inference_steps, device=device)
 
         return latents, self.scheduler.timesteps
