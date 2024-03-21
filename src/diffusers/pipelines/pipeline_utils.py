@@ -1472,6 +1472,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 optional_parameters.remove(name)
 
         return expected_modules, optional_parameters
+    
+    @classmethod
+    def _get_signature_types(cls):
+        signature_types = {}
+        for k, v in inspect.signature(cls.__init__).parameters.items():
+            if inspect.isclass(v.annotation):
+                signature_types[k] = (v.annotation,)
+            elif get_origin(v.annotation) == Union:
+                signature_types[k] = get_args(v.annotation)
+            else:
+                logger.warn(f"cannot get type annotation for Parameter {k} of {cls}.")
+        return signature_types
 
     @property
     def components(self) -> Dict[str, Any]:
@@ -1706,18 +1718,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             }
         )
 
-        def get_signature_types(cls):
-            signature_types = {}
-            for k, v in inspect.signature(cls.__init__).parameters.items():
-                if inspect.isclass(v.annotation):
-                    signature_types[k] = (v.annotation,)
-                elif get_origin(v.annotation) == Union:
-                    signature_types[k] = get_args(v.annotation)
-                else:
-                    logger.warn(f"cannot get type annotation for Parameter {k} of {cls}.")
-            return signature_types
-
-        signature_types = get_signature_types(pipeline_class)
+        signature_types = cls._get_signature_types()
 
         pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
         # allow users pass modules in `kwargs` to override the original pipeline's components

@@ -1046,6 +1046,9 @@ class PipelineTesterMixin:
         # Only test if the pipeline is a member of Stable Diffusion family
         if not issubclass(self.pipeline_class, StableDiffusionMixin):
             return
+        signature_types = self.pipeline_class._get_signature_types()
+        if signature_types["unet"] == "UNet2DConditionModel" and signature_types["vae"] == "AutoencoderKL":
+            assert 1 == 2
 
         if "xl" in self.pipeline_class.__name__.lower():
             original_pipeline_class = StableDiffusionXLPipeline
