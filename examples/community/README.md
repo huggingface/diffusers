@@ -3747,6 +3747,8 @@ multistep_image = pipe(prompt, num_inference_steps=4).images[0]
 
 [MotionCtrl](https://arxiv.org/abs/2312.03641) is a method that allows flexible control over object and camera movement in video diffusion models. The implementation here is only for [Stable Video Diffusion](https://wzhouxiff.github.io/projects/MotionCtrl/) as presented by the authors. You can find a more implementation-oriented description about it in [this](https://github.com/huggingface/diffusers/issues/6688#issuecomment-1913459070) comment. You can find example results, some useful discussion and MotionCtrl conversion script [here](https://github.com/huggingface/diffusers/pull/6844).
 
+Note that `camera_pose` must be provided for inference. It represents the orientation and position of the camera, and is known as [Camera Projection Matrix](https://en.wikipedia.org/wiki/Camera_matrix). It must be a list of lists where the outer list has length equal to `num_frames` and inner list has length equal to `3x4 = 9`. For some general camera matrices and movements (left, right, up, down, clockwise, anticlockwise, zoom in/out, etc.), refer to [this](https://colab.research.google.com/drive/17xIdW-xWk4hCAIkGq0OfiJYUqwWSPSAz?usp=sharing) notebook.
+
 ```py
 import torch
 from diffusers import DiffusionPipeline
