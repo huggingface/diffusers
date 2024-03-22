@@ -320,6 +320,9 @@ def convert_state_dict_to_kohya(state_dict, original_type=None, **kwargs):
             kohya_key = kohya_key.replace("text_encoder.", "lora_te1.")
         elif "unet" in kohya_key:
             kohya_key = kohya_key.replace("unet", "lora_unet")
+        elif "lora_magnitude_vector" in kohya_key:
+            kohya_key = kohya_key.replace("lora_magnitude_vector", "dora_scale")
+
         kohya_key = kohya_key.replace(".", "_", kohya_key.count(".") - 2)
         kohya_key = kohya_key.replace(peft_adapter_name, "")  # Kohya doesn't take names
         kohya_ss_state_dict[kohya_key] = weight
