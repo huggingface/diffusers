@@ -488,7 +488,6 @@ def filter_keys(key_set):
 
 
 def get_dataset(args):
-    print(f"Dataset path: {args.dataset_path}")
     dataset = (
         wds.WebDataset(args.dataset_path, resampled=True, handler=wds.warn_and_continue)
         .shuffle(690, handler=wds.warn_and_continue)
@@ -503,9 +502,6 @@ def get_dataset(args):
         )
     )
     dataset = dataset.map(filter_keys({"original_prompt", "jpg_0", "jpg_1", "label_0", "label_1"}))
-    for sample in dataset:
-        print(sample.keys())
-        break
     return dataset
 
 
