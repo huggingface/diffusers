@@ -1726,7 +1726,11 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         original_class_obj = {}
         for k, v in pipeline.components.items():
             if k in expected_modules and k not in passed_class_obj:
-                if type(v) in signature_types[k] or k == "scheduler" or (v is None and k in cls._optional_components):
+                if (
+                    not isinstance(v, torch.nn.Module)
+                    or type(v) in signature_types[k]
+                    or (v is None and k in cls._optional_components)
+                ):
                     original_class_obj[k] = v
                 else:
                     logger.warn(
