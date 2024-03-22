@@ -853,9 +853,7 @@ def main(args):
         power=args.lr_power,
     )
 
-    unet, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
-        unet, optimizer, train_dataloader, lr_scheduler
-    )
+    unet, optimizer, lr_scheduler = accelerator.prepare(unet, optimizer, lr_scheduler)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(train_dataloader.num_batches / args.gradient_accumulation_steps)
@@ -922,7 +920,7 @@ def main(args):
         for step, batch in enumerate(train_dataloader):
             with accelerator.accumulate(unet):
                 # (batch_size, 2*channels, h, w) -> (2*batch_size, channels, h, w)
-                pixel_values = batch["pixel_values"].to(dtype=vae.dtype, non_blocking=True)
+                pixel_values = batch["pixel_values"].to(dtype=vae.dtype, device=accelerator.device, non_blocking=True)
                 feed_pixel_values = torch.cat(pixel_values.chunk(2, dim=1))
 
                 latents = []
