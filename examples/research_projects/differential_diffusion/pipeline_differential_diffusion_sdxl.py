@@ -1,11 +1,10 @@
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
+from differential_diffusion_mixin import DifferentialDiffusionMixin
 
 from diffusers import StableDiffusionXLImg2ImgPipeline
 from diffusers.image_processor import PipelineImageInput
-
-from .differential_diffusion_mixin import DifferentialDiffusionMixin
 
 
 class DifferentialDiffusionSDXLPipeline(StableDiffusionXLImg2ImgPipeline, DifferentialDiffusionMixin):

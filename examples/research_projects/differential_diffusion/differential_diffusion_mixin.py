@@ -16,10 +16,12 @@ class DifferentialDiffusionMixin:
         prepare_latents_possible_kwargs = inspect.signature(self.prepare_latents).parameters.keys()
         prepare_latents_required_kwargs = [
             "image",
-            "num_inference_steps",
+            "timestep",
+            "batch_size",
             "num_images_per_prompt",
+            "dtype",
+            "device",
             "generator",
-            "denoising_start",
         ]
 
         if not all(kwarg in prepare_latents_possible_kwargs for kwarg in prepare_latents_required_kwargs):
