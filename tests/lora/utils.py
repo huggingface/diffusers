@@ -884,7 +884,6 @@ class PeftLoraLoaderMixinTests:
             with self.assertRaises(ValueError):
                 pipe.set_adapters(["adapter-1", "adapter-2"], [scales_1])
 
-
     def test_simple_inference_with_text_unet_block_scale_for_all_dict_options(self):
         """Tests that any valid combination of lora block scales can be used in pipe.set_adapter"""
 
