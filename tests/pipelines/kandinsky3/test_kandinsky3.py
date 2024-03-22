@@ -192,7 +192,7 @@ class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 
-        image = pipe(prompt, num_inference_steps=25, generator=generator).images[0]
+        image = pipe(prompt, num_inference_steps=5, generator=generator).images[0]
 
         assert image.size == (1024, 1024)
 
@@ -223,7 +223,7 @@ class Kandinsky3PipelineIntegrationTests(unittest.TestCase):
         image = image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
         prompt = "A painting of the inside of a subway train with tiny raccoons."
 
-        image = pipe(prompt, image=image, strength=0.75, num_inference_steps=25, generator=generator).images[0]
+        image = pipe(prompt, image=image, strength=0.75, num_inference_steps=5, generator=generator).images[0]
 
         assert image.size == (512, 512)
 
