@@ -51,8 +51,7 @@ class DifferentialDiffusionSDXLPipeline(StableDiffusionXLImg2ImgPipeline, Differ
         map: torch.FloatTensor = None,
         **kwargs,
     ):
-        return DifferentialDiffusionMixin.__call__(
-            self,
+        return self.inference(
             prompt=prompt,
             prompt_2=prompt_2,
             image=image,

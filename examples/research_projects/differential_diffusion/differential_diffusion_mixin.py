@@ -28,7 +28,7 @@ class DifferentialDiffusionMixin:
             raise ValueError(f"`prepare_latents` must have the following arguments: {prepare_latents_required_kwargs}")
 
     @torch.no_grad()
-    def __call__(self, map: torch.FloatTensor, **kwargs):
+    def inference(self, map: torch.FloatTensor, **kwargs):
         if map is None:
             raise ValueError("`map` must be provided for differential diffusion.")
 
@@ -50,6 +50,9 @@ class DifferentialDiffusionMixin:
         )
         generator = kwargs.pop("generator", _get_default_value(self.__call__, "generator"))
         denoising_start = kwargs.pop("denoising_start", _get_default_value(self.__call__, "denoising_start"))
+        callback_before_step_begin = kwargs.pop(
+            "callback_before_step_begin", _get_default_value(self.__call__, "callback_before_step_begin")
+        )
 
         def callback(pipe, i: int, t: int, callback_kwargs: Dict[str, Any]):
             nonlocal original_with_noise, thresholds, masks
@@ -85,7 +88,7 @@ class DifferentialDiffusionMixin:
 
             callback_results = {}
 
-            if original_callback_on_step_end is not None:
+            if original_callback_on_step_end is not None and (i >= 0 or callback_before_step_begin):
                 callback_kwargs["latents"] = latents
                 result = original_callback_on_step_end(pipe, i, t, callback_kwargs)
                 callback_results.update(result)
