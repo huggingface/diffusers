@@ -875,7 +875,7 @@ def main(args):
         accelerator.init_trackers(args.tracker_name, config=vars(args))
 
     # Train!
-    total_batch_size = args.per_gpu_batch_siz * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = args.per_gpu_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
     logger.info(f"  Num examples = {train_dataloader.num_samples}")
