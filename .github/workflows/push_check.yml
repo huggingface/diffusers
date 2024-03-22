@@ -3,10 +3,6 @@ name: Slow Test Memory Checks
 on:
   push:
     branches: [ shm-size ]
-    paths:
-      - "src/diffusers/**.py"
-      - "examples/**.py"
-      - "tests/**.py"
 
 env:
   DIFFUSERS_IS_CI: yes
