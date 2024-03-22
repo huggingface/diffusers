@@ -100,7 +100,6 @@ class IFSuperResolutionPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_if_superresolution(self):
-
         pipe = IFSuperResolutionPipeline.from_pretrained(
             "DeepFloyd/IF-II-L-v1.0", variant="fp16", torch_dtype=torch.float16
         )
