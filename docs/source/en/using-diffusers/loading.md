@@ -60,7 +60,7 @@ repo_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(repo_id)
 ```
 
-You can use the application below to gauge the memory requirements of a pipeline you want to load beforehand without downloading the pipeline checkpoints:
+You can use the Space below to gauge the memory requirements of a pipeline you want to load beforehand without downloading the pipeline checkpoints:
 
 <div class="block dark:hidden">
 	<iframe 
