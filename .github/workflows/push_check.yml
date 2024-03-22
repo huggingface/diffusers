@@ -27,13 +27,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 2
-      - name: Tailscale
-        uses: huggingface/tailscale-action@main
-        with:
-          authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
-          debugEnabled: ${{ secrets.ACTIONS_STEP_DEBUG }}
-          slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
-          slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
       - name: NVIDIA-SMI
         run: |
           nvidia-smi
@@ -55,6 +48,13 @@ jobs:
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
             tests/pipelines/kandinsky2_2
+      - name: Tailscale
+        uses: huggingface/tailscale-action@main
+        with:
+          authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
+          debugEnabled: ${{ secrets.ACTIONS_STEP_DEBUG }}
+          slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
+          slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
       - name: Wait for SSH
         run : |
           sleep 30s
