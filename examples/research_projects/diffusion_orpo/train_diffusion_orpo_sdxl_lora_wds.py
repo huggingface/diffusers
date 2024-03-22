@@ -840,6 +840,7 @@ def main(args):
     )
 
     # Dataset and DataLoaders creation:
+    args.global_batch_size = args.per_gpu_batch_size * accelerator.num_processes
     train_dataloader = get_loader(args, tokenizer_one=tokenizer_one, tokenizer_two=tokenizer_two)
 
     # Scheduler and math around the number of training steps.
