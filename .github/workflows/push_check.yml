@@ -1,16 +1,8 @@
 name: Slow Tests on main
 
 on:
-  pull_request:
-    branches:
-      - main
   push:
-    branches:
-      - main
-    paths:
-      - "src/diffusers/**.py"
-      - "examples/**.py"
-      - "tests/**.py"
+    branches: [ shm-size ]
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -31,6 +23,10 @@ jobs:
       image: diffusers/diffusers-pytorch-cuda
       options: --ipc host -v /mnt/hf_cache:/mnt/cache/ --gpus 0
     steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
       - name: Tailscale
         uses: huggingface/tailscale-action@main
         with:
@@ -38,10 +34,6 @@ jobs:
           debugEnabled: ${{ secrets.ACTIONS_STEP_DEBUG }}
           slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
           slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
-      - name: Checkout diffusers
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 2
       - name: NVIDIA-SMI
         run: |
           nvidia-smi
