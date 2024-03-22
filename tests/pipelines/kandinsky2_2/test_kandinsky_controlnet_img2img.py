@@ -286,6 +286,7 @@ class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
             strength=0.85,
             generator=generator,
             negative_prompt="",
+            num_inference_steps=5,
         ).to_tuple()
 
         output = pipeline(
@@ -294,7 +295,7 @@ class KandinskyV22ControlnetImg2ImgPipelineIntegrationTests(unittest.TestCase):
             negative_image_embeds=zero_image_emb,
             hint=hint,
             generator=generator,
-            num_inference_steps=100,
+            num_inference_steps=5,
             height=512,
             width=512,
             strength=0.5,

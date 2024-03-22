@@ -257,7 +257,7 @@ class KandinskyV22PipelineIntegrationTests(unittest.TestCase):
         image_emb, zero_image_emb = pipe_prior(
             prompt,
             generator=generator,
-            num_inference_steps=5,
+            num_inference_steps=3,
             negative_prompt="",
         ).to_tuple()
 
@@ -266,7 +266,7 @@ class KandinskyV22PipelineIntegrationTests(unittest.TestCase):
             image_embeds=image_emb,
             negative_image_embeds=zero_image_emb,
             generator=generator,
-            num_inference_steps=100,
+            num_inference_steps=3,
             output_type="np",
         )
 

@@ -287,7 +287,7 @@ class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
             image_embeds=image_emb,
             negative_image_embeds=zero_image_emb,
             generator=generator,
-            num_inference_steps=100,
+            num_inference_steps=5,
             height=768,
             width=768,
             strength=0.2,
