@@ -139,13 +139,14 @@ For even more customization, you can control how strongly the adapter affects ea
 For example, here's how you can turn on the adapter for the `text_encoder` and `down` parts, but turn it off for the `mid` and `up` parts:
 ```python
 pipe.enable_lora()  # enable lora again, after we disabled it above
-prompt = "toy_face of a hacker with a hoodie, pixel art"
+pipe.load_lora_weights("veryVANYA/ps1-graphics-sdxl-v2", weight_name="ps1_style_SDXL_v2.safetensors", adapter_name="ps1")  # load a lora that also changes the text_encoder
+prompt = "hacker with a hoodie, ps1 style"  # trigger word is "ps1 style"
 
 adapter_weight_scales = {
     "text_encoder": 1,
     "unet": { "down": 1, "mid": 0, "up": 0}
 }
-pipe.set_adapters("pixel", adapter_weight_scales)
+pipe.set_adapters("ps1", adapter_weight_scales)
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
@@ -158,7 +159,7 @@ adapter_weight_scales = {
     "text_encoder": 1,
     "unet": { "down": 0, "mid": 1, "up": 0}
 }
-pipe.set_adapters("pixel", adapter_weight_scales)
+pipe.set_adapters("ps1", adapter_weight_scales)
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
@@ -170,7 +171,7 @@ adapter_weight_scales = {
     "text_encoder": 1,
     "unet": { "down": 0, "mid": 1, "up": 0}
 }
-pipe.set_adapters("pixel", adapter_weight_scales)
+pipe.set_adapters("ps1", adapter_weight_scales)
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
@@ -181,9 +182,9 @@ Looks cool!
 
 This is a really powerful feature. You can use it to control the adapter strengths down to per-transformer level. And you can even use it for multiple adapters.
 ```python
+prompt = "toy_face of a hacker with a hoodie, pixel art"
 adapter_weight_scales_toy = 0.5
 adapter_weight_scales_pixel = {
-    "text_encoder": 0.5,
     "unet": {
         "down": 0.9,  # all transformers in the down-part will use scale 0.9
         # "mid"  # because, in this example, "mid" is not given, all transformers in the mid part will use the default scale 1.0
