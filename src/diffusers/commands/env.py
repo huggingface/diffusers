@@ -14,6 +14,7 @@
 
 import os
 import platform
+import subprocess
 from argparse import ArgumentParser
 
 import huggingface_hub
@@ -125,6 +126,61 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
         is_notebook_str = "Yes" if is_notebook() else "No"
 
         is_google_colab_str = "Yes" if is_google_colab() else "No"
+
+        if platform.system() == "Linux":
+            try:
+                sp = subprocess.Popen(
+                    ["nvidia-smi", "--query-gpu=gpu_name,memory.total", "--format=csv,noheader"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                out_str, _ = sp.communicate()
+                out_str = out_str.decode("utf-8")
+
+                if len(out_str) > 0:
+                    print(out_str.strip() + " VRAM")
+                else:
+                    print("No NVIDIA GPU detected")
+            except FileNotFoundError:
+                print("No NVIDIA GPU detected")
+        elif platform.system() == "Darwin":  # Mac OS
+            try:
+                sp = subprocess.Popen(
+                    ["system_profiler", "SPDisplaysDataType"], stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
+                out_str, _ = sp.communicate()
+                out_str = out_str.decode("utf-8")
+
+                start = out_str.find("Chipset Model:")
+                if start != -1:
+                    start += len("Chipset Model:")
+                    end = out_str.find("\n", start)
+                    print("GPU Model:", out_str[start:end].strip())
+
+                    start = out_str.find("VRAM (Total):")
+                    if start != -1:
+                        start += len("VRAM (Total):")
+                        end = out_str.find("\n", start)
+                        print("VRAM:", out_str[start:end].strip())
+                else:
+                    print("No GPU detected")
+            except FileNotFoundError:
+                print("No GPU detected")
+        elif platform.system() == "Windows":
+            try:
+                sp = subprocess.Popen(
+                    ["wmic", "path", "win32_VideoController", "get", "name,AdapterRAM"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                )
+                out_str, _ = sp.communicate()
+                out_str = out_str.decode("utf-8")
+
+                print(out_str.strip())
+            except FileNotFoundError:
+                print("No GPU detected")
+        else:
+            print("Are you crazy enough to use or build a new kind of OS like Terry A. Davis did?")
 
         info = {
             "`diffusers` version": version,
