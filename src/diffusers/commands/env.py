@@ -127,7 +127,8 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
 
         is_google_colab_str = "Yes" if is_google_colab() else "No"
 
-        if platform.system() == "Linux":
+        accelerator = "NA"
+        if platform.system() in ["Linux", "Windows"]:
             try:
                 sp = subprocess.Popen(
                     ["nvidia-smi", "--query-gpu=gpu_name,memory.total", "--format=csv,noheader"],
@@ -138,11 +139,9 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
                 out_str = out_str.decode("utf-8")
 
                 if len(out_str) > 0:
-                    print(out_str.strip() + " VRAM")
-                else:
-                    print("No NVIDIA GPU detected")
+                    accelerator = out_str.strip() + " VRAM"
             except FileNotFoundError:
-                print("No NVIDIA GPU detected")
+                pass
         elif platform.system() == "Darwin":  # Mac OS
             try:
                 sp = subprocess.Popen(
@@ -155,30 +154,15 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
                 if start != -1:
                     start += len("Chipset Model:")
                     end = out_str.find("\n", start)
-                    print("GPU Model:", out_str[start:end].strip())
+                    accelerator = out_str[start:end].strip()
 
                     start = out_str.find("VRAM (Total):")
                     if start != -1:
                         start += len("VRAM (Total):")
                         end = out_str.find("\n", start)
-                        print("VRAM:", out_str[start:end].strip())
-                else:
-                    print("No GPU detected")
+                        accelerator += " VRAM: " + out_str[start:end].strip()
             except FileNotFoundError:
-                print("No GPU detected")
-        elif platform.system() == "Windows":
-            try:
-                sp = subprocess.Popen(
-                    ["wmic", "path", "win32_VideoController", "get", "name,AdapterRAM"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                )
-                out_str, _ = sp.communicate()
-                out_str = out_str.decode("utf-8")
-
-                print(out_str.strip())
-            except FileNotFoundError:
-                print("No GPU detected")
+                pass
         else:
             print("Are you crazy enough to use or build a new kind of OS like Terry A. Davis did?")
 
@@ -199,6 +183,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             "PEFT version": peft_version,
             "Safetensors version": f"{safetensors_version}",
             "xFormers version": xformers_version,
+            "Accelerator": accelerator,
             "Using GPU in script?": "<fill in>",
             "Using distributed or parallel set-up in script?": "<fill in>",
         }
