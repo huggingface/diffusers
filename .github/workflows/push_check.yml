@@ -1,8 +1,12 @@
-name: Slow Tests on main
+name: Slow Test Memory Checks
 
 on:
   push:
     branches: [ shm-size ]
+    paths:
+      - "src/diffusers/**.py"
+      - "examples/**.py"
+      - "tests/**.py"
 
 env:
   DIFFUSERS_IS_CI: yes
@@ -14,10 +18,44 @@ env:
   PIPELINE_USAGE_CUTOFF: 50000
 
 jobs:
+  setup_torch_cuda_pipeline_matrix:
+    name: Setup Torch Pipelines CUDA Slow Tests Matrix
+    runs-on: ubuntu-latest
+    outputs:
+      pipeline_test_matrix: ${{ steps.fetch_pipeline_matrix.outputs.pipeline_test_matrix }}
+    steps:
+      - name: Checkout diffusers
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 2
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.8"
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install huggingface_hub
+      - name: Fetch Pipeline Matrix
+        id: fetch_pipeline_matrix
+        run: |
+          matrix=$(python utils/fetch_torch_cuda_pipeline_test_matrix.py)
+          echo $matrix
+          echo "pipeline_test_matrix=$matrix" >> $GITHUB_OUTPUT
+      - name: Pipeline Tests Artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
+        with:
+          name: test-pipelines.json
+          path: reports
+
   torch_pipelines_cuda_tests:
     name: Torch Pipelines CUDA Slow Tests
+    needs: setup_torch_cuda_pipeline_matrix
     strategy:
       fail-fast: false
+      matrix:
+        module: ${{ fromJson(needs.setup_torch_cuda_pipeline_matrix.outputs.pipeline_test_matrix) }}
     runs-on: [single-gpu, nvidia-gpu, t4, ci]
     container:
       image: diffusers/diffusers-pytorch-cuda
@@ -47,15 +85,17 @@ jobs:
         run: |
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
-            tests/pipelines/kandinsky2_2
-      - name: Tailscale
-        uses: huggingface/tailscale-action@main
+            --make-reports=tests_pipeline_${{ matrix.module }}_cuda \
+            tests/pipelines/${{ matrix.module }}
+      - name: Failure short reports
+        if: ${{ failure() }}
+        run: |
+          cat reports/tests_pipeline_${{ matrix.module }}_cuda_stats.txt
+          cat reports/tests_pipeline_${{ matrix.module }}_cuda_failures_short.txt
+
+      - name: Test suite reports artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v2
         with:
-          authkey: ${{ secrets.TAILSCALE_SSH_AUTHKEY }}
-          debugEnabled: ${{ secrets.ACTIONS_STEP_DEBUG }}
-          slackChannel: ${{ secrets.SLACK_CIFEEDBACK_CHANNEL }}
-          slackToken: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}
-      - name: Wait for SSH
-        run : |
-          sleep 30s
-          while [ "$(last | grep '^runner.*still logged in$')" ]; do sleep 1m; done
+          name: pipeline_${{ matrix.module }}_test_reports
+          path: reports
