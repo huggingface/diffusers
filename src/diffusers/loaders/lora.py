@@ -453,12 +453,14 @@ class LoraLoaderMixin:
 
             lora_config_kwargs = get_peft_kwargs(rank, network_alphas, state_dict, is_unet=True)
             if "use_dora" in lora_config_kwargs:
-                if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
-                    raise ValueError(
-                        "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                    )
+                if lora_config_kwargs["use_dora"]:
+                    if is_peft_version("<", "0.9.0"):
+                        raise ValueError(
+                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                        )
                 else:
-                    lora_config_kwargs.pop("use_dora")
+                    if is_peft_version("<", "0.9.0"):
+                        lora_config_kwargs.pop("use_dora")
             lora_config = LoraConfig(**lora_config_kwargs)
 
             # adapter_name
@@ -581,12 +583,14 @@ class LoraLoaderMixin:
 
                 lora_config_kwargs = get_peft_kwargs(rank, network_alphas, text_encoder_lora_state_dict, is_unet=False)
                 if "use_dora" in lora_config_kwargs:
-                    if lora_config_kwargs["use_dora"] and is_peft_version("<", "0.9.0"):
-                        raise ValueError(
-                            "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
-                        )
+                    if lora_config_kwargs["use_dora"]:
+                        if is_peft_version("<", "0.9.0"):
+                            raise ValueError(
+                                "You need `peft` 0.9.0 at least to use DoRA-enabled LoRAs. Please upgrade your installation of `peft`."
+                            )
                     else:
-                        lora_config_kwargs.pop("use_dora")
+                        if is_peft_version("<", "0.9.0"):
+                            lora_config_kwargs.pop("use_dora")
                 lora_config = LoraConfig(**lora_config_kwargs)
 
                 # adapter_name

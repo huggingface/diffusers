@@ -170,9 +170,7 @@ def get_peft_kwargs(rank_dict, network_alpha_dict, peft_state_dict, is_unet=True
             lora_alpha = set(network_alpha_dict.values()).pop()
 
     # layer names without the Diffusers specific
-    target_modules = list(
-        {name.split(".lora")[0] for name in peft_state_dict.keys()}
-    )  # if "lora_magnitude_vector" not in name
+    target_modules = list({name.split(".lora")[0] for name in peft_state_dict.keys()})
     use_dora = any("lora_magnitude_vector" in k for k in peft_state_dict)
 
     lora_config_kwargs = {
