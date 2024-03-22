@@ -115,6 +115,10 @@ class IFImg2ImgPipelineSlowTests(unittest.TestCase):
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload()
 
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
+
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)
         generator = torch.Generator(device="cpu").manual_seed(0)
         output = pipe(
