@@ -482,11 +482,6 @@ def encode_prompt(text_encoders, text_input_ids_list):
     return prompt_embeds, pooled_prompt_embeds
 
 
-def filter_keys(key_set):
-    def _f(dictionary):
-        return {k: v for k, v in dictionary.items() if k in key_set}
-
-
 def get_dataset(args):
     dataset = (
         wds.WebDataset(args.dataset_path, resampled=True, handler=wds.warn_and_continue)
@@ -501,7 +496,6 @@ def get_dataset(args):
             handler=wds.warn_and_continue,
         )
     )
-    dataset = dataset.map(filter_keys({"original_prompt", "jpg_0", "jpg_1", "label_0", "label_1"}))
     return dataset
 
 
