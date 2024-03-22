@@ -1,10 +1,12 @@
-# Community Examples
+# Community Pipeline Examples
 
 > **For more information about community pipelines, please have a look at [this issue](https://github.com/huggingface/diffusers/issues/841).**
 
-**Community** examples consist of both inference and training examples that have been added by the community.
-Please have a look at the following table to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
-If a community doesn't work as expected, please open an issue and ping the author on it.
+**Community pipeline** examples consist pipelines that have been added by the community.
+Please have a look at the following tables to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
+If a community pipeline doesn't work as expected, please open an issue and ping the author on it.
+
+Please also check out our [Community Scripts](https://github.com/huggingface/diffusers/blob/main/examples/community/README_community_scripts.md) examples for tips and tricks that you can use with diffusers without having to run a community pipeline.
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
@@ -1887,7 +1889,7 @@ In the above code, the `prompt2` is appended to the `prompt`, which is more than
 
 For more results, checkout [PR #6114](https://github.com/huggingface/diffusers/pull/6114).
 
-## Example Images Mixing (with CoCa)
+### Example Images Mixing (with CoCa)
 ```python
 import requests
 from io import BytesIO
@@ -2934,7 +2936,7 @@ pipe(prompt =prompt, rp_args = rp_args)
 
 The Pipeline supports `compel` syntax. Input prompts using the `compel` structure will be automatically applied and processed.
 
-## Diffusion Posterior Sampling Pipeline
+### Diffusion Posterior Sampling Pipeline
 * Reference paper
     ```
     @article{chung2022diffusion,
