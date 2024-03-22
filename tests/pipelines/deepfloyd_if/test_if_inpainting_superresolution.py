@@ -107,17 +107,16 @@ class IFInpaintingSuperResolutionPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_if_inpainting_superresolution(self):
-        # Super resolution test
-        torch.cuda.empty_cache()
-        torch.cuda.reset_max_memory_allocated()
-        torch.cuda.reset_peak_memory_stats()
-
         pipe = IFInpaintingSuperResolutionPipeline.from_pretrained(
             "DeepFloyd/IF-II-L-v1.0", variant="fp16", torch_dtype=torch.float16
         )
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload()
 
+        # Super resolution test
+        torch.cuda.empty_cache()
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.reset_peak_memory_stats()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 
