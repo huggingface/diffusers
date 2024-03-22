@@ -15,7 +15,6 @@
 
 import argparse
 import contextlib
-import io
 import logging
 import math
 import os
@@ -29,15 +28,14 @@ import torch.nn.functional as F
 import torch.utils.checkpoint
 import transformers
 import wandb
+import webdataset as wds
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
-from PIL import Image
 from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
@@ -189,20 +187,14 @@ def parse_args(input_args=None):
         help="Revision of pretrained model identifier from huggingface.co/models.",
     )
     parser.add_argument(
-        "--dataset_name",
+        "--dataset_path",
         type=str,
-        default=None,
-        help=(
-            "The name of the Dataset (from the HuggingFace hub) to train on (could be your own, possibly private,"
-            " dataset). It can also be a path pointing to a local copy of a dataset in your filesystem,"
-            " or to a folder containing files that 🤗 Datasets can understand."
-        ),
+        default="pipe:aws s3 cp s3://diffusion-preference-opt/{00000..00644}.tar -",
     )
     parser.add_argument(
-        "--dataset_split_name",
-        type=str,
-        default="validation",
-        help="Dataset split to be used during training. Helpful to specify for conducting experimental runs.",
+        "--num_train_examples",
+        type=int,
+        default=1001352,
     )
     parser.add_argument(
         "--variant",
@@ -221,15 +213,6 @@ def parse_args(input_args=None):
         type=int,
         default=200,
         help="Run validation every X steps.",
-    )
-    parser.add_argument(
-        "--max_train_samples",
-        type=int,
-        default=None,
-        help=(
-            "For debugging purposes or quicker training, truncate the number of training examples to this "
-            "value if set."
-        ),
     )
     parser.add_argument(
         "--output_dir",
@@ -272,8 +255,9 @@ def parse_args(input_args=None):
             "Whether to random crop the input images to the resolution. If not set, the images will be center-cropped."
         ),
     )
+    parser.add_argument("--global_batch_size", type=int, default=64, help="Total batch size.")
     parser.add_argument(
-        "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
+        "--per_gpu_batch_size", type=int, default=8, help="Number of samples in a batch for a single GPU."
     )
     parser.add_argument("--num_train_epochs", type=int, default=1)
     parser.add_argument(
@@ -448,9 +432,6 @@ def parse_args(input_args=None):
     else:
         args = parser.parse_args()
 
-    if args.dataset_name is None:
-        raise ValueError("Must provide a `dataset_name`.")
-
     env_local_rank = int(os.environ.get("LOCAL_RANK", -1))
     if env_local_rank != -1 and env_local_rank != args.local_rank:
         args.local_rank = env_local_rank
@@ -458,16 +439,20 @@ def parse_args(input_args=None):
     return args
 
 
-def tokenize_captions(tokenizers, examples):
-    captions = []
-    for caption in examples["caption"]:
-        captions.append(caption)
-
+def tokenize_captions(tokenizers, sample):
     tokens_one = tokenizers[0](
-        captions, truncation=True, padding="max_length", max_length=tokenizers[0].model_max_length, return_tensors="pt"
+        sample["original_prompt"],
+        truncation=True,
+        padding="max_length",
+        max_length=tokenizers[0].model_max_length,
+        return_tensors="pt",
     ).input_ids
     tokens_two = tokenizers[1](
-        captions, truncation=True, padding="max_length", max_length=tokenizers[1].model_max_length, return_tensors="pt"
+        sample["original_prompt"],
+        truncation=True,
+        padding="max_length",
+        max_length=tokenizers[1].model_max_length,
+        return_tensors="pt",
     ).input_ids
 
     return tokens_one, tokens_two
@@ -495,6 +480,134 @@ def encode_prompt(text_encoders, text_input_ids_list):
     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
     return prompt_embeds, pooled_prompt_embeds
+
+
+def filter_keys(key_set):
+    def _f(dictionary):
+        return {k: v for k, v in dictionary.items() if k in key_set}
+
+
+def get_dataset(args):
+    dataset = (
+        wds.WebDataset(args.dataset_path, resampled=True, handler=wds.warn_and_continue)
+        .shuffle(690, handler=wds.warn_and_continue)
+        .decode("pil", handler=wds.warn_and_continue)
+        .rename(
+            original_prompt="original_prompt.txt",
+            jpg_0="jpg_0.jpg",
+            jpg_1="jpg_1.jpg",
+            label_0="label_0.txt",
+            label_1="label_1.txt",
+            handler=wds.warn_and_continue,
+        )
+    )
+    dataset = dataset.map(filter_keys({"original_prompt", "jpg_0", "jpg_1", "label_0", "label_1"}))
+    return dataset
+
+
+def get_loader(args, tokenizer_one, tokenizer_two):
+    # 1,001,352
+    num_batches = math.ceil(args.num_train_examples / args.global_batch_size)
+    num_worker_batches = math.ceil(
+        args.num_train_examples / (args.global_batch_size * args.dataloader_num_workers)
+    )  # per dataloader worker
+    num_batches = num_worker_batches * args.dataloader_num_workers
+    num_samples = num_batches * args.global_batch_size
+
+    dataset = get_dataset(args)
+
+    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
+    train_crop = transforms.RandomCrop(args.resolution) if args.random_crop else transforms.CenterCrop(args.resolution)
+    train_flip = transforms.RandomHorizontalFlip(p=1.0)
+    to_tensor = transforms.ToTensor()
+    normalize = transforms.Normalize([0.5], [0.5])
+
+    def preprocess_images(sample):
+        jpg_0_image = sample["jpg_0"]
+        original_size = (jpg_0_image.height, jpg_0_image.width)
+        crop_top_left = []
+
+        jpg_1_image = sample["jpg_1"]
+        # Need to bring down the image to the same resolution.
+        # This seems like the simplest reasonable approach.
+        # "::-1" because PIL resize takes (width, height).
+        jpg_1_image = jpg_1_image.resize(original_size[::-1])
+
+        # We randomize selection and rejection.
+        label_0 = sample["label_0"]
+        if sample["label_0"] == 0.5:
+            if random.random() < 0.5:
+                label_0 = 0
+            else:
+                label_0 = 1
+
+        # Double on channel dim, jpg_y then jpg_w
+        if label_0 == 0:
+            pixel_values = torch.cat([to_tensor(image) for image in [jpg_1_image, jpg_0_image]])
+        else:
+            pixel_values = torch.cat([to_tensor(image) for image in [jpg_0_image, jpg_1_image]])
+
+        # Resize.
+        combined_im = train_resize(pixel_values)
+
+        # Flipping.
+        if not args.no_hflip and random.random() < 0.5:
+            combined_im = train_flip(combined_im)
+
+        # Cropping.
+        if not args.random_crop:
+            y1 = max(0, int(round((combined_im.shape[1] - args.resolution) / 2.0)))
+            x1 = max(0, int(round((combined_im.shape[2] - args.resolution) / 2.0)))
+            combined_im = train_crop(combined_im)
+        else:
+            y1, x1, h, w = train_crop.get_params(combined_im, (args.resolution, args.resolution))
+            combined_im = crop(combined_im, y1, x1, h, w)
+
+        crop_top_left = (y1, x1)
+        combined_im = normalize(combined_im)
+        tokens_one, tokens_two = tokenize_captions([tokenizer_one, tokenizer_two], sample)
+
+        return {
+            "pixel_values": combined_im,
+            "original_size": original_size,
+            "crop_top_left": crop_top_left,
+            "tokens_one": tokens_one,
+            "tokens_two": tokens_two,
+        }
+
+    def collate_fn(samples):
+        pixel_values = torch.stack([sample["pixel_values"] for sample in samples])
+        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
+
+        original_sizes = [example["original_size"] for example in samples]
+        crop_top_lefts = [example["crop_top_left"] for example in samples]
+        input_ids_one = torch.stack([example["tokens_one"] for example in samples])
+        input_ids_two = torch.stack([example["tokens_two"] for example in samples])
+
+        return {
+            "pixel_values": pixel_values,
+            "input_ids_one": input_ids_one,
+            "input_ids_two": input_ids_two,
+            "original_sizes": original_sizes,
+            "crop_top_lefts": crop_top_lefts,
+        }
+
+    dataset = dataset.map(preprocess_images, handler=wds.warn_and_continue)
+    dataset = dataset.batched(args.per_gpu_batch_size, partial=False, collation_fn=collate_fn)
+    dataset = dataset.with_epoch(num_worker_batches)
+
+    dataloader = wds.WebLoader(
+        dataset,
+        batch_size=None,
+        shuffle=False,
+        num_workers=args.dataloader_num_workers,
+        pin_memory=True,
+        persistent_workers=True,
+    )
+    # add meta-data to dataloader instance for convenience
+    dataloader.num_batches = num_batches
+    dataloader.num_samples = num_samples
+    return dataloader
 
 
 def main(args):
@@ -700,7 +813,7 @@ def main(args):
 
     if args.scale_lr:
         args.learning_rate = (
-            args.learning_rate * args.gradient_accumulation_steps * args.train_batch_size * accelerator.num_processes
+            args.learning_rat * args.gradient_accumulation_steps * args.per_gpu_batch_size * accelerator.num_processes
         )
 
     # Use 8-bit Adam for lower memory usage or to fine-tune the model in 16GB GPUs
@@ -727,113 +840,11 @@ def main(args):
     )
 
     # Dataset and DataLoaders creation:
-    train_dataset = load_dataset(
-        args.dataset_name,
-        cache_dir=args.cache_dir,
-        split=args.dataset_split_name,
-    )
-
-    # Preprocessing the datasets.
-    train_resize = transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR)
-    train_crop = transforms.RandomCrop(args.resolution) if args.random_crop else transforms.CenterCrop(args.resolution)
-    train_flip = transforms.RandomHorizontalFlip(p=1.0)
-    to_tensor = transforms.ToTensor()
-    normalize = transforms.Normalize([0.5], [0.5])
-
-    def preprocess_train(examples):
-        all_pixel_values = []
-        images = [Image.open(io.BytesIO(im_bytes)).convert("RGB") for im_bytes in examples["jpg_0"]]
-        original_sizes = [(image.height, image.width) for image in images]
-        crop_top_lefts = []
-
-        for col_name in ["jpg_0", "jpg_1"]:
-            images = [Image.open(io.BytesIO(im_bytes)).convert("RGB") for im_bytes in examples[col_name]]
-            if col_name == "jpg_1":
-                # Need to bring down the image to the same resolution.
-                # This seems like the simplest reasonable approach.
-                # "::-1" because PIL resize takes (width, height).
-                images = [image.resize(original_sizes[i][::-1]) for i, image in enumerate(images)]
-            pixel_values = [to_tensor(image) for image in images]
-            all_pixel_values.append(pixel_values)
-
-        # Double on channel dim, jpg_y then jpg_w
-        im_tup_iterator = zip(*all_pixel_values)
-        combined_pixel_values = []
-        for im_tup, label_0 in zip(im_tup_iterator, examples["label_0"]):
-            # We randomize selection and rejection.
-            if label_0 == 0.5:
-                if random.random() < 0.5:
-                    label_0 = 0
-                else:
-                    label_0 = 1
-
-            if label_0 == 0:
-                im_tup = im_tup[::-1]
-
-            combined_im = torch.cat(im_tup, dim=0)  # no batch dim
-
-            # Resize.
-            combined_im = train_resize(combined_im)
-
-            # Flipping.
-            if not args.no_hflip and random.random() < 0.5:
-                combined_im = train_flip(combined_im)
-
-            # Cropping.
-            if not args.random_crop:
-                y1 = max(0, int(round((combined_im.shape[1] - args.resolution) / 2.0)))
-                x1 = max(0, int(round((combined_im.shape[2] - args.resolution) / 2.0)))
-                combined_im = train_crop(combined_im)
-            else:
-                y1, x1, h, w = train_crop.get_params(combined_im, (args.resolution, args.resolution))
-                combined_im = crop(combined_im, y1, x1, h, w)
-
-            crop_top_left = (y1, x1)
-            crop_top_lefts.append(crop_top_left)
-            combined_im = normalize(combined_im)
-            combined_pixel_values.append(combined_im)
-
-        examples["pixel_values"] = combined_pixel_values
-        examples["original_sizes"] = original_sizes
-        examples["crop_top_lefts"] = crop_top_lefts
-        tokens_one, tokens_two = tokenize_captions([tokenizer_one, tokenizer_two], examples)
-        examples["input_ids_one"] = tokens_one
-        examples["input_ids_two"] = tokens_two
-        return examples
-
-    with accelerator.main_process_first():
-        if args.max_train_samples is not None:
-            train_dataset = train_dataset.shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
-        train_dataset = train_dataset.with_transform(preprocess_train)
-
-    def collate_fn(examples):
-        pixel_values = torch.stack([example["pixel_values"] for example in examples])
-        pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
-        original_sizes = [example["original_sizes"] for example in examples]
-        crop_top_lefts = [example["crop_top_lefts"] for example in examples]
-        input_ids_one = torch.stack([example["input_ids_one"] for example in examples])
-        input_ids_two = torch.stack([example["input_ids_two"] for example in examples])
-
-        return {
-            "pixel_values": pixel_values,
-            "input_ids_one": input_ids_one,
-            "input_ids_two": input_ids_two,
-            "original_sizes": original_sizes,
-            "crop_top_lefts": crop_top_lefts,
-        }
-
-    train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
-        batch_size=args.train_batch_size,
-        shuffle=True,
-        collate_fn=collate_fn,
-        num_workers=args.dataloader_num_workers,
-    )
+    train_dataloader = get_loader(args, tokenizer_one=tokenizer_one, tokenizer_two=tokenizer_two)
 
     # Scheduler and math around the number of training steps.
     overrode_max_train_steps = False
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(train_dataloader.num_batches / args.gradient_accumulation_steps)
     if args.max_train_steps is None:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
         overrode_max_train_steps = True
@@ -852,7 +863,7 @@ def main(args):
     )
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
-    num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
+    num_update_steps_per_epoch = math.ceil(train_dataloader.num_batches / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
         args.max_train_steps = args.num_train_epochs * num_update_steps_per_epoch
     # Afterwards we recalculate our number of training epochs
@@ -864,13 +875,12 @@ def main(args):
         accelerator.init_trackers(args.tracker_name, config=vars(args))
 
     # Train!
-    total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
+    total_batch_size = args.per_gpu_batch_siz * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
-    logger.info(f"  Num batches each epoch = {len(train_dataloader)}")
+    logger.info(f"  Num examples = {train_dataloader.num_samples}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
-    logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
+    logger.info(f"  Instantaneous batch size per device = {args.per_gpu_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
     logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
     logger.info(f"  Total optimization steps = {args.max_train_steps}")
