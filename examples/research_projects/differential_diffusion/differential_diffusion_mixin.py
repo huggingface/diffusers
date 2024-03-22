@@ -27,7 +27,6 @@ class DifferentialDiffusionMixin:
         if not all(kwarg in prepare_latents_possible_kwargs for kwarg in prepare_latents_required_kwargs):
             raise ValueError(f"`prepare_latents` must have the following arguments: {prepare_latents_required_kwargs}")
 
-    @torch.no_grad()
     def _inference(self, map: torch.FloatTensor, **kwargs):
         if map is None:
             raise ValueError("`map` must be provided for differential diffusion.")
@@ -41,15 +40,15 @@ class DifferentialDiffusionMixin:
             set(callback_on_step_end_tensor_inputs_required + original_callback_on_step_end_tensor_inputs)
         )
 
-        image = kwargs.pop("image", _get_default_value(self.__call__, "image"))
-        num_inference_steps = kwargs.pop(
+        image = kwargs.get("image", _get_default_value(self.__call__, "image"))
+        num_inference_steps = kwargs.get(
             "num_inference_steps", _get_default_value(self.__call__, "num_inference_steps")
         )
-        num_images_per_prompt = kwargs.pop(
+        num_images_per_prompt = kwargs.get(
             "num_images_per_prompt", _get_default_value(self.__call__, "num_images_per_prompt")
         )
-        generator = kwargs.pop("generator", _get_default_value(self.__call__, "generator"))
-        denoising_start = kwargs.pop("denoising_start", _get_default_value(self.__call__, "denoising_start"))
+        generator = kwargs.get("generator", _get_default_value(self.__call__, "generator"))
+        denoising_start = kwargs.get("denoising_start", _get_default_value(self.__call__, "denoising_start"))
         callback_before_step_begin = kwargs.pop(
             "callback_before_step_begin", _get_default_value(self.__call__, "callback_before_step_begin")
         )
