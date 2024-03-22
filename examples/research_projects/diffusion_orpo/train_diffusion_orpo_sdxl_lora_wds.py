@@ -502,6 +502,9 @@ def get_dataset(args):
         )
     )
     dataset = dataset.map(filter_keys({"original_prompt", "jpg_0", "jpg_1", "label_0", "label_1"}))
+    for sample in dataset:
+        print(sample.keys())
+        break
     return dataset
 
 
