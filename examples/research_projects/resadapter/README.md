@@ -40,6 +40,8 @@ python3 train_sd_resadapter.py \
 
 ### Inference
 
+The following code assumes the checkpoints were generated using the training script. When the training script completes, you should see LoRA weights and state dict for UNet GroupNorm layers in your model/output directory.
+
 ```python
 import torch
 from diffusers.pipelines.pipeline_utils import DiffusionPipeline
@@ -73,6 +75,8 @@ image = pipe(
     width=768,
 ).images[0]
 ```
+
+To use the checkpoints provided by the authors, please refer to the original repository linked above.
 
 ### Issues
 
