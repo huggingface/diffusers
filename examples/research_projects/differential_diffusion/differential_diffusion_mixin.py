@@ -49,7 +49,7 @@ class DifferentialDiffusionMixin:
         generator = kwargs.pop("generator", _get_default_value(self.__call__, "generator"))
         denoising_start = kwargs.pop("denoising_start", _get_default_value(self.__call__, "denoising_start"))
 
-        def callback(i: int, t: int, callback_kwargs: Dict[str, Any]):
+        def callback(pipe, i: int, t: int, callback_kwargs: Dict[str, Any]):
             nonlocal original_with_noise, thresholds, masks
 
             timesteps = callback_kwargs.get("timesteps")
@@ -85,7 +85,7 @@ class DifferentialDiffusionMixin:
 
             if original_callback_on_step_end is not None:
                 callback_kwargs["latents"] = latents
-                result = original_callback_on_step_end(i, t, callback_kwargs)
+                result = original_callback_on_step_end(pipe, i, t, callback_kwargs)
                 callback_results.update(result)
 
                 if "latents" in result:
@@ -96,8 +96,8 @@ class DifferentialDiffusionMixin:
             return callback_results
 
         return super().__call__(
-            callback_before_step_begin=True,
             callback_on_step_end=callback,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            callback_before_step_begin=True,
             **kwargs,
         )

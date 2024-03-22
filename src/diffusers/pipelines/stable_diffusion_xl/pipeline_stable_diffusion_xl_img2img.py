@@ -983,6 +983,7 @@ class StableDiffusionXLImg2ImgPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+        callback_before_step_begin: bool = False,
         **kwargs,
     ):
         r"""
@@ -1065,7 +1066,8 @@ class StableDiffusionXLImg2ImgPipeline(
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, pooled negative_prompt_embeds will be generated from `negative_prompt`
                 input argument.
-            ip_adapter_image: (`PipelineImageInput`, *optional*): Optional image input to work with IP Adapters.
+            ip_adapter_image: (`PipelineImageInput`, *optional*):
+                Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
                 Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
                 Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
@@ -1135,6 +1137,8 @@ class StableDiffusionXLImg2ImgPipeline(
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
                 `._callback_tensor_inputs` attribute of your pipeline class.
+            callback_before_step_begin (`bool`, *optional*, defaults to `False`):
+                If `True`, the `callback_on_step_end` function will be called before the denoising step begins.
 
         Examples:
 
@@ -1336,6 +1340,24 @@ class StableDiffusionXLImg2ImgPipeline(
             ).to(device=device, dtype=latents.dtype)
 
         self._num_timesteps = len(timesteps)
+
+        if callback_before_step_begin:
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, -1, timesteps, callback_kwargs)
+
+                latents = callback_outputs.pop("latents", latents)
+                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
+                negative_pooled_prompt_embeds = callback_outputs.pop(
+                    "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
+                )
+                add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
+                add_neg_time_ids = callback_outputs.pop("add_neg_time_ids", add_neg_time_ids)
+
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
