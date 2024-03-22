@@ -240,6 +240,12 @@ class KandinskyV22Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 @slow
 @require_torch_gpu
 class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -260,12 +266,12 @@ class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
         pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
         )
-        pipe_prior.to(torch_device)
+        pipe_prior.enable_model_cpu_offload()
 
         pipeline = KandinskyV22Img2ImgPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
         )
-        pipeline = pipeline.to(torch_device)
+        pipeline = pipeline.enable_model_cpu_offload()
 
         pipeline.set_progress_bar_config(disable=None)
 
