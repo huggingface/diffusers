@@ -28,7 +28,7 @@ class DifferentialDiffusionMixin:
             raise ValueError(f"`prepare_latents` must have the following arguments: {prepare_latents_required_kwargs}")
 
     @torch.no_grad()
-    def inference(self, map: torch.FloatTensor, **kwargs):
+    def _inference(self, map: torch.FloatTensor, **kwargs):
         if map is None:
             raise ValueError("`map` must be provided for differential diffusion.")
 
@@ -100,7 +100,7 @@ class DifferentialDiffusionMixin:
 
             return callback_results
 
-        return super().__call__(
+        return self.__call__(
             callback_on_step_end=callback,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
             callback_before_step_begin=True,

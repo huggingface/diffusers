@@ -228,15 +228,6 @@ class StableDiffusionXLImg2ImgPipeline(
         "image_encoder",
         "feature_extractor",
     ]
-    _callback_tensor_inputs = [
-        "latents",
-        "prompt_embeds",
-        "negative_prompt_embeds",
-        "add_text_embeds",
-        "add_time_ids",
-        "negative_pooled_prompt_embeds",
-        "add_neg_time_ids",
-    ]
 
     def __init__(
         self,
@@ -544,7 +535,6 @@ class StableDiffusionXLImg2ImgPipeline(
         negative_prompt_embeds=None,
         ip_adapter_image=None,
         ip_adapter_image_embeds=None,
-        callback_on_step_end_tensor_inputs=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -559,13 +549,6 @@ class StableDiffusionXLImg2ImgPipeline(
             raise ValueError(
                 f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
                 f" {type(callback_steps)}."
-            )
-
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
             )
 
         if prompt is not None and prompt_embeds is not None:
@@ -1177,7 +1160,6 @@ class StableDiffusionXLImg2ImgPipeline(
             negative_prompt_embeds,
             ip_adapter_image,
             ip_adapter_image_embeds,
-            callback_on_step_end_tensor_inputs,
         )
 
         self._guidance_scale = guidance_scale

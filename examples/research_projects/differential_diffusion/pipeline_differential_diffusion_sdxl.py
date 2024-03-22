@@ -9,7 +9,7 @@ from diffusers.image_processor import PipelineImageInput
 
 class DifferentialDiffusionSDXLPipeline(StableDiffusionXLImg2ImgPipeline, DifferentialDiffusionMixin):
     @torch.no_grad()
-    def __call__(
+    def inference(
         self,
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
@@ -51,7 +51,7 @@ class DifferentialDiffusionSDXLPipeline(StableDiffusionXLImg2ImgPipeline, Differ
         map: torch.FloatTensor = None,
         **kwargs,
     ):
-        return self.inference(
+        return self._inference(
             prompt=prompt,
             prompt_2=prompt_2,
             image=image,
