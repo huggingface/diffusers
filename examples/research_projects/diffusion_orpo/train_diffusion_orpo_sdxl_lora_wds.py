@@ -488,6 +488,7 @@ def filter_keys(key_set):
 
 
 def get_dataset(args):
+    print(f"Dataset path: {args.dataset_path}")
     dataset = (
         wds.WebDataset(args.dataset_path, resampled=True, handler=wds.warn_and_continue)
         .shuffle(690, handler=wds.warn_and_continue)
