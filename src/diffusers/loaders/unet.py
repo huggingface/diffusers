@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import copy
 import inspect
 import os
 from collections import defaultdict
@@ -48,6 +47,7 @@ from .single_file_utils import (
     infer_stable_cascade_single_file_config,
     load_single_file_model_checkpoint,
 )
+from .unet_loader_utils import maybe_expand_lora_scales
 from .utils import AttnProcsLayers
 
 
@@ -562,117 +562,6 @@ class UNet2DConditionLoadersMixin:
             if isinstance(module, BaseTunerLayer):
                 module.unmerge()
 
-    def _expand_lora_scales_dict(
-        self,
-        scales: Union[float, Dict],
-        blocks_with_transformer: Dict[str, int],
-        transformer_per_block: Dict[str, int],
-    ):
-        """
-        Expands the inputs into a more granular dictionary. See the example below for more details.
-
-        Parameters:
-            scales (`Union[float, Dict]`):
-                Scales dict to expand.
-            blocks_with_transformer (`Dict[str, int]`):
-                Dict with keys 'up' and 'down', showing which blocks have transformer layers
-            transformer_per_block (`Dict[str, int]`):
-                Dict with keys 'up' and 'down', showing how many transformer layers each block has
-
-        E.g. turns
-        ```python
-        scales = {
-            'down': 2,
-            'mid': 3,
-            'up': {
-                'block_0': 4,
-                'block_1': [5, 6, 7]
-            }
-        }
-        blocks_with_transformer = {
-            'down': [1,2],
-            'up': [0,1]
-        }
-        transformer_per_block = {
-            'down': 2,
-            'up': 3
-        }
-        ```
-        into
-        ```python
-        {
-            'down.block_1.0': 2,
-            'down.block_1.1': 2,
-            'down.block_2.0': 2,
-            'down.block_2.1': 2,
-            'mid': 3,
-            'up.block_0.0': 4,
-            'up.block_0.1': 4,
-            'up.block_0.2': 4,
-            'up.block_1.0': 5,
-            'up.block_1.1': 6,
-            'up.block_1.2': 7,
-        }
-        ```
-        """
-        if sorted(blocks_with_transformer.keys()) != ["down", "up"]:
-            raise ValueError("blocks_with_transformer needs to be a dict with keys `'down' and `'up'`")
-
-        if sorted(transformer_per_block.keys()) != ["down", "up"]:
-            raise ValueError("transformer_per_block needs to be a dict with keys `'down' and `'up'`")
-
-        scales = copy.deepcopy(scales)
-
-        if not isinstance(scales, dict):
-            scales = {o: scales for o in ["down", "mid", "up"]}
-
-        if "mid" not in scales:
-            scales["mid"] = 1
-
-        for updown in ["up", "down"]:
-            if updown not in scales:
-                scales[updown] = 1
-
-            # eg {"down": 1} to {"down": {"block_1": 1, "block_2": 1}}}
-            if not isinstance(scales[updown], dict):
-                scales[updown] = {f"block_{i}": scales[updown] for i in blocks_with_transformer[updown]}
-
-            # eg {"down": "block_1": 1}} to {"down": "block_1": [1, 1]}}
-            for i in blocks_with_transformer[updown]:
-                block = f"block_{i}"
-                if not isinstance(scales[updown][block], list):
-                    scales[updown][block] = [scales[updown][block] for _ in range(transformer_per_block[updown])]
-
-            # eg {"down": "block_1": [1, 1]}}  to {"down.block_1.0": 1, "down.block_1.1": 1}
-            for i in blocks_with_transformer[updown]:
-                block = f"block_{i}"
-                for tf_idx, value in enumerate(scales[updown][block]):
-                    scales[f"{updown}.{block}.{tf_idx}"] = value
-
-            del scales[updown]
-
-        def layer_name(name):
-            """Translate user-friendly name (e.g. 'mid') into actual layer name (e.g. 'mid_block.attentions.0')"""
-            if name == "mid":
-                return "mid_block.attentions.0"
-
-            updown, block, attn = name.split(".")
-
-            updown = updown.replace("down", "down_blocks").replace("up", "up_blocks")
-            block = block.replace("block_", "")
-            attn = "attentions." + attn
-
-            return ".".join((updown, block, attn))
-
-        state_dict = self.state_dict()
-        for layer in scales.keys():
-            if not any(layer_name(layer) in module for module in state_dict.keys()):
-                raise ValueError(
-                    f"Can't set lora scale for layer {layer}. It either doesn't exist in this unet or it has no attentions."
-                )
-
-        return {layer_name(name): weight for name, weight in scales.items()}
-
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
@@ -710,7 +599,7 @@ class UNet2DConditionLoadersMixin:
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
 
         # Expand weights into a list, one entry per adapter
-        # examples for e.g. 2 adapters:  [7,7] -> [7,7] ; None -> [None, None]
+        # examples for e.g. 2 adapters:  [{...}, 7] -> [7,7] ; None -> [None, None]
         if not isinstance(weights, list):
             weights = [weights] * len(adapter_names)
 
@@ -720,20 +609,11 @@ class UNet2DConditionLoadersMixin:
             )
 
         # Set None values to default of 1.0
-        # e.g. [7,7] -> [7,7] ; [None, None] -> [1.0, 1.0]
+        # e.g. [{...}, 7] -> [{...}, 7] ; [None, None] -> [1.0, 1.0]
         weights = [w if w is not None else 1.0 for w in weights]
 
-        blocks_with_transformer = {
-            "down": [i for i, block in enumerate(self.down_blocks) if hasattr(block, "attentions")],
-            "up": [i for i, block in enumerate(self.up_blocks) if hasattr(block, "attentions")],
-        }
-        transformer_per_block = {"down": self.config.layers_per_block, "up": self.config.layers_per_block + 1}
-
-        # e.g. [7,7] -> [{...}, {...}]
-        weights = [
-            self._expand_lora_scales_dict(weight_for_adapter, blocks_with_transformer, transformer_per_block)
-            for weight_for_adapter in weights
-        ]
+        # e.g. [{...}, 7] -> [{expanded dict...}, 7]
+        weights = maybe_expand_lora_scales(self, weights)
 
         set_weights_and_activate_adapters(self, adapter_names, weights)
 

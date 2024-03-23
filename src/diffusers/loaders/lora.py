@@ -992,9 +992,6 @@ class LoraLoaderMixin:
             # e.g. [7,7] -> [7,7] ; [3, None] -> [3,1]
             weights = [w if w is not None else 1.0 for w in weights]
 
-            # e.g. [3,1] -> [{"text_model": 3} , {"text_model": 1} ]
-            weights = [{"text_model": w} for w in weights]
-
             return weights
 
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names

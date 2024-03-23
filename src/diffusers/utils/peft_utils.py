@@ -229,10 +229,14 @@ def set_weights_and_activate_adapters(model, adapter_names, weights):
     from peft.tuners.tuners_utils import BaseTunerLayer
 
     def get_module_weight(weight_for_adapter, module_name):
+        if not isinstance(weight_for_adapter, dict):
+            # If weight_for_adapter is a single number, always return it.
+            return weight_for_adapter
+
         for layer_name, weight_ in weight_for_adapter.items():
             if layer_name in module_name:
                 return weight_
-        raise RuntimeError(f"No LoRA weight found for module {module_name}, which should never happen.")
+        raise RuntimeError(f"No LoRA weight found for module {module_name}.")
 
     # iterate over each adapter, make it active and set the corresponding scaling weight
     for adapter_name, weight in zip(adapter_names, weights):
