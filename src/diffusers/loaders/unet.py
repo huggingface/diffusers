@@ -27,6 +27,7 @@ from torch import nn
 
 from ..models.embeddings import (
     ImageProjection,
+    IPAdapterFaceIDImageProjection,
     IPAdapterFullImageProjection,
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
@@ -732,17 +733,33 @@ class UNet2DConditionLoadersMixin:
                 diffusers_name = key.replace("proj", "image_embeds")
                 updated_state_dict[diffusers_name] = value
 
-        elif "proj.0.weight" in state_dict:
-            # IP-Adapter Full and Face ID
+        elif "proj.3.weight" in state_dict:
+            # IP-Adapter Full
+            clip_embeddings_dim = state_dict["proj.0.weight"].shape[0]
+            cross_attention_dim = state_dict["proj.3.weight"].shape[0]
+
+            with init_context():
+                image_projection = IPAdapterFullImageProjection(
+                    cross_attention_dim=cross_attention_dim, image_embed_dim=clip_embeddings_dim
+                )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("proj.0", "ff.net.0.proj")
+                diffusers_name = diffusers_name.replace("proj.2", "ff.net.2")
+                diffusers_name = diffusers_name.replace("proj.3", "norm")
+                updated_state_dict[diffusers_name] = value
+
+        elif "norm.weight" in state_dict:
+            # IP-Adapter Face ID
             clip_embeddings_dim_in = state_dict["proj.0.weight"].shape[1]
             clip_embeddings_dim_out = state_dict["proj.0.weight"].shape[0]
             multiplier = clip_embeddings_dim_out // clip_embeddings_dim_in
-            norm_layer = "norm.weight" if "norm.weight" in state_dict else "proj.3.weight"
+            norm_layer = "norm.weight"
             cross_attention_dim = state_dict[norm_layer].shape[0]
             num_tokens = state_dict["proj.2.weight"].shape[0] // cross_attention_dim
 
             with init_context():
-                image_projection = IPAdapterFullImageProjection(
+                image_projection = IPAdapterFaceIDImageProjection(
                     cross_attention_dim=cross_attention_dim,
                     image_embed_dim=clip_embeddings_dim_in,
                     mult=multiplier,
@@ -752,7 +769,6 @@ class UNet2DConditionLoadersMixin:
             for key, value in state_dict.items():
                 diffusers_name = key.replace("proj.0", "ff.net.0.proj")
                 diffusers_name = diffusers_name.replace("proj.2", "ff.net.2")
-                diffusers_name = diffusers_name.replace("proj.3", "norm")
                 updated_state_dict[diffusers_name] = value
 
         else:
@@ -856,12 +872,12 @@ class UNet2DConditionLoadersMixin:
                     if "proj.weight" in state_dict["image_proj"]:
                         # IP-Adapter
                         num_image_text_embeds += [4]
-                    elif "proj.0.weight" in state_dict["image_proj"]:
-                        # IP-Adapter Full Face and Face ID
-                        if f"{key_id}.to_k_lora.down.weight" in state_dict["ip_adapter"]:
-                            num_image_text_embeds += [4]
-                        else:
-                            num_image_text_embeds += [257]  # 256 CLIP tokens + 1 CLS token
+                    elif "proj.3.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Full Face
+                        num_image_text_embeds += [257]  # 256 CLIP tokens + 1 CLS token
+                    elif "norm.weight" in state_dict["image_proj"]:
+                        # IP-Adapter Face ID
+                        num_image_text_embeds += [4]
                     else:
                         # IP-Adapter Plus
                         num_image_text_embeds += [state_dict["image_proj"]["latents"].shape[1]]
