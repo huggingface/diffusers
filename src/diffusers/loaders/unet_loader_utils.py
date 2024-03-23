@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     # import here to avoid circular imports
     from ..models import UNet2DConditionModel
 
+
 def translate_into_actual_layer_name(name):
     """Translate user-friendly name (e.g. 'mid') into actual layer name (e.g. 'mid_block.attentions.0')"""
     if name == "mid":
@@ -33,7 +34,7 @@ def translate_into_actual_layer_name(name):
     return ".".join((updown, block, attn))
 
 
-def maybe_expand_lora_scales(unet: 'UNet2DConditionModel', weight_scales: List[Union[float, Dict]]):
+def maybe_expand_lora_scales(unet: "UNet2DConditionModel", weight_scales: List[Union[float, Dict]]):
     blocks_with_transformer = {
         "down": [i for i, block in enumerate(unet.down_blocks) if hasattr(block, "attentions")],
         "up": [i for i, block in enumerate(unet.up_blocks) if hasattr(block, "attentions")],
