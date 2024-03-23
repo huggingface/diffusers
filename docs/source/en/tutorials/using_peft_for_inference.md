@@ -182,7 +182,7 @@ adapter_weight_scales_pixel = {
         }
     }
 }
-pipe.set_adapters(["toy", "pixel"], [adapter_weight_scales_toy, adapter_weight_scales_pixel]])
+pipe.set_adapters(["toy", "pixel"], [adapter_weight_scales_toy, adapter_weight_scales_pixel])
 image = pipe(prompt, num_inference_steps=30, generator=torch.manual_seed(0)).images[0]
 image
 ```
