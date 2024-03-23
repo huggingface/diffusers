@@ -310,11 +310,11 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step):
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        gc.collect()
-        torch.cuda.empty_cache()
+    del pipeline
+    gc.collect()
+    torch.cuda.empty_cache()
 
-        return image_logs
+    return image_logs
 
 
 # From LatentConsistencyModel.get_guidance_scale_embedding

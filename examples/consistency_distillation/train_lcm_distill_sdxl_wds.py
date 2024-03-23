@@ -305,11 +305,11 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step, name="targe
         else:
             logger.warning(f"image logging not implemented for {tracker.name}")
 
-        del pipeline
-        gc.collect()
-        torch.cuda.empty_cache()
+    del pipeline
+    gc.collect()
+    torch.cuda.empty_cache()
 
-        return image_logs
+    return image_logs
 
 
 def append_dims(x, target_dims):
