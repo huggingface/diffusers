@@ -1720,7 +1720,11 @@ class StableDiffusionXLInpaintPipeline(
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
+                latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                if torch.backends.mps.is_available() and latents.dtype != latents_dtype:
+                    # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                    latents = latents.to(latents_dtype)
 
                 if num_channels_unet == 4:
                     init_latents_proper = image_latents
@@ -1772,6 +1776,9 @@ class StableDiffusionXLInpaintPipeline(
             if needs_upcasting:
                 self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+            elif torch.backends.mps.is_available() and latents.dtype != self.vae.dtype:
+                # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                self.vae = self.vae.to(latents.dtype)
 
             # unscale/denormalize the latents
             # denormalize with the mean and std if available and not None
