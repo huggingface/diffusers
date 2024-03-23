@@ -45,6 +45,7 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from .lora_conversion_utils import _convert_kohya_lora_to_diffusers, _maybe_map_sgm_blocks_to_diffusers
+from .lora_loader_utils import warn_if_adapter_and_scales_mismatch
 
 
 if is_transformers_available():
@@ -1054,53 +1055,42 @@ class LoraLoaderMixin:
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of the weights {len(adapter_weights)}"
             )
 
-        def warn_if_adapter_misses_part(adapter_name, part_name):
-            adapter_list = self.get_list_adapters()  # e.g. {"unet": ["name1"], "text_encoder": ["name1", "name2"]}
-            adapter_parts = [
-                part for part, adapters in adapter_list.items() for adapter in adapters if adapter == adapter_name
-            ]
-            if part_name not in adapter_parts:
-                logger.warning(
-                    f"Lora weight dict for adapter '{adapter_name}' contains {part_name}, but this will be ignored because {adapter_name} does not contain weights for {part_name}. Valid parts for {adapter_name} are: {adapter_parts}."
-                )
-
         # Decompose weights into weights for unet, text_encoder and text_encoder_2
         unet_lora_weights, text_encoder_lora_weights, text_encoder_2_lora_weights = [], [], []
 
         for adapter_name, weights in zip(adapter_names, adapter_weights):
             if isinstance(weights, dict):
-                unet_weight = weights.pop("unet", None)
-                text_encoder_weight = weights.pop("text_encoder", None)
-                text_encoder_2_weight = weights.pop("text_encoder_2", None)
+                unet_lora_weight = weights.pop("unet", None)
+                text_encoder_lora_weight = weights.pop("text_encoder", None)
+                text_encoder_2_lora_weight = weights.pop("text_encoder_2", None)
 
                 if len(weights) > 0:
                     raise ValueError(
                         f"Got invalid key '{weights.keys()}' in lora weight dict for adapter {adapter_name}."
                     )
 
-                if text_encoder_2_weight is not None and not hasattr(self, "text_encoder_2"):
+                if text_encoder_2_lora_weight is not None and not hasattr(self, "text_encoder_2"):
                     logger.warning(
                         "Lora weight dict contains text_encoder_2 weights but will be ignored because pipeline does not have text_encoder_2."
                     )
 
                 # warn if adapter doesn't have parts specified by adapter_weights
-                if unet_weight is not None:
-                    warn_if_adapter_misses_part(adapter_name, "unet")
-
-                if text_encoder_weight is not None:
-                    warn_if_adapter_misses_part(adapter_name, "text_encoder")
-
-                if text_encoder_2_weight is not None:
-                    warn_if_adapter_misses_part(adapter_name, "text_encoder_2")
+                warn_if_adapter_and_scales_mismatch(
+                    adapter_name,
+                    self.get_list_adapters(),
+                    unet_lora_weight,
+                    text_encoder_lora_weight,
+                    text_encoder_2_lora_weight,
+                )
 
             else:
-                unet_weight = weights
-                text_encoder_weight = weights
-                text_encoder_2_weight = weights
+                unet_lora_weight = weights
+                text_encoder_lora_weight = weights
+                text_encoder_2_lora_weight = weights
 
-            unet_lora_weights.append(unet_weight)
-            text_encoder_lora_weights.append(text_encoder_weight)
-            text_encoder_2_lora_weights.append(text_encoder_2_weight)
+            unet_lora_weights.append(unet_lora_weight)
+            text_encoder_lora_weights.append(text_encoder_lora_weight)
+            text_encoder_2_lora_weights.append(text_encoder_2_lora_weight)
 
         unet = getattr(self, self.unet_name) if not hasattr(self, "unet") else self.unet
         # Handle the UNET

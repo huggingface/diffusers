@@ -14,10 +14,14 @@
 import copy
 from typing import TYPE_CHECKING, Dict, List, Union
 
+from ..utils import logging
+
 
 if TYPE_CHECKING:
     # import here to avoid circular imports
     from ..models import UNet2DConditionModel
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 def translate_into_actual_layer_name(name):
@@ -148,3 +152,24 @@ def maybe_expand_lora_scales_for_one_adapter(
             )
 
     return {translate_into_actual_layer_name(name): weight for name, weight in scales.items()}
+
+
+def warn_if_adapter_and_scales_mismatch(
+    adapter_name, adapter_list, unet_lora_weight, text_encoder_lora_weight, text_encoder_2_lora_weight
+):
+    """Warn if the scales dict for an adapter contain parts (unet, text_encoder, text_encoder_2) for which the adapter doesn't have weights."""
+    adapter_parts = [
+        part for part, adapters in adapter_list.items() for adapter in adapters if adapter == adapter_name
+    ]
+
+    for part_name, part_weight_scales in zip(
+        ["unet", "text_encoder", "text_encoder_2"],
+        [unet_lora_weight, text_encoder_lora_weight, text_encoder_2_lora_weight],
+    ):
+        if part_weight_scales is None:
+            continue
+
+        if part_name not in adapter_parts:
+            logger.warning(
+                f"Lora weight dict for adapter '{adapter_name}' contains {part_name}, but this will be ignored because {adapter_name} does not contain weights for {part_name}. Valid parts for {adapter_name} are: {adapter_parts}."
+            )

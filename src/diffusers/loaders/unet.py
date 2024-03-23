@@ -42,12 +42,12 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from .lora_loader_utils import maybe_expand_lora_scales
 from .single_file_utils import (
     convert_stable_cascade_unet_single_file_to_diffusers,
     infer_stable_cascade_single_file_config,
     load_single_file_model_checkpoint,
 )
-from .unet_loader_utils import maybe_expand_lora_scales
 from .utils import AttnProcsLayers
 
 
