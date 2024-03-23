@@ -944,7 +944,7 @@ class AnimateDiffVideoToVideoPipeline(
             num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
 
             # 8. Denoising loop
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
+            with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     # expand the latents if we are doing classifier free guidance
                     latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
