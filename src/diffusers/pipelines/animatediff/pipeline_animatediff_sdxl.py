@@ -1186,7 +1186,7 @@ class AnimateDiffSDXLPipeline(
             self._num_timesteps = len(timesteps)
 
             # 9. Denoising loop
-            with self.progress_bar(total=num_inference_steps) as progress_bar:
+            with self.progress_bar(total=self._num_timesteps) as progress_bar:
                 for i, t in enumerate(timesteps):
                     if self.interrupt:
                         continue
