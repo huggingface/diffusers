@@ -57,6 +57,7 @@ from ...utils import (
     unscale_lora_layers,
 )
 from ...utils.torch_utils import randn_tensor
+from ..free_init_utils import FreeInitMixin
 from ..pipeline_utils import DiffusionPipeline
 from .pipeline_output import AnimateDiffPipelineOutput
 
@@ -198,6 +199,7 @@ class AnimateDiffSDXLPipeline(
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
     IPAdapterMixin,
+    FreeInitMixin,
 ):
     r"""
     Pipeline for text-to-video generation using Stable Diffusion XL.
@@ -1269,10 +1271,7 @@ class AnimateDiffSDXLPipeline(
                 ip_adapter_image, ip_adapter_image_embeds, device, batch_size * num_videos_per_prompt
             )
 
-        # 8. Denoising loop
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
-
-        # 8.1 Apply denoising_end
+        # 7.1 Apply denoising_end
         if (
             self.denoising_end is not None
             and isinstance(self.denoising_end, float)
@@ -1288,7 +1287,7 @@ class AnimateDiffSDXLPipeline(
             num_inference_steps = len(list(filter(lambda ts: ts >= discrete_timestep_cutoff, timesteps)))
             timesteps = timesteps[:num_inference_steps]
 
-        # 9. Optionally get Guidance Scale Embedding
+        # 8. Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
             guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_videos_per_prompt)
@@ -1296,62 +1295,72 @@ class AnimateDiffSDXLPipeline(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
 
-        # 10. Denoising loop
-        self._num_timesteps = len(timesteps)
-        with self.progress_bar(total=num_inference_steps) as progress_bar:
-            for i, t in enumerate(timesteps):
-                if self.interrupt:
-                    continue
+        num_free_init_iters = self._free_init_num_iters if self.free_init_enabled else 1
+        for free_init_iter in range(num_free_init_iters):
+            if self.free_init_enabled:
+                latents, timesteps = self._apply_free_init(
+                    latents, free_init_iter, num_inference_steps, device, latents.dtype, generator
+                )
 
-                # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+            self._num_timesteps = len(timesteps)
 
-                latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+            # 9. Denoising loop
+            with self.progress_bar(total=num_inference_steps) as progress_bar:
+                for i, t in enumerate(timesteps):
+                    if self.interrupt:
+                        continue
 
-                # predict the noise residual
-                added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-                if ip_adapter_image is not None or ip_adapter_image_embeds:
-                    added_cond_kwargs["image_embeds"] = image_embeds
+                    # expand the latents if we are doing classifier free guidance
+                    latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
-                noise_pred = self.unet(
-                    latent_model_input,
-                    t,
-                    encoder_hidden_states=prompt_embeds,
-                    timestep_cond=timestep_cond,
-                    cross_attention_kwargs=self.cross_attention_kwargs,
-                    added_cond_kwargs=added_cond_kwargs,
-                    return_dict=False,
-                )[0]
+                    latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
 
-                # perform guidance
-                if self.do_classifier_free_guidance:
-                    noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    # predict the noise residual
+                    added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+                    if ip_adapter_image is not None or ip_adapter_image_embeds:
+                        added_cond_kwargs["image_embeds"] = image_embeds
 
-                if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
-                    # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
-                    noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
+                    noise_pred = self.unet(
+                        latent_model_input,
+                        t,
+                        encoder_hidden_states=prompt_embeds,
+                        timestep_cond=timestep_cond,
+                        cross_attention_kwargs=self.cross_attention_kwargs,
+                        added_cond_kwargs=added_cond_kwargs,
+                        return_dict=False,
+                    )[0]
 
-                # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                    # perform guidance
+                    if self.do_classifier_free_guidance:
+                        noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+                        noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
 
-                if callback_on_step_end is not None:
-                    callback_kwargs = {}
-                    for k in callback_on_step_end_tensor_inputs:
-                        callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
+                        # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
+                        noise_pred = rescale_noise_cfg(
+                            noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale
+                        )
 
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
-                    add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
-                    negative_pooled_prompt_embeds = callback_outputs.pop(
-                        "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
-                    )
-                    add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
-                    negative_add_time_ids = callback_outputs.pop("negative_add_time_ids", negative_add_time_ids)
+                    # compute the previous noisy sample x_t -> x_t-1
+                    latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
 
-                progress_bar.update()
+                    if callback_on_step_end is not None:
+                        callback_kwargs = {}
+                        for k in callback_on_step_end_tensor_inputs:
+                            callback_kwargs[k] = locals()[k]
+                        callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                        latents = callback_outputs.pop("latents", latents)
+                        prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                        negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
+                        add_text_embeds = callback_outputs.pop("add_text_embeds", add_text_embeds)
+                        negative_pooled_prompt_embeds = callback_outputs.pop(
+                            "negative_pooled_prompt_embeds", negative_pooled_prompt_embeds
+                        )
+                        add_time_ids = callback_outputs.pop("add_time_ids", add_time_ids)
+                        negative_add_time_ids = callback_outputs.pop("negative_add_time_ids", negative_add_time_ids)
+
+                    progress_bar.update()
 
         # make sure the VAE is in float32 mode, as it overflows in float16
         needs_upcasting = self.vae.dtype == torch.float16 and self.vae.config.force_upcast
@@ -1360,8 +1369,12 @@ class AnimateDiffSDXLPipeline(
             self.upcast_vae()
             latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
 
-        video_tensor = self.decode_latents(latents)
-        video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
+        # 10. Post processing
+        if output_type == "latent":
+            video = latents
+        else:
+            video_tensor = self.decode_latents(latents)
+            video = tensor2vid(video_tensor, self.image_processor, output_type=output_type)
 
         # cast back to fp16 if needed
         if needs_upcasting:
