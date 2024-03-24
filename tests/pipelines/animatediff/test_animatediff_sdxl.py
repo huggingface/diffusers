@@ -17,7 +17,7 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin, SDFunctionTesterMixin
 
 
 def to_np(tensor):
@@ -27,7 +27,9 @@ def to_np(tensor):
     return tensor
 
 
-class AnimateDiffPipelineSDXLFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class AnimateDiffPipelineSDXLFastTests(
+    IPAdapterTesterMixin, PipelineTesterMixin, SDFunctionTesterMixin, unittest.TestCase
+):
     pipeline_class = AnimateDiffSDXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS
@@ -132,7 +134,7 @@ class AnimateDiffPipelineSDXLFastTests(IPAdapterTesterMixin, PipelineTesterMixin
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 7.5,
-            "output_type": "pt",
+            "output_type": "np",
         }
         return inputs
 
@@ -235,7 +237,7 @@ class AnimateDiffPipelineSDXLFastTests(IPAdapterTesterMixin, PipelineTesterMixin
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes))
 
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = [component.dtype for component in pipe.components.values() if hasattr(component, "dtype")]
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes))
 
