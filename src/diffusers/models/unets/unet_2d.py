@@ -118,6 +118,7 @@ class UNet2DModel(ModelMixin, ConfigMixin):
         class_embed_type: Optional[str] = None,
         num_class_embeds: Optional[int] = None,
         num_train_timesteps: Optional[int] = None,
+        **kwargs,
     ):
         super().__init__()
 

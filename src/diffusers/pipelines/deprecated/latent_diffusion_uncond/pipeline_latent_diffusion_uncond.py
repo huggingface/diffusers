@@ -42,14 +42,18 @@ class LDMPipeline(DiffusionPipeline):
     def __init__(self, vqvae: VQModel, unet: UNet2DModel, scheduler: DDIMScheduler):
         super().__init__()
         self.register_modules(vqvae=vqvae, unet=unet, scheduler=scheduler)
+        self.vae_scale_factor = 2 ** (len(self.vqvae.config.block_out_channels) - 1)
 
     @torch.no_grad()
     def __call__(
         self,
         batch_size: int = 1,
-        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        height: Optional[int] = None,
+        width: Optional[int] = None,
         eta: float = 0.0,
         num_inference_steps: int = 50,
+        generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+        latents: Optional[torch.Tensor] = None,
         output_type: Optional[str] = "pil",
         return_dict: bool = True,
         **kwargs,
@@ -89,14 +93,26 @@ class LDMPipeline(DiffusionPipeline):
                 returned where the first element is a list with the generated images
         """
 
-        latents = randn_tensor(
-            (batch_size, self.unet.config.in_channels, self.unet.config.sample_size, self.unet.config.sample_size),
-            generator=generator,
-        )
-        latents = latents.to(self.device)
+        # 0. Default height and width to unet
+        height = height or self.unet.config.sample_size * self.vae_scale_factor
+        width = width or self.unet.config.sample_size * self.vae_scale_factor
+        
+        # get the initial random noise unless the user supplied it
+        latents_shape = (batch_size, self.unet.config.in_channels, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        if isinstance(generator, list) and len(generator) != batch_size:
+            raise ValueError(
+                f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
+                f" size of {batch_size}. Make sure the batch size matches the length of the generators."
+            )
 
-        # scale the initial noise by the standard deviation required by the scheduler
-        latents = latents * self.scheduler.init_noise_sigma
+        if latents is None:
+            latents = randn_tensor(
+                latents_shape, generator=generator, device=self._execution_device, dtype=self.unet.dtype
+            )
+        else:
+            if latents.shape != latents_shape:
+                raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {latents_shape}")
+        latents = latents.to(self._execution_device)
 
         self.scheduler.set_timesteps(num_inference_steps)
 
@@ -108,19 +124,22 @@ class LDMPipeline(DiffusionPipeline):
             extra_kwargs["eta"] = eta
 
         for t in self.progress_bar(self.scheduler.timesteps):
-            latent_model_input = self.scheduler.scale_model_input(latents, t)
-            # predict the noise residual
-            noise_prediction = self.unet(latent_model_input, t).sample
+            latents_input = latents
+            noise_pred = self.unet(latents_input, t).sample
+            
             # compute the previous noisy sample x_t -> x_t-1
-            latents = self.scheduler.step(noise_prediction, t, latents, **extra_kwargs).prev_sample
+            latents = self.scheduler.step(noise_pred, t, latents, **extra_kwargs).prev_sample
 
-        # adjust latents with inverse of vae scale
-        latents = latents / self.vqvae.config.scaling_factor
-        # decode the image latents with the VAE
+        if output_type == 'latent':
+             return latents.cpu().numpy()
+    
+        # scale and decode the image latents with vae
+        # latents = 1 / self.vqvae.config.scaling_factor * latents
         image = self.vqvae.decode(latents).sample
 
         image = (image / 2 + 0.5).clamp(0, 1)
         image = image.cpu().permute(0, 2, 3, 1).numpy()
+        
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
