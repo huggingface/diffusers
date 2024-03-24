@@ -144,6 +144,7 @@ def log_validation(args, unet, vae, accelerator, weight_dtype, epoch, is_final_v
     # Also log images without the LoRA params for comparison.
     if is_final_validation:
         pipeline.disable_lora()
+        generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
         no_lora_images = [
             pipeline(
                 prompt, num_inference_steps=num_inference_steps, guidance_scale=guidance_scale, generator=generator
