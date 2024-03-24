@@ -32,6 +32,7 @@ from diffusers.utils.import_utils import is_invisible_watermark_available
 
 from ...image_processor import PipelineImageInput, VaeImageProcessor
 from ...loaders import (
+    FromSingleFileMixin,
     IPAdapterMixin,
     StableDiffusionXLLoraLoaderMixin,
     TextualInversionLoaderMixin,
@@ -161,6 +162,7 @@ class StableDiffusionXLControlNetImg2ImgPipeline(
     StableDiffusionMixin,
     TextualInversionLoaderMixin,
     StableDiffusionXLLoraLoaderMixin,
+    FromSingleFileMixin,
     IPAdapterMixin,
 ):
     r"""
