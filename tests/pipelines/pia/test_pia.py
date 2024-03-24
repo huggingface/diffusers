@@ -17,7 +17,7 @@ from diffusers import (
 from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import floats_tensor, torch_device
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin
 
 
 def to_np(tensor):
@@ -27,7 +27,7 @@ def to_np(tensor):
     return tensor
 
 
-class PIAPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = PIAPipeline
     params = frozenset(
         [
@@ -255,7 +255,6 @@ class PIAPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         inputs_normal = self.get_dummy_inputs(torch_device)
         frames_normal = pipe(**inputs_normal).frames[0]
 
-        free_init_generator = torch.Generator(device=torch_device).manual_seed(0)
         pipe.enable_free_init(
             num_iters=2,
             use_fast_sampling=True,
@@ -263,7 +262,6 @@ class PIAPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             order=4,
             spatial_stop_frequency=0.25,
             temporal_stop_frequency=0.25,
-            generator=free_init_generator,
         )
         inputs_enable_free_init = self.get_dummy_inputs(torch_device)
         frames_enable_free_init = pipe(**inputs_enable_free_init).frames[0]

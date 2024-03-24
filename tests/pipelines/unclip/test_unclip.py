@@ -233,7 +233,7 @@ class UnCLIPPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "prior_num_inference_steps": 2,
             "decoder_num_inference_steps": 2,
             "super_res_num_inference_steps": 2,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

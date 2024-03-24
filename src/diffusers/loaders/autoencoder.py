@@ -75,10 +75,6 @@ class FromOriginalVAEMixin:
                 diffusion model. When decoding, the latents are scaled back to the original scale with the formula: `z
                 = 1 / scaling_factor * z`. For more details, refer to sections 4.3.2 and D.1 of the [High-Resolution
                 Image Synthesis with Latent Diffusion Models](https://arxiv.org/abs/2112.10752) paper.
-            use_safetensors (`bool`, *optional*, defaults to `None`):
-                If set to `None`, the safetensors weights are downloaded if they're available **and** if the
-                safetensors library is installed. If set to `True`, the model is forcibly loaded from safetensors
-                weights. If set to `False`, safetensors weights are not loaded.
             kwargs (remaining dictionary of keyword arguments, *optional*):
                 Can be used to overwrite load and saveable variables (for example the pipeline components of the
                 specific pipeline class). The overwritten components are directly passed to the pipelines `__init__`
@@ -111,7 +107,6 @@ class FromOriginalVAEMixin:
         local_files_only = kwargs.pop("local_files_only", None)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        use_safetensors = kwargs.pop("use_safetensors", True)
 
         class_name = cls.__name__
 
@@ -131,14 +126,18 @@ class FromOriginalVAEMixin:
             token=token,
             revision=revision,
             local_files_only=local_files_only,
-            use_safetensors=use_safetensors,
             cache_dir=cache_dir,
         )
 
         image_size = kwargs.pop("image_size", None)
         scaling_factor = kwargs.pop("scaling_factor", None)
         component = create_diffusers_vae_model_from_ldm(
-            class_name, original_config, checkpoint, image_size=image_size, scaling_factor=scaling_factor
+            class_name,
+            original_config,
+            checkpoint,
+            image_size=image_size,
+            scaling_factor=scaling_factor,
+            torch_dtype=torch_dtype,
         )
         vae = component["vae"]
         if torch_dtype is not None:

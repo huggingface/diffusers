@@ -35,7 +35,7 @@ import transformers
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 from huggingface_hub import create_repo, upload_folder
 from packaging import version
 from torchvision import transforms
@@ -54,7 +54,7 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -74,9 +74,10 @@ def save_model_card(
     vae_path: str = None,
 ):
     img_str = ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"![img_{i}](./image_{i}.png)\n"
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
 
     model_description = f"""
 # Text-to-image finetuning - {repo_id}
@@ -100,6 +101,7 @@ Special VAE used for training: {vae_path}.
         "stable-diffusion-xl",
         "stable-diffusion-xl-diffusers",
         "text-to-image",
+        "diffusers-training",
         "diffusers",
     ]
     model_card = populate_model_card(model_card, tags=tags)
@@ -419,7 +421,7 @@ def parse_args(input_args=None):
         "--prediction_type",
         type=str,
         default=None,
-        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediciton_type` is chosen.",
+        help="The prediction_type that shall be used for training. Choose between 'epsilon' or 'v_prediction' or leave `None`. If left to `None` the default prediction type of the scheduler: `noise_scheduler.config.prediction_type` is chosen.",
     )
     parser.add_argument(
         "--hub_model_id",
@@ -683,7 +685,7 @@ def main(args):
     # Set unet as trainable.
     unet.train()
 
-    # For mixed precision training we cast all non-trainable weigths to half-precision
+    # For mixed precision training we cast all non-trainable weights to half-precision
     # as these weights are only used for inference, keeping weights in full precision is not required.
     weight_dtype = torch.float32
     if accelerator.mixed_precision == "fp16":
@@ -710,7 +712,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -738,7 +740,7 @@ def main(args):
                 ema_unet.to(accelerator.device)
                 del load_model
 
-            for i in range(len(models)):
+            for _ in range(len(models)):
                 # pop models so that they are not loaded again
                 model = models.pop()
 
@@ -894,15 +896,22 @@ def main(args):
         # fingerprint used by the cache for the other processes to load the result
         # details: https://github.com/huggingface/diffusers/pull/4038#discussion_r1266078401
         new_fingerprint = Hasher.hash(args)
-        new_fingerprint_for_vae = Hasher.hash("vae")
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint)
-        train_dataset = train_dataset.map(
+        new_fingerprint_for_vae = Hasher.hash(vae_path)
+        train_dataset_with_embeddings = train_dataset.map(
+            compute_embeddings_fn, batched=True, new_fingerprint=new_fingerprint
+        )
+        train_dataset_with_vae = train_dataset.map(
             compute_vae_encodings_fn,
             batched=True,
             batch_size=args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps,
             new_fingerprint=new_fingerprint_for_vae,
         )
+        precomputed_dataset = concatenate_datasets(
+            [train_dataset_with_embeddings, train_dataset_with_vae.remove_columns(["image", "text"])], axis=1
+        )
+        precomputed_dataset = precomputed_dataset.with_transform(preprocess_train)
 
+    del compute_vae_encodings_fn, compute_embeddings_fn, text_encoder_one, text_encoder_two
     del text_encoders, tokenizers, vae
     gc.collect()
     torch.cuda.empty_cache()
@@ -924,7 +933,7 @@ def main(args):
 
     # DataLoaders creation:
     train_dataloader = torch.utils.data.DataLoader(
-        train_dataset,
+        precomputed_dataset,
         shuffle=True,
         collate_fn=collate_fn,
         batch_size=args.train_batch_size,
@@ -950,6 +959,9 @@ def main(args):
         unet, optimizer, train_dataloader, lr_scheduler
     )
 
+    if args.use_ema:
+        ema_unet.to(accelerator.device)
+
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
     if overrode_max_train_steps:
@@ -962,7 +974,7 @@ def main(args):
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune-sdxl", config=vars(args))
 
-    # Function for unwraping if torch.compile() was used in accelerate.
+    # Function for unwrapping if torch.compile() was used in accelerate.
     def unwrap_model(model):
         model = accelerator.unwrap_model(model)
         model = model._orig_mod if is_compiled_module(model) else model
@@ -972,7 +984,7 @@ def main(args):
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
     logger.info("***** Running training *****")
-    logger.info(f"  Num examples = {len(train_dataset)}")
+    logger.info(f"  Num examples = {len(precomputed_dataset)}")
     logger.info(f"  Num Epochs = {args.num_train_epochs}")
     logger.info(f"  Instantaneous batch size per device = {args.train_batch_size}")
     logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_batch_size}")
@@ -1125,6 +1137,8 @@ def main(args):
 
             # Checks if the accelerator has performed an optimization step behind the scenes
             if accelerator.sync_gradients:
+                if args.use_ema:
+                    ema_unet.step(unet.parameters())
                 progress_bar.update(1)
                 global_step += 1
                 accelerator.log({"train_loss": train_loss}, step=global_step)

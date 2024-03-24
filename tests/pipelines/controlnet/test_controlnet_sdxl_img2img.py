@@ -36,6 +36,7 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
 from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -46,7 +47,11 @@ enable_full_determinism()
 
 
 class ControlNetPipelineSDXLImg2ImgFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLControlNetImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
@@ -158,7 +163,7 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
             "control_image": image,
         }

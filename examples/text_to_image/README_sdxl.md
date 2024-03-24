@@ -2,7 +2,7 @@
 
 The `train_text_to_image_sdxl.py` script shows how to fine-tune Stable Diffusion XL (SDXL) on your own dataset.
 
-🚨 This script is experimental. The script fine-tunes the whole model and often times the model overfits and runs into issues like catastrophic forgetting. It's recommended to try different hyperparamters to get the best result on your dataset. 🚨
+🚨 This script is experimental. The script fine-tunes the whole model and often times the model overfits and runs into issues like catastrophic forgetting. It's recommended to try different hyperparameters to get the best result on your dataset. 🚨
 
 ## Running locally with PyTorch
 
@@ -238,8 +238,8 @@ accelerate launch  --config_file $ACCELERATE_CONFIG_FILE train_text_to_image_lor
   --validation_epochs=20 \
   --seed=1234 \
   --output_dir="sd-pokemon-model-lora-sdxl" \
-  --validation_prompt="cute dragon creature" 
-  
+  --validation_prompt="cute dragon creature"
+
 ```
 
 

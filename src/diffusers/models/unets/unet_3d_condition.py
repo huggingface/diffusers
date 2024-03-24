@@ -27,6 +27,7 @@ from ..activations import get_activation
 from ..attention_processor import (
     ADDED_KV_ATTENTION_PROCESSORS,
     CROSS_ATTENTION_PROCESSORS,
+    Attention,
     AttentionProcessor,
     AttnAddedKVProcessor,
     AttnProcessor,
@@ -90,6 +91,8 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         cross_attention_dim (`int`, *optional*, defaults to 1024): The dimension of the cross attention features.
         attention_head_dim (`int`, *optional*, defaults to 64): The dimension of the attention heads.
         num_attention_heads (`int`, *optional*): The number of attention heads.
+        time_cond_proj_dim (`int`, *optional*, defaults to `None`):
+            The dimension of `cond_proj` layer in the timestep embedding.
     """
 
     _supports_gradient_checkpointing = False
@@ -122,6 +125,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
         cross_attention_dim: int = 1024,
         attention_head_dim: Union[int, Tuple[int]] = 64,
         num_attention_heads: Optional[Union[int, Tuple[int]]] = None,
+        time_cond_proj_dim: Optional[int] = None,
     ):
         super().__init__()
 
@@ -173,6 +177,7 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             timestep_input_dim,
             time_embed_dim,
             act_fn=act_fn,
+            cond_proj_dim=time_cond_proj_dim,
         )
 
         self.transformer_in = TransformerTemporalModel(
@@ -502,6 +507,44 @@ class UNet3DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin)
             for k in freeu_keys:
                 if hasattr(upsample_block, k) or getattr(upsample_block, k, None) is not None:
                     setattr(upsample_block, k, None)
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.fuse_qkv_projections
+    def fuse_qkv_projections(self):
+        """
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
+        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+        """
+        self.original_attn_processors = None
+
+        for _, attn_processor in self.attn_processors.items():
+            if "Added" in str(attn_processor.__class__.__name__):
+                raise ValueError("`fuse_qkv_projections()` is not supported for models having added KV projections.")
+
+        self.original_attn_processors = self.attn_processors
+
+        for module in self.modules():
+            if isinstance(module, Attention):
+                module.fuse_projections(fuse=True)
+
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unfuse_qkv_projections
+    def unfuse_qkv_projections(self):
+        """Disables the fused QKV projection if enabled.
+
+        <Tip warning={true}>
+
+        This API is 🧪 experimental.
+
+        </Tip>
+
+        """
+        if self.original_attn_processors is not None:
+            self.set_attn_processor(self.original_attn_processors)
 
     # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.unload_lora
     def unload_lora(self):

@@ -46,7 +46,7 @@ from ....utils import (
     unscale_lora_layers,
 )
 from ....utils.torch_utils import randn_tensor
-from ...pipeline_utils import DiffusionPipeline
+from ...pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from ...stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
 from ...stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
@@ -280,7 +280,7 @@ class Pix2PixZeroAttnProcessor:
         return hidden_states
 
 
-class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline):
+class StableDiffusionPix2PixZeroPipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Pipeline for pixel-level image editing using Pix2Pix Zero. Based on Stable Diffusion.
 

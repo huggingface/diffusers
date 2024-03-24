@@ -47,7 +47,11 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
     TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS,
 )
-from ..test_pipelines_common import PipelineKarrasSchedulerTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import (
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+)
 
 
 enable_full_determinism()
@@ -127,7 +131,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "image_guidance_scale": 1,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -284,7 +288,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
             "image_guidance_scale": 1.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

@@ -55,7 +55,7 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
             "image": image,
             "generator": generator,
             "num_inference_steps": 2,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return inputs

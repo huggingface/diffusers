@@ -206,3 +206,66 @@ You can explore the results from a couple of our internal experiments by checkin
 ## Running on a free-tier Colab Notebook
 
 Check out [this notebook](https://colab.research.google.com/github/huggingface/notebooks/blob/main/diffusers/SDXL_DreamBooth_LoRA_.ipynb). 
+
+## Conducting EDM-style training
+
+It's now possible to perform EDM-style training as proposed in [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364). 
+
+For the SDXL model, simple set:
+
+```diff
++  --do_edm_style_training \
+```
+
+Other SDXL-like models that use the EDM formulation, such as [playgroundai/playground-v2.5-1024px-aesthetic](https://huggingface.co/playgroundai/playground-v2.5-1024px-aesthetic), can also be DreamBooth'd with the script. Below is an example command:
+
+```bash
+accelerate launch train_dreambooth_lora_sdxl.py \
+  --pretrained_model_name_or_path="playgroundai/playground-v2.5-1024px-aesthetic"  \
+  --instance_data_dir="dog" \
+  --output_dir="dog-playground-lora" \
+  --mixed_precision="fp16" \
+  --instance_prompt="a photo of sks dog" \
+  --resolution=1024 \
+  --train_batch_size=1 \
+  --gradient_accumulation_steps=4 \
+  --learning_rate=1e-4 \
+  --use_8bit_adam \
+  --report_to="wandb" \
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --max_train_steps=500 \
+  --validation_prompt="A photo of sks dog in a bucket" \
+  --validation_epochs=25 \
+  --seed="0" \
+  --push_to_hub
+```
+
+> [!CAUTION]
+> Min-SNR gamma is not supported with the EDM-style training yet. When training with the PlaygroundAI model, it's recommended to not pass any "variant".
+
+### DoRA training 
+The script now supports DoRA training too!
+> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353), 
+**DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters. 
+The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference. 
+
+> [!NOTE]
+> 💡DoRA training is still _experimental_  
+> and is likely to require different hyperparameter values to perform best compared to a LoRA.
+> Specifically, we've noticed 2 differences to take into account your training: 
+> 1. **LoRA seem to converge faster than DoRA** (so a set of parameters that may lead to overfitting when training a LoRA may be working well for a DoRA)
+> 2. **DoRA quality superior to LoRA especially in lower ranks** the difference in quality of DoRA of rank 8 and LoRA of rank 8 appears to be more significant than when training ranks of 32 or 64 for example.  
+> This is also aligned with some of the quantitative analysis shown in the paper. 
+
+**Usage**
+1. To use DoRA you need to install `peft` from main: 
+```bash
+pip install git+https://github.com/huggingface/peft.git
+```
+2. Enable DoRA training by adding this flag
+```bash
+--use_dora
+```
+**Inference** 
+The inference is the same as if you train a regular LoRA 🤗

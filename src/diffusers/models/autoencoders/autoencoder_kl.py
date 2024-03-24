@@ -80,6 +80,8 @@ class AutoencoderKL(ModelMixin, ConfigMixin, FromOriginalVAEMixin):
         norm_num_groups: int = 32,
         sample_size: int = 32,
         scaling_factor: float = 0.18215,
+        latents_mean: Optional[Tuple[float]] = None,
+        latents_std: Optional[Tuple[float]] = None,
         force_upcast: float = True,
     ):
         super().__init__()
