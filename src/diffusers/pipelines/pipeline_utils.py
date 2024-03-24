@@ -939,6 +939,15 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    def remove_all_hooks(self):
+        r"""
+        Removes all hooks that were added when using `enable_sequential_cpu_offload` or `enable_model_cpu_offload`.
+        """
+        for _, model in self.components.items():
+            if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
+                is_sequential_cpu_offload = isinstance(getattr(model, "_hf_hook"), accelerate.hooks.AlignDevicesHook)
+                accelerate.hooks.remove_hook_from_module(model, recurse=is_sequential_cpu_offload)
+
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -962,6 +971,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             from accelerate import cpu_offload_with_hook
         else:
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
+
+        self.remove_all_hooks()
 
         torch_device = torch.device(device)
         device_index = torch_device.index
@@ -1021,11 +1032,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # `enable_model_cpu_offload` has not be called, so silently do nothing
             return
 
-        for hook in self._all_hooks:
-            # offload model and remove hook from model
-            hook.offload()
-            hook.remove()
-
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
@@ -1048,6 +1054,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             from accelerate import cpu_offload
         else:
             raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+        self.remove_all_hooks()
 
         torch_device = torch.device(device)
         device_index = torch_device.index
