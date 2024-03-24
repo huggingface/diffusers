@@ -45,7 +45,6 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from .lora_conversion_utils import _convert_kohya_lora_to_diffusers, _maybe_map_sgm_blocks_to_diffusers
-from .lora_loader_utils import warn_if_adapter_and_scales_mismatch
 
 
 if is_transformers_available():
@@ -1058,6 +1057,15 @@ class LoraLoaderMixin:
         # Decompose weights into weights for unet, text_encoder and text_encoder_2
         unet_lora_weights, text_encoder_lora_weights, text_encoder_2_lora_weights = [], [], []
 
+        list_adapters = self.get_list_adapters()  # eg {"unet": ["adapter1", "adapter2"], "text_encoder": ["adapter2"]}
+        all_adapters = {
+            adapter for adapters in list_adapters.values() for adapter in adapters
+        }  # eg ["adapter1", "adapter2"]
+        invert_list_adapters = {
+            adapter: [part for part, adapters in list_adapters.items() if adapter in adapters]
+            for adapter in all_adapters
+        }  # eg {"adapter1": ["unet"], "adapter2": ["unet", "text_encoder"]}
+
         for adapter_name, weights in zip(adapter_names, adapter_weights):
             if isinstance(weights, dict):
                 unet_lora_weight = weights.pop("unet", None)
@@ -1075,13 +1083,14 @@ class LoraLoaderMixin:
                     )
 
                 # warn if adapter doesn't have parts specified by adapter_weights
-                warn_if_adapter_and_scales_mismatch(
-                    adapter_name,
-                    self.get_list_adapters(),
-                    unet_lora_weight,
-                    text_encoder_lora_weight,
-                    text_encoder_2_lora_weight,
-                )
+                for part_weight, part_name in zip(
+                    [unet_lora_weight, text_encoder_lora_weight, text_encoder_2_lora_weight],
+                    ["uent", "text_encoder", "text_encoder_2"],
+                ):
+                    if part_weight is not None and part_name not in invert_list_adapters[adapter_name]:
+                        logger.warning(
+                            f"Lora weight dict for adapter '{adapter_name}' contains {part_name}, but this will be ignored because {adapter_name} does not contain weights for {part_name}. Valid parts for {adapter_name} are: {invert_list_adapters[adapter_name]}."
+                        )
 
             else:
                 unet_lora_weight = weights
