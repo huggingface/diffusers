@@ -80,8 +80,7 @@ To do so, just specify `--train_text_encoder_ti` while launching training (for r
 Please keep the following points in mind:
 
 * SDXL has two text encoders. So, we fine-tune both using LoRA.
-* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memoםהקרry.
-
+* When not fine-tuning the text encoders, we ALWAYS precompute the text embeddings to save memory.
 
 ### 3D icon example
 
@@ -234,6 +233,76 @@ In ComfyUI we will load a LoRA and a textual embedding at the same time.
 
 SDXL's VAE is known to suffer from numerical instability issues. This is why we also expose a CLI argument namely `--pretrained_vae_model_name_or_path` that lets you specify the location of a better VAE (such as [this one](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix)).
 
+### DoRA training 
+The advanced script now supports DoRA training too!
+> Proposed in [DoRA: Weight-Decomposed Low-Rank Adaptation](https://arxiv.org/abs/2402.09353), 
+**DoRA** is very similar to LoRA, except it decomposes the pre-trained weight into two components, **magnitude** and **direction** and employs LoRA for _directional_ updates to efficiently minimize the number of trainable parameters. 
+The authors found that by using DoRA, both the learning capacity and training stability of LoRA are enhanced without any additional overhead during inference. 
+
+> [!NOTE]
+> 💡DoRA training is still _experimental_  
+> and is likely to require different hyperparameter values to perform best compared to a LoRA.
+> Specifically, we've noticed 2 differences to take into account your training: 
+> 1. **LoRA seem to converge faster than DoRA** (so a set of parameters that may lead to overfitting when training a LoRA may be working well for a DoRA)
+> 2. **DoRA quality superior to LoRA especially in lower ranks** the difference in quality of DoRA of rank 8 and LoRA of rank 8 appears to be more significant than when training ranks of 32 or 64 for example.  
+> This is also aligned with some of the quantitative analysis shown in the paper. 
+
+**Usage**
+1. To use DoRA you need to install `peft` from main: 
+```bash
+pip install git+https://github.com/huggingface/peft.git
+```
+2. Enable DoRA training by adding this flag
+```bash
+--use_dora
+```
+**Inference** 
+The inference is the same as if you train a regular LoRA 🤗
+
+## Conducting EDM-style training
+
+It's now possible to perform EDM-style training as proposed in [Elucidating the Design Space of Diffusion-Based Generative Models](https://arxiv.org/abs/2206.00364). 
+
+simply set:
+
+```diff
++  --do_edm_style_training \
+```
+
+Other SDXL-like models that use the EDM formulation, such as [playgroundai/playground-v2.5-1024px-aesthetic](https://huggingface.co/playgroundai/playground-v2.5-1024px-aesthetic), can also be DreamBooth'd with the script. Below is an example command:
+
+```bash
+accelerate launch train_dreambooth_lora_sdxl_advanced.py \
+  --pretrained_model_name_or_path="playgroundai/playground-v2.5-1024px-aesthetic"  \
+  --dataset_name="linoyts/3d_icon" \
+  --instance_prompt="3d icon in the style of TOK" \
+  --validation_prompt="a TOK icon of an astronaut riding a horse, in the style of TOK" \
+  --output_dir="3d-icon-SDXL-LoRA" \
+  --do_edm_style_training \
+  --caption_column="prompt" \
+  --mixed_precision="bf16" \
+  --resolution=1024 \
+  --train_batch_size=3 \
+  --repeats=1 \
+  --report_to="wandb"\
+  --gradient_accumulation_steps=1 \
+  --gradient_checkpointing \
+  --learning_rate=1.0 \
+  --text_encoder_lr=1.0 \
+  --optimizer="prodigy"\
+  --train_text_encoder_ti\
+  --train_text_encoder_ti_frac=0.5\
+  --lr_scheduler="constant" \
+  --lr_warmup_steps=0 \
+  --rank=8 \
+  --max_train_steps=1000 \
+  --checkpointing_steps=2000 \
+  --seed="0" \
+  --push_to_hub
+```
+
+> [!CAUTION]
+> Min-SNR gamma is not supported with the EDM-style training yet. When training with the PlaygroundAI model, it's recommended to not pass any "variant".
 
 ### Tips and Tricks
 Check out [these recommended practices](https://huggingface.co/blog/sdxl_lora_advanced_script#additional-good-practices)

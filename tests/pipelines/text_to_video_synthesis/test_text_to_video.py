@@ -37,14 +37,14 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, SDFunctionTesterMixin
 
 
 enable_full_determinism()
 
 
 @skip_mps
-class TextToVideoSDPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class TextToVideoSDPipelineFastTests(PipelineTesterMixin, SDFunctionTesterMixin, unittest.TestCase):
     pipeline_class = TextToVideoSDPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS

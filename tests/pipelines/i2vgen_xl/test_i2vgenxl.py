@@ -46,14 +46,14 @@ from diffusers.utils.testing_utils import (
     torch_device,
 )
 
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineTesterMixin, SDFunctionTesterMixin
 
 
 enable_full_determinism()
 
 
 @skip_mps
-class I2VGenXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class I2VGenXLPipelineFastTests(SDFunctionTesterMixin, PipelineTesterMixin, unittest.TestCase):
     pipeline_class = I2VGenXLPipeline
     params = frozenset(["prompt", "negative_prompt", "image"])
     batch_params = frozenset(["prompt", "negative_prompt", "image", "generator"])

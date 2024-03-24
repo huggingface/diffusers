@@ -211,7 +211,7 @@ class ControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
         }
 
@@ -302,7 +302,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -402,7 +402,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -519,7 +519,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet = ControlNetModel(
@@ -602,7 +602,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -1071,6 +1071,51 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
         max_diff = numpy_cosine_similarity_distance(output_sf.flatten(), output.flatten())
         assert max_diff < 1e-3
+
+    def test_single_file_component_configs(self):
+        controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
+        pipe = StableDiffusionControlNetPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", variant="fp16", safety_checker=None, controlnet=controlnet
+        )
+
+        controlnet_single_file = ControlNetModel.from_single_file(
+            "https://huggingface.co/lllyasviel/ControlNet-v1-1/blob/main/control_v11p_sd15_canny.pth"
+        )
+        single_file_pipe = StableDiffusionControlNetPipeline.from_single_file(
+            "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
+            safety_checker=None,
+            controlnet=controlnet_single_file,
+            scheduler_type="pndm",
+        )
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        for param_name, param_value in single_file_pipe.controlnet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+
+            # This parameter doesn't appear to be loaded from the config.
+            # So when it is registered to config, it remains a tuple as this is the default in the class definition
+            # from_pretrained, does load from config and converts to a list when registering to config
+            if param_name == "conditioning_embedding_out_channels" and isinstance(param_value, tuple):
+                param_value = list(param_value)
+
+            assert (
+                pipe.controlnet.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.unet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.unet.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.vae.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.vae.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
 
 
 @slow
