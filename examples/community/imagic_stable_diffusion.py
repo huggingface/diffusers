@@ -1,7 +1,8 @@
 """
-    modeled after the textual_inversion.py / train_dreambooth.py and the work
-    of justinpinkney here: https://github.com/justinpinkney/stable-diffusion/blob/main/notebooks/imagic.ipynb
+modeled after the textual_inversion.py / train_dreambooth.py and the work
+of justinpinkney here: https://github.com/justinpinkney/stable-diffusion/blob/main/notebooks/imagic.ipynb
 """
+
 import inspect
 import warnings
 from typing import List, Optional, Union

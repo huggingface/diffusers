@@ -19,7 +19,7 @@ import torch
 from huggingface_hub.utils import validate_hf_hub_args
 from safetensors import safe_open
 
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_state_dict
 from ..utils import (
     _get_model_file,
     is_accelerate_available,
@@ -182,7 +182,7 @@ class IPAdapterMixin:
                             elif key.startswith("ip_adapter."):
                                 state_dict["ip_adapter"][key.replace("ip_adapter.", "")] = f.get_tensor(key)
                 else:
-                    state_dict = torch.load(model_file, map_location="cpu")
+                    state_dict = load_state_dict(model_file)
             else:
                 state_dict = pretrained_model_name_or_path_or_dict
 
