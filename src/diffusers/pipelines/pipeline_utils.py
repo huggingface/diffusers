@@ -371,9 +371,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
-            return hasattr(module, "_hf_hook") and not isinstance(
-                module._hf_hook, (accelerate.hooks.CpuOffload, accelerate.hooks.AlignDevicesHook)
-            )
+            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
 
         def module_is_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
@@ -990,11 +988,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
         self._offload_device = device
 
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            device_mod = getattr(torch, self.device.type, None)
-            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+        self.to("cpu", silence_dtype_warnings=True)
+        device_mod = getattr(torch, self.device.type, None)
+        if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+            device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
@@ -1055,6 +1052,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
         self.remove_all_hooks()
+        self._all_hooks = []
 
         torch_device = torch.device(device)
         device_index = torch_device.index
