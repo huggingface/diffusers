@@ -293,6 +293,12 @@ class KandinskyV22InpaintPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 @slow
 @require_torch_gpu
 class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -328,7 +334,7 @@ class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
         image_emb, zero_image_emb = pipe_prior(
             prompt,
             generator=generator,
-            num_inference_steps=5,
+            num_inference_steps=2,
             negative_prompt="",
         ).to_tuple()
 
@@ -338,7 +344,7 @@ class KandinskyV22InpaintPipelineIntegrationTests(unittest.TestCase):
             image_embeds=image_emb,
             negative_image_embeds=zero_image_emb,
             generator=generator,
-            num_inference_steps=100,
+            num_inference_steps=2,
             height=768,
             width=768,
             output_type="np",

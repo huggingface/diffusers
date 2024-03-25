@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import torch
@@ -26,6 +27,18 @@ from ..test_pipelines_common import assert_mean_pixel_difference
 @nightly
 @require_torch_gpu
 class TextToVideoZeroPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_full_model(self):
         model_id = "runwayml/stable-diffusion-v1-5"
         pipe = TextToVideoZeroPipeline.from_pretrained(model_id, torch_dtype=torch.float16).to("cuda")

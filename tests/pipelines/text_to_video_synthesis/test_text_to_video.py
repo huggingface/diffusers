@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import gc
 import unittest
 
 import numpy as np
@@ -183,6 +184,18 @@ class TextToVideoSDPipelineFastTests(PipelineTesterMixin, SDFunctionTesterMixin,
 @skip_mps
 @require_torch_gpu
 class TextToVideoSDPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_two_step_model(self):
         expected_video = load_numpy(
             "https://huggingface.co/datasets/hf-internal-testing/diffusers-images/resolve/main/text-to-video/video_2step.npy"

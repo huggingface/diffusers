@@ -50,7 +50,14 @@ enable_full_determinism()
 class IPAdapterNightlyTestsMixin(unittest.TestCase):
     dtype = torch.float16
 
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
+        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
@@ -313,7 +320,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs()
@@ -373,7 +380,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_image_to_image=True)
@@ -442,7 +449,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             feature_extractor=feature_extractor,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter_sdxl.bin")
 
         inputs = self.get_dummy_inputs(for_inpainting=True)
@@ -490,7 +497,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             image_encoder=image_encoder,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter(
             "h94/IP-Adapter", subfolder="sdxl_models", weight_name="ip-adapter-plus-face_sdxl_vit-h.safetensors"
         )
@@ -518,7 +525,7 @@ class IPAdapterSDXLIntegrationTests(IPAdapterNightlyTestsMixin):
             image_encoder=image_encoder,
             torch_dtype=self.dtype,
         )
-        pipeline.to(torch_device)
+        pipeline.enable_model_cpu_offload()
         pipeline.load_ip_adapter(
             "h94/IP-Adapter", subfolder="sdxl_models", weight_name=["ip-adapter-plus-face_sdxl_vit-h.safetensors"] * 2
         )
