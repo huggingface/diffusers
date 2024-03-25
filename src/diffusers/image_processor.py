@@ -948,14 +948,16 @@ class IPAdapterMaskProcessor(VaeImageProcessor):
                 The downsampled mask tensor.
 
         """
-        o_h = mask.shape[1]
-        o_w = mask.shape[2]
+        if mask.ndim == 3:
+            mask = mask.unsqueeze(0)
+        o_h = mask.shape[2]
+        o_w = mask.shape[3]
         ratio = o_w / o_h
         mask_h = int(math.sqrt(num_queries / ratio))
         mask_h = int(mask_h) + int((num_queries % int(mask_h)) != 0)
         mask_w = num_queries // mask_h
 
-        mask_downsample = F.interpolate(mask.unsqueeze(0), size=(mask_h, mask_w), mode="bicubic").squeeze(0)
+        mask_downsample = F.interpolate(mask, size=(mask_h, mask_w), mode="bicubic").squeeze(0)
 
         # Repeat batch_size times
         if mask_downsample.shape[0] < batch_size:
