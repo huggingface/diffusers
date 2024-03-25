@@ -35,7 +35,7 @@ from ..schedulers import (
     LMSDiscreteScheduler,
     PNDMScheduler,
 )
-from ..utils import is_accelerate_available, is_transformers_available, logging
+from ..utils import deprecate, is_accelerate_available, is_transformers_available, logging
 from ..utils.hub_utils import _get_model_file
 
 
@@ -69,16 +69,19 @@ CHECKPOINT_KEY_NAMES = {
     "xl_refiner": "conditioner.embedders.0.model.transformer.resblocks.9.mlp.c_proj.bias",
     "upscale": "model.diffusion_model.input_blocks.10.0.skip_connection.bias",
     "controlnet": "control_model.time_embed.0.weight",
-    "playground-v2-5": "edm_mean"
+    "playground-v2-5": "edm_mean",
+    "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
 }
 
 DIFFUSERS_DEFAULT_CONFIGS = {
-    "xl_base" : {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-base-1.0"},
-    "xl_refiner" : {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-refiner"},
-    "playground-v2-5" : {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
-    "upscale" : {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
-    "controlnet" : {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
-    "v2" : {"pretrained_model_name_or_path": "diffusers/stable-diffusion-2"},
+    "xl_base": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-base-1.0"},
+    "xl_refiner": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-refiner"},
+    "xl_inpaint": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"},
+    "playground-v2-5": {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
+    "upscale": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
+    "inpainting": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-inpainting"},
+    "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
+    "v2": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-2"},
     "v1": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
 }
 
@@ -103,78 +106,6 @@ STABLE_CASCADE_DEFAULT_CONFIGS = {
     "stage_b": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder"},
     "stage_b_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder_lite"},
 }
-
-
-def convert_stable_cascade_unet_single_file_to_diffusers(original_state_dict):
-    is_stage_c = "clip_txt_mapper.weight" in original_state_dict
-
-    if is_stage_c:
-        state_dict = {}
-        for key in original_state_dict.keys():
-            if key.endswith("in_proj_weight"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
-                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
-                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
-            elif key.endswith("in_proj_bias"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
-                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
-                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
-            elif key.endswith("out_proj.weight"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
-            elif key.endswith("out_proj.bias"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
-            else:
-                state_dict[key] = original_state_dict[key]
-    else:
-        state_dict = {}
-        for key in original_state_dict.keys():
-            if key.endswith("in_proj_weight"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
-                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
-                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
-            elif key.endswith("in_proj_bias"):
-                weights = original_state_dict[key].chunk(3, 0)
-                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
-                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
-                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
-            elif key.endswith("out_proj.weight"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
-            elif key.endswith("out_proj.bias"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
-            # rename clip_mapper to clip_txt_pooled_mapper
-            elif key.endswith("clip_mapper.weight"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("clip_mapper.weight", "clip_txt_pooled_mapper.weight")] = weights
-            elif key.endswith("clip_mapper.bias"):
-                weights = original_state_dict[key]
-                state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
-            else:
-                state_dict[key] = original_state_dict[key]
-
-    return state_dict
-
-
-def infer_stable_cascade_single_file_config(checkpoint):
-    is_stage_c = "clip_txt_mapper.weight" in checkpoint
-    is_stage_b = "down_blocks.1.0.channelwise.0.weight" in checkpoint
-
-    if is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 1536):
-        config_type = "stage_c_lite"
-    elif is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 2048):
-        config_type = "stage_c"
-    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 576:
-        config_type = "stage_b_lite"
-    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 640:
-        config_type = "stage_b"
-
-    return STABLE_CASCADE_DEFAULT_CONFIGS[config_type]
 
 
 DIFFUSERS_TO_LDM_MAPPING = {
@@ -316,7 +247,6 @@ def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
 
 def fetch_ldm_config_and_checkpoint(
     pretrained_model_link_or_path,
-    class_name,
     original_config_file=None,
     resume_download=False,
     force_download=False,
@@ -375,6 +305,33 @@ def load_single_file_model_checkpoint(
     return checkpoint
 
 
+def infer_original_config_file(checkpoint):
+    if CHECKPOINT_KEY_NAMES["inpainting"] in checkpoint and CHECKPOINT_KEY_NAMES["inpainting"].shape[1] == 9:
+        config_url = CONFIG_URLS["inpainting"]
+
+    if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
+        config_url = CONFIG_URLS["v2"]
+
+    elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
+        config_url = CONFIG_URLS["xl"]
+
+    elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
+        config_url = CONFIG_URLS["xl_refiner"]
+
+    elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
+        config_url = CONFIG_URLS["upscale"]
+
+    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
+        config_url = CONFIG_URLS["controlnet"]
+
+    else:
+        config_url = CONFIG_URLS["v1"]
+
+    original_config_file = BytesIO(requests.get(config_url).content)
+
+    return original_config_file
+
+
 def fetch_original_config(checkpoint, original_config_file=None):
     def is_valid_url(url):
         result = urlparse(url)
@@ -383,7 +340,10 @@ def fetch_original_config(checkpoint, original_config_file=None):
 
         return False
 
-    if os.path.isfile(original_config_file):
+    if original_config_file is None:
+        original_config_file = infer_original_config_file(checkpoint)
+
+    elif os.path.isfile(original_config_file):
         with open(original_config_file, "r") as fp:
             original_config_file = fp.read()
 
@@ -396,34 +356,6 @@ def fetch_original_config(checkpoint, original_config_file=None):
     original_config = yaml.safe_load(original_config_file)
 
     return original_config
-
-
-def fetch_diffusers_model_config(checkpoint, subfolder=None):
-    if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["v2"]
-
-    elif CHECKPOINT_KEY_NAMES["playground-v2-5"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["playground-v2-5"]
-
-    elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["xl_base"]
-
-    elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["xl_refiner"]
-
-    elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["upscale"]
-
-    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["controlnet"]
-
-    else:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["v1"]
-
-    if subfolder:
-        model_config["subfolder"] = subfolder
-
-    return model_config
 
 
 def infer_model_type(original_config, checkpoint, model_type=None):
@@ -456,6 +388,37 @@ def infer_model_type(original_config, checkpoint, model_type=None):
     logger.debug(f"No `model_type` given, `model_type` inferred as: {model_type}")
 
     return model_type
+
+
+def fetch_diffusers_model_config(checkpoint, subfolder=None):
+    if CHECKPOINT_KEY_NAMES["inpainting"] in checkpoint and CHECKPOINT_KEY_NAMES["inpainting"].shape[1] == 9:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["inpainting"]
+
+    elif CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["v2"]
+
+    elif CHECKPOINT_KEY_NAMES["playground-v2-5"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["playground-v2-5"]
+
+    elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["xl_base"]
+
+    elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["xl_refiner"]
+
+    elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["upscale"]
+
+    elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["controlnet"]
+
+    else:
+        model_config = DIFFUSERS_DEFAULT_CONFIGS["v1"]
+
+    if subfolder:
+        model_config["subfolder"] = subfolder
+
+    return model_config
 
 
 def get_default_scheduler_config():
@@ -502,6 +465,78 @@ def conv_attn_to_linear(checkpoint):
         elif "proj_attn.weight" in key:
             if checkpoint[key].ndim > 2:
                 checkpoint[key] = checkpoint[key][:, :, 0]
+
+
+def convert_stable_cascade_unet_single_file_to_diffusers(original_state_dict):
+    is_stage_c = "clip_txt_mapper.weight" in original_state_dict
+
+    if is_stage_c:
+        state_dict = {}
+        for key in original_state_dict.keys():
+            if key.endswith("in_proj_weight"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            else:
+                state_dict[key] = original_state_dict[key]
+    else:
+        state_dict = {}
+        for key in original_state_dict.keys():
+            if key.endswith("in_proj_weight"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_weight", "to_q.weight")] = weights[0]
+                state_dict[key.replace("attn.in_proj_weight", "to_k.weight")] = weights[1]
+                state_dict[key.replace("attn.in_proj_weight", "to_v.weight")] = weights[2]
+            elif key.endswith("in_proj_bias"):
+                weights = original_state_dict[key].chunk(3, 0)
+                state_dict[key.replace("attn.in_proj_bias", "to_q.bias")] = weights[0]
+                state_dict[key.replace("attn.in_proj_bias", "to_k.bias")] = weights[1]
+                state_dict[key.replace("attn.in_proj_bias", "to_v.bias")] = weights[2]
+            elif key.endswith("out_proj.weight"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.weight", "to_out.0.weight")] = weights
+            elif key.endswith("out_proj.bias"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("attn.out_proj.bias", "to_out.0.bias")] = weights
+            # rename clip_mapper to clip_txt_pooled_mapper
+            elif key.endswith("clip_mapper.weight"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("clip_mapper.weight", "clip_txt_pooled_mapper.weight")] = weights
+            elif key.endswith("clip_mapper.bias"):
+                weights = original_state_dict[key]
+                state_dict[key.replace("clip_mapper.bias", "clip_txt_pooled_mapper.bias")] = weights
+            else:
+                state_dict[key] = original_state_dict[key]
+
+    return state_dict
+
+
+def infer_stable_cascade_single_file_config(checkpoint):
+    is_stage_c = "clip_txt_mapper.weight" in checkpoint
+    is_stage_b = "down_blocks.1.0.channelwise.0.weight" in checkpoint
+
+    if is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 1536):
+        config_type = "stage_c_lite"
+    elif is_stage_c and (checkpoint["clip_txt_mapper.weight"].shape[0] == 2048):
+        config_type = "stage_c"
+    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 576:
+        config_type = "stage_b_lite"
+    elif is_stage_b and checkpoint["down_blocks.1.0.channelwise.0.weight"].shape[-1] == 640:
+        config_type = "stage_b"
+
+    return STABLE_CASCADE_DEFAULT_CONFIGS[config_type]
 
 
 def create_unet_diffusers_config(original_config, image_size: int):
@@ -1336,8 +1371,12 @@ def create_diffusers_unet_from_ldm(
 
     if original_config is not None:
         extract_ema = kwargs.get("extract_ema", False)
+
+        model_type = kwargs.get("model_type", None)
+        model_type = infer_model_type(original_config, checkpoint, model_type=model_type)
+
         image_size = kwargs.get("image_size", None)
-        image_size = set_image_size(cls, config, checkpoint, image_size=image_size)
+        image_size = set_image_size(cls, original_config, checkpoint, image_size=image_size, model_type=model_type)
 
         model_config = create_unet_diffusers_config(original_config, image_size=image_size)
 
@@ -1349,7 +1388,7 @@ def create_diffusers_unet_from_ldm(
         model_config = cls.load_config(**config)
 
     if num_in_channels is not None:
-        #TODO: Add deprecation warning
+        deprecate("num_in_channels", "in_channels", "1.0.0")
         model_config["in_channels"] = num_in_channels
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
@@ -1399,7 +1438,7 @@ def create_diffusers_controlnet_from_ldm(
         model_config = cls.load_config(**config)
 
     if num_in_channels is not None:
-        #TODO: Add deprecation warning
+        # TODO: Add deprecation warning
         model_config["in_channels"] = num_in_channels
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
@@ -1433,7 +1472,6 @@ def create_diffusers_vae_from_ldm(
     torch_dtype=None,
     **kwargs,
 ):
-
     if original_config is not None:
         scaling_factor = kwargs.get("scaling_factor", None)
         image_size = kwargs.get("image_size", None)
@@ -1451,7 +1489,7 @@ def create_diffusers_vae_from_ldm(
             image_size=image_size,
             scaling_factor=scaling_factor,
             latents_mean=latent_mean,
-            latents_std=latent_std
+            latents_std=latent_std,
         )
 
     elif config is not None:

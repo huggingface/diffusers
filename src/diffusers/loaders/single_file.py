@@ -45,7 +45,6 @@ def build_sub_model_components(
     local_files_only=False,
     load_safety_checker=False,
     model_type=None,
-    image_size=None,
     torch_dtype=None,
     **kwargs,
 ):
@@ -57,7 +56,7 @@ def build_sub_model_components(
 
         unet = UNet2DConditionModel.from_single_file(
             checkpoint=checkpoint,
-            config=original_config,
+            original_config=original_config,
             torch_dtype=torch_dtype,
             **kwargs,
         )
@@ -65,9 +64,10 @@ def build_sub_model_components(
 
     if component_name == "vae":
         from ..models import AutoencoderKL
+
         vae = AutoencoderKL.from_single_file(
             checkpoint=checkpoint,
-            config=original_config,
+            original_config=original_config,
             torch_dtype=torch_dtype,
             **kwargs,
         )
@@ -239,10 +239,8 @@ class FromSingleFileMixin:
         torch_dtype = kwargs.pop("torch_dtype", None)
 
         class_name = cls.__name__
-
         original_config, checkpoint = fetch_ldm_config_and_checkpoint(
             pretrained_model_link_or_path=pretrained_model_link_or_path,
-            class_name=class_name,
             original_config_file=original_config_file,
             resume_download=resume_download,
             force_download=force_download,
