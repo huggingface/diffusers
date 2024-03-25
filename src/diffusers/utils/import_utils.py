@@ -20,6 +20,7 @@ import operator as op
 import os
 import sys
 from collections import OrderedDict
+from functools import cache, lru_cache
 from itertools import chain
 from types import ModuleType
 from typing import Any, Union
@@ -296,98 +297,122 @@ except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
 
+@lru_cache
 def is_torch_available():
     return _torch_available
 
 
+@cache
 def is_torch_xla_available():
     return _torch_xla_available
 
 
+@cache
 def is_torch_npu_available():
     return _torch_npu_available
 
 
+@cache
 def is_flax_available():
     return _flax_available
 
 
+@lru_cache
 def is_transformers_available():
     return _transformers_available
 
 
+@cache
 def is_inflect_available():
     return _inflect_available
 
 
+@cache
 def is_unidecode_available():
     return _unidecode_available
 
 
+@cache
 def is_onnx_available():
     return _onnx_available
 
 
+@cache
 def is_opencv_available():
     return _opencv_available
 
 
+@cache
 def is_scipy_available():
     return _scipy_available
 
 
+@cache
 def is_librosa_available():
     return _librosa_available
 
 
+@lru_cache
 def is_xformers_available():
     return _xformers_available
 
 
+@lru_cache
 def is_accelerate_available():
     return _accelerate_available
 
 
+@cache
 def is_k_diffusion_available():
     return _k_diffusion_available
 
 
+@cache
 def is_note_seq_available():
     return _note_seq_available
 
 
+@cache
 def is_wandb_available():
     return _wandb_available
 
 
+@cache
 def is_tensorboard_available():
     return _tensorboard_available
 
 
+@cache
 def is_compel_available():
     return _compel_available
 
 
+@cache
 def is_ftfy_available():
     return _ftfy_available
 
 
+@cache
 def is_bs4_available():
     return _bs4_available
 
 
+@cache
 def is_torchsde_available():
     return _torchsde_available
 
 
+@cache
 def is_invisible_watermark_available():
     return _invisible_watermark_available
 
 
+@lru_cache
 def is_peft_available():
     return _peft_available
 
 
+@lru_cache
 def is_torchvision_available():
     return _torchvision_available
 
