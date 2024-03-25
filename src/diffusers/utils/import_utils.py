@@ -20,7 +20,7 @@ import operator as op
 import os
 import sys
 from collections import OrderedDict
-from functools import cache, lru_cache
+from functools import lru_cache
 from itertools import chain
 from types import ModuleType
 from typing import Any, Union
@@ -302,17 +302,17 @@ def is_torch_available():
     return _torch_available
 
 
-@cache
+@lru_cache
 def is_torch_xla_available():
     return _torch_xla_available
 
 
-@cache
+@lru_cache
 def is_torch_npu_available():
     return _torch_npu_available
 
 
-@cache
+@lru_cache
 def is_flax_available():
     return _flax_available
 
@@ -322,32 +322,32 @@ def is_transformers_available():
     return _transformers_available
 
 
-@cache
+@lru_cache
 def is_inflect_available():
     return _inflect_available
 
 
-@cache
+@lru_cache
 def is_unidecode_available():
     return _unidecode_available
 
 
-@cache
+@lru_cache
 def is_onnx_available():
     return _onnx_available
 
 
-@cache
+@lru_cache
 def is_opencv_available():
     return _opencv_available
 
 
-@cache
+@lru_cache
 def is_scipy_available():
     return _scipy_available
 
 
-@cache
+@lru_cache
 def is_librosa_available():
     return _librosa_available
 
@@ -362,47 +362,47 @@ def is_accelerate_available():
     return _accelerate_available
 
 
-@cache
+@lru_cache
 def is_k_diffusion_available():
     return _k_diffusion_available
 
 
-@cache
+@lru_cache
 def is_note_seq_available():
     return _note_seq_available
 
 
-@cache
+@lru_cache
 def is_wandb_available():
     return _wandb_available
 
 
-@cache
+@lru_cache
 def is_tensorboard_available():
     return _tensorboard_available
 
 
-@cache
+@lru_cache
 def is_compel_available():
     return _compel_available
 
 
-@cache
+@lru_cache
 def is_ftfy_available():
     return _ftfy_available
 
 
-@cache
+@lru_cache
 def is_bs4_available():
     return _bs4_available
 
 
-@cache
+@lru_cache
 def is_torchsde_available():
     return _torchsde_available
 
 
-@cache
+@lru_cache
 def is_invisible_watermark_available():
     return _invisible_watermark_available
 
