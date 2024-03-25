@@ -84,7 +84,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
 
     def test_inference_steps(self):
         # Hardcoded for now
-        for t, num_inference_steps in zip([99, 39, 19], [10, 25, 50]):
+        for t, num_inference_steps in zip([99, 39, 39, 19], [10, 25, 26, 50]):
             self.check_over_forward(time_step=t, num_inference_steps=num_inference_steps)
 
     # Override test_add_noise_device because the hardcoded num_inference_steps of 100 doesn't work
@@ -230,7 +230,7 @@ class LCMSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         # TODO: get expected sum and mean
-        assert abs(result_sum.item() - 18.7097) < 1e-2
+        assert abs(result_sum.item() - 18.7097) < 1e-3
         assert abs(result_mean.item() - 0.0244) < 1e-3
 
     def test_full_loop_multistep(self):
@@ -240,5 +240,61 @@ class LCMSchedulerTest(SchedulerCommonTest):
         result_mean = torch.mean(torch.abs(sample))
 
         # TODO: get expected sum and mean
-        assert abs(result_sum.item() - 280.5618) < 1e-2
-        assert abs(result_mean.item() - 0.3653) < 1e-3
+        assert abs(result_sum.item() - 197.7616) < 1e-3
+        assert abs(result_mean.item() - 0.2575) < 1e-3
+
+    def test_custom_timesteps(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        timesteps = [100, 87, 50, 1, 0]
+
+        scheduler.set_timesteps(timesteps=timesteps)
+
+        scheduler_timesteps = scheduler.timesteps
+
+        for i, timestep in enumerate(scheduler_timesteps):
+            if i == len(timesteps) - 1:
+                expected_prev_t = -1
+            else:
+                expected_prev_t = timesteps[i + 1]
+
+            prev_t = scheduler.previous_timestep(timestep)
+            prev_t = prev_t.item()
+
+            self.assertEqual(prev_t, expected_prev_t)
+
+    def test_custom_timesteps_increasing_order(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        timesteps = [100, 87, 50, 51, 0]
+
+        with self.assertRaises(ValueError, msg="`custom_timesteps` must be in descending order."):
+            scheduler.set_timesteps(timesteps=timesteps)
+
+    def test_custom_timesteps_passing_both_num_inference_steps_and_timesteps(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        timesteps = [100, 87, 50, 1, 0]
+        num_inference_steps = len(timesteps)
+
+        with self.assertRaises(ValueError, msg="Can only pass one of `num_inference_steps` or `custom_timesteps`."):
+            scheduler.set_timesteps(num_inference_steps=num_inference_steps, timesteps=timesteps)
+
+    def test_custom_timesteps_too_large(self):
+        scheduler_class = self.scheduler_classes[0]
+        scheduler_config = self.get_scheduler_config()
+        scheduler = scheduler_class(**scheduler_config)
+
+        timesteps = [scheduler.config.num_train_timesteps]
+
+        with self.assertRaises(
+            ValueError,
+            msg="`timesteps` must start before `self.config.train_timesteps`: {scheduler.config.num_train_timesteps}}",
+        ):
+            scheduler.set_timesteps(timesteps=timesteps)

@@ -6,7 +6,9 @@ from ...utils import (
 )
 
 
-_import_structure = {"pipeline_consistency_models": ["ConsistencyModelPipeline"]}
+_import_structure = {
+    "pipeline_consistency_models": ["ConsistencyModelPipeline"],
+}
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     from .pipeline_consistency_models import ConsistencyModelPipeline

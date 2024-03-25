@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +27,6 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     require_torch_gpu,
     slow,
-    torch_device,
 )
 
 from ..test_pipelines_common import PipelineTesterMixin, assert_mean_pixel_difference
@@ -172,6 +171,7 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         "output_type",
         "return_dict",
     ]
+    callback_cfg_params = ["image_embds"]
     test_xformers_attention = False
 
     def get_dummy_inputs(self, device, seed=0):
@@ -222,6 +222,12 @@ class KandinskyV22PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 @slow
 @require_torch_gpu
 class KandinskyV22PipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -237,12 +243,12 @@ class KandinskyV22PipelineIntegrationTests(unittest.TestCase):
         pipe_prior = KandinskyV22PriorPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-prior", torch_dtype=torch.float16
         )
-        pipe_prior.to(torch_device)
+        pipe_prior.enable_model_cpu_offload()
 
         pipeline = KandinskyV22Pipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
         )
-        pipeline = pipeline.to(torch_device)
+        pipeline = pipeline.enable_model_cpu_offload()
         pipeline.set_progress_bar_config(disable=None)
 
         prompt = "red cat, 4k photo"
@@ -251,7 +257,7 @@ class KandinskyV22PipelineIntegrationTests(unittest.TestCase):
         image_emb, zero_image_emb = pipe_prior(
             prompt,
             generator=generator,
-            num_inference_steps=5,
+            num_inference_steps=3,
             negative_prompt="",
         ).to_tuple()
 
@@ -260,7 +266,7 @@ class KandinskyV22PipelineIntegrationTests(unittest.TestCase):
             image_embeds=image_emb,
             negative_image_embeds=zero_image_emb,
             generator=generator,
-            num_inference_steps=100,
+            num_inference_steps=3,
             output_type="np",
         )
 

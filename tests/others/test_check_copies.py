@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,8 +18,6 @@ import shutil
 import sys
 import tempfile
 import unittest
-
-import black
 
 
 git_repo_path = os.path.abspath(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -65,8 +63,7 @@ class CopyCheckTester(unittest.TestCase):
         code = comment + f"\nclass {class_name}(nn.Module):\n" + class_code
         if overwrite_result is not None:
             expected = comment + f"\nclass {class_name}(nn.Module):\n" + overwrite_result
-        mode = black.Mode(target_versions={black.TargetVersion.PY35}, line_length=119)
-        code = black.format_str(code, mode=mode)
+        code = check_copies.run_ruff(code)
         fname = os.path.join(self.diffusers_dir, "new_code.py")
         with open(fname, "w", newline="\n") as f:
             f.write(code)

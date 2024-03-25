@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 """
 Import utilities: Utilities related to imports and our lazy inits.
 """
+
 import importlib.util
 import operator as op
 import os
@@ -71,6 +72,15 @@ if _torch_xla_available:
         logger.info(f"PyTorch XLA version {_torch_xla_version} available.")
     except ImportError:
         _torch_xla_available = False
+
+# check whether torch_npu is available
+_torch_npu_available = importlib.util.find_spec("torch_npu") is not None
+if _torch_npu_available:
+    try:
+        _torch_npu_version = importlib_metadata.version("torch_npu")
+        logger.info(f"torch_npu version {_torch_npu_version} available.")
+    except ImportError:
+        _torch_npu_available = False
 
 _jax_version = "N/A"
 _flax_version = "N/A"
@@ -223,12 +233,6 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _wandb_available = False
 
-_omegaconf_available = importlib.util.find_spec("omegaconf") is not None
-try:
-    _omegaconf_version = importlib_metadata.version("omegaconf")
-    logger.debug(f"Successfully imported omegaconf version {_omegaconf_version}")
-except importlib_metadata.PackageNotFoundError:
-    _omegaconf_available = False
 
 _tensorboard_available = importlib.util.find_spec("tensorboard")
 try:
@@ -284,6 +288,13 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _peft_available = False
 
+_torchvision_available = importlib.util.find_spec("torchvision") is not None
+try:
+    _torchvision_version = importlib_metadata.version("torchvision")
+    logger.debug(f"Successfully imported torchvision version {_torchvision_version}")
+except importlib_metadata.PackageNotFoundError:
+    _torchvision_available = False
+
 
 def is_torch_available():
     return _torch_available
@@ -291,6 +302,10 @@ def is_torch_available():
 
 def is_torch_xla_available():
     return _torch_xla_available
+
+
+def is_torch_npu_available():
+    return _torch_npu_available
 
 
 def is_flax_available():
@@ -345,10 +360,6 @@ def is_wandb_available():
     return _wandb_available
 
 
-def is_omegaconf_available():
-    return _omegaconf_available
-
-
 def is_tensorboard_available():
     return _tensorboard_available
 
@@ -375,6 +386,10 @@ def is_invisible_watermark_available():
 
 def is_peft_available():
     return _peft_available
+
+
+def is_torchvision_available():
+    return _torchvision_available
 
 
 # docstyle-ignore
@@ -450,12 +465,6 @@ install wandb`
 """
 
 # docstyle-ignore
-OMEGACONF_IMPORT_ERROR = """
-{0} requires the omegaconf library but it was not found in your environment. You can install it with pip: `pip
-install omegaconf`
-"""
-
-# docstyle-ignore
 TENSORBOARD_IMPORT_ERROR = """
 {0} requires the tensorboard library but it was not found in your environment. You can install it with pip: `pip
 install tensorboard`
@@ -506,7 +515,6 @@ BACKENDS_MAPPING = OrderedDict(
         ("k_diffusion", (is_k_diffusion_available, K_DIFFUSION_IMPORT_ERROR)),
         ("note_seq", (is_note_seq_available, NOTE_SEQ_IMPORT_ERROR)),
         ("wandb", (is_wandb_available, WANDB_IMPORT_ERROR)),
-        ("omegaconf", (is_omegaconf_available, OMEGACONF_IMPORT_ERROR)),
         ("tensorboard", (is_tensorboard_available, TENSORBOARD_IMPORT_ERROR)),
         ("compel", (is_compel_available, COMPEL_IMPORT_ERROR)),
         ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),

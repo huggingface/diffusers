@@ -1,5 +1,5 @@
 # Copyright (c) 2022 Dominic Rampas MIT License
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,8 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...models.autoencoders.vae import DecoderOutput, VectorQuantizer
 from ...models.modeling_utils import ModelMixin
-from ...models.vae import DecoderOutput, VectorQuantizer
 from ...models.vq_model import VQEncoderOutput
 from ...utils.accelerate_utils import apply_forward_hook
 

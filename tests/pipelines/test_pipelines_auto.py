@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 import torch
+from transformers import CLIPVisionConfig, CLIPVisionModelWithProjection
 
 from diffusers import (
     AutoPipelineForImage2Image,
@@ -48,6 +49,20 @@ PRETRAINED_MODEL_REPO_MAPPING = OrderedDict(
 
 
 class AutoPipelineFastTest(unittest.TestCase):
+    @property
+    def dummy_image_encoder(self):
+        torch.manual_seed(0)
+        config = CLIPVisionConfig(
+            hidden_size=1,
+            projection_dim=1,
+            num_hidden_layers=1,
+            num_attention_heads=1,
+            image_size=1,
+            intermediate_size=1,
+            patch_size=1,
+        )
+        return CLIPVisionModelWithProjection(config)
+
     def test_from_pipe_consistent(self):
         pipe = AutoPipelineForText2Image.from_pretrained(
             "hf-internal-testing/tiny-stable-diffusion-pipe", requires_safety_checker=False
@@ -155,6 +170,68 @@ class AutoPipelineFastTest(unittest.TestCase):
         pipe_inpaint = AutoPipelineForInpainting.from_pipe(pipe_control_img2img, controlnet=None)
         assert pipe_inpaint.__class__.__name__ == "StableDiffusionInpaintPipeline"
         assert "controlnet" not in pipe_inpaint.components
+
+        # testing `from_pipe` for text2img controlnet
+        ## 1. from a different controlnet pipe, without controlnet argument
+        pipe_control_text2img = AutoPipelineForText2Image.from_pipe(pipe_control_img2img)
+        assert pipe_control_text2img.__class__.__name__ == "StableDiffusionControlNetPipeline"
+        assert "controlnet" in pipe_control_text2img.components
+
+        ## 2. from a different controlnet pipe, with controlnet argument
+        pipe_control_text2img = AutoPipelineForText2Image.from_pipe(pipe_control_img2img, controlnet=controlnet)
+        assert pipe_control_text2img.__class__.__name__ == "StableDiffusionControlNetPipeline"
+        assert "controlnet" in pipe_control_text2img.components
+
+        ## 3. from same controlnet pipeline class, with a different controlnet component
+        pipe_control_text2img = AutoPipelineForText2Image.from_pipe(pipe_control_text2img, controlnet=controlnet)
+        assert pipe_control_text2img.__class__.__name__ == "StableDiffusionControlNetPipeline"
+        assert "controlnet" in pipe_control_text2img.components
+
+        # testing from_pipe for inpainting
+        ## 1. from a different controlnet pipeline class
+        pipe_control_inpaint = AutoPipelineForInpainting.from_pipe(pipe_control_img2img)
+        assert pipe_control_inpaint.__class__.__name__ == "StableDiffusionControlNetInpaintPipeline"
+        assert "controlnet" in pipe_control_inpaint.components
+
+        ## from a different controlnet pipe, with a different controlnet
+        pipe_control_inpaint = AutoPipelineForInpainting.from_pipe(pipe_control_img2img, controlnet=controlnet)
+        assert pipe_control_inpaint.__class__.__name__ == "StableDiffusionControlNetInpaintPipeline"
+        assert "controlnet" in pipe_control_inpaint.components
+
+        ## from same controlnet pipe, with a different controlnet
+        pipe_control_inpaint = AutoPipelineForInpainting.from_pipe(pipe_control_inpaint, controlnet=controlnet)
+        assert pipe_control_inpaint.__class__.__name__ == "StableDiffusionControlNetInpaintPipeline"
+        assert "controlnet" in pipe_control_inpaint.components
+
+        # testing from_pipe from img2img controlnet
+        ## from a different controlnet pipe, without controlnet argument
+        pipe_control_img2img = AutoPipelineForImage2Image.from_pipe(pipe_control_text2img)
+        assert pipe_control_img2img.__class__.__name__ == "StableDiffusionControlNetImg2ImgPipeline"
+        assert "controlnet" in pipe_control_img2img.components
+
+        # from a different controlnet pipe, with a different controlnet component
+        pipe_control_img2img = AutoPipelineForImage2Image.from_pipe(pipe_control_text2img, controlnet=controlnet)
+        assert pipe_control_img2img.__class__.__name__ == "StableDiffusionControlNetImg2ImgPipeline"
+        assert "controlnet" in pipe_control_img2img.components
+
+        # from same controlnet pipeline class, with a different controlnet
+        pipe_control_img2img = AutoPipelineForImage2Image.from_pipe(pipe_control_img2img, controlnet=controlnet)
+        assert pipe_control_img2img.__class__.__name__ == "StableDiffusionControlNetImg2ImgPipeline"
+        assert "controlnet" in pipe_control_img2img.components
+
+    def test_from_pipe_optional_components(self):
+        image_encoder = self.dummy_image_encoder
+
+        pipe = AutoPipelineForText2Image.from_pretrained(
+            "hf-internal-testing/tiny-stable-diffusion-pipe",
+            image_encoder=image_encoder,
+        )
+
+        pipe = AutoPipelineForImage2Image.from_pipe(pipe)
+        assert pipe.image_encoder is not None
+
+        pipe = AutoPipelineForText2Image.from_pipe(pipe, image_encoder=None)
+        assert pipe.image_encoder is None
 
 
 @slow

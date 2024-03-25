@@ -19,6 +19,16 @@ authors:
     family-names: Rasul
   - given-names: Mishig
     family-names: Davaadorj
+  - given-names: Dhruv
+    family-names: Nair
+  - given-names: Sayak
+    family-names: Paul
+  - given-names: Steven
+    family-names: Liu
+  - given-names: William
+    family-names: Berman
+  - given-names: Yiyi
+    family-names: Xu
   - given-names: Thomas
     family-names: Wolf
 repository-code: 'https://github.com/huggingface/diffusers'
@@ -31,10 +41,12 @@ keywords:
   - deep-learning
   - pytorch
   - image-generation
+  - hacktoberfest
   - diffusion
   - text2image
   - image2image
   - score-based-generative-modeling
   - stable-diffusion
+  - stable-diffusion-diffusers
 license: Apache-2.0
 version: 0.12.1

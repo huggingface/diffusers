@@ -4,7 +4,7 @@
 # Copyright (c) 2021 OpenAI
 # MIT License
 #
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ class DiTPipeline(DiffusionPipeline):
         scheduler ([`DDIMScheduler`]):
             A scheduler to be used in combination with `transformer` to denoise the encoded image latents.
     """
+
     model_cpu_offload_seq = "transformer->vae"
 
     def __init__(
@@ -166,7 +167,6 @@ class DiTPipeline(DiffusionPipeline):
 
         # set step values
         self.scheduler.set_timesteps(num_inference_steps)
-
         for t in self.progress_bar(self.scheduler.timesteps):
             if guidance_scale > 1:
                 half = latent_model_input[: len(latent_model_input) // 2]

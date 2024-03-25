@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -127,6 +127,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=None,
+            image_encoder=None,
             requires_safety_checker=False,
         )
         sd_pipe = sd_pipe.to(device)
@@ -176,6 +177,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=None,
+            image_encoder=None,
             requires_safety_checker=False,
         )
         sd_pipe = sd_pipe.to(device)
@@ -236,6 +238,7 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
             tokenizer=tokenizer,
             safety_checker=None,
             feature_extractor=None,
+            image_encoder=None,
             requires_safety_checker=False,
         )
         sd_pipe = sd_pipe.to(torch_device)
@@ -305,7 +308,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         prompt = "A painting of a squirrel eating a burger"
         generator = torch.manual_seed(0)
 
-        output = sd_pipe([prompt], generator=generator, num_inference_steps=5, output_type="numpy")
+        output = sd_pipe([prompt], generator=generator, num_inference_steps=5, output_type="np")
         image = output.images
 
         image_slice = image[0, 253:256, 253:256, -1]
@@ -320,7 +323,9 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         TODO: update this test after making DPM compatible with V-prediction!
         """
         scheduler = DPMSolverMultistepScheduler.from_pretrained(
-            "stabilityai/stable-diffusion-2", subfolder="scheduler"
+            "stabilityai/stable-diffusion-2",
+            subfolder="scheduler",
+            final_sigmas_type="sigma_min",
         )
         sd_pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2", scheduler=scheduler)
         sd_pipe = sd_pipe.to(torch_device)
@@ -330,7 +335,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         prompt = "a photograph of an astronaut riding a horse"
         generator = torch.manual_seed(0)
         image = sd_pipe(
-            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=5, output_type="numpy"
+            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=5, output_type="np"
         ).images
 
         image_slice = image[0, 253:256, 253:256, -1]
@@ -352,7 +357,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         pipe.enable_attention_slicing()
         generator = torch.manual_seed(0)
         output_chunked = pipe(
-            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy"
+            [prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="np"
         )
         image_chunked = output_chunked.images
 
@@ -364,7 +369,7 @@ class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
         # disable slicing
         pipe.disable_attention_slicing()
         generator = torch.manual_seed(0)
-        output = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="numpy")
+        output = pipe([prompt], generator=generator, guidance_scale=7.5, num_inference_steps=10, output_type="np")
         image = output.images
 
         # make sure that more than 3.0 GB is allocated
