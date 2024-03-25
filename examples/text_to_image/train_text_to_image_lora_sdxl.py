@@ -501,6 +501,12 @@ def main(args):
 
     logging_dir = Path(args.output_dir, args.logging_dir)
 
+    if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
+        # due to pytorch#99272, MPS does not yet support bfloat16.
+        raise ValueError(
+            "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
+        )
+
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
     accelerator = Accelerator(
@@ -973,6 +979,13 @@ def main(args):
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune", config=vars(args))
 
+    # Some configurations require autocast to be disabled.
+    enable_autocast = True
+    if torch.backends.mps.is_available() or (
+        accelerator.mixed_precision == "fp16" or accelerator.mixed_precision == "bf16"
+    ):
+        enable_autocast = False
+
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1199,7 +1212,10 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.cuda.amp.autocast():
+                with torch.autocast(
+                    accelerator.device.type,
+                    enabled=enable_autocast,
+                ):
                     images = [
                         pipeline(**pipeline_args, generator=generator).images[0]
                         for _ in range(args.num_validation_images)
