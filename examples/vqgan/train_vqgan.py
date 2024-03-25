@@ -930,7 +930,7 @@ def main():
                     loss += commit_loss
                     loss += perceptual_loss
                     loss += adaptive_weight * gen_loss
-                    # Gather thexd losses across all processes for logging (if we use distributed training).
+                    # Gather the losses across all processes for logging (if we use distributed training).
                     avg_gen_loss = accelerator.gather(loss.repeat(args.train_batch_size)).float().mean()
                     accelerator.backward(loss)
 
