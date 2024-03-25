@@ -21,6 +21,7 @@ jobs:
       package: diffusers
       notebook_folder: diffusers_doc
       languages: en ko zh ja pt
+      custom_container: "" # no need for transformer's docker image
 
     secrets:
       token: ${{ secrets.HUGGINGFACE_PUSH }}
