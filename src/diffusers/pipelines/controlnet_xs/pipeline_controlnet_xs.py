@@ -72,7 +72,7 @@ EXAMPLE_DOC_STRING = """
         ... )
         >>> pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
         ...     "stabilityai/stable-diffusion-2-1-base", controlnet=controlnet, torch_dtype=torch.float16
-        ... ) # paper used time_embedding_mix=1.0
+        ... )
         >>> pipe.enable_model_cpu_offload()
 
         >>> # get canny image

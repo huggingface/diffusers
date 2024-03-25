@@ -126,12 +126,12 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         learn_time_embedding (`bool`, defaults to `False`):
             Whether a time embedding should be learned. If yes, `ControlNetXSModel` will combine the time embeddings of the base model and the addon.
             If no, `ControlNetXSModel` will use the base model's time embedding.
-        channels_base (`Dict[str, List[Tuple[int]]]`, defaults to `ControlNetXSAddon.gather_base_subblock_sizes((320,640,1280,1280))`):
-            Channels of each subblock of the base model. Use `ControlNetXSAddon.gather_base_subblock_sizes` to obtain them.
         attention_head_dim (`list[int]`, defaults to `[4]`):
             The dimension of the attention heads.
         block_out_channels (`list[int]`, defaults to `[4, 8, 16, 16]`):
             The tuple of output channels for each block.
+        base_block_out_channels (`list[int]`, defaults to `[320, 640, 1280, 1280]`):
+            The tuple of output channels for each block in the base unet.
         cross_attention_dim (`int`, defaults to 1024):
             The dimension of the cross attention features.
         down_block_types (`list[str]`, defaults to `["CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "CrossAttnDownBlock2D", "DownBlock2D"]`):
@@ -300,11 +300,10 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
     ):
         r"""
-        todo umer
         Instantiate a [`ControlNetXSAddon`] from a [`UNet2DConditionModel`].
 
         Parameters:
-            base_model (`UNet2DConditionModel`):
+            unet (`UNet2DConditionModel`):
                 The UNet model we want to control. The dimensions of the ControlNetXSAddon will be adapted to it.
             size_ratio (float, *optional*, defaults to `None`):
                 When given, block_out_channels is set to a fraction of the base model's block_out_channels.
@@ -315,6 +314,14 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 The dimension of the attention heads. The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
             learn_time_embedding (`bool`, defaults to `False`):
                 Whether the `ControlNetXSAddon` should learn a time embedding.
+            time_embedding_mix (`float`, defaults to 1.0):
+                If 0, then only the control addon's time embedding is used.
+                If 1, then only the base unet's time embedding is used.
+                Otherwise, both are combined.
+            conditioning_channels (`int`, defaults to 3):
+                Number of channels of conditioning input (e.g. an image)
+            conditioning_channel_order (`str`, defaults to `"rgb"`):
+                The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
             conditioning_embedding_out_channels (`Tuple[int]`, defaults to `(16, 32, 96, 256)`):
                 The tuple of output channel for each block in the `controlnet_cond_embedding` layer.
         """
@@ -522,27 +529,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     `UNetControlNetXSModel` is compatible with StableDiffusion and StableDiffusion-XL.
     It's default parameters are compatible with StableDiffusion.
 
-    Most of it's paremeters are passed to the underlying `UNet2DConditionModel`. See it's documentation for details.
-
-    Parameters:
-        time_embedding_mix (`float`, defaults to 1.0):
-            If 0, then only the control addon's time embedding is used.
-            If 1, then only the base unet's time embedding is used.
-            Otherwise, both are combined.
-        ctrl_conditioning_channels (`int`, defaults to 3):
-            The number of channels of the control conditioning input.
-        ctrl_conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
-            Block sizes of the `ControlNetConditioningEmbedding`.
-        ctrl_conditioning_channel_order (`str`, defaults to "rgb"):
-            The order of channels in the control conditioning input.
-        ctrl_learn_time_embedding (`bool`, defaults to False):
-            Whether the control addon should learn a time embedding. Needs to be `True` if `time_embedding_mix` > 0.
-        ctrl_block_out_channels (`tuple[int]`, defaults to `(4, 8, 16, 16)`):
-            The tuple of output channels for each block in the control addon.
-        ctrl_attention_head_dim (`int` or `tuple[int]`, defaults to 4):
-            The dimension of the attention heads in the control addon.
-        ctrl_max_norm_num_groups (`int`, defaults to 32):
-            The maximum number of groups to use for the normalization in the control addon. Can be reduced to fit the block sizes.
+    It's parameters are either passed to the underlying `UNet2DConditionModel` or used exactly like in `ControlNetXSAddon` . See their documentation for details.
     """
 
     _supports_gradient_checkpointing = True
@@ -736,13 +723,35 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         controlnet: Optional[ControlNetXSAddon] = None,
         size_ratio: Optional[float] = None,
         ctrl_block_out_channels: Optional[List[float]] = None,
-        time_embedding_mix: Optional[float] = 1.0,
-        # todo umer: pass kwargs to ctrlnet
+        time_embedding_mix: Optional[float] = None,
+        ctrl_optional_kwargs: Optional[Dict] = None,
     ):
-        # # validate input
+        r"""
+        Instantiate a [`UNetControlNetXSModel`] from a [`UNet2DConditionModel`] and an optional [`ControlNetXSAddon`] .
 
+        Parameters:
+            unet (`UNet2DConditionModel`):
+                The UNet model we want to control.
+            controlnet (`ControlNetXSAddon`):
+                The ConntrolNet-XS addon with which the UNet will be fused. If none is given, a new ConntrolNet-XS addon will be created.
+            size_ratio (float, *optional*, defaults to `None`):
+                Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details.
+            ctrl_block_out_channels (`List[int]`, *optional*, defaults to `None`):
+                Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details, where this parameter is called `block_out_channels`.
+            time_embedding_mix (`float`, *optional*, defaults to None):
+                Used to contruct the controlnet if none is given. See [`ControlNetXSAddon.from_unet`] for details.
+            ctrl_optional_kwargs (`Dict`, *optional*, defaults to `None`):
+                Passed to the `init` of the new controlent if no controlent was given.
+        """
         if controlnet is None:
-            controlnet = ControlNetXSAddon.from_unet(unet, size_ratio, ctrl_block_out_channels)
+            controlnet = ControlNetXSAddon.from_unet(unet, size_ratio, ctrl_block_out_channels, **ctrl_optional_kwargs)
+        else:
+            if any(
+                o is not None for o in (size_ratio, ctrl_block_out_channels, time_embedding_mix, ctrl_optional_kwargs)
+            ):
+                raise ValueError(
+                    "When a controlnet is passed, none of these parameters should be passed: size_ratio, ctrl_block_out_channels, time_embedding_mix, ctrl_optional_kwargs."
+                )
 
         # # get params
         params_for_unet = [
@@ -822,18 +831,34 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
 
         return model
 
-    def freeze_unet2d_params(self) -> None:
-        # todo umer
-        """Freeze the weights of just the UNet2DConditionModel, and leave the ControlNetXSAddon
-        unfrozen for fine tuning.
-        """
+    def freeze_unet_params(self) -> None:
+        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine tuning."""
         # Freeze everything
         for param in self.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
 
         # Unfreeze ControlNetXSAddon
-        for param in self.control_addon.parameters():
-            param.requires_grad = True
+        base_parts = [
+            "base_time_proj",
+            "base_time_embedding",
+            "base_class_embedding",
+            "base_add_time_proj",
+            "base_add_embedding",
+            "base_conv_in",
+            "base_conv_norm_out",
+            "base_conv_act",
+            "base_conv_out",
+        ]
+        base_parts = [getattr(self, part) for part in base_parts if getattr(self, part) is not None]
+        for part in base_parts:
+            for param in part.parameters():
+                param.requires_grad = False
+
+        for d in self.down_blocks:
+            d.freeze_base_params()
+        self.mid_block.freeze_base_params()
+        for u in self.up_blocks:
+            u.freeze_base_params()
 
     @torch.no_grad()
     def _check_if_vae_compatible(self, vae: AutoencoderKL):
@@ -1233,6 +1258,20 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
         return model
 
+    def freeze_base_params(self) -> None:
+        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine tuning."""
+        # Unfreeze everything
+        for param in self.parameters():
+            param.requires_grad = True
+
+        # Freeze base part
+        base_parts = [self.base_resnets, self.base_attentions]
+        if self.base_downsamplers is not None:
+            base_parts.append(self.base_downsamplers)
+        for part in base_parts:
+            for param in part.parameters():
+                param.requires_grad = False
+
     def forward(
         self,
         hidden_states_base: torch.FloatTensor,
@@ -1415,6 +1454,16 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
 
         return model
 
+    def freeze_base_params(self) -> None:
+        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine tuning."""
+        # Unfreeze everything
+        for param in self.parameters():
+            param.requires_grad = True
+
+        # Freeze base part
+        for param in self.base_midblock.parameters():
+            param.requires_grad = False
+
     def forward(
         self,
         hidden_states_base: torch.FloatTensor,
@@ -1567,6 +1616,20 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         model.ctrl_to_base.load_state_dict(ctrl_to_base_skip_connections.state_dict())
 
         return model
+
+    def freeze_base_params(self) -> None:
+        """Freeze the weights of the parts belonging to the base UNet2DConditionModel, and leave everything else unfrozen for fine tuning."""
+        # Unfreeze everything
+        for param in self.parameters():
+            param.requires_grad = True
+
+        # Freeze base part
+        base_parts = [self.resnets, self.attentions]
+        if self.upsamplers is not None:
+            base_parts.append(self.upsamplers)
+        for part in base_parts:
+            for param in part.parameters():
+                param.requires_grad = False
 
     def forward(
         self,

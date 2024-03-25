@@ -81,7 +81,7 @@ EXAMPLE_DOC_STRING = """
         ... )
 
         >>> # initialize the models and pipeline
-        >>> controlnet_conditioning_scale = 0.5  # recommended for good generalization
+        >>> controlnet_conditioning_scale = 0.5
         >>> vae = AutoencoderKL.from_pretrained("madebyollin/sdxl-vae-fp16-fix", torch_dtype=torch.float16)
         >>> controlnet = ControlNetXSAddon.from_pretrained(
         ...     "UmerHA/Testing-ConrolNetXS-SDXL-canny", torch_dtype=torch.float16
