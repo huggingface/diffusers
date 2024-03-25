@@ -995,7 +995,7 @@ def main(args):
                 ratio_losses = args.beta_orpo * ratio
 
                 # Full ORPO loss
-                loss = model_losses_w.mean() - ratio_losses.mean()
+                loss = (model_losses_w - ratio_losses).mean()
 
                 # Backprop.
                 accelerator.backward(loss)
