@@ -57,6 +57,7 @@ logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 CONFIG_URLS = {
     "v1": "https://raw.githubusercontent.com/CompVis/stable-diffusion/main/configs/stable-diffusion/v1-inference.yaml",
     "v2": "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inference-v.yaml",
+    "inpainting_v2": "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/v2-inpainting-inference.yaml",
     "xl": "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_base.yaml",
     "xl_refiner": "https://raw.githubusercontent.com/Stability-AI/generative-models/main/configs/inference/sd_xl_refiner.yaml",
     "upscale": "https://raw.githubusercontent.com/Stability-AI/stablediffusion/main/configs/stable-diffusion/x4-upscaling.yaml",
@@ -80,6 +81,7 @@ DIFFUSERS_DEFAULT_CONFIGS = {
     "playground-v2-5": {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
     "upscale": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
     "inpainting": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-inpainting"},
+    "inpainting_v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-inpainting"},
     "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
     "v2": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-2"},
     "v1": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
@@ -306,9 +308,6 @@ def load_single_file_model_checkpoint(
 
 
 def infer_original_config_file(checkpoint):
-    if CHECKPOINT_KEY_NAMES["inpainting"] in checkpoint and CHECKPOINT_KEY_NAMES["inpainting"].shape[1] == 9:
-        config_url = CONFIG_URLS["inpainting"]
-
     if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
         config_url = CONFIG_URLS["v2"]
 
@@ -390,9 +389,15 @@ def infer_model_type(original_config, checkpoint, model_type=None):
     return model_type
 
 
-def fetch_diffusers_model_config(checkpoint, subfolder=None):
-    if CHECKPOINT_KEY_NAMES["inpainting"] in checkpoint and CHECKPOINT_KEY_NAMES["inpainting"].shape[1] == 9:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["inpainting"]
+def fetch_diffusers_config(checkpoint, subfolder=None):
+    if (
+        CHECKPOINT_KEY_NAMES["inpainting"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["inpainting"]].shape[1] == 9
+    ):
+        if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
+            model_config = DIFFUSERS_DEFAULT_CONFIGS["inpainting_v2"]
+        else:
+            model_config = DIFFUSERS_DEFAULT_CONFIGS["inpainting"]
 
     elif CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
         model_config = DIFFUSERS_DEFAULT_CONFIGS["v2"]
@@ -1368,10 +1373,9 @@ def create_diffusers_unet_from_ldm(
     **kwargs,
 ):
     num_in_channels = kwargs.get("num_in_channels", None)
+    extract_ema = kwargs.get("extract_ema", False)
 
     if original_config is not None:
-        extract_ema = kwargs.get("extract_ema", False)
-
         model_type = kwargs.get("model_type", None)
         model_type = infer_model_type(original_config, checkpoint, model_type=model_type)
 
@@ -1384,7 +1388,7 @@ def create_diffusers_unet_from_ldm(
         model_config = cls.load_config(**config)
 
     else:
-        config = fetch_diffusers_model_config(checkpoint, subfolder="unet")
+        config = fetch_diffusers_config(checkpoint, subfolder="unet")
         model_config = cls.load_config(**config)
 
     if num_in_channels is not None:
@@ -1434,7 +1438,7 @@ def create_diffusers_controlnet_from_ldm(
         model_config = cls.load_config(**config)
 
     else:
-        config = fetch_diffusers_model_config(checkpoint)
+        config = fetch_diffusers_config(checkpoint)
         model_config = cls.load_config(**config)
 
     if num_in_channels is not None:
@@ -1496,7 +1500,7 @@ def create_diffusers_vae_from_ldm(
         model_config = cls.load_config(**config)
 
     else:
-        config = fetch_diffusers_model_config(checkpoint, subfolder="vae")
+        config = fetch_diffusers_config(checkpoint, subfolder="vae")
         model_config = cls.load_config(**config)
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
@@ -1750,33 +1754,17 @@ def create_text_encoders_and_tokenizers_from_ldm(
 
 def create_scheduler_from_ldm(
     pipeline_class_name,
-    original_config,
     checkpoint,
+    config=None,
+    original_config=None,
     prediction_type=None,
     scheduler_type="ddim",
     model_type=None,
 ):
-    scheduler_config = get_default_scheduler_config()
-    model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
-
-    global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
-
-    num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", None) or 1000
-    scheduler_config["num_train_timesteps"] = num_train_timesteps
-
-    if (
-        "parameterization" in original_config["model"]["params"]
-        and original_config["model"]["params"]["parameterization"] == "v"
-    ):
-        if prediction_type is None:
-            # NOTE: For stable diffusion 2 base it is recommended to pass `prediction_type=="epsilon"`
-            # as it relies on a brittle global step parameter here
-            prediction_type = "epsilon" if global_step == 875000 else "v_prediction"
-
+    if config is None:
+        scheduler_config = fetch_diffusers_config(checkpoint, subfolder="scheduler")
     else:
-        prediction_type = prediction_type or "epsilon"
-
-    scheduler_config["prediction_type"] = prediction_type
+        scheduler_config = config
 
     if model_type in ["SDXL", "SDXL-Refiner"]:
         scheduler_type = "euler"

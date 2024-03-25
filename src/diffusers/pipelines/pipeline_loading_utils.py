@@ -381,6 +381,7 @@ def load_sub_model(
 ):
     """Helper method to load the module `name` from `library_name` and `class_name`"""
     # retrieve class candidates
+
     class_obj, class_candidates = get_class_obj_and_candidates(
         library_name,
         class_name,
