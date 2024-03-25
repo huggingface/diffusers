@@ -432,14 +432,15 @@ def parse_args(input_args=None):
     )
 
     parser.add_argument(
-        "--shuffle-tags",
+        "--shuffle_tags",
         action="store_true",
-        help="shuffle tags randomly")
+        help="Shuffle tags randomly, shuffling tags changes embeddings which might help with overfitting")
     parser.add_argument(
-        "--p-drop-tags",
+        "--p_drop_tags",
         type=float,
         default=0,
-        help="probability of droping a tag from caption, default=0")
+        metavar="[0-1]",
+        help="Probability of droping a tag from caption, default=0")
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -454,7 +455,7 @@ def parse_args(input_args=None):
         raise ValueError("Need either a dataset name or a training folder.")
 
     if args.p_drop_tags < 0 or 1 < args.p_drop_tags:
-        raise ValueError(f"p-drop-tags value {args.p_drop_tags} is not in range [0,1]")
+        raise ValueError(f"p_drop_tags value {args.p_drop_tags} is not in range [0,1]")
 
     return args
 
