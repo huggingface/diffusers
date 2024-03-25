@@ -935,7 +935,7 @@ image = pipe(prompt, generator=generator, num_inference_steps=50).images[0]
 ### Checkpoint Merger Pipeline
 Based on the AUTOMATIC1111/webui for checkpoint merging. This is a custom pipeline that merges upto 3 pretrained model checkpoints as long as they are in the HuggingFace model_index.json format.
 
-The checkpoint merging is currently memory intensive as it modifies the weights of a DiffusionPipeline object in place. Expect atleast 13GB RAM Usage on Kaggle GPU kernels and
+The checkpoint merging is currently memory intensive as it modifies the weights of a DiffusionPipeline object in place. Expect at least 13GB RAM Usage on Kaggle GPU kernels and
 on colab you might run out of the 12GB memory even while merging two checkpoints.
 
 Usage:-

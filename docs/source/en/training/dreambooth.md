@@ -67,7 +67,7 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```bash
+```py
 from accelerate.utils import write_basic_config
 
 write_basic_config()
@@ -180,7 +180,7 @@ elif args.pretrained_model_name_or_path:
         revision=args.revision,
         use_fast=False,
     )
-    
+
 # Load scheduler and models
 noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
 text_encoder = text_encoder_cls.from_pretrained(
