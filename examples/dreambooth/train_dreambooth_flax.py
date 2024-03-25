@@ -1,5 +1,4 @@
 import argparse
-import hashlib
 import logging
 import math
 import os
@@ -16,6 +15,7 @@ from flax import jax_utils
 from flax.training import train_state
 from flax.training.common_utils import shard
 from huggingface_hub import create_repo, upload_folder
+from huggingface_hub.utils import insecure_hashlib
 from jax.experimental.compilation_cache import compilation_cache as cc
 from PIL import Image
 from torch.utils.data import Dataset
@@ -35,7 +35,7 @@ from diffusers.utils import check_min_version
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.22.0.dev0")
+check_min_version("0.27.0.dev0")
 
 # Cache compiled models across invocations of this script.
 cc.initialize_cache(os.path.expanduser("~/.cache/jax/compilation_cache"))
@@ -373,7 +373,7 @@ def main():
                 images = pipeline.numpy_to_pil(np.array(images))
 
                 for i, image in enumerate(images):
-                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    hash_image = insecure_hashlib.sha1(image.tobytes()).hexdigest()
                     image_filename = class_images_dir / f"{example['index'][i] + cur_class_images}-{hash_image}.jpg"
                     image.save(image_filename)
 
@@ -460,7 +460,10 @@ def main():
 
     # Load models and create wrapper for stable diffusion
     text_encoder = FlaxCLIPTextModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", dtype=weight_dtype, revision=args.revision
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        dtype=weight_dtype,
+        revision=args.revision,
     )
     vae, vae_params = FlaxAutoencoderKL.from_pretrained(
         vae_arg,
@@ -468,7 +471,10 @@ def main():
         **vae_kwargs,
     )
     unet, unet_params = FlaxUNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", dtype=weight_dtype, revision=args.revision
+        args.pretrained_model_name_or_path,
+        subfolder="unet",
+        dtype=weight_dtype,
+        revision=args.revision,
     )
 
     # Optimization

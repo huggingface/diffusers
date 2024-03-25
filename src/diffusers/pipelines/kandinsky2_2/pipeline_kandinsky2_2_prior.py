@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import PIL.Image
 import torch
@@ -106,6 +106,7 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
 
     model_cpu_offload_seq = "text_encoder->image_encoder->prior"
     _exclude_from_cpu_offload = ["prior"]
+    _callback_tensor_inputs = ["latents", "prompt_embeds", "text_encoder_hidden_states", "text_mask"]
 
     def __init__(
         self,
@@ -354,6 +355,18 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
 
+    @property
+    def do_classifier_free_guidance(self):
+        return self._guidance_scale > 1
+
+    @property
+    def guidance_scale(self):
+        return self._guidance_scale
+
+    @property
+    def num_timesteps(self):
+        return self._num_timesteps
+
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
     def __call__(
@@ -367,6 +380,8 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         guidance_scale: float = 4.0,
         output_type: Optional[str] = "pt",  # pt only
         return_dict: bool = True,
+        callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
+        callback_on_step_end_tensor_inputs: List[str] = ["latents"],
     ):
         """
         Function invoked when calling the pipeline for generation.
@@ -400,12 +415,28 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 (`torch.Tensor`).
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`~pipelines.ImagePipelineOutput`] instead of a plain tuple.
+            callback_on_step_end (`Callable`, *optional*):
+                A function that calls at the end of each denoising steps during the inference. The function is called
+                with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
+                callback_kwargs: Dict)`. `callback_kwargs` will include a list of all tensors as specified by
+                `callback_on_step_end_tensor_inputs`.
+            callback_on_step_end_tensor_inputs (`List`, *optional*):
+                The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
+                will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
         Returns:
             [`KandinskyPriorPipelineOutput`] or `tuple`
         """
+
+        if callback_on_step_end_tensor_inputs is not None and not all(
+            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
+        ):
+            raise ValueError(
+                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
+            )
 
         if isinstance(prompt, str):
             prompt = [prompt]
@@ -428,14 +459,15 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         batch_size = len(prompt)
         batch_size = batch_size * num_images_per_prompt
 
-        do_classifier_free_guidance = guidance_scale > 1.0
+        self._guidance_scale = guidance_scale
+
         prompt_embeds, text_encoder_hidden_states, text_mask = self._encode_prompt(
-            prompt, device, num_images_per_prompt, do_classifier_free_guidance, negative_prompt
+            prompt, device, num_images_per_prompt, self.do_classifier_free_guidance, negative_prompt
         )
 
         # prior
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        prior_timesteps_tensor = self.scheduler.timesteps
+        timesteps = self.scheduler.timesteps
 
         embedding_dim = self.prior.config.embedding_dim
 
@@ -447,10 +479,10 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
             latents,
             self.scheduler,
         )
-
-        for i, t in enumerate(self.progress_bar(prior_timesteps_tensor)):
+        self._num_timesteps = len(timesteps)
+        for i, t in enumerate(self.progress_bar(timesteps)):
             # expand the latents if we are doing classifier free guidance
-            latent_model_input = torch.cat([latents] * 2) if do_classifier_free_guidance else latents
+            latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
 
             predicted_image_embedding = self.prior(
                 latent_model_input,
@@ -460,16 +492,16 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 attention_mask=text_mask,
             ).predicted_image_embedding
 
-            if do_classifier_free_guidance:
+            if self.do_classifier_free_guidance:
                 predicted_image_embedding_uncond, predicted_image_embedding_text = predicted_image_embedding.chunk(2)
-                predicted_image_embedding = predicted_image_embedding_uncond + guidance_scale * (
+                predicted_image_embedding = predicted_image_embedding_uncond + self.guidance_scale * (
                     predicted_image_embedding_text - predicted_image_embedding_uncond
                 )
 
-            if i + 1 == prior_timesteps_tensor.shape[0]:
+            if i + 1 == timesteps.shape[0]:
                 prev_timestep = None
             else:
-                prev_timestep = prior_timesteps_tensor[i + 1]
+                prev_timestep = timesteps[i + 1]
 
             latents = self.scheduler.step(
                 predicted_image_embedding,
@@ -479,6 +511,19 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
                 prev_timestep=prev_timestep,
             ).prev_sample
 
+            if callback_on_step_end is not None:
+                callback_kwargs = {}
+                for k in callback_on_step_end_tensor_inputs:
+                    callback_kwargs[k] = locals()[k]
+                callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+
+                latents = callback_outputs.pop("latents", latents)
+                prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
+                text_encoder_hidden_states = callback_outputs.pop(
+                    "text_encoder_hidden_states", text_encoder_hidden_states
+                )
+                text_mask = callback_outputs.pop("text_mask", text_mask)
+
         latents = self.prior.post_process_latents(latents)
 
         image_embeddings = latents
@@ -486,14 +531,10 @@ class KandinskyV22PriorPipeline(DiffusionPipeline):
         # if negative prompt has been defined, we retrieve split the image embedding into two
         if negative_prompt is None:
             zero_embeds = self.get_zero_embed(latents.shape[0], device=latents.device)
-
-            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-                self.final_offload_hook.offload()
         else:
             image_embeddings, zero_embeds = image_embeddings.chunk(2)
 
-            if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-                self.prior_hook.offload()
+        self.maybe_free_model_hooks()
 
         if output_type not in ["pt", "np"]:
             raise ValueError(f"Only the output types `pt` and `np` are supported not output_type={output_type}")

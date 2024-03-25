@@ -8,9 +8,9 @@ from typing import Callable, Dict, List, Optional, Union
 import torch
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 
-from diffusers import DiffusionPipeline
 from diffusers.configuration_utils import FrozenDict
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import DDIMScheduler, LMSDiscreteScheduler, PNDMScheduler
@@ -63,7 +63,7 @@ class WildcardStableDiffusionOutput(StableDiffusionPipelineOutput):
     prompts: List[str]
 
 
-class WildcardStableDiffusionPipeline(DiffusionPipeline):
+class WildcardStableDiffusionPipeline(DiffusionPipeline, StableDiffusionMixin):
     r"""
     Example Usage:
         pipe = WildcardStableDiffusionPipeline.from_pretrained(

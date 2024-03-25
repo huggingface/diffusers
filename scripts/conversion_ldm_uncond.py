@@ -1,13 +1,13 @@
 import argparse
 
-import OmegaConf
 import torch
+import yaml
 
 from diffusers import DDIMScheduler, LDMPipeline, UNetLDMModel, VQModel
 
 
 def convert_ldm_original(checkpoint_path, config_path, output_path):
-    config = OmegaConf.load(config_path)
+    config = yaml.safe_load(config_path)
     state_dict = torch.load(checkpoint_path, map_location="cpu")["model"]
     keys = list(state_dict.keys())
 
@@ -25,8 +25,8 @@ def convert_ldm_original(checkpoint_path, config_path, output_path):
         if key.startswith(unet_key):
             unet_state_dict[key.replace(unet_key, "")] = state_dict[key]
 
-    vqvae_init_args = config.model.params.first_stage_config.params
-    unet_init_args = config.model.params.unet_config.params
+    vqvae_init_args = config["model"]["params"]["first_stage_config"]["params"]
+    unet_init_args = config["model"]["params"]["unet_config"]["params"]
 
     vqvae = VQModel(**vqvae_init_args).eval()
     vqvae.load_state_dict(first_stage_dict)
@@ -35,10 +35,10 @@ def convert_ldm_original(checkpoint_path, config_path, output_path):
     unet.load_state_dict(unet_state_dict)
 
     noise_scheduler = DDIMScheduler(
-        timesteps=config.model.params.timesteps,
+        timesteps=config["model"]["params"]["timesteps"],
         beta_schedule="scaled_linear",
-        beta_start=config.model.params.linear_start,
-        beta_end=config.model.params.linear_end,
+        beta_start=config["model"]["params"]["linear_start"],
+        beta_end=config["model"]["params"]["linear_end"],
         clip_sample=False,
     )
 

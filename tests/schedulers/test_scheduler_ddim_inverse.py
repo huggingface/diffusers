@@ -7,7 +7,7 @@ from .test_schedulers import SchedulerCommonTest
 
 class DDIMInverseSchedulerTest(SchedulerCommonTest):
     scheduler_classes = (DDIMInverseScheduler,)
-    forward_default_kwargs = (("eta", 0.0), ("num_inference_steps", 50))
+    forward_default_kwargs = (("num_inference_steps", 50),)
 
     def get_scheduler_config(self, **kwargs):
         config = {
@@ -26,7 +26,7 @@ class DDIMInverseSchedulerTest(SchedulerCommonTest):
         scheduler_config = self.get_scheduler_config(**config)
         scheduler = scheduler_class(**scheduler_config)
 
-        num_inference_steps, eta = 10, 0.0
+        num_inference_steps = 10
 
         model = self.dummy_model()
         sample = self.dummy_sample_deter
@@ -35,7 +35,7 @@ class DDIMInverseSchedulerTest(SchedulerCommonTest):
 
         for t in scheduler.timesteps:
             residual = model(sample, t)
-            sample = scheduler.step(residual, t, sample, eta).prev_sample
+            sample = scheduler.step(residual, t, sample).prev_sample
 
         return sample
 

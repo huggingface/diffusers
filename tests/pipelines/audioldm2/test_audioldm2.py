@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -483,7 +483,7 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
         self.assertTrue(all(dtype == torch.float32 for dtype in model_dtypes.values()))
 
         # Once we send to fp16, all params are in half-precision, including the logit scale
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
         model_dtypes = {key: component.dtype for key, component in components.items() if hasattr(component, "dtype")}
         self.assertTrue(all(dtype == torch.float16 for dtype in model_dtypes.values()))
 

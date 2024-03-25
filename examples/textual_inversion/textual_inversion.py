@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,6 +53,7 @@ from diffusers import (
 )
 from diffusers.optimization import get_scheduler
 from diffusers.utils import check_min_version, is_wandb_available
+from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_xformers_available
 
 
@@ -79,37 +80,42 @@ else:
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.22.0.dev0")
+check_min_version("0.27.0.dev0")
 
 logger = get_logger(__name__)
 
 
-def save_model_card(repo_id: str, images=None, base_model=str, repo_folder=None):
+def save_model_card(repo_id: str, images: list = None, base_model: str = None, repo_folder: str = None):
     img_str = ""
-    for i, image in enumerate(images):
-        image.save(os.path.join(repo_folder, f"image_{i}.png"))
-        img_str += f"![img_{i}](./image_{i}.png)\n"
-
-    yaml = f"""
----
-license: creativeml-openrail-m
-base_model: {base_model}
-tags:
-- stable-diffusion
-- stable-diffusion-diffusers
-- text-to-image
-- diffusers
-- textual_inversion
-inference: true
----
-    """
-    model_card = f"""
+    if images is not None:
+        for i, image in enumerate(images):
+            image.save(os.path.join(repo_folder, f"image_{i}.png"))
+            img_str += f"![img_{i}](./image_{i}.png)\n"
+    model_description = f"""
 # Textual inversion text2image fine-tuning - {repo_id}
 These are textual inversion adaption weights for {base_model}. You can find some example images in the following. \n
 {img_str}
 """
-    with open(os.path.join(repo_folder, "README.md"), "w") as f:
-        f.write(yaml + model_card)
+    model_card = load_or_create_model_card(
+        repo_id_or_path=repo_id,
+        from_training=True,
+        license="creativeml-openrail-m",
+        base_model=base_model,
+        model_description=model_description,
+        inference=True,
+    )
+
+    tags = [
+        "stable-diffusion",
+        "stable-diffusion-diffusers",
+        "text-to-image",
+        "diffusers",
+        "textual_inversion",
+        "diffusers-training",
+    ]
+    model_card = populate_model_card(model_card, tags=tags)
+
+    model_card.save(os.path.join(repo_folder, "README.md"))
 
 
 def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight_dtype, epoch):
@@ -126,6 +132,7 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
         vae=vae,
         safety_checker=None,
         revision=args.revision,
+        variant=args.variant,
         torch_dtype=weight_dtype,
     )
     pipeline.scheduler = DPMSolverMultistepScheduler.from_config(pipeline.scheduler.config)
@@ -205,6 +212,12 @@ def parse_args():
         default=None,
         required=False,
         help="Revision of pretrained model identifier from huggingface.co/models.",
+    )
+    parser.add_argument(
+        "--variant",
+        type=str,
+        default=None,
+        help="Variant of the model files of the pretrained model identifier from huggingface.co/models, 'e.g.' fp16",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -334,7 +347,7 @@ def parse_args():
         help=(
             "Whether to use mixed precision. Choose"
             "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
-            "and an Nvidia Ampere GPU."
+            "and Nvidia Ampere GPU or Intel Gen 4 Xeon (and later) ."
         ),
     )
     parser.add_argument(
@@ -572,6 +585,12 @@ class TextualInversionDataset(Dataset):
 
 def main():
     args = parse_args()
+    if args.report_to == "wandb" and args.hub_token is not None:
+        raise ValueError(
+            "You cannot use both --report_to=wandb and --hub_token due to a security risk of exposing your token."
+            " Please use `huggingface-cli login` to authenticate with the Hub."
+        )
+
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     accelerator = Accelerator(
@@ -624,9 +643,11 @@ def main():
     text_encoder = CLIPTextModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, variant=args.variant
+    )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, variant=args.variant
     )
 
     # Add the placeholder token in tokenizer
@@ -752,6 +773,7 @@ def main():
         num_cycles=args.lr_num_cycles,
     )
 
+    text_encoder.train()
     # Prepare everything with our `accelerator`.
     text_encoder, optimizer, train_dataloader, lr_scheduler = accelerator.prepare(
         text_encoder, optimizer, train_dataloader, lr_scheduler

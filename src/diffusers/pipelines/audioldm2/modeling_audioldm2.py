@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -35,9 +35,9 @@ from ...models.embeddings import (
 )
 from ...models.modeling_utils import ModelMixin
 from ...models.resnet import Downsample2D, ResnetBlock2D, Upsample2D
-from ...models.transformer_2d import Transformer2DModel
-from ...models.unet_2d_blocks import DownBlock2D, UpBlock2D
-from ...models.unet_2d_condition import UNet2DConditionOutput
+from ...models.transformers.transformer_2d import Transformer2DModel
+from ...models.unets.unet_2d_blocks import DownBlock2D, UpBlock2D
+from ...models.unets.unet_2d_condition import UNet2DConditionOutput
 from ...utils import BaseOutput, is_torch_version, logging
 
 
@@ -513,7 +513,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         )
 
     @property
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
@@ -537,10 +537,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
 
         return processors
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
-    def set_attn_processor(
-        self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]], _remove_lora=False
-    ):
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
 
@@ -564,9 +562,9 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         def fn_recursive_attn_processor(name: str, module: torch.nn.Module, processor):
             if hasattr(module, "set_processor"):
                 if not isinstance(processor, dict):
-                    module.set_processor(processor, _remove_lora=_remove_lora)
+                    module.set_processor(processor)
                 else:
-                    module.set_processor(processor.pop(f"{name}.processor"), _remove_lora=_remove_lora)
+                    module.set_processor(processor.pop(f"{name}.processor"))
 
             for sub_name, child in module.named_children():
                 fn_recursive_attn_processor(f"{name}.{sub_name}", child, processor)
@@ -574,7 +572,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
@@ -588,9 +586,9 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 f"Cannot call `set_default_attn_processor` when attention processors are of type {next(iter(self.attn_processors.values()))}"
             )
 
-        self.set_attn_processor(processor, _remove_lora=True)
+        self.set_attn_processor(processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attention_slice
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attention_slice
     def set_attention_slice(self, slice_size):
         r"""
         Enable sliced attention computation.
@@ -656,7 +654,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
         for module in self.children():
             fn_recursive_set_attention_slice(module, reversed_slice_size)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel._set_gradient_checkpointing
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel._set_gradient_checkpointing
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
@@ -689,7 +687,7 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 `True` the mask is kept, otherwise if `False` it is discarded. Mask will be converted into a bias,
                 which adds large negative values to the attention scores corresponding to "discard" tokens.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
+                Whether or not to return a [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
                 tuple.
             cross_attention_kwargs (`dict`, *optional*):
                 A kwargs dictionary that if specified is passed along to the [`AttnProcessor`].
@@ -702,8 +700,8 @@ class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoad
                 which adds large negative values to the attention scores corresponding to "discard" tokens.
 
         Returns:
-            [`~models.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
-                If `return_dict` is True, an [`~models.unet_2d_condition.UNet2DConditionOutput`] is returned, otherwise
+            [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] or `tuple`:
+                If `return_dict` is True, an [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] is returned, otherwise
                 a `tuple` is returned where the first element is the sample tensor.
         """
         # By default samples have to be AT least a multiple of the overall upsampling factor.

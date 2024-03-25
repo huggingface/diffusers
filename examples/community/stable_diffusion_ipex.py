@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -21,15 +21,14 @@ from packaging import version
 from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
 
 from diffusers.configuration_utils import FrozenDict
+from diffusers.loaders import LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
-from diffusers.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     deprecate,
-    is_accelerate_available,
-    is_accelerate_version,
     logging,
     replace_example_docstring,
 )
@@ -61,7 +60,9 @@ EXAMPLE_DOC_STRING = """
 """
 
 
-class StableDiffusionIPEXPipeline(DiffusionPipeline):
+class StableDiffusionIPEXPipeline(
+    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin
+):
     r"""
     Pipeline for text-to-image generation using Stable Diffusion on IPEX.
 
@@ -88,6 +89,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
         feature_extractor ([`CLIPFeatureExtractor`]):
             Model that extracts features from generated images to be used as inputs for the `safety_checker`.
     """
+
     _optional_components = ["safety_checker", "feature_extractor"]
 
     def __init__(
@@ -250,9 +252,7 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
 
         # optimize with ipex
         if dtype == torch.bfloat16:
-            self.unet = ipex.optimize(
-                self.unet.eval(), dtype=torch.bfloat16, inplace=True, sample_input=unet_input_example
-            )
+            self.unet = ipex.optimize(self.unet.eval(), dtype=torch.bfloat16, inplace=True)
             self.vae.decoder = ipex.optimize(self.vae.decoder.eval(), dtype=torch.bfloat16, inplace=True)
             self.text_encoder = ipex.optimize(self.text_encoder.eval(), dtype=torch.bfloat16, inplace=True)
             if self.safety_checker is not None:
@@ -262,8 +262,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
                 self.unet.eval(),
                 dtype=torch.float32,
                 inplace=True,
-                sample_input=unet_input_example,
-                level="O1",
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
@@ -271,7 +269,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
                 self.vae.decoder.eval(),
                 dtype=torch.float32,
                 inplace=True,
-                level="O1",
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
@@ -279,7 +276,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
                 self.text_encoder.eval(),
                 dtype=torch.float32,
                 inplace=True,
-                level="O1",
                 weights_prepack=True,
                 auto_kernel_selection=False,
             )
@@ -288,7 +284,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
                     self.safety_checker.eval(),
                     dtype=torch.float32,
                     inplace=True,
-                    level="O1",
                     weights_prepack=True,
                     auto_kernel_selection=False,
                 )
@@ -308,109 +303,6 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
             )
             ave_decoder_trace_model = torch.jit.freeze(ave_decoder_trace_model)
         self.vae.decoder.forward = ave_decoder_trace_model.forward
-
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor in slices to compute decoding in several
-        steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously invoked, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding.
-
-        When this option is enabled, the VAE will split the input tensor into tiles to compute decoding and encoding in
-        several steps. This is useful to save a large amount of memory and to allow the processing of larger images.
-        """
-        self.vae.enable_tiling()
-
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously invoked, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
-
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, unet,
-        text_encoder, vae and safety checker have their state dicts saved to CPU and then are moved to a
-        `torch.device('meta') and loaded to GPU only when their specific submodule has its `forward` method called.
-        Note that offloading happens on a submodule basis. Memory savings are higher than with
-        `enable_model_cpu_offload`, but performance is lower.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.14.0"):
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        for cpu_offloaded_model in [self.unet, self.text_encoder, self.vae]:
-            cpu_offload(cpu_offloaded_model, device)
-
-        if self.safety_checker is not None:
-            cpu_offload(self.safety_checker, execution_device=device, offload_buffers=True)
-
-    def enable_model_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
-        to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
-        method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
-        `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
-        """
-        if is_accelerate_available() and is_accelerate_version(">=", "0.17.0.dev0"):
-            from accelerate import cpu_offload_with_hook
-        else:
-            raise ImportError("`enable_model_offload` requires `accelerate v0.17.0` or higher.")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            torch.cuda.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
-
-        hook = None
-        for cpu_offloaded_model in [self.text_encoder, self.unet, self.vae]:
-            _, hook = cpu_offload_with_hook(cpu_offloaded_model, device, prev_module_hook=hook)
-
-        if self.safety_checker is not None:
-            _, hook = cpu_offload_with_hook(self.safety_checker, device, prev_module_hook=hook)
-
-        # We'll offload the last model manually.
-        self.final_offload_hook = hook
-
-    @property
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if not hasattr(self.unet, "_hf_hook"):
-            return self.device
-        for module in self.unet.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     def _encode_prompt(
         self,
@@ -454,6 +346,10 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
             batch_size = prompt_embeds.shape[0]
 
         if prompt_embeds is None:
+            # textual inversion: process multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                prompt = self.maybe_convert_prompt(prompt, self.tokenizer)
+
             text_inputs = self.tokenizer(
                 prompt,
                 padding="max_length",
@@ -513,6 +409,10 @@ class StableDiffusionIPEXPipeline(DiffusionPipeline):
                 )
             else:
                 uncond_tokens = negative_prompt
+
+            # textual inversion: process multi-vector tokens if necessary
+            if isinstance(self, TextualInversionLoaderMixin):
+                uncond_tokens = self.maybe_convert_prompt(uncond_tokens, self.tokenizer)
 
             max_length = prompt_embeds.shape[1]
             uncond_input = self.tokenizer(

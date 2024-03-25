@@ -128,7 +128,19 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
     watermarker: Optional[IFWatermarker]
 
     bad_punct_regex = re.compile(
-        r"[" + "#®•©™&@·º½¾¿¡§~" + "\)" + "\(" + "\]" + "\[" + "\}" + "\{" + "\|" + "\\" + "\/" + "\*" + r"]{1,}"
+        r"["
+        + "#®•©™&@·º½¾¿¡§~"
+        + r"\)"
+        + r"\("
+        + r"\]"
+        + r"\["
+        + r"\}"
+        + r"\{"
+        + r"\|"
+        + "\\"
+        + r"\/"
+        + r"\*"
+        + r"]{1,}"
     )  # noqa
 
     model_cpu_offload_seq = "text_encoder->unet"
@@ -1109,8 +1121,6 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             nsfw_detected = None
             watermark_detected = None
 
-            if hasattr(self, "unet_offload_hook") and self.unet_offload_hook is not None:
-                self.unet_offload_hook.offload()
         else:
             # 10. Post-processing
             image = (image / 2 + 0.5).clamp(0, 1)
@@ -1119,9 +1129,7 @@ class IFInpaintingSuperResolutionPipeline(DiffusionPipeline, LoraLoaderMixin):
             # 11. Run safety checker
             image, nsfw_detected, watermark_detected = self.run_safety_checker(image, device, prompt_embeds.dtype)
 
-        # Offload last model to CPU
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        self.maybe_free_model_hooks()
 
         if not return_dict:
             return (image, nsfw_detected, watermark_detected)

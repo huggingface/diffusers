@@ -11,6 +11,7 @@ concurrency:
 
 env:
   REGISTRY: diffusers
+  CI_SLACK_CHANNEL: ${{ secrets.CI_DOCKER_CHANNEL }}
 
 jobs:
   build-docker-images:
@@ -50,3 +51,27 @@ jobs:
           context: ./docker/${{ matrix.image-name }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ matrix.image-name }}:latest
+
+      - name: Post to a Slack channel
+        id: slack
+        uses: slackapi/slack-github-action@6c661ce58804a1a20f6dc5fbee7f0381b469e001
+        with:
+          # Slack channel id, channel name, or user id to post message.
+          # See also: https://api.slack.com/methods/chat.postMessage#channels
+          channel-id: ${{ env.CI_SLACK_CHANNEL }}
+          # For posting a rich message using Block Kit
+          payload: |
+            {
+              "text": "${{ matrix.image-name }} Docker Image build result: ${{ job.status }}\n${{ github.event.head_commit.url }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "${{ matrix.image-name }} Docker Image build result: ${{ job.status }}\n${{ github.event.head_commit.url }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_CIFEEDBACK_BOT_TOKEN }}

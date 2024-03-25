@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -480,6 +480,8 @@ class KandinskyImg2ImgPipeline(DiffusionPipeline):
 
         # 7. post-processing
         image = self.movq.decode(latents, force_not_quantize=True)["sample"]
+
+        self.maybe_free_model_hooks()
 
         if output_type not in ["pt", "np", "pil"]:
             raise ValueError(f"Only the output types `pt`, `pil` and `np` are supported not output_type={output_type}")

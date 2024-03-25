@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -513,3 +513,40 @@ class StableDiffusionUpscalePipelineIntegrationTests(unittest.TestCase):
         assert (
             numpy_cosine_similarity_distance(image_from_pretrained.flatten(), image_from_single_file.flatten()) < 1e-3
         )
+
+    def test_single_file_component_configs(self):
+        pipe = StableDiffusionUpscalePipeline.from_pretrained(
+            "stabilityai/stable-diffusion-x4-upscaler", variant="fp16"
+        )
+
+        ckpt_path = (
+            "https://huggingface.co/stabilityai/stable-diffusion-x4-upscaler/blob/main/x4-upscaler-ema.safetensors"
+        )
+        single_file_pipe = StableDiffusionUpscalePipeline.from_single_file(ckpt_path, load_safety_checker=True)
+
+        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
+            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
+                continue
+            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        for param_name, param_value in single_file_pipe.unet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.unet.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.vae.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.vae.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.safety_checker.config.to_dict().items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.safety_checker.config.to_dict()[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"

@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,6 +36,7 @@ from ..pipeline_params import (
     TEXT_GUIDED_IMAGE_VARIATION_PARAMS,
 )
 from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineLatentTesterMixin,
     PipelineTesterMixin,
@@ -46,7 +47,11 @@ enable_full_determinism()
 
 
 class ControlNetPipelineSDXLImg2ImgFastTests(
-    PipelineLatentTesterMixin, PipelineKarrasSchedulerTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineKarrasSchedulerTesterMixin,
+    PipelineTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLControlNetImg2ImgPipeline
     params = TEXT_GUIDED_IMAGE_VARIATION_PARAMS
@@ -136,6 +141,8 @@ class ControlNetPipelineSDXLImg2ImgFastTests(
             "tokenizer": tokenizer if not skip_first_text_encoder else None,
             "text_encoder_2": text_encoder_2,
             "tokenizer_2": tokenizer_2,
+            "image_encoder": None,
+            "feature_extractor": None,
         }
         return components
 

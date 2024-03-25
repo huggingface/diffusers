@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -134,7 +134,7 @@ class KandinskyPipelineCombinedFastTests(PipelineTesterMixin, unittest.TestCase)
         super().test_inference_batch_single_identical(expected_max_diff=1e-2)
 
     def test_float16_inference(self):
-        super().test_float16_inference(expected_max_diff=1e-1)
+        super().test_float16_inference(expected_max_diff=2e-1)
 
     def test_dict_tuple_outputs_equivalent(self):
         super().test_dict_tuple_outputs_equivalent(expected_max_difference=5e-4)

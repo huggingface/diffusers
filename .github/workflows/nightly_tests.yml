@@ -60,9 +60,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install -e .[quality,test]
-          python -m pip install -U git+https://github.com/huggingface/transformers
-          python -m pip install git+https://github.com/huggingface/accelerate
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+          python -m uv pip install -e [quality,test]
+          python -m uv pip install -U transformers@git+https://github.com/huggingface/transformers
+          python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate
 
       - name: Environment
         run: |
@@ -73,6 +74,7 @@ jobs:
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "not Flax and not Onnx" \
             --make-reports=tests_${{ matrix.config.report }} \
@@ -83,6 +85,7 @@ jobs:
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pytest -n 0 \
             -s -v -k "Flax" \
             --make-reports=tests_${{ matrix.config.report }} \
@@ -93,6 +96,7 @@ jobs:
         env:
           HUGGING_FACE_HUB_TOKEN: ${{ secrets.HUGGING_FACE_HUB_TOKEN }}
         run: |
+          python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
           python -m pytest -n 1 --max-worker-restart=0 --dist=loadfile \
             -s -v -k "Onnx" \
             --make-reports=tests_${{ matrix.config.report }} \
@@ -132,10 +136,10 @@ jobs:
       - name: Install dependencies
         shell: arch -arch arm64 bash {0}
         run: |
-          ${CONDA_RUN} python -m pip install --upgrade pip
-          ${CONDA_RUN} python -m pip install -e .[quality,test]
-          ${CONDA_RUN} python -m pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
-          ${CONDA_RUN} python -m pip install git+https://github.com/huggingface/accelerate
+          ${CONDA_RUN} python -m pip install --upgrade pip uv
+          ${CONDA_RUN} python -m uv pip install -e [quality,test]
+          ${CONDA_RUN} python -m uv pip install torch torchvision torchaudio --extra-index-url https://download.pytorch.org/whl/cpu
+          ${CONDA_RUN} python -m uv pip install accelerate@git+https://github.com/huggingface/accelerate
 
       - name: Environment
         shell: arch -arch arm64 bash {0}

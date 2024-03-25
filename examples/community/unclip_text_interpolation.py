@@ -15,7 +15,7 @@ from diffusers import (
     UNet2DModel,
 )
 from diffusers.pipelines.unclip import UnCLIPTextProjModel
-from diffusers.utils import is_accelerate_available, logging
+from diffusers.utils import logging
 from diffusers.utils.torch_utils import randn_tensor
 
 
@@ -211,51 +211,6 @@ class UnCLIPTextInterpolationPipeline(DiffusionPipeline):
             text_mask = torch.cat([uncond_text_mask, text_mask])
 
         return prompt_embeds, text_encoder_hidden_states, text_mask
-
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline.enable_sequential_cpu_offload
-    def enable_sequential_cpu_offload(self, gpu_id=0):
-        r"""
-        Offloads all models to CPU using accelerate, significantly reducing memory usage. When called, the pipeline's
-        models have their state dicts saved to CPU and then are moved to a `torch.device('meta') and loaded to GPU only
-        when their specific submodule has its `forward` method called.
-        """
-        if is_accelerate_available():
-            from accelerate import cpu_offload
-        else:
-            raise ImportError("Please install accelerate via `pip install accelerate`")
-
-        device = torch.device(f"cuda:{gpu_id}")
-
-        # TODO: self.prior.post_process_latents is not covered by the offload hooks, so it fails if added to the list
-        models = [
-            self.decoder,
-            self.text_proj,
-            self.text_encoder,
-            self.super_res_first,
-            self.super_res_last,
-        ]
-        for cpu_offloaded_model in models:
-            if cpu_offloaded_model is not None:
-                cpu_offload(cpu_offloaded_model, device)
-
-    @property
-    # Copied from diffusers.pipelines.unclip.pipeline_unclip.UnCLIPPipeline._execution_device
-    def _execution_device(self):
-        r"""
-        Returns the device on which the pipeline's models will be executed. After calling
-        `pipeline.enable_sequential_cpu_offload()` the execution device can only be inferred from Accelerate's module
-        hooks.
-        """
-        if self.device != torch.device("meta") or not hasattr(self.decoder, "_hf_hook"):
-            return self.device
-        for module in self.decoder.modules():
-            if (
-                hasattr(module, "_hf_hook")
-                and hasattr(module._hf_hook, "execution_device")
-                and module._hf_hook.execution_device is not None
-            ):
-                return torch.device(module._hf_hook.execution_device)
-        return self.device
 
     @torch.no_grad()
     def __call__(

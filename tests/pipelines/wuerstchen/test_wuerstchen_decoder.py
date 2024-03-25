@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ class WuerstchenDecoderPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
         "return_dict",
     ]
     test_xformers_attention = False
+    callback_cfg_params = ["image_embeddings", "text_encoder_hidden_states"]
 
     @property
     def text_embedder_hidden_size(self):

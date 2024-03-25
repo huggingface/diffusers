@@ -14,6 +14,7 @@ $ python convert_zero123_to_diffusers.py \
 import argparse
 
 import torch
+import yaml
 from accelerate import init_empty_weights
 from accelerate.utils import set_module_tensor_to_device
 from pipeline_zero1to3 import CCProjection, Zero1to3StableDiffusionPipeline
@@ -38,51 +39,54 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     Creates a config for the diffusers based on the config of the LDM model.
     """
     if controlnet:
-        unet_params = original_config.model.params.control_stage_config.params
+        unet_params = original_config["model"]["params"]["control_stage_config"]["params"]
     else:
-        if "unet_config" in original_config.model.params and original_config.model.params.unet_config is not None:
-            unet_params = original_config.model.params.unet_config.params
+        if (
+            "unet_config" in original_config["model"]["params"]
+            and original_config["model"]["params"]["unet_config"] is not None
+        ):
+            unet_params = original_config["model"]["params"]["unet_config"]["params"]
         else:
-            unet_params = original_config.model.params.network_config.params
+            unet_params = original_config["model"]["params"]["network_config"]["params"]
 
-    vae_params = original_config.model.params.first_stage_config.params.ddconfig
+    vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
 
-    block_out_channels = [unet_params.model_channels * mult for mult in unet_params.channel_mult]
+    block_out_channels = [unet_params["model_channels"] * mult for mult in unet_params["channel_mult"]]
 
     down_block_types = []
     resolution = 1
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnDownBlock2D" if resolution in unet_params.attention_resolutions else "DownBlock2D"
+        block_type = "CrossAttnDownBlock2D" if resolution in unet_params["attention_resolutions"] else "DownBlock2D"
         down_block_types.append(block_type)
         if i != len(block_out_channels) - 1:
             resolution *= 2
 
     up_block_types = []
     for i in range(len(block_out_channels)):
-        block_type = "CrossAttnUpBlock2D" if resolution in unet_params.attention_resolutions else "UpBlock2D"
+        block_type = "CrossAttnUpBlock2D" if resolution in unet_params["attention_resolutions"] else "UpBlock2D"
         up_block_types.append(block_type)
         resolution //= 2
 
-    if unet_params.transformer_depth is not None:
+    if unet_params["transformer_depth"] is not None:
         transformer_layers_per_block = (
-            unet_params.transformer_depth
-            if isinstance(unet_params.transformer_depth, int)
-            else list(unet_params.transformer_depth)
+            unet_params["transformer_depth"]
+            if isinstance(unet_params["transformer_depth"], int)
+            else list(unet_params["transformer_depth"])
         )
     else:
         transformer_layers_per_block = 1
 
-    vae_scale_factor = 2 ** (len(vae_params.ch_mult) - 1)
+    vae_scale_factor = 2 ** (len(vae_params["ch_mult"]) - 1)
 
-    head_dim = unet_params.num_heads if "num_heads" in unet_params else None
+    head_dim = unet_params["num_heads"] if "num_heads" in unet_params else None
     use_linear_projection = (
-        unet_params.use_linear_in_transformer if "use_linear_in_transformer" in unet_params else False
+        unet_params["use_linear_in_transformer"] if "use_linear_in_transformer" in unet_params else False
     )
     if use_linear_projection:
         # stable diffusion 2-base-512 and 2-768
         if head_dim is None:
-            head_dim_mult = unet_params.model_channels // unet_params.num_head_channels
-            head_dim = [head_dim_mult * c for c in list(unet_params.channel_mult)]
+            head_dim_mult = unet_params["model_channels"] // unet_params["num_head_channels"]
+            head_dim = [head_dim_mult * c for c in list(unet_params["channel_mult"])]
 
     class_embed_type = None
     addition_embed_type = None
@@ -90,13 +94,15 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     projection_class_embeddings_input_dim = None
     context_dim = None
 
-    if unet_params.context_dim is not None:
+    if unet_params["context_dim"] is not None:
         context_dim = (
-            unet_params.context_dim if isinstance(unet_params.context_dim, int) else unet_params.context_dim[0]
+            unet_params["context_dim"]
+            if isinstance(unet_params["context_dim"], int)
+            else unet_params["context_dim"][0]
         )
 
     if "num_classes" in unet_params:
-        if unet_params.num_classes == "sequential":
+        if unet_params["num_classes"] == "sequential":
             if context_dim in [2048, 1280]:
                 # SDXL
                 addition_embed_type = "text_time"
@@ -104,16 +110,16 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
             else:
                 class_embed_type = "projection"
             assert "adm_in_channels" in unet_params
-            projection_class_embeddings_input_dim = unet_params.adm_in_channels
+            projection_class_embeddings_input_dim = unet_params["adm_in_channels"]
         else:
-            raise NotImplementedError(f"Unknown conditional unet num_classes config: {unet_params.num_classes}")
+            raise NotImplementedError(f"Unknown conditional unet num_classes config: {unet_params["num_classes"]}")
 
     config = {
         "sample_size": image_size // vae_scale_factor,
-        "in_channels": unet_params.in_channels,
+        "in_channels": unet_params["in_channels"],
         "down_block_types": tuple(down_block_types),
         "block_out_channels": tuple(block_out_channels),
-        "layers_per_block": unet_params.num_res_blocks,
+        "layers_per_block": unet_params["num_res_blocks"],
         "cross_attention_dim": context_dim,
         "attention_head_dim": head_dim,
         "use_linear_projection": use_linear_projection,
@@ -125,9 +131,9 @@ def create_unet_diffusers_config(original_config, image_size: int, controlnet=Fa
     }
 
     if controlnet:
-        config["conditioning_channels"] = unet_params.hint_channels
+        config["conditioning_channels"] = unet_params["hint_channels"]
     else:
-        config["out_channels"] = unet_params.out_channels
+        config["out_channels"] = unet_params["out_channels"]
         config["up_block_types"] = tuple(up_block_types)
 
     return config
@@ -487,22 +493,22 @@ def create_vae_diffusers_config(original_config, image_size: int):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
-    vae_params = original_config.model.params.first_stage_config.params.ddconfig
-    _ = original_config.model.params.first_stage_config.params.embed_dim
+    vae_params = original_config["model"]["params"]["first_stage_config"]["params"]["ddconfig"]
+    _ = original_config["model"]["params"]["first_stage_config"]["params"]["embed_dim"]
 
-    block_out_channels = [vae_params.ch * mult for mult in vae_params.ch_mult]
+    block_out_channels = [vae_params["ch"] * mult for mult in vae_params["ch_mult"]]
     down_block_types = ["DownEncoderBlock2D"] * len(block_out_channels)
     up_block_types = ["UpDecoderBlock2D"] * len(block_out_channels)
 
     config = {
         "sample_size": image_size,
-        "in_channels": vae_params.in_channels,
-        "out_channels": vae_params.out_ch,
+        "in_channels": vae_params["in_channels"],
+        "out_channels": vae_params["out_ch"],
         "down_block_types": tuple(down_block_types),
         "up_block_types": tuple(up_block_types),
         "block_out_channels": tuple(block_out_channels),
-        "latent_channels": vae_params.z_channels,
-        "layers_per_block": vae_params.num_res_blocks,
+        "latent_channels": vae_params["z_channels"],
+        "layers_per_block": vae_params["num_res_blocks"],
     }
     return config
 
@@ -679,18 +685,16 @@ def convert_from_original_zero123_ckpt(checkpoint_path, original_config_file, ex
     del ckpt
     torch.cuda.empty_cache()
 
-    from omegaconf import OmegaConf
-
-    original_config = OmegaConf.load(original_config_file)
-    original_config.model.params.cond_stage_config.target.split(".")[-1]
+    original_config = yaml.safe_load(original_config_file)
+    original_config["model"]["params"]["cond_stage_config"]["target"].split(".")[-1]
     num_in_channels = 8
     original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
     prediction_type = "epsilon"
     image_size = 256
-    num_train_timesteps = getattr(original_config.model.params, "timesteps", None) or 1000
+    num_train_timesteps = getattr(original_config["model"]["params"], "timesteps", None) or 1000
 
-    beta_start = getattr(original_config.model.params, "linear_start", None) or 0.02
-    beta_end = getattr(original_config.model.params, "linear_end", None) or 0.085
+    beta_start = getattr(original_config["model"]["params"], "linear_start", None) or 0.02
+    beta_end = getattr(original_config["model"]["params"], "linear_end", None) or 0.085
     scheduler = DDIMScheduler(
         beta_end=beta_end,
         beta_schedule="scaled_linear",
@@ -721,10 +725,10 @@ def convert_from_original_zero123_ckpt(checkpoint_path, original_config_file, ex
 
     if (
         "model" in original_config
-        and "params" in original_config.model
-        and "scale_factor" in original_config.model.params
+        and "params" in original_config["model"]
+        and "scale_factor" in original_config["model"]["params"]
     ):
-        vae_scaling_factor = original_config.model.params.scale_factor
+        vae_scaling_factor = original_config["model"]["params"]["scale_factor"]
     else:
         vae_scaling_factor = 0.18215  # default SD scaling factor
 
@@ -797,6 +801,6 @@ if __name__ == "__main__":
     )
 
     if args.half:
-        pipe.to(torch_dtype=torch.float16)
+        pipe.to(dtype=torch.float16)
 
     pipe.save_pretrained(args.dump_path, safe_serialization=args.to_safetensors)

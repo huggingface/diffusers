@@ -37,6 +37,18 @@ class EulerDiscreteSchedulerTest(SchedulerCommonTest):
         for prediction_type in ["epsilon", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
 
+    def test_timestep_type(self):
+        timestep_types = ["discrete", "continuous"]
+        for timestep_type in timestep_types:
+            self.check_over_configs(timestep_type=timestep_type)
+
+    def test_karras_sigmas(self):
+        self.check_over_configs(use_karras_sigmas=True, sigma_min=0.02, sigma_max=700.0)
+
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
+
     def test_full_loop_no_noise(self):
         scheduler_class = self.scheduler_classes[0]
         scheduler_config = self.get_scheduler_config()
