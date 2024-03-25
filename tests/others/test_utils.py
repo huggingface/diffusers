@@ -15,12 +15,12 @@
 
 import os
 import unittest
-from distutils.util import strtobool
 
 import pytest
 
 from diffusers import __version__
 from diffusers.utils import deprecate
+from diffusers.utils.testing_utils import str_to_bool
 
 
 # Used to test the hub
@@ -191,7 +191,7 @@ def parse_flag_from_env(key, default=False):
     else:
         # KEY is set, convert it to True or False.
         try:
-            _value = strtobool(value)
+            _value = str_to_bool(value)
         except ValueError:
             # More values are supported, but let's keep the message simple.
             raise ValueError(f"If set, {key} must be yes or no.")

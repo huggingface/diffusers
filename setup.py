@@ -81,9 +81,8 @@ To create the package for PyPI.
 import os
 import re
 import sys
-from distutils.core import Command
 
-from setuptools import find_packages, setup
+from setuptools import Command, find_packages, setup
 
 
 # IMPORTANT:
@@ -163,7 +162,7 @@ def deps_list(*pkgs):
 
 class DepsTableUpdateCommand(Command):
     """
-    A custom distutils command that updates the dependency table.
+    A custom command that updates the dependency table.
     usage: python setup.py deps_table_update
     """
 
