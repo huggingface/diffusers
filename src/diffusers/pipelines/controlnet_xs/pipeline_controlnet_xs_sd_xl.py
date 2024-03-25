@@ -178,7 +178,7 @@ class StableDiffusionXLControlNetXSPipeline(
         super().__init__()
 
         if isinstance(unet, UNet2DConditionModel):
-            unet = UNetControlNetXSModel.from_unet2d(unet, controlnet)
+            unet = UNetControlNetXSModel.from_unet(unet, controlnet)
 
         (
             vae_compatible,

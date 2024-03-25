@@ -144,7 +144,7 @@ class StableDiffusionControlNetXSPipeline(
         super().__init__()
 
         if isinstance(unet, UNet2DConditionModel):
-            unet = UNetControlNetXSModel.from_unet2d(unet, controlnet)
+            unet = UNetControlNetXSModel.from_unet(unet, controlnet)
 
         if safety_checker is None and requires_safety_checker:
             logger.warning(

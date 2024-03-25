@@ -119,10 +119,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             The channel order of conditional image. Will convert to `rgb` if it's `bgr`.
         conditioning_embedding_out_channels (`tuple[int]`, defaults to `(16, 32, 96, 256)`):
             The tuple of output channels for each block in the `controlnet_cond_embedding` layer.
-        time_embedding_input_dim (`int`, defaults to 320):
-            Dimension of input into time embedding. Needs to be same as in the base model.
-        time_embedding_dim (`int`, defaults to 1280):
-            Dimension of output from time embedding. Needs to be same as in the base model.
         time_embedding_mix (`float`, defaults to 1.0):
             If 0, then only the control addon's time embedding is used.
             If 1, then only the base unet's time embedding is used.
@@ -338,22 +334,20 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             num_attention_heads = unet.config.attention_head_dim
 
         model = cls(
-            conditioning_channels = conditioning_channels,
-            conditioning_channel_order = conditioning_channel_order,
-            conditioning_embedding_out_channels = conditioning_embedding_out_channels,
-            time_embedding_input_dim = unet.time_embedding.linear_1.in_features,
-            time_embedding_dim = unet.time_embedding.linear_1.out_features,
-            time_embedding_mix = time_embedding_mix,
-            learn_time_embedding = learn_time_embedding,
-            attention_head_dim = num_attention_heads,
-            block_out_channels = block_out_channels,
-            base_block_out_channels = unet.config.block_out_channels,
-            cross_attention_dim = unet.config.cross_attention_dim,
-            down_block_types = unet.config.down_block_types,
-            sample_size = unet.config.sample_size,
-            transformer_layers_per_block = unet.config.transformer_layers_per_block,
-            upcast_attention = unet.config.upcast_attention,
-            max_norm_num_groups = unet.config.norm_num_groups,
+            conditioning_channels=conditioning_channels,
+            conditioning_channel_order=conditioning_channel_order,
+            conditioning_embedding_out_channels=conditioning_embedding_out_channels,
+            time_embedding_mix=time_embedding_mix,
+            learn_time_embedding=learn_time_embedding,
+            attention_head_dim=num_attention_heads,
+            block_out_channels=block_out_channels,
+            base_block_out_channels=unet.config.block_out_channels,
+            cross_attention_dim=unet.config.cross_attention_dim,
+            down_block_types=unet.config.down_block_types,
+            sample_size=unet.config.sample_size,
+            transformer_layers_per_block=unet.config.transformer_layers_per_block,
+            upcast_attention=unet.config.upcast_attention,
+            max_norm_num_groups=unet.config.norm_num_groups,
         )
 
         # ensure that the ControlNetXSAddon is the same dtype as the UNet2DConditionModel
@@ -367,8 +361,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         conditioning_channels: int = 3,
         conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
-        time_embedding_input_dim: Optional[int] = 320,
-        time_embedding_dim: Optional[int] = 1280,
         time_embedding_mix: float = 1.0,
         learn_time_embedding: bool = False,
         attention_head_dim: Union[int, Tuple[int]] = 4,
@@ -389,6 +381,9 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         super().__init__()
 
         self.sample_size = sample_size
+
+        time_embedding_input_dim = base_block_out_channels[0]
+        time_embedding_dim = base_block_out_channels[0] * 4
 
         # `num_attention_heads` defaults to `attention_head_dim`. This looks weird upon first reading it and it is.
         # The reason for this behavior is to correct for incorrectly named variables that were introduced
@@ -738,7 +733,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
     def from_unet(
         cls,
         unet: UNet2DConditionModel,
-        controlnet: Optional[ControlNetXSAddon]  = None,
+        controlnet: Optional[ControlNetXSAddon] = None,
         size_ratio: Optional[float] = None,
         ctrl_block_out_channels: Optional[List[float]] = None,
         time_embedding_mix: Optional[float] = 1.0,
@@ -787,22 +782,22 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         # # load weights
         # from unet
         modules_from_unet = [
-            'time_embedding',
-            'conv_in',
-            'conv_norm_out',
-            'conv_out',
+            "time_embedding",
+            "conv_in",
+            "conv_norm_out",
+            "conv_out",
         ]
         for m in modules_from_unet:
-            getattr(model, 'base_' + m).load_state_dict(getattr(unet, m).state_dict())
+            getattr(model, "base_" + m).load_state_dict(getattr(unet, m).state_dict())
 
         optional_modules_from_unet = [
-            'class_embedding',
-            'add_time_proj',
-            'add_embedding',
+            "class_embedding",
+            "add_time_proj",
+            "add_embedding",
         ]
         for m in optional_modules_from_unet:
             if hasattr(unet, m) and getattr(unet, m) is not None:
-                getattr(model, 'base_' + m).load_state_dict(getattr(unet, m).state_dict())
+                getattr(model, "base_" + m).load_state_dict(getattr(unet, m).state_dict())
 
         # from controlnet
         model.controlnet_cond_embedding.load_state_dict(controlnet.controlnet_cond_embedding.state_dict())
@@ -812,9 +807,15 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         model.control_to_base_for_conv_in.load_state_dict(controlnet.control_to_base_for_conv_in.state_dict())
 
         # from both
-        model.down_blocks = nn.ModuleList(ControlNetXSCrossAttnDownBlock2D.from_modules(b,c) for b,c in zip(unet.down_blocks, controlnet.down_blocks))
+        model.down_blocks = nn.ModuleList(
+            ControlNetXSCrossAttnDownBlock2D.from_modules(b, c)
+            for b, c in zip(unet.down_blocks, controlnet.down_blocks)
+        )
         model.mid_block = ControlNetXSCrossAttnMidBlock2D.from_modules(unet.mid_block, controlnet.mid_block)
-        model.up_blocks = nn.ModuleList(ControlNetXSCrossAttnUpBlock2D.from_modules(b,c) for b,c in zip(unet.up_blocks, controlnet.up_connections))
+        model.up_blocks = nn.ModuleList(
+            ControlNetXSCrossAttnUpBlock2D.from_modules(b, c)
+            for b, c in zip(unet.up_blocks, controlnet.up_connections)
+        )
 
         # ensure that the UNetControlNetXSModel is the same dtype as the UNet2DConditionModel
         model.to(unet.dtype)
@@ -1011,7 +1012,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                 conditioning_scale=conditioning_scale,
                 cross_attention_kwargs=cross_attention_kwargs,
                 attention_mask=attention_mask,
-                do_control=do_control
+                do_control=do_control,
             )
             hs_base.extend(residual_hb)
             hs_ctrl.extend(residual_hc)
@@ -1025,7 +1026,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             conditioning_scale=conditioning_scale,
             cross_attention_kwargs=cross_attention_kwargs,
             attention_mask=attention_mask,
-            do_control=do_control
+            do_control=do_control,
         )
 
         # 3 - up
@@ -1037,14 +1038,14 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             hs_ctrl = hs_ctrl[:-n_resnets]
             h_base = up(
                 hidden_states=h_base,
-                res_hidden_states_tuple_base= skips_hb,
+                res_hidden_states_tuple_base=skips_hb,
                 res_hidden_states_tuple_ctrl=skips_hc,
-                temb= temb,
+                temb=temb,
                 encoder_hidden_states=cemb,
-                conditioning_scale= conditioning_scale,
-                cross_attention_kwargs= cross_attention_kwargs,
-                attention_mask= attention_mask,
-                do_control=do_control
+                conditioning_scale=conditioning_scale,
+                cross_attention_kwargs=cross_attention_kwargs,
+                attention_mask=attention_mask,
+                do_control=do_control,
             )
 
         # 4 - conv out
