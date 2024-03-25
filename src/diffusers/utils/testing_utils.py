@@ -14,7 +14,6 @@ import time
 import unittest
 import urllib.parse
 from contextlib import contextmanager
-from distutils.util import strtobool
 from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Union
@@ -142,6 +141,22 @@ def get_tests_dir(append_path=None):
         return tests_dir
 
 
+# Taken from the following PR:
+# https://github.com/huggingface/accelerate/pull/1964
+def str_to_bool(value) -> int:
+    """
+    Converts a string representation of truth to `True` (1) or `False` (0).
+    True values are `y`, `yes`, `t`, `true`, `on`, and `1`; False value are `n`, `no`, `f`, `false`, `off`, and `0`;
+    """
+    value = value.lower()
+    if value in ("y", "yes", "t", "true", "on", "1"):
+        return 1
+    elif value in ("n", "no", "f", "false", "off", "0"):
+        return 0
+    else:
+        raise ValueError(f"invalid truth value {value}")
+
+
 def parse_flag_from_env(key, default=False):
     try:
         value = os.environ[key]
@@ -151,7 +166,7 @@ def parse_flag_from_env(key, default=False):
     else:
         # KEY is set, convert it to True or False.
         try:
-            _value = strtobool(value)
+            _value = str_to_bool(value)
         except ValueError:
             # More values are supported, but let's keep the message simple.
             raise ValueError(f"If set, {key} must be yes or no.")
