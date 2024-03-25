@@ -431,6 +431,15 @@ def parse_args(input_args=None):
         help="debug loss for each image, if filenames are awailable in the dataset",
     )
 
+    parser.add_argument(
+        "--shuffle-tags",
+        action="store_true",
+        help="shuffle tags randomly")
+    parser.add_argument(
+        "--p-drop-tags",
+        type=float,
+        default=0,
+        help="probability of droping a tag from caption, default=0")
     if input_args is not None:
         args = parser.parse_args(input_args)
     else:
@@ -443,6 +452,9 @@ def parse_args(input_args=None):
     # Sanity checks
     if args.dataset_name is None and args.train_data_dir is None:
         raise ValueError("Need either a dataset name or a training folder.")
+
+    if args.p_drop_tags < 0 or 1 < args.p_drop_tags:
+        raise ValueError(f"p-drop-tags value {args.p_drop_tags} is not in range [0,1]")
 
     return args
 
@@ -893,6 +905,28 @@ def main(args):
         examples["original_sizes"] = original_sizes
         examples["crop_top_lefts"] = crop_top_lefts
         examples["pixel_values"] = all_images
+        # shuffle and drop tags if needed
+        captions = []
+        condition = lambda x: True
+        if args.p_drop_tags != 0:
+            # condition when keep an element
+            condition = lambda x: args.p_drop_tags < random.random()
+        for caption in examples[caption_column]:
+            if 0 < args.p_drop_tags or args.shuffle_tags:
+                caps = caption.split(',')
+                if args.shuffle_tags:
+                    random.shuffle(caps)
+                caps_drop = list(filter(condition, caps))
+                if len(caps_drop) == 0:
+                    caps_drop.append(caps[0])
+                captions.append(','.join(caps_drop))
+            else:
+                captions.append(caption)
+        logger.debug('old caption %s', examples[caption_column])
+        examples[caption_column] = captions
+        logger.debug('new caption %s', examples[caption_column])
+
+
         tokens_one, tokens_two = tokenize_captions(examples)
         examples["input_ids_one"] = tokens_one
         examples["input_ids_two"] = tokens_two
