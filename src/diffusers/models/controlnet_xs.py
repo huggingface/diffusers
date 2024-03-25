@@ -27,7 +27,15 @@ from .embeddings import (
     TimestepEmbedding,
 )
 from .modeling_utils import ModelMixin
-from .unets.unet_2d_blocks import Downsample2D, ResnetBlock2D, Transformer2DModel, UNetMidBlock2DCrossAttn, Upsample2D, CrossAttnDownBlock2D, CrossAttnUpBlock2D
+from .unets.unet_2d_blocks import (
+    CrossAttnDownBlock2D,
+    CrossAttnUpBlock2D,
+    Downsample2D,
+    ResnetBlock2D,
+    Transformer2DModel,
+    UNetMidBlock2DCrossAttn,
+    Upsample2D,
+)
 from .unets.unet_2d_condition import UNet2DConditionModel
 
 
@@ -144,58 +152,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
     """
 
     @staticmethod
-    def gather_base_subblock_sizes(blocks_sizes: List[int]):
-        """
-        To create a correctly sized `ControlNetXSAddon`, we need to know
-        the channels sizes of each base subblock.
-
-        Parameters:
-            blocks_sizes (`List[int]`):
-                Channel sizes of each base block.
-        """
-
-        n_blocks = len(blocks_sizes)
-        n_subblocks_per_block = 3
-
-        down_out = []
-        up_in = []
-
-        # down_out
-        for b in range(n_blocks):
-            for i in range(n_subblocks_per_block):
-                if b == n_blocks - 1 and i == 2:
-                    # Last block has no downsampler, so there are only 2 subblocks instead of 3
-                    continue
-
-                # The input channels are changed by the first resnet, which is in the first subblock.
-                if i == 0:
-                    # Same input channels
-                    down_out.append(blocks_sizes[max(b - 1, 0)])
-                else:
-                    # Changed input channels
-                    down_out.append(blocks_sizes[b])
-
-        down_out.append(blocks_sizes[-1])
-
-        # up_in
-        rev_blocks_sizes = list(reversed(blocks_sizes))
-        for b in range(len(rev_blocks_sizes)):
-            for i in range(n_subblocks_per_block):
-                # The input channels are changed by the first resnet, which is in the first subblock.
-                if i == 0:
-                    # Same input channels
-                    up_in.append(rev_blocks_sizes[max(b - 1, 0)])
-                else:
-                    # Changed input channels
-                    up_in.append(rev_blocks_sizes[b])
-
-        return {
-            "down - out": down_out,
-            "mid - out": blocks_sizes[-1],
-            "up - in": up_in,
-        }
-
-    @staticmethod
     def get_down_block(
         base_in_channels: int,
         base_out_channels: int,
@@ -210,7 +166,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         add_downsample: bool = True,
         upcast_attention: Optional[bool] = False,
     ):
-        num_layers = 2 # only support sd + sdxl
+        num_layers = 2  # only support sd + sdxl
 
         resnets = []
         attentions = []
@@ -230,7 +186,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
 
             resnets.append(
                 ResnetBlock2D(
-                    in_channels=ctrl_in_channels + base_in_channels, # information from base is concatted to ctrl
+                    in_channels=ctrl_in_channels + base_in_channels,  # information from base is concatted to ctrl
                     out_channels=ctrl_out_channels,
                     temb_channels=temb_channels,
                     groups=find_largest_factor(ctrl_in_channels + base_in_channels, max_factor=max_norm_num_groups),
@@ -262,7 +218,9 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             # Concat doesn't require change in number of channels
             base_to_ctrl.append(make_zero_conv(base_out_channels, base_out_channels))
 
-            downsamplers = Downsample2D(ctrl_out_channels + base_out_channels, use_conv=True, out_channels=ctrl_out_channels, name="op")
+            downsamplers = Downsample2D(
+                ctrl_out_channels + base_out_channels, use_conv=True, out_channels=ctrl_out_channels, name="op"
+            )
 
             # After the downsampler application, information is added from control to base
             # Addition requires change in number of channels
@@ -270,11 +228,13 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         else:
             downsamplers = None
 
-        module_dict = nn.ModuleDict({
-            "resnets": nn.ModuleList(resnets),
-            "base_to_ctrl": nn.ModuleList(base_to_ctrl),
-            "ctrl_to_base": nn.ModuleList(ctrl_to_base),
-        })
+        module_dict = nn.ModuleDict(
+            {
+                "resnets": nn.ModuleList(resnets),
+                "base_to_ctrl": nn.ModuleList(base_to_ctrl),
+                "ctrl_to_base": nn.ModuleList(ctrl_to_base),
+            }
+        )
         if has_crossattn:
             module_dict["attentions"] = nn.ModuleList(attentions)
         if downsamplers is not None:
@@ -292,7 +252,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         num_attention_heads: Optional[int] = 1,
         cross_attention_dim: Optional[int] = 1024,
         upcast_attention: bool = False,
-        ):
+    ):
         # Before the midblock application, information is concatted from base to control.
         # Concat doesn't require change in number of channels
         base_to_ctrl = make_zero_conv(base_channels, base_channels)
@@ -307,27 +267,23 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=num_attention_heads,
             use_linear_projection=True,
-            upcast_attention=upcast_attention
+            upcast_attention=upcast_attention,
         )
 
         # After the midblock application, information is added from control to base
         # Addition requires change in number of channels
         ctrl_to_base = make_zero_conv(ctrl_channels, base_channels)
 
-        return nn.ModuleDict({
-            "base_to_ctrl": base_to_ctrl,
-            "midblock": midblock,
-            "ctrl_to_base": ctrl_to_base
-        })
+        return nn.ModuleDict({"base_to_ctrl": base_to_ctrl, "midblock": midblock, "ctrl_to_base": ctrl_to_base})
 
     @staticmethod
     def get_up_connections(
         out_channels: int,
         prev_output_channel: int,
         ctrl_skip_channels: List[int],
-        ):
+    ):
         ctrl_to_base = []
-        num_layers = 3 # only support sd + sdxl
+        num_layers = 3  # only support sd + sdxl
         for i in range(num_layers):
             resnet_in_channels = prev_output_channel if i == 0 else out_channels
             ctrl_to_base.append(make_zero_conv(ctrl_skip_channels[i], resnet_in_channels))
@@ -337,15 +293,18 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
     @classmethod
     def from_unet(
         cls,
-        base_model: UNet2DConditionModel,
+        unet: UNet2DConditionModel,
         size_ratio: Optional[float] = None,
         block_out_channels: Optional[List[int]] = None,
         num_attention_heads: Optional[List[int]] = None,
         learn_time_embedding: bool = False,
         time_embedding_mix: int = 1.0,
+        conditioning_channels: int = 3,
+        conditioning_channel_order: str = "rgb",
         conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
     ):
         r"""
+        todo umer
         Instantiate a [`ControlNetXSAddon`] from a [`UNet2DConditionModel`].
 
         Parameters:
@@ -372,34 +331,35 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 "Pass exactly one of `block_out_channels` (for absolute sizing) or `size_ratio` (for relative sizing)."
             )
 
-        channels_base = ControlNetXSAddon.gather_base_subblock_sizes(base_model.config.block_out_channels)
-
-        block_out_channels = [int(b * size_ratio) for b in base_model.config.block_out_channels]
+        # Create model
+        block_out_channels = block_out_channels or [int(b * size_ratio) for b in unet.config.block_out_channels]
         if num_attention_heads is None:
             # The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
-            num_attention_heads = base_model.config.attention_head_dim
+            num_attention_heads = unet.config.attention_head_dim
 
-        max_norm_num_groups = base_model.config.norm_num_groups
-
-        time_embedding_input_dim = base_model.time_embedding.linear_1.in_features
-        time_embedding_dim = base_model.time_embedding.linear_1.out_features
-
-        return ControlNetXSAddon(
-            learn_time_embedding=learn_time_embedding,
-            channels_base=channels_base,
-            attention_head_dim=num_attention_heads,
-            block_out_channels=block_out_channels,
-            cross_attention_dim=base_model.config.cross_attention_dim,
-            down_block_types=base_model.config.down_block_types,
-            sample_size=base_model.config.sample_size,
-            transformer_layers_per_block=base_model.config.transformer_layers_per_block,
-            upcast_attention=base_model.config.upcast_attention,
-            max_norm_num_groups=max_norm_num_groups,
-            conditioning_embedding_out_channels=conditioning_embedding_out_channels,
-            time_embedding_input_dim=time_embedding_input_dim,
-            time_embedding_dim=time_embedding_dim,
-            time_embedding_mix=time_embedding_mix,
+        model = cls(
+            conditioning_channels = conditioning_channels,
+            conditioning_channel_order = conditioning_channel_order,
+            conditioning_embedding_out_channels = conditioning_embedding_out_channels,
+            time_embedding_input_dim = unet.time_embedding.linear_1.in_features,
+            time_embedding_dim = unet.time_embedding.linear_1.out_features,
+            time_embedding_mix = time_embedding_mix,
+            learn_time_embedding = learn_time_embedding,
+            attention_head_dim = num_attention_heads,
+            block_out_channels = block_out_channels,
+            base_block_out_channels = unet.config.block_out_channels,
+            cross_attention_dim = unet.config.cross_attention_dim,
+            down_block_types = unet.config.down_block_types,
+            sample_size = unet.config.sample_size,
+            transformer_layers_per_block = unet.config.transformer_layers_per_block,
+            upcast_attention = unet.config.upcast_attention,
+            max_norm_num_groups = unet.config.norm_num_groups,
         )
+
+        # ensure that the ControlNetXSAddon is the same dtype as the UNet2DConditionModel
+        model.to(unet.dtype)
+
+        return model
 
     @register_to_config
     def __init__(
@@ -446,9 +406,13 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
             )
 
-        transformer_layers_per_block = repeat_if_not_list(transformer_layers_per_block, repetitions=len(down_block_types))
+        transformer_layers_per_block = repeat_if_not_list(
+            transformer_layers_per_block, repetitions=len(down_block_types)
+        )
         cross_attention_dim = repeat_if_not_list(cross_attention_dim, repetitions=len(down_block_types))
-        num_attention_heads = repeat_if_not_list(num_attention_heads, repetitions=len(down_block_types)) # todo umer: im using # attn heads & dim attn heads. should only be one.
+        num_attention_heads = repeat_if_not_list(
+            num_attention_heads, repetitions=len(down_block_types)
+        )  # todo umer: im using # attn heads & dim attn heads. should only be one.
         attention_head_dim = repeat_if_not_list(attention_head_dim, repetitions=len(down_block_types))
 
         if len(num_attention_heads) != len(down_block_types):
@@ -492,39 +456,43 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             ctrl_in_channels = ctrl_out_channels
             ctrl_out_channels = block_out_channels[i]
             has_crossattn = "CrossAttn" in down_block_type
-            is_final_block = i==len(down_block_types)-1
+            is_final_block = i == len(down_block_types) - 1
 
-            self.down_blocks.append(ControlNetXSAddon.get_down_block(
-                base_in_channels = base_in_channels,
-                base_out_channels = base_out_channels,
-                ctrl_in_channels = ctrl_in_channels,
-                ctrl_out_channels = ctrl_out_channels,
-                temb_channels = time_embedding_dim,
-                max_norm_num_groups = max_norm_num_groups,
-                has_crossattn = has_crossattn,
-                transformer_layers_per_block = transformer_layers_per_block[i],
-                num_attention_heads = attention_head_dim[i],
-                cross_attention_dim = cross_attention_dim[i],
-                add_downsample = not is_final_block,
-                upcast_attention = upcast_attention
-            ))
+            self.down_blocks.append(
+                ControlNetXSAddon.get_down_block(
+                    base_in_channels=base_in_channels,
+                    base_out_channels=base_out_channels,
+                    ctrl_in_channels=ctrl_in_channels,
+                    ctrl_out_channels=ctrl_out_channels,
+                    temb_channels=time_embedding_dim,
+                    max_norm_num_groups=max_norm_num_groups,
+                    has_crossattn=has_crossattn,
+                    transformer_layers_per_block=transformer_layers_per_block[i],
+                    num_attention_heads=attention_head_dim[i],
+                    cross_attention_dim=cross_attention_dim[i],
+                    add_downsample=not is_final_block,
+                    upcast_attention=upcast_attention,
+                )
+            )
 
         # mid
         self.mid_block = ControlNetXSAddon.get_mid_block(
             base_channels=base_block_out_channels[-1],
             ctrl_channels=block_out_channels[-1],
-            temb_channels = time_embedding_dim,
-            transformer_layers_per_block = transformer_layers_per_block[-1],
-            num_attention_heads = attention_head_dim[-1],
-            cross_attention_dim = cross_attention_dim[-1],
-            upcast_attention = upcast_attention,
+            temb_channels=time_embedding_dim,
+            transformer_layers_per_block=transformer_layers_per_block[-1],
+            num_attention_heads=attention_head_dim[-1],
+            cross_attention_dim=cross_attention_dim[-1],
+            upcast_attention=upcast_attention,
         )
 
         # up
         # The skip connection channels are the output of the conv_in and of all the down subblocks
         ctrl_skip_channels = [block_out_channels[0]]
         for i, out_channels in enumerate(block_out_channels):
-            number_of_subblocks = 3 if i<len(block_out_channels)-1 else 2  # every block has 3 subblocks, except last one, which has 2 as it has no downsampler
+            number_of_subblocks = (
+                3 if i < len(block_out_channels) - 1 else 2
+            )  # every block has 3 subblocks, except last one, which has 2 as it has no downsampler
             ctrl_skip_channels.extend([out_channels] * number_of_subblocks)
 
         reversed_base_block_out_channels = list(reversed(base_block_out_channels))
@@ -535,11 +503,13 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             base_out_channels = reversed_base_block_out_channels[i]
             ctrl_skip_channels_ = [ctrl_skip_channels.pop() for _ in range(3)]
 
-            self.up_connections.append(ControlNetXSAddon.get_up_connections(
-                out_channels = base_out_channels,
-                prev_output_channel = prev_base_output_channel,
-                ctrl_skip_channels = ctrl_skip_channels_,
-            ))
+            self.up_connections.append(
+                ControlNetXSAddon.get_up_connections(
+                    out_channels=base_out_channels,
+                    prev_output_channel=prev_base_output_channel,
+                    ctrl_skip_channels=ctrl_skip_channels_,
+                )
+            )
 
     def forward(self, *args, **kwargs):
         raise ValueError(
@@ -612,7 +582,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         ctrl_conditioning_channel_order: str = "rgb",
         ctrl_learn_time_embedding: bool = False,
         ctrl_block_out_channels: Tuple[int] = (4, 8, 16, 16),
-        ctrl_attention_head_dim: Union[int, Tuple[int]] = 4, # todo umer: # attn heads or dim attn heads?
+        ctrl_attention_head_dim: Union[int, Tuple[int]] = 4,  # todo umer: # attn heads or dim attn heads?
         ctrl_max_norm_num_groups: int = 32,
     ):
         super().__init__()
@@ -624,7 +594,9 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                 "To use `time_embedding_mix` < 1, initialize `ctrl_addon` with `learn_time_embedding = True`"
             )
 
-        transformer_layers_per_block = repeat_if_not_list(transformer_layers_per_block, repetitions=len(down_block_types))
+        transformer_layers_per_block = repeat_if_not_list(
+            transformer_layers_per_block, repetitions=len(down_block_types)
+        )
         cross_attention_dim = repeat_if_not_list(cross_attention_dim, repetitions=len(down_block_types))
         base_num_attention_heads = repeat_if_not_list(num_attention_heads, repetitions=len(down_block_types))
         ctrl_attention_head_dim = repeat_if_not_list(ctrl_attention_head_dim, repetitions=len(down_block_types))
@@ -660,7 +632,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         self.base_add_embedding = base_model.add_embedding if hasattr(base_model, "add_embedding") else None
 
         self.base_conv_in = base_model.conv_in
-        self.base_mid_block = base_model.mid_block
         self.base_conv_norm_out = base_model.conv_norm_out
         self.base_conv_act = base_model.conv_act
         self.base_conv_out = base_model.conv_out
@@ -687,34 +658,36 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             ctrl_in_channels = ctrl_out_channels
             ctrl_out_channels = ctrl_block_out_channels[i]
             has_crossattn = "CrossAttn" in down_block_type
-            is_final_block = i==len(down_block_types)-1
+            is_final_block = i == len(down_block_types) - 1
 
-            down_blocks.append(ControlNetXSCrossAttnDownBlock2D(
-                base_in_channels = base_in_channels,
-                base_out_channels = base_out_channels,
-                ctrl_in_channels = ctrl_in_channels,
-                ctrl_out_channels = ctrl_out_channels,
-                temb_channels = time_embed_dim,
-                max_norm_num_groups = ctrl_max_norm_num_groups,
-                has_crossattn = has_crossattn,
-                transformer_layers_per_block = transformer_layers_per_block[i],
-                base_num_attention_heads = base_num_attention_heads[i],
-                ctrl_num_attention_heads = ctrl_attention_head_dim[i],
-                cross_attention_dim = cross_attention_dim[i],
-                add_downsample = not is_final_block,
-                upcast_attention = upcast_attention
-            ))
+            down_blocks.append(
+                ControlNetXSCrossAttnDownBlock2D(
+                    base_in_channels=base_in_channels,
+                    base_out_channels=base_out_channels,
+                    ctrl_in_channels=ctrl_in_channels,
+                    ctrl_out_channels=ctrl_out_channels,
+                    temb_channels=time_embed_dim,
+                    max_norm_num_groups=ctrl_max_norm_num_groups,
+                    has_crossattn=has_crossattn,
+                    transformer_layers_per_block=transformer_layers_per_block[i],
+                    base_num_attention_heads=base_num_attention_heads[i],
+                    ctrl_num_attention_heads=ctrl_attention_head_dim[i],
+                    cross_attention_dim=cross_attention_dim[i],
+                    add_downsample=not is_final_block,
+                    upcast_attention=upcast_attention,
+                )
+            )
 
         # # Create mid block
         self.mid_block = ControlNetXSCrossAttnMidBlock2D(
             base_channels=block_out_channels[-1],
             ctrl_channels=ctrl_block_out_channels[-1],
-            temb_channels = time_embed_dim,
-            transformer_layers_per_block = transformer_layers_per_block[-1],
-            base_num_attention_heads = base_num_attention_heads[-1],
-            ctrl_num_attention_heads = ctrl_attention_head_dim[-1],
-            cross_attention_dim = cross_attention_dim[-1],
-            upcast_attention = upcast_attention,
+            temb_channels=time_embed_dim,
+            transformer_layers_per_block=transformer_layers_per_block[-1],
+            base_num_attention_heads=base_num_attention_heads[-1],
+            ctrl_num_attention_heads=ctrl_attention_head_dim[-1],
+            cross_attention_dim=cross_attention_dim[-1],
+            upcast_attention=upcast_attention,
         )
 
         # # Create up blocks
@@ -725,7 +698,9 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         # The skip connection channels are the output of the conv_in and of all the down subblocks
         ctrl_skip_channels = [ctrl_block_out_channels[0]]
         for i, out_channels in enumerate(ctrl_block_out_channels):
-            number_of_subblocks = 3 if i<len(ctrl_block_out_channels)-1 else 2  # every block has 3 subblocks, except last one, which has 2 as it has no downsampler
+            number_of_subblocks = (
+                3 if i < len(ctrl_block_out_channels) - 1 else 2
+            )  # every block has 3 subblocks, except last one, which has 2 as it has no downsampler
             ctrl_skip_channels.extend([out_channels] * number_of_subblocks)
 
         reversed_block_out_channels = list(reversed(block_out_channels))
@@ -740,34 +715,41 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             has_crossattn = "CrossAttn" in up_block_type
             is_final_block = i == len(block_out_channels) - 1
 
-            up_blocks.append(ControlNetXSCrossAttnUpBlock2D(
-                in_channels = in_channels,
-                out_channels = out_channels,
-                prev_output_channel = prev_output_channel,
-                ctrl_skip_channels = ctrl_skip_channels_,
-                temb_channels = time_embed_dim,
-                has_crossattn = has_crossattn,
-                transformer_layers_per_block = rev_transformer_layers_per_block[-1],
-                num_attention_heads = rev_num_attention_heads[-1],
-                cross_attention_dim = rev_cross_attention_dim[-1],
-                add_upsample = not is_final_block,
-                upcast_attention = upcast_attention,
-            ))
+            up_blocks.append(
+                ControlNetXSCrossAttnUpBlock2D(
+                    in_channels=in_channels,
+                    out_channels=out_channels,
+                    prev_output_channel=prev_output_channel,
+                    ctrl_skip_channels=ctrl_skip_channels_,
+                    temb_channels=time_embed_dim,
+                    has_crossattn=has_crossattn,
+                    transformer_layers_per_block=rev_transformer_layers_per_block[-1],
+                    num_attention_heads=rev_num_attention_heads[-1],
+                    cross_attention_dim=rev_cross_attention_dim[-1],
+                    add_upsample=not is_final_block,
+                    upcast_attention=upcast_attention,
+                )
+            )
 
         self.down_blocks = nn.ModuleList(down_blocks)
         self.up_blocks = nn.ModuleList(up_blocks)
 
     @classmethod
-    def from_unet2d(
+    def from_unet(
         cls,
         unet: UNet2DConditionModel,
-        controlnet: ControlNetXSAddon,
-        load_weights: bool = True,
+        controlnet: Optional[ControlNetXSAddon]  = None,
+        size_ratio: Optional[float] = None,
+        ctrl_block_out_channels: Optional[List[float]] = None,
+        time_embedding_mix: Optional[float] = 1.0,
+        # todo umer: pass kwargs to ctrlnet
     ):
-        # Create config for UNetControlNetXSModel object
-        config = {}
-        config["_class_name"] = cls.__name__
+        # # validate input
 
+        if controlnet is None:
+            controlnet = ControlNetXSAddon.from_unet(unet, size_ratio, ctrl_block_out_channels)
+
+        # # get params
         params_for_unet = [
             "sample_size",
             "down_block_types",
@@ -780,13 +762,12 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             "addition_embed_type",
             "addition_time_embed_dim",
             "upcast_attention",
-            "time_embedding_dim",
             "time_cond_proj_dim",
             "projection_class_embeddings_input_dim",
         ]
-        config.update({k: v for k, v in unet.config.items() if k in params_for_unet})
+        params_for_unet = {k: v for k, v in unet.config.items() if k in params_for_unet}
         # The naming seems a bit confusing and it is, see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why.
-        config["num_attention_heads"] = unet.config.attention_head_dim
+        params_for_unet["num_attention_heads"] = unet.config.attention_head_dim
 
         params_for_controlnet = [
             "conditioning_channels",
@@ -797,44 +778,43 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             "attention_head_dim",
             "max_norm_num_groups",
         ]
-        config.update({"ctrl_" + k: v for k, v in controlnet.config.items() if k in params_for_controlnet})
+        params_for_controlnet = {"ctrl_" + k: v for k, v in controlnet.config.items() if k in params_for_controlnet}
+        params_for_controlnet["time_embedding_mix"] = time_embedding_mix
 
-        model = cls.from_config(config)
+        # # create model
+        model = cls.from_config({**params_for_unet, **params_for_controlnet})
 
-        if not load_weights:
-            return model
-
-        # Load params
+        # # load weights
+        # from unet
         modules_from_unet = [
-            "time_proj",
-            "time_embedding",
-            "conv_in",
-            "mid_block",
-            "conv_norm_out",
-            "conv_act",
-            "conv_out",
+            'time_embedding',
+            'conv_in',
+            'conv_norm_out',
+            'conv_out',
         ]
         for m in modules_from_unet:
-            getattr(model, "base_" + m).load_state_dict(getattr(unet, m).state_dict())
+            getattr(model, 'base_' + m).load_state_dict(getattr(unet, m).state_dict())
 
-        optional_modules_from_unet = ["class_embedding"]
-        for m in optional_modules_from_unet:
-            module = getattr(model, "base_" + m)
-            if module is not None:
-                module.load_state_dict(getattr(unet, m).state_dict())
-
-        sdxl_specific_modules_from_unet = [
-            "add_time_proj",
-            "add_embedding",
+        optional_modules_from_unet = [
+            'class_embedding',
+            'add_time_proj',
+            'add_embedding',
         ]
-        if hasattr(unet, sdxl_specific_modules_from_unet[0]):
-            # if the UNet has any of the sdxl-specific components, it is an sdxl and has all of them
-            for m in sdxl_specific_modules_from_unet:
-                getattr(model, "base_" + m).load_state_dict(getattr(unet, m).state_dict())
+        for m in optional_modules_from_unet:
+            if hasattr(unet, m) and getattr(unet, m) is not None:
+                getattr(model, 'base_' + m).load_state_dict(getattr(unet, m).state_dict())
 
-        model.base_down_subblocks, model.base_up_subblocks = UNetControlNetXSModel._unet_to_subblocks(unet)
+        # from controlnet
+        model.controlnet_cond_embedding.load_state_dict(controlnet.controlnet_cond_embedding.state_dict())
+        model.ctrl_conv_in.load_state_dict(controlnet.conv_in.state_dict())
+        if controlnet.time_embedding is not None:
+            model.ctrl_time_embedding.load_state_dict(controlnet.time_embedding.state_dict())
+        model.control_to_base_for_conv_in.load_state_dict(controlnet.control_to_base_for_conv_in.state_dict())
 
-        model.control_addon.load_state_dict(controlnet.state_dict())
+        # from both
+        model.down_blocks = nn.ModuleList(ControlNetXSCrossAttnDownBlock2D.from_modules(b,c) for b,c in zip(unet.down_blocks, controlnet.down_blocks))
+        model.mid_block = ControlNetXSCrossAttnMidBlock2D.from_modules(unet.mid_block, controlnet.mid_block)
+        model.up_blocks = nn.ModuleList(ControlNetXSCrossAttnUpBlock2D.from_modules(b,c) for b,c in zip(unet.up_blocks, controlnet.up_connections))
 
         # ensure that the UNetControlNetXSModel is the same dtype as the UNet2DConditionModel
         model.to(unet.dtype)
@@ -952,7 +932,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         # there might be better ways to encapsulate this.
         t_emb = t_emb.to(dtype=sample.dtype)
 
-        if self.config.ctrl_learn_time_embedding:
+        if self.config.ctrl_learn_time_embedding and do_control:
             ctrl_temb = self.ctrl_time_embedding(t_emb, timestep_cond)
             base_temb = self.base_time_embedding(t_emb, timestep_cond)
             interpolation_param = self.config.time_embedding_mix**0.3
@@ -1016,18 +996,37 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         h_ctrl = self.ctrl_conv_in(h_ctrl)
         if guided_hint is not None:
             h_ctrl += guided_hint
-        h_base = h_base + self.control_to_base_for_conv_in(h_ctrl) * conditioning_scale  # add ctrl -> base
+        if do_control:
+            h_base = h_base + self.control_to_base_for_conv_in(h_ctrl) * conditioning_scale  # add ctrl -> base
 
         hs_base.append(h_base)
         hs_ctrl.append(h_ctrl)
 
         for down in self.down_blocks:
-            h_base,h_ctrl,residual_hb,residual_hc = down(h_base,h_ctrl, temb, cemb, conditioning_scale, cross_attention_kwargs, attention_mask)
+            h_base, h_ctrl, residual_hb, residual_hc = down(
+                hidden_states_base=h_base,
+                hidden_states_ctrl=h_ctrl,
+                temb=temb,
+                encoder_hidden_states=cemb,
+                conditioning_scale=conditioning_scale,
+                cross_attention_kwargs=cross_attention_kwargs,
+                attention_mask=attention_mask,
+                do_control=do_control
+            )
             hs_base.extend(residual_hb)
             hs_ctrl.extend(residual_hc)
 
         # 2 - mid
-        h_base,h_ctrl = self.mid_block(h_base,h_ctrl, temb, cemb, conditioning_scale, cross_attention_kwargs, attention_mask)
+        h_base, h_ctrl = self.mid_block(
+            hidden_states_base=h_base,
+            hidden_states_ctrl=h_ctrl,
+            temb=temb,
+            encoder_hidden_states=cemb,
+            conditioning_scale=conditioning_scale,
+            cross_attention_kwargs=cross_attention_kwargs,
+            attention_mask=attention_mask,
+            do_control=do_control
+        )
 
         # 3 - up
         for up in self.up_blocks:
@@ -1036,7 +1035,17 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             skips_hc = hs_ctrl[-n_resnets:]
             hs_base = hs_base[:-n_resnets]
             hs_ctrl = hs_ctrl[:-n_resnets]
-            h_base = up(h_base,skips_hb,skips_hc,temb, cemb, conditioning_scale, cross_attention_kwargs, attention_mask)
+            h_base = up(
+                hidden_states=h_base,
+                res_hidden_states_tuple_base= skips_hb,
+                res_hidden_states_tuple_ctrl=skips_hc,
+                temb= temb,
+                encoder_hidden_states=cemb,
+                conditioning_scale= conditioning_scale,
+                cross_attention_kwargs= cross_attention_kwargs,
+                attention_mask= attention_mask,
+                do_control=do_control
+            )
 
         # 4 - conv out
         h_base = self.base_conv_norm_out(h_base)
@@ -1069,12 +1078,12 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         super().__init__()
         base_resnets = []
         base_attentions = []
-        ctrl_resnets =[]
+        ctrl_resnets = []
         ctrl_attentions = []
         ctrl_to_base = []
         base_to_ctrl = []
 
-        num_layers = 2 # only support sd + sdxl
+        num_layers = 2  # only support sd + sdxl
 
         if isinstance(transformer_layers_per_block, int):
             transformer_layers_per_block = [transformer_layers_per_block] * num_layers
@@ -1096,7 +1105,7 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
             )
             ctrl_resnets.append(
                 ResnetBlock2D(
-                    in_channels=ctrl_in_channels + base_in_channels, # information from base is concatted to ctrl
+                    in_channels=ctrl_in_channels + base_in_channels,  # information from base is concatted to ctrl
                     out_channels=ctrl_out_channels,
                     temb_channels=temb_channels,
                     groups=find_largest_factor(ctrl_in_channels + base_in_channels, max_factor=max_norm_num_groups),
@@ -1108,13 +1117,13 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
             if has_crossattn:
                 base_attentions.append(
                     Transformer2DModel(
-                            base_num_attention_heads,
-                            base_out_channels // base_num_attention_heads,
-                            in_channels=base_out_channels,
-                            num_layers=transformer_layers_per_block[i],
-                            cross_attention_dim=cross_attention_dim,
-                            use_linear_projection=True,
-                            upcast_attention=upcast_attention,
+                        base_num_attention_heads,
+                        base_out_channels // base_num_attention_heads,
+                        in_channels=base_out_channels,
+                        num_layers=transformer_layers_per_block[i],
+                        cross_attention_dim=cross_attention_dim,
+                        use_linear_projection=True,
+                        upcast_attention=upcast_attention,
                     )
                 )
                 ctrl_attentions.append(
@@ -1139,8 +1148,12 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
             # Concat doesn't require change in number of channels
             base_to_ctrl.append(make_zero_conv(base_out_channels, base_out_channels))
 
-            self.base_downsamplers = Downsample2D(base_out_channels, use_conv=True, out_channels=base_out_channels, name="op")
-            self.ctrl_downsamplers = Downsample2D(ctrl_out_channels + base_out_channels, use_conv=True, out_channels=ctrl_out_channels, name="op")
+            self.base_downsamplers = Downsample2D(
+                base_out_channels, use_conv=True, out_channels=base_out_channels, name="op"
+            )
+            self.ctrl_downsamplers = Downsample2D(
+                ctrl_out_channels + base_out_channels, use_conv=True, out_channels=ctrl_out_channels, name="op"
+            )
 
             # After the downsampler application, information is added from control to base
             # Addition requires change in number of channels
@@ -1151,32 +1164,30 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
         self.base_resnets = nn.ModuleList(base_resnets)
         self.ctrl_resnets = nn.ModuleList(ctrl_resnets)
-        self.base_attentions = nn.ModuleList(base_attentions) if has_crossattn else [None]*num_layers
-        self.ctrl_attentions = nn.ModuleList(ctrl_attentions) if has_crossattn else [None]*num_layers
+        self.base_attentions = nn.ModuleList(base_attentions) if has_crossattn else [None] * num_layers
+        self.ctrl_attentions = nn.ModuleList(ctrl_attentions) if has_crossattn else [None] * num_layers
         self.base_to_ctrl = nn.ModuleList(base_to_ctrl)
         self.ctrl_to_base = nn.ModuleList(ctrl_to_base)
 
         self.gradient_checkpointing = False
 
     @classmethod
-    def from_modules(
-        cls,
-        base_downblock: CrossAttnDownBlock2D,
-        ctrl_downblock: nn.ModuleDict
-    ):
+    def from_modules(cls, base_downblock: CrossAttnDownBlock2D, ctrl_downblock: nn.ModuleDict):
         # get params
         def get_first_cross_attention(block):
-             return block.attentions[0].transformer_blocks[0].attn2
+            return block.attentions[0].transformer_blocks[0].attn2
 
         base_in_channels = base_downblock.resnets[0].in_channels
         base_out_channels = base_downblock.resnets[0].out_channels
-        ctrl_in_channels = ctrl_downblock["resnets"][0].in_channels - base_in_channels # base channels are concatted to ctrl channels in init
+        ctrl_in_channels = (
+            ctrl_downblock["resnets"][0].in_channels - base_in_channels
+        )  # base channels are concatted to ctrl channels in init
         ctrl_out_channels = ctrl_downblock["resnets"][0].out_channels
         temb_channels = base_downblock.resnets[0].time_emb_proj.in_features
         num_groups = ctrl_downblock["resnets"][0].norm1.num_groups
         if hasattr(base_downblock, "attentions"):
             has_crossattn = True
-            transformer_layers_per_block = len(base_downblock.attentions)
+            transformer_layers_per_block = len(base_downblock.attentions[0].transformer_blocks)
             base_num_attention_heads = get_first_cross_attention(base_downblock).heads
             ctrl_num_attention_heads = get_first_cross_attention(ctrl_downblock).heads
             cross_attention_dim = get_first_cross_attention(base_downblock).cross_attention_dim
@@ -1192,19 +1203,19 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
         # create model
         model = cls(
-            base_in_channels = base_in_channels,
-            base_out_channels = base_out_channels,
-            ctrl_in_channels = ctrl_in_channels,
-            ctrl_out_channels = ctrl_out_channels,
-            temb_channels = temb_channels,
-            max_norm_num_groups = num_groups,
+            base_in_channels=base_in_channels,
+            base_out_channels=base_out_channels,
+            ctrl_in_channels=ctrl_in_channels,
+            ctrl_out_channels=ctrl_out_channels,
+            temb_channels=temb_channels,
+            max_norm_num_groups=num_groups,
             has_crossattn=has_crossattn,
-            transformer_layers_per_block = transformer_layers_per_block,
-            base_num_attention_heads = base_num_attention_heads,
-            ctrl_num_attention_heads = ctrl_num_attention_heads,
-            cross_attention_dim = cross_attention_dim,
-            add_downsample = add_downsample,
-            upcast_attention = upcast_attention,
+            transformer_layers_per_block=transformer_layers_per_block,
+            base_num_attention_heads=base_num_attention_heads,
+            ctrl_num_attention_heads=ctrl_num_attention_heads,
+            cross_attention_dim=cross_attention_dim,
+            add_downsample=add_downsample,
+            upcast_attention=upcast_attention,
         )
 
         # # load weights
@@ -1224,14 +1235,15 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
     def forward(
         self,
         hidden_states_base: torch.FloatTensor,
-        hidden_states_ctrl: torch.FloatTensor,
         temb: torch.FloatTensor,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states_ctrl: Optional[torch.FloatTensor] = None,
         conditioning_scale: Optional[float] = 1.0,
         attention_mask: Optional[torch.FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]: # todo umer: output type hint correct?
+        do_control: bool = True,
+    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:  # todo umer: output type hint correct?
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1245,12 +1257,15 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         base_blocks = list(zip(self.base_resnets, self.base_attentions))
         ctrl_blocks = list(zip(self.ctrl_resnets, self.ctrl_attentions))
 
-        for (b_res, b_attn), (c_res, c_attn), b2c, c2b in zip(base_blocks, ctrl_blocks, self.base_to_ctrl, self.ctrl_to_base):
+        for (b_res, b_attn), (c_res, c_attn), b2c, c2b in zip(
+            base_blocks, ctrl_blocks, self.base_to_ctrl, self.ctrl_to_base
+        ):
             if self.training and self.gradient_checkpointing:
                 raise NotImplementedError("todo umer")
             else:
                 # concat base -> ctrl
-                h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
+                if do_control:
+                    h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
 
                 # apply base subblock
                 h_base = b_res(h_base, temb)
@@ -1265,19 +1280,21 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                     )[0]
 
                 # apply ctrl subblock
-                h_ctrl = c_res(h_ctrl, temb)
-                if c_attn is not None:
-                    h_ctrl = c_attn(
-                        h_ctrl,
-                        encoder_hidden_states=encoder_hidden_states,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        attention_mask=attention_mask,
-                        encoder_attention_mask=encoder_attention_mask,
-                        return_dict=False,
-                    )[0]
+                if do_control:
+                    h_ctrl = c_res(h_ctrl, temb)
+                    if c_attn is not None:
+                        h_ctrl = c_attn(
+                            h_ctrl,
+                            encoder_hidden_states=encoder_hidden_states,
+                            cross_attention_kwargs=cross_attention_kwargs,
+                            attention_mask=attention_mask,
+                            encoder_attention_mask=encoder_attention_mask,
+                            return_dict=False,
+                        )[0]
 
                 # add ctrl -> base
-                h_base = h_base + c2b(h_ctrl) * conditioning_scale
+                if do_control:
+                    h_base = h_base + c2b(h_ctrl) * conditioning_scale
 
             base_output_states = base_output_states + (h_base,)
             ctrl_output_states = ctrl_output_states + (h_ctrl,)
@@ -1287,18 +1304,21 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
             c2b = self.ctrl_to_base[-1]
 
             # concat base -> ctrl
-            h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
+            if do_control:
+                h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
             # apply base subblock
             h_base = self.base_downsamplers(h_base)
             # apply ctrl subblock
-            h_ctrl = self.ctrl_downsamplers(h_ctrl)
+            if do_control:
+                h_ctrl = self.ctrl_downsamplers(h_ctrl)
             # add ctrl -> base
-            h_base = h_base + c2b(h_ctrl) * conditioning_scale
+            if do_control:
+                h_base = h_base + c2b(h_ctrl) * conditioning_scale
 
             base_output_states = base_output_states + (h_base,)
             ctrl_output_states = ctrl_output_states + (h_ctrl,)
 
-        return h_base, h_ctrl,base_output_states, ctrl_output_states
+        return h_base, h_ctrl, base_output_states, ctrl_output_states
 
 
 class ControlNetXSCrossAttnMidBlock2D(nn.Module):
@@ -1327,7 +1347,7 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=base_num_attention_heads,
             use_linear_projection=True,
-            upcast_attention=upcast_attention
+            upcast_attention=upcast_attention,
         )
 
         self.ctrl_midblock = UNetMidBlock2DCrossAttn(
@@ -1340,7 +1360,7 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
             cross_attention_dim=cross_attention_dim,
             num_attention_heads=ctrl_num_attention_heads,
             use_linear_projection=True,
-            upcast_attention=upcast_attention
+            upcast_attention=upcast_attention,
         )
 
         # After the midblock application, information is added from control to base
@@ -1352,19 +1372,20 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
     @classmethod
     def from_modules(
         cls,
-        base_to_ctrl: nn.Conv2d,
         base_midblock: UNetMidBlock2DCrossAttn,
-        ctrl_midblock: UNetMidBlock2DCrossAttn,
-        ctrl_to_base: nn.Conv2d
-
+        ctrl_midblock_dict: nn.ModuleDict,
     ):
+        base_to_ctrl = ctrl_midblock_dict["base_to_ctrl"]
+        ctrl_to_base = ctrl_midblock_dict["ctrl_to_base"]
+        ctrl_midblock = ctrl_midblock_dict["midblock"]
+
         # get params
         def get_first_cross_attention(midblock):
             return midblock.attentions[0].transformer_blocks[0].attn2
 
         base_channels = ctrl_to_base.out_channels
-        ctrl_channels  = ctrl_to_base.in_channels
-        transformer_layers_per_block = len(base_midblock.attentions)
+        ctrl_channels = ctrl_to_base.in_channels
+        transformer_layers_per_block = len(base_midblock.attentions[0].transformer_blocks)
         temb_channels = base_midblock.resnets[0].time_emb_proj.in_features
         num_groups = ctrl_midblock.resnets[0].norm1.num_groups
         base_num_attention_heads = get_first_cross_attention(base_midblock).heads
@@ -1377,12 +1398,12 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
             base_channels=base_channels,
             ctrl_channels=ctrl_channels,
             temb_channels=temb_channels,
-            max_norm_num_groups = num_groups,
-            transformer_layers_per_block = transformer_layers_per_block,
-            base_num_attention_heads = base_num_attention_heads,
-            ctrl_num_attention_heads = ctrl_num_attention_heads,
-            cross_attention_dim = cross_attention_dim,
-            upcast_attention = upcast_attention,
+            max_norm_num_groups=num_groups,
+            transformer_layers_per_block=transformer_layers_per_block,
+            base_num_attention_heads=base_num_attention_heads,
+            ctrl_num_attention_heads=ctrl_num_attention_heads,
+            cross_attention_dim=cross_attention_dim,
+            upcast_attention=upcast_attention,
         )
 
         # load weights
@@ -1396,14 +1417,15 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
     def forward(
         self,
         hidden_states_base: torch.FloatTensor,
-        hidden_states_ctrl: torch.FloatTensor,
         temb: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor = None,
+        encoder_hidden_states: torch.FloatTensor,
+        hidden_states_ctrl: Optional[torch.FloatTensor] = None,
         conditioning_scale: Optional[float] = 1.0,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor: # todo umer: output type hint correct?
+        do_control: bool = True,
+    ) -> torch.FloatTensor:  # todo umer: output type hint correct?
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1419,10 +1441,12 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
             "encoder_attention_mask": encoder_attention_mask,
         }
 
-        h_ctrl = torch.cat([h_ctrl, self.base_to_ctrl(h_base)], dim=1)  # concat base -> ctrl
+        if do_control:
+            h_ctrl = torch.cat([h_ctrl, self.base_to_ctrl(h_base)], dim=1)  # concat base -> ctrl
         h_base = self.base_midblock(h_base, **joint_args)  # apply base mid block
-        h_ctrl = self.ctrl_midblock(h_ctrl, **joint_args)  # apply ctrl mid block
-        h_base = h_base + self.ctrl_to_base(h_ctrl) * conditioning_scale  # add ctrl -> base
+        if do_control:
+            h_ctrl = self.ctrl_midblock(h_ctrl, **joint_args)  # apply ctrl mid block
+            h_base = h_base + self.ctrl_to_base(h_ctrl) * conditioning_scale  # add ctrl -> base
 
         return h_base, h_ctrl
 
@@ -1447,7 +1471,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         attentions = []
         ctrl_to_base = []
 
-        num_layers = 3 # only support sd + sdxl
+        num_layers = 3  # only support sd + sdxl
 
         self.has_cross_attention = has_crossattn
         self.num_attention_heads = num_attention_heads
@@ -1483,7 +1507,7 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
                 )
 
         self.resnets = nn.ModuleList(resnets)
-        self.attentions = nn.ModuleList(attentions) if has_crossattn else [None]*num_layers
+        self.attentions = nn.ModuleList(attentions) if has_crossattn else [None] * num_layers
         self.ctrl_to_base = nn.ModuleList(ctrl_to_base)
 
         if add_upsample:
@@ -1494,24 +1518,19 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         self.gradient_checkpointing = False
 
     @classmethod
-    def from_modules(
-        cls,
-        base_upblock: CrossAttnUpBlock2D,
-        ctrl_to_base_skip_connections: nn.ModuleList
-    ):
+    def from_modules(cls, base_upblock: CrossAttnUpBlock2D, ctrl_to_base_skip_connections: nn.ModuleList):
         # get params
         def get_first_cross_attention(block):
-             return block.attentions[0].transformer_blocks[0].attn2
+            return block.attentions[0].transformer_blocks[0].attn2
 
-        base_in_channels = base_upblock.resnets[0].in_channels
-        base_out_channels = base_upblock.resnets[0].out_channels
-        ctrl_in_channels = ctrl_downblock["resnets"][0].in_channels - base_in_channels # base channels are concatted to ctrl channels in init
-        ctrl_out_channels = ctrl_downblock["resnets"][0].out_channels
+        out_channels = base_upblock.resnets[0].out_channels
+        in_channels = base_upblock.resnets[-1].in_channels - out_channels
+        prev_output_channels = base_upblock.resnets[0].in_channels - out_channels
+        ctrl_skip_channelss = [c.in_channels for c in ctrl_to_base_skip_connections]
         temb_channels = base_upblock.resnets[0].time_emb_proj.in_features
-        num_groups = base_upblock["resnets"][0].norm1.num_groups
         if hasattr(base_upblock, "attentions"):
             has_crossattn = True
-            transformer_layers_per_block = len(base_upblock.attentions)
+            transformer_layers_per_block = len(base_upblock.attentions[0].transformer_blocks)
             num_attention_heads = get_first_cross_attention(base_upblock).heads
             cross_attention_dim = get_first_cross_attention(base_upblock).cross_attention_dim
             upcast_attention = get_first_cross_attention(base_upblock).upcast_attention
@@ -1525,18 +1544,17 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
 
         # create model
         model = cls(
-            # todo umer
-            # in_channels: int,
-            # out_channels: int,
-            # prev_output_channel: int,
-            # ctrl_skip_channels: List[int],
-            temb_channels = temb_channels,
-            has_crossattn=True,
-            transformer_layers_per_block = transformer_layers_per_block,
-            num_attention_heads = num_attention_heads,
-            cross_attention_dim = cross_attention_dim,
-            add_upsample = add_upsample,
-            upcast_attention = upcast_attention
+            in_channels=in_channels,
+            out_channels=out_channels,
+            prev_output_channel=prev_output_channels,
+            ctrl_skip_channels=ctrl_skip_channelss,
+            temb_channels=temb_channels,
+            has_crossattn=has_crossattn,
+            transformer_layers_per_block=transformer_layers_per_block,
+            num_attention_heads=num_attention_heads,
+            cross_attention_dim=cross_attention_dim,
+            add_upsample=add_upsample,
+            upcast_attention=upcast_attention,
         )
 
         # load weights
@@ -1549,12 +1567,11 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
 
         return model
 
-
     def forward(
         self,
         hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple_base: Tuple[torch.FloatTensor, ...], # todo umer: why ... in type hint?
-        res_hidden_states_tuple_cltr: Tuple[torch.FloatTensor, ...], # todo umer: why ... in type hint?
+        res_hidden_states_tuple_base: Tuple[torch.FloatTensor, ...],  # todo umer: why ... in type hint?
+        res_hidden_states_tuple_ctrl: Tuple[torch.FloatTensor, ...],  # todo umer: why ... in type hint?
         temb: torch.FloatTensor,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         conditioning_scale: Optional[float] = 1.0,
@@ -1562,7 +1579,8 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         attention_mask: Optional[torch.FloatTensor] = None,
         upsample_size: Optional[int] = None,
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
-    ) -> torch.FloatTensor: # todo umer: output type hint correct?
+        do_control: bool = True,
+    ) -> torch.FloatTensor:  # todo umer: output type hint correct?
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1578,8 +1596,15 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             resnet_with_upsampler = self.resnets[-1]
             attn_with_upsampler = self.attentions[-1]
 
-        for resnet, attn, c2b, res_h_base, res_h_ctrl in zip(resnets_without_upsampler, attn_without_upsampler, self.ctrl_to_base, reversed(res_hidden_states_tuple_base), reversed(res_hidden_states_tuple_cltr)):
-            hidden_states += c2b(res_h_ctrl) * conditioning_scale
+        for resnet, attn, c2b, res_h_base, res_h_ctrl in zip(
+            resnets_without_upsampler,
+            attn_without_upsampler,
+            self.ctrl_to_base,
+            reversed(res_hidden_states_tuple_base),
+            reversed(res_hidden_states_tuple_ctrl),
+        ):
+            if do_control:
+                hidden_states += c2b(res_h_ctrl) * conditioning_scale
             hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
 
             if self.training and self.gradient_checkpointing:
@@ -1599,9 +1624,9 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         if self.upsamplers is not None:
             c2b = self.ctrl_to_base[-1]
             res_h_base = res_hidden_states_tuple_base[0]
-            res_h_ctrl = res_hidden_states_tuple_cltr[0]
-
-            hidden_states += c2b(res_h_ctrl) * conditioning_scale
+            res_h_ctrl = res_hidden_states_tuple_ctrl[0]
+            if do_control:
+                hidden_states += c2b(res_h_ctrl) * conditioning_scale
             hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
 
             hidden_states = resnet_with_upsampler(hidden_states, temb)
