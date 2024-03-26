@@ -92,6 +92,12 @@ class IFInpaintingPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, 
 @slow
 @require_torch_gpu
 class IFInpaintingPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -105,7 +111,6 @@ class IFInpaintingPipelineSlowTests(unittest.TestCase):
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload()
 
-        # Super resolution test
         torch.cuda.empty_cache()
         torch.cuda.reset_max_memory_allocated()
         torch.cuda.reset_peak_memory_stats()

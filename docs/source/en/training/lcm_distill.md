@@ -53,7 +53,7 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```bash
+```py
 from accelerate.utils import write_basic_config
 
 write_basic_config()
