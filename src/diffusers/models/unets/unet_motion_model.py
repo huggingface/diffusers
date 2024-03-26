@@ -191,8 +191,6 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
         sample_size: Optional[int] = None,
         in_channels: int = 4,
         out_channels: int = 4,
-        flip_sin_to_cos: bool = True,
-        freq_shift: int = 0,
         down_block_types: Tuple[str, ...] = (
             "CrossAttnDownBlockMotion",
             "CrossAttnDownBlockMotion",
@@ -283,7 +281,7 @@ class UNetMotionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
             self.encoder_hid_proj = None
 
         if addition_embed_type == "text_time":
-            self.add_time_proj = Timesteps(addition_time_embed_dim, flip_sin_to_cos, freq_shift)
+            self.add_time_proj = Timesteps(addition_time_embed_dim, True, 0)
             self.add_embedding = TimestepEmbedding(projection_class_embeddings_input_dim, time_embed_dim)
 
         # class embedding
