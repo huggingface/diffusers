@@ -324,6 +324,10 @@ def infer_model_type(original_config, checkpoint, model_type=None):
     return model_type
 
 
+def is_single_file_clip_model(checkpoint):
+    return
+
+
 def fetch_diffusers_config(checkpoint, subfolder=None):
     if (
         CHECKPOINT_KEY_NAMES["inpainting"] in checkpoint
@@ -1082,6 +1086,21 @@ def convert_ldm_vae_checkpoint(checkpoint, config):
     return new_checkpoint
 
 
+def convert_ldm_clip_checkpoint(checkpoint):
+    keys = list(checkpoint.keys())
+    text_model_dict = {}
+
+    remove_prefixes = LDM_CLIP_PREFIX_TO_REMOVE
+
+    for key in keys:
+        for prefix in remove_prefixes:
+            if key.startswith(prefix):
+                diffusers_key = key.replace(prefix, "")
+                text_model_dict[diffusers_key] = checkpoint[key]
+
+    return text_model_dict
+
+
 def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=False, torch_dtype=None):
     try:
         config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
@@ -1269,8 +1288,8 @@ def create_diffusers_unet_from_ldm(
     torch_dtype=None,
     **kwargs,
 ):
-    num_in_channels = kwargs.get("num_in_channels", None)
-    extract_ema = kwargs.get("extract_ema", False)
+    num_in_channels = kwargs.pop("num_in_channels", None)
+    extract_ema = kwargs.pop("extract_ema", False)
 
     if original_config is not None:
         model_type = kwargs.get("model_type", None)
@@ -1405,6 +1424,44 @@ def create_diffusers_vae_from_ldm(
         model = cls.from_config(model_config, **kwargs)
 
     diffusers_format_checkpoint = convert_ldm_vae_checkpoint(checkpoint, model_config)
+    if is_accelerate_available():
+        unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if len(unexpected_keys) > 0:
+            logger.warn(
+                f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+            )
+
+    else:
+        model.load_state_dict(diffusers_format_checkpoint)
+
+    if torch_dtype is not None:
+        model.to(torch_dtype)
+
+    model.eval()
+
+    return model
+
+
+def create_diffusers_text_encoder_from_ldm(
+    cls,
+    checkpoint,
+    config=None,
+    torch_dtype=None,
+    local_files_only=False,
+    **kwargs,
+):
+    if config is None:
+        config = fetch_diffusers_config(checkpoint, subfolder="text_encoder")
+        model_config = cls.load_config(**config, **kwargs)
+
+    else:
+        model_config = config
+
+    ctx = init_empty_weights if is_accelerate_available() else nullcontext
+    with ctx():
+        model = cls.from_config(model_config, **kwargs)
+
+    diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
         if len(unexpected_keys) > 0:

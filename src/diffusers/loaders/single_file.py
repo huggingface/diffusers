@@ -16,11 +16,13 @@ import importlib
 
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
+from packaging import version
 
 from ..utils import is_transformers_available, logging
 from .single_file_utils import (
     fetch_diffusers_config,
     fetch_original_config,
+    is_single_file_clip_model,
     load_single_file_model_checkpoint,
 )
 
@@ -28,7 +30,8 @@ from .single_file_utils import (
 logger = logging.get_logger(__name__)
 
 if is_transformers_available():
-    from transformers import AutoFeatureExtractor
+    import transformers
+    from transformers import AutoFeatureExtractor, PreTrainedModel
 
 
 def load_single_file_sub_model(
@@ -53,17 +56,30 @@ def load_single_file_sub_model(
         class_obj = getattr(library, class_name)
 
     diffusers_module = importlib.import_module(__name__.split(".")[0])
-    is_single_file_model = issubclass(class_obj, diffusers_module.FromOriginalModelMixin)
 
-    if is_single_file_model:
+    is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
+
+    if is_transformers_available():
+        transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+    else:
+        transformers_version = "N/A"
+
+    is_transformers_model = (
+        is_transformers_available()
+        and issubclass(class_obj, PreTrainedModel)
+        and transformers_version >= version.parse("4.20.0")
+    )
+    is_diffusers_single_file_model = issubclass(class_obj, diffusers_module.FromOriginalModelMixin)
+
+    if original_config is None:
+        config = class_obj.load_config(
+            pretrained_model_name_or_path, subfolder=name, local_files_only=local_files_only, **kwargs
+        )
+    else:
+        config = None
+
+    if is_diffusers_single_file_model:
         load_method = getattr(class_obj, "from_single_file")
-        if original_config is None:
-            config = class_obj.load_config(
-                pretrained_model_name_or_path, subfolder=name, local_files_only=local_files_only
-            )
-        else:
-            config = None
-
         loaded_sub_model = load_method(
             checkpoint=checkpoint,
             original_config=original_config,
@@ -72,14 +88,27 @@ def load_single_file_sub_model(
             **kwargs,
         )
 
-    else:
+    elif is_diffusers_model:
         load_method = getattr(class_obj, "from_pretrained")
         loaded_sub_model = load_method(
             pretrained_model_name_or_path,
             subfolder=name,
             local_files_only=local_files_only,
             torch_dtype=torch_dtype,
+            **kwargs,
         )
+
+    elif is_transformers_model:
+        if is_single_file_clip_model(checkpoint):
+            return
+        else:
+            load_method = getattr(class_obj, "from_pretrained")
+            loaded_sub_model = load_method(
+                pretrained_model_name_or_path,
+                local_files_only=local_files_only,
+                torch_dtype=torch_dtype,
+                **kwargs,
+            )
 
     return loaded_sub_model
 
