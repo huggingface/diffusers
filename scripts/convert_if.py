@@ -1195,9 +1195,9 @@ def superres_check_against_original(dump_path, unet_checkpoint_path):
         if_II_model = IFStageIII(device="cuda", dir_or_name=orig_path, model_kwargs={"precision": "fp32"}).model
 
     batch_size = 1
-    channels = model.in_channels // 2
-    height = model.sample_size
-    width = model.sample_size
+    channels = model.config.in_channels // 2
+    height = model.config.sample_size
+    width = model.config.sample_size
     height = 1024
     width = 1024
 

@@ -775,7 +775,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -950,7 +950,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=2,
-            output_type="numpy",
+            output_type="np",
         )
         image_chunked = output_chunked.images
 
@@ -966,7 +966,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=2,
-            output_type="numpy",
+            output_type="np",
         )
         image = output.images
 

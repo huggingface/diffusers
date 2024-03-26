@@ -608,7 +608,7 @@ def main():
     # Create the pipeline using using the trained modules and save it.
     if accelerator.is_main_process:
         if args.push_to_hub and args.only_save_embeds:
-            logger.warn("Enabling full model saving because --push_to_hub=True was specified.")
+            logger.warning("Enabling full model saving because --push_to_hub=True was specified.")
             save_full_model = True
         else:
             save_full_model = not args.only_save_embeds

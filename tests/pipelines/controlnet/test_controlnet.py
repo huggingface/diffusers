@@ -35,6 +35,7 @@ from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetMo
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    get_python_version,
     load_image,
     load_numpy,
     numpy_cosine_similarity_distance,
@@ -211,7 +212,7 @@ class ControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
         }
 
@@ -302,7 +303,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -402,7 +403,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -519,7 +520,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet = ControlNetModel(
@@ -602,7 +603,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -992,6 +993,10 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
     @require_python39_or_higher
     @require_torch_2
+    @unittest.skipIf(
+        get_python_version == (3, 12),
+        reason="Torch Dynamo isn't yet supported for Python 3.12.",
+    )
     def test_stable_diffusion_compile(self):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
 
@@ -1092,6 +1097,13 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         for param_name, param_value in single_file_pipe.controlnet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
+
+            # This parameter doesn't appear to be loaded from the config.
+            # So when it is registered to config, it remains a tuple as this is the default in the class definition
+            # from_pretrained, does load from config and converts to a list when registering to config
+            if param_name == "conditioning_embedding_out_channels" and isinstance(param_value, tuple):
+                param_value = list(param_value)
+
             assert (
                 pipe.controlnet.config[param_name] == param_value
             ), f"{param_name} differs between single file loading and pretrained loading"

@@ -18,7 +18,7 @@
   - local: tutorials/basic_training
     title: Train a diffusion model
   - local: tutorials/using_peft_for_inference
-    title: Inference with PEFT
+    title: Load LoRAs for inference
   - local: tutorials/fast_diffusion
     title: Accelerate inference of text-to-image diffusion models
   title: Tutorials
@@ -62,6 +62,8 @@
       title: Textual inversion
     - local: using-diffusers/ip_adapter
       title: IP-Adapter
+    - local: using-diffusers/merge_loras
+      title: Merge LoRAs
     - local: training/distributed_inference
       title: Distributed inference with multiple GPUs
     - local: using-diffusers/reusing_seeds
@@ -102,6 +104,8 @@
       title: Latent Consistency Model-LoRA
     - local: using-diffusers/inference_with_lcm
       title: Latent Consistency Model
+    - local: using-diffusers/inference_with_tcd_lora
+      title: Trajectory Consistency Distillation-LoRA
     - local: using-diffusers/svd
       title: Stable Video Diffusion
     title: Specific pipeline examples
@@ -302,6 +306,8 @@
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
+    - local: api/pipelines/ledits_pp
+      title: LEDITS++
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
@@ -318,6 +324,8 @@
       title: Semantic Guidance
     - local: api/pipelines/shap_e
       title: Shap-E
+    - local: api/pipelines/stable_cascade
+      title: Stable Cascade
     - sections:
       - local: api/pipelines/stable_diffusion/overview
         title: Overview
@@ -392,6 +400,10 @@
       title: DPMSolverSDEScheduler
     - local: api/schedulers/singlestep_dpm_solver
       title: DPMSolverSinglestepScheduler
+    - local: api/schedulers/edm_multistep_dpm_solver
+      title: EDMDPMSolverMultistepScheduler
+    - local: api/schedulers/edm_euler
+      title: EDMEulerScheduler
     - local: api/schedulers/euler_ancestral
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler
@@ -418,6 +430,8 @@
       title: ScoreSdeVeScheduler
     - local: api/schedulers/score_sde_vp
       title: ScoreSdeVpScheduler
+    - local: api/schedulers/tcd
+      title: TCDScheduler
     - local: api/schedulers/unipc
       title: UniPCMultistepScheduler
     - local: api/schedulers/vq_diffusion

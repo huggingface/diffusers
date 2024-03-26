@@ -41,6 +41,7 @@ from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
+from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
@@ -62,7 +63,9 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
     check_min_version,
+    convert_all_state_dict_to_peft,
     convert_state_dict_to_diffusers,
+    convert_state_dict_to_kohya,
     convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
@@ -75,7 +78,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -96,6 +99,7 @@ def determine_scheduler_type(pretrained_model_name_or_path, revision):
 
 def save_model_card(
     repo_id: str,
+    use_dora: bool,
     images=None,
     base_model: str = None,
     train_text_encoder=False,
@@ -113,7 +117,7 @@ def save_model_card(
             )
 
     model_description = f"""
-# {'SDXL' if 'playgroundai' not in base_model else 'Playground'} LoRA DreamBooth - {repo_id}
+# {'SDXL' if 'playground' not in base_model else 'Playground'} LoRA DreamBooth - {repo_id}
 
 <Gallery />
 
@@ -138,7 +142,7 @@ Weights for this model are available in Safetensors format.
 [Download]({repo_id}/tree/main) them in the Files & versions tab.
 
 """
-    if "playgroundai" in args.pretrained_model_name_or_path:
+    if "playground" in base_model:
         model_description += """\n
 ## License
 
@@ -147,7 +151,7 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     model_card = load_or_create_model_card(
         repo_id_or_path=repo_id,
         from_training=True,
-        license="openrail++" if "playgroundai" not in base_model else "playground-v2dot5-community",
+        license="openrail++" if "playground" not in base_model else "playground-v2dot5-community",
         base_model=base_model,
         prompt=instance_prompt,
         model_description=model_description,
@@ -156,11 +160,12 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
     tags = [
         "text-to-image",
         "text-to-image",
+        "diffusers-training",
         "diffusers",
-        "lora",
+        "lora" if not use_dora else "dora",
         "template:sd-lora",
     ]
-    if "playgroundai" in base_model:
+    if "playground" in base_model:
         tags.extend(["playground", "playground-diffusers"])
     else:
         tags.extend(["stable-diffusion-xl", "stable-diffusion-xl-diffusers"])
@@ -204,7 +209,7 @@ def log_validation(
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
     inference_ctx = (
-        contextlib.nullcontext() if "playgroundai" in args.pretrained_model_name_or_path else torch.cuda.amp.autocast()
+        contextlib.nullcontext() if "playground" in args.pretrained_model_name_or_path else torch.cuda.amp.autocast()
     )
 
     with inference_ctx:
@@ -393,6 +398,11 @@ def parse_args(input_args=None):
         type=str,
         default="lora-dreambooth-model",
         help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--output_kohya_format",
+        action="store_true",
+        help="Flag to additionally generate final state dict in the Kohya format so that it becomes compatible with A111, Comfy, Kohya, etc.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
@@ -645,6 +655,15 @@ def parse_args(input_args=None):
         default=4,
         help=("The dimension of the LoRA update matrices."),
     )
+    parser.add_argument(
+        "--use_dora",
+        action="store_true",
+        default=False,
+        help=(
+            "Wether to train a DoRA as proposed in- DoRA: Weight-Decomposed Low-Rank Adaptation https://arxiv.org/abs/2402.09353. "
+            "Note: to use DoRA you need to install peft from main, `pip install git+https://github.com/huggingface/peft.git`"
+        ),
+    )
 
     if input_args is not None:
         args = parser.parse_args(input_args)
@@ -866,6 +885,8 @@ def collate_fn(examples, with_prior_preservation=False):
     if with_prior_preservation:
         pixel_values += [example["class_images"] for example in examples]
         prompts += [example["class_prompt"] for example in examples]
+        original_sizes += [example["original_size"] for example in examples]
+        crop_top_lefts += [example["crop_top_left"] for example in examples]
 
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -1128,7 +1149,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, "
                     "please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
@@ -1145,6 +1166,7 @@ def main(args):
     # now we will add new LoRA weights to the attention layers
     unet_lora_config = LoraConfig(
         r=args.rank,
+        use_dora=args.use_dora,
         lora_alpha=args.rank,
         init_lora_weights="gaussian",
         target_modules=["to_k", "to_q", "to_v", "to_out.0"],
@@ -1156,6 +1178,7 @@ def main(args):
     if args.train_text_encoder:
         text_lora_config = LoraConfig(
             r=args.rank,
+            use_dora=args.use_dora,
             lora_alpha=args.rank,
             init_lora_weights="gaussian",
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
@@ -1302,14 +1325,14 @@ def main(args):
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
-        logger.warn(
+        logger.warning(
             f"Unsupported choice of optimizer: {args.optimizer}.Supported optimizers include [adamW, prodigy]."
             "Defaulting to adamW"
         )
         args.optimizer = "adamw"
 
     if args.use_8bit_adam and not args.optimizer.lower() == "adamw":
-        logger.warn(
+        logger.warning(
             f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
             f"set to {args.optimizer.lower()}"
         )
@@ -1343,11 +1366,11 @@ def main(args):
         optimizer_class = prodigyopt.Prodigy
 
         if args.learning_rate <= 0.1:
-            logger.warn(
+            logger.warning(
                 "Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
             )
         if args.train_text_encoder and args.text_encoder_lr:
-            logger.warn(
+            logger.warning(
                 f"Learning rates were provided both for the unet and the text encoder- e.g. text_encoder_lr:"
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
@@ -1494,7 +1517,7 @@ def main(args):
     if accelerator.is_main_process:
         tracker_name = (
             "dreambooth-lora-sd-xl"
-            if "playgroundai" not in args.pretrained_model_name_or_path
+            if "playground" not in args.pretrained_model_name_or_path
             else "dreambooth-lora-playground"
         )
         accelerator.init_trackers(tracker_name, config=vars(args))
@@ -1875,6 +1898,11 @@ def main(args):
             text_encoder_lora_layers=text_encoder_lora_layers,
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
+        if args.output_kohya_format:
+            lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
+            peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
+            kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
+            save_file(kohya_state_dict, f"{args.output_dir}/pytorch_lora_weights_kohya.safetensors")
 
         # Final inference
         # Load previous pipeline
@@ -1912,6 +1940,7 @@ def main(args):
         if args.push_to_hub:
             save_model_card(
                 repo_id,
+                use_dora=args.use_dora,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
                 train_text_encoder=args.train_text_encoder,
