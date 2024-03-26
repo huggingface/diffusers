@@ -259,9 +259,9 @@ The authors found that by using DoRA, both the learning capacity and training st
 > This is also aligned with some of the quantitative analysis shown in the paper. 
 
 **Usage**
-1. To use DoRA you need to install `peft` from main: 
+1. To use DoRA you need to upgrade the installation of `peft`: 
 ```bash
-pip install git+https://github.com/huggingface/peft.git
+pip install-U peft
 ```
 2. Enable DoRA training by adding this flag
 ```bash
@@ -269,3 +269,7 @@ pip install git+https://github.com/huggingface/peft.git
 ```
 **Inference** 
 The inference is the same as if you train a regular LoRA 🤗
+
+## Format compatibility
+
+You can pass `--output_kohya_format` to additionally generate a state dictionary which should be compatible with other platforms and tools such as Automatic 1111, Comfy, Kohya, etc. The `output_dir` will contain a file named "pytorch_lora_weights_kohya.safetensors".
