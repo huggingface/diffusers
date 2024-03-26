@@ -270,7 +270,7 @@ class AnimateDiffSDXLPipeline(
         text_encoder_2: CLIPTextModelWithProjection,
         tokenizer: CLIPTokenizer,
         tokenizer_2: CLIPTokenizer,
-        unet: UNet2DConditionModel,
+        unet: Union[UNet2DConditionModel, UNetMotionModel],
         motion_adapter: MotionAdapter,
         scheduler: Union[
             DDIMScheduler,
@@ -286,19 +286,8 @@ class AnimateDiffSDXLPipeline(
     ):
         super().__init__()
 
-        unet.config["down_block_types"] = [
-            "DownBlockMotion",
-            "CrossAttnDownBlockMotion",
-            "CrossAttnDownBlockMotion",
-        ]
-        unet.config["up_block_types"] = [
-            "CrossAttnUpBlockMotion",
-            "CrossAttnUpBlockMotion",
-            "UpBlockMotion",
-        ]
-        unet.config["mid_block_type"] = "UNetMidBlockCrossAttnMotion"
-
-        unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
+        if isinstance(unet, UNet2DConditionModel):
+            unet = UNetMotionModel.from_unet2d(unet, motion_adapter)
 
         self.register_modules(
             vae=vae,
