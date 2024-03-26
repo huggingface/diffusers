@@ -511,7 +511,9 @@ class PipelineKarrasSchedulerTesterMixin:
     equivalence of dict and tuple outputs, etc.
     """
 
-    def test_karras_schedulers_shape(self, num_inference_steps_for_strength=4, num_inference_steps_for_strength_for_iterations=5):
+    def test_karras_schedulers_shape(
+        self, num_inference_steps_for_strength=4, num_inference_steps_for_strength_for_iterations=5
+    ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
 
