@@ -59,7 +59,7 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```bash
+```py
 from accelerate.utils import write_basic_config
 
 write_basic_config()
@@ -235,7 +235,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_prior.py \
   --validation_prompts="A robot pokemon, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="kandi2-prior-pokemon-model" 
+  --output_dir="kandi2-prior-pokemon-model"
 ```
 
 </hfoption>
@@ -259,7 +259,7 @@ accelerate launch --mixed_precision="fp16"  train_text_to_image_decoder.py \
   --validation_prompts="A robot pokemon, 4k photo" \
   --report_to="wandb" \
   --push_to_hub \
-  --output_dir="kandi2-decoder-pokemon-model" 
+  --output_dir="kandi2-decoder-pokemon-model"
 ```
 
 </hfoption>
