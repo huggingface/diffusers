@@ -211,7 +211,7 @@ class ControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
         }
 
@@ -302,7 +302,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -402,7 +402,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -519,7 +519,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet = ControlNetModel(
@@ -602,7 +602,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -1092,6 +1092,13 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         for param_name, param_value in single_file_pipe.controlnet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
+
+            # This parameter doesn't appear to be loaded from the config.
+            # So when it is registered to config, it remains a tuple as this is the default in the class definition
+            # from_pretrained, does load from config and converts to a list when registering to config
+            if param_name == "conditioning_embedding_out_channels" and isinstance(param_value, tuple):
+                param_value = list(param_value)
+
             assert (
                 pipe.controlnet.config[param_name] == param_value
             ), f"{param_name} differs between single file loading and pretrained loading"

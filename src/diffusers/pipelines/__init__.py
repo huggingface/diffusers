@@ -11,6 +11,7 @@ from ..utils import (
     is_note_seq_available,
     is_onnx_available,
     is_torch_available,
+    is_torch_npu_available,
     is_transformers_available,
 )
 
@@ -22,6 +23,7 @@ _import_structure = {
     "controlnet_xs": [],
     "deprecated": [],
     "latent_diffusion": [],
+    "ledits_pp": [],
     "stable_diffusion": [],
     "stable_diffusion_xl": [],
 }
@@ -170,6 +172,12 @@ else:
         "LatentConsistencyModelPipeline",
     ]
     _import_structure["latent_diffusion"].extend(["LDMTextToImagePipeline"])
+    _import_structure["ledits_pp"].extend(
+        [
+            "LEditsPPPipelineStableDiffusion",
+            "LEditsPPPipelineStableDiffusionXL",
+        ]
+    )
     _import_structure["musicldm"] = ["MusicLDMPipeline"]
     _import_structure["paint_by_example"] = ["PaintByExamplePipeline"]
     _import_structure["pia"] = ["PIAPipeline"]
@@ -423,6 +431,12 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             LatentConsistencyModelPipeline,
         )
         from .latent_diffusion import LDMTextToImagePipeline
+        from .ledits_pp import (
+            LEditsPPDiffusionPipelineOutput,
+            LEditsPPInversionPipelineOutput,
+            LEditsPPPipelineStableDiffusion,
+            LEditsPPPipelineStableDiffusionXL,
+        )
         from .musicldm import MusicLDMPipeline
         from .paint_by_example import PaintByExamplePipeline
         from .pia import PIAPipeline

@@ -917,7 +917,7 @@ class TensorRTStableDiffusionPipeline(StableDiffusionPipeline):
             text_embeddings = self.__encode_prompt(prompt, negative_prompt)
 
             # Pre-initialize latents
-            num_channels_latents = self.unet.in_channels
+            num_channels_latents = self.unet.config.in_channels
             latents = self.prepare_latents(
                 batch_size,
                 num_channels_latents,
