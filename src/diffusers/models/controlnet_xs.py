@@ -17,11 +17,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.utils.checkpoint
-from torch import nn
+from torch import FloatTensor, nn
 from torch.nn import functional as F
 
 from ..configuration_utils import ConfigMixin, register_to_config
-from ..utils import BaseOutput, logging
+from ..utils import BaseOutput, is_torch_version, logging
 from .autoencoders import AutoencoderKL
 from .embeddings import (
     TimestepEmbedding,
@@ -48,12 +48,12 @@ class ControlNetXSOutput(BaseOutput):
     The output of [`UNetControlNetXSModel`].
 
     Args:
-        sample (`torch.FloatTensor` of shape `(batch_size, num_channels, height, width)`):
+        sample (`FloatTensor` of shape `(batch_size, num_channels, height, width)`):
             The output of the `UNetControlNetXSModel`. Unlike `ControlNetOutput` this is NOT to be added to the base model
             output, but is already the final output.
     """
 
-    sample: torch.FloatTensor = None
+    sample: FloatTensor = None
 
 
 # copied from diffusers.models.controlnet.ControlNetConditioningEmbedding
@@ -146,6 +146,157 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         max_norm_num_groups (`int`, defaults to 32):
             Maximum number of groups in group normal. The actual number will the the largest divisor of the respective channels, that is <= max_norm_num_groups.
     """
+
+    @register_to_config
+    def __init__(
+        self,
+        conditioning_channels: int = 3,
+        conditioning_channel_order: str = "rgb",
+        conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
+        time_embedding_mix: float = 1.0,
+        learn_time_embedding: bool = False,
+        attention_head_dim: Union[int, Tuple[int]] = 4,
+        block_out_channels: Tuple[int] = (4, 8, 16, 16),
+        base_block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
+        cross_attention_dim: int = 1024,
+        down_block_types: Tuple[str] = (
+            "CrossAttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "CrossAttnDownBlock2D",
+            "DownBlock2D",
+        ),
+        sample_size: Optional[int] = 96,
+        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
+        upcast_attention: bool = True,
+        max_norm_num_groups: int = 32,
+    ):
+        super().__init__()
+
+        self.sample_size = sample_size
+
+        time_embedding_input_dim = base_block_out_channels[0]
+        time_embedding_dim = base_block_out_channels[0] * 4
+
+        # `num_attention_heads` defaults to `attention_head_dim`. This looks weird upon first reading it and it is.
+        # The reason for this behavior is to correct for incorrectly named variables that were introduced
+        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
+        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
+        # which is why we correct for the naming here.
+        num_attention_heads = attention_head_dim
+
+        # Check inputs
+        if conditioning_channel_order not in ["rgb", "bgr"]:
+            raise ValueError(f"unknown `conditioning_channel_order`: {conditioning_channel_order}")
+
+        if len(block_out_channels) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
+            )
+
+        transformer_layers_per_block = repeat_if_not_list(
+            transformer_layers_per_block, repetitions=len(down_block_types)
+        )
+        cross_attention_dim = repeat_if_not_list(cross_attention_dim, repetitions=len(down_block_types))
+        num_attention_heads = repeat_if_not_list(
+            num_attention_heads, repetitions=len(down_block_types)
+        )  # todo umer: im using # attn heads & dim attn heads. should only be one.
+        attention_head_dim = repeat_if_not_list(attention_head_dim, repetitions=len(down_block_types))
+
+        if len(num_attention_heads) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
+            )
+
+        if len(attention_head_dim) != len(down_block_types):
+            raise ValueError(
+                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
+            )
+
+        # 5 - Create conditioning hint embedding
+        self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
+            conditioning_embedding_channels=block_out_channels[0],
+            block_out_channels=conditioning_embedding_out_channels,
+            conditioning_channels=conditioning_channels,
+        )
+
+        # time
+        if learn_time_embedding:
+            self.time_embedding = TimestepEmbedding(time_embedding_input_dim, time_embedding_dim)
+        else:
+            self.time_embedding = None
+
+        self.time_embed_act = None
+
+        self.down_blocks = nn.ModuleList([])
+        self.up_connections = nn.ModuleList([])
+
+        # input
+        self.conv_in = nn.Conv2d(4, block_out_channels[0], kernel_size=3, padding=1)
+        self.control_to_base_for_conv_in = make_zero_conv(block_out_channels[0], base_block_out_channels[0])
+
+        # down
+        base_out_channels = base_block_out_channels[0]
+        ctrl_out_channels = block_out_channels[0]
+        for i, down_block_type in enumerate(down_block_types):
+            base_in_channels = base_out_channels
+            base_out_channels = base_block_out_channels[i]
+            ctrl_in_channels = ctrl_out_channels
+            ctrl_out_channels = block_out_channels[i]
+            has_crossattn = "CrossAttn" in down_block_type
+            is_final_block = i == len(down_block_types) - 1
+
+            self.down_blocks.append(
+                ControlNetXSAddon.get_down_block(
+                    base_in_channels=base_in_channels,
+                    base_out_channels=base_out_channels,
+                    ctrl_in_channels=ctrl_in_channels,
+                    ctrl_out_channels=ctrl_out_channels,
+                    temb_channels=time_embedding_dim,
+                    max_norm_num_groups=max_norm_num_groups,
+                    has_crossattn=has_crossattn,
+                    transformer_layers_per_block=transformer_layers_per_block[i],
+                    num_attention_heads=attention_head_dim[i],
+                    cross_attention_dim=cross_attention_dim[i],
+                    add_downsample=not is_final_block,
+                    upcast_attention=upcast_attention,
+                )
+            )
+
+        # mid
+        self.mid_block = ControlNetXSAddon.get_mid_block(
+            base_channels=base_block_out_channels[-1],
+            ctrl_channels=block_out_channels[-1],
+            temb_channels=time_embedding_dim,
+            transformer_layers_per_block=transformer_layers_per_block[-1],
+            num_attention_heads=attention_head_dim[-1],
+            cross_attention_dim=cross_attention_dim[-1],
+            upcast_attention=upcast_attention,
+        )
+
+        # up
+        # The skip connection channels are the output of the conv_in and of all the down subblocks
+        ctrl_skip_channels = [block_out_channels[0]]
+        for i, out_channels in enumerate(block_out_channels):
+            number_of_subblocks = (
+                3 if i < len(block_out_channels) - 1 else 2
+            )  # every block has 3 subblocks, except last one, which has 2 as it has no downsampler
+            ctrl_skip_channels.extend([out_channels] * number_of_subblocks)
+
+        reversed_base_block_out_channels = list(reversed(base_block_out_channels))
+
+        base_out_channels = reversed_base_block_out_channels[0]
+        for i in range(len(down_block_types)):
+            prev_base_output_channel = base_out_channels
+            base_out_channels = reversed_base_block_out_channels[i]
+            ctrl_skip_channels_ = [ctrl_skip_channels.pop() for _ in range(3)]
+
+            self.up_connections.append(
+                ControlNetXSAddon.get_up_connections(
+                    out_channels=base_out_channels,
+                    prev_output_channel=prev_base_output_channel,
+                    ctrl_skip_channels=ctrl_skip_channels_,
+                )
+            )
 
     @staticmethod
     def get_down_block(
@@ -361,157 +512,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         model.to(unet.dtype)
 
         return model
-
-    @register_to_config
-    def __init__(
-        self,
-        conditioning_channels: int = 3,
-        conditioning_channel_order: str = "rgb",
-        conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
-        time_embedding_mix: float = 1.0,
-        learn_time_embedding: bool = False,
-        attention_head_dim: Union[int, Tuple[int]] = 4,
-        block_out_channels: Tuple[int] = (4, 8, 16, 16),
-        base_block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
-        cross_attention_dim: int = 1024,
-        down_block_types: Tuple[str] = (
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "CrossAttnDownBlock2D",
-            "DownBlock2D",
-        ),
-        sample_size: Optional[int] = 96,
-        transformer_layers_per_block: Union[int, Tuple[int]] = 1,
-        upcast_attention: bool = True,
-        max_norm_num_groups: int = 32,
-    ):
-        super().__init__()
-
-        self.sample_size = sample_size
-
-        time_embedding_input_dim = base_block_out_channels[0]
-        time_embedding_dim = base_block_out_channels[0] * 4
-
-        # `num_attention_heads` defaults to `attention_head_dim`. This looks weird upon first reading it and it is.
-        # The reason for this behavior is to correct for incorrectly named variables that were introduced
-        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
-        # which is why we correct for the naming here.
-        num_attention_heads = attention_head_dim
-
-        # Check inputs
-        if conditioning_channel_order not in ["rgb", "bgr"]:
-            raise ValueError(f"unknown `conditioning_channel_order`: {conditioning_channel_order}")
-
-        if len(block_out_channels) != len(down_block_types):
-            raise ValueError(
-                f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
-            )
-
-        transformer_layers_per_block = repeat_if_not_list(
-            transformer_layers_per_block, repetitions=len(down_block_types)
-        )
-        cross_attention_dim = repeat_if_not_list(cross_attention_dim, repetitions=len(down_block_types))
-        num_attention_heads = repeat_if_not_list(
-            num_attention_heads, repetitions=len(down_block_types)
-        )  # todo umer: im using # attn heads & dim attn heads. should only be one.
-        attention_head_dim = repeat_if_not_list(attention_head_dim, repetitions=len(down_block_types))
-
-        if len(num_attention_heads) != len(down_block_types):
-            raise ValueError(
-                f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
-            )
-
-        if len(attention_head_dim) != len(down_block_types):
-            raise ValueError(
-                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
-            )
-
-        # 5 - Create conditioning hint embedding
-        self.controlnet_cond_embedding = ControlNetConditioningEmbedding(
-            conditioning_embedding_channels=block_out_channels[0],
-            block_out_channels=conditioning_embedding_out_channels,
-            conditioning_channels=conditioning_channels,
-        )
-
-        # time
-        if learn_time_embedding:
-            self.time_embedding = TimestepEmbedding(time_embedding_input_dim, time_embedding_dim)
-        else:
-            self.time_embedding = None
-
-        self.time_embed_act = None
-
-        self.down_blocks = nn.ModuleList([])
-        self.up_connections = nn.ModuleList([])
-
-        # input
-        self.conv_in = nn.Conv2d(4, block_out_channels[0], kernel_size=3, padding=1)
-        self.control_to_base_for_conv_in = make_zero_conv(block_out_channels[0], base_block_out_channels[0])
-
-        # down
-        base_out_channels = base_block_out_channels[0]
-        ctrl_out_channels = block_out_channels[0]
-        for i, down_block_type in enumerate(down_block_types):
-            base_in_channels = base_out_channels
-            base_out_channels = base_block_out_channels[i]
-            ctrl_in_channels = ctrl_out_channels
-            ctrl_out_channels = block_out_channels[i]
-            has_crossattn = "CrossAttn" in down_block_type
-            is_final_block = i == len(down_block_types) - 1
-
-            self.down_blocks.append(
-                ControlNetXSAddon.get_down_block(
-                    base_in_channels=base_in_channels,
-                    base_out_channels=base_out_channels,
-                    ctrl_in_channels=ctrl_in_channels,
-                    ctrl_out_channels=ctrl_out_channels,
-                    temb_channels=time_embedding_dim,
-                    max_norm_num_groups=max_norm_num_groups,
-                    has_crossattn=has_crossattn,
-                    transformer_layers_per_block=transformer_layers_per_block[i],
-                    num_attention_heads=attention_head_dim[i],
-                    cross_attention_dim=cross_attention_dim[i],
-                    add_downsample=not is_final_block,
-                    upcast_attention=upcast_attention,
-                )
-            )
-
-        # mid
-        self.mid_block = ControlNetXSAddon.get_mid_block(
-            base_channels=base_block_out_channels[-1],
-            ctrl_channels=block_out_channels[-1],
-            temb_channels=time_embedding_dim,
-            transformer_layers_per_block=transformer_layers_per_block[-1],
-            num_attention_heads=attention_head_dim[-1],
-            cross_attention_dim=cross_attention_dim[-1],
-            upcast_attention=upcast_attention,
-        )
-
-        # up
-        # The skip connection channels are the output of the conv_in and of all the down subblocks
-        ctrl_skip_channels = [block_out_channels[0]]
-        for i, out_channels in enumerate(block_out_channels):
-            number_of_subblocks = (
-                3 if i < len(block_out_channels) - 1 else 2
-            )  # every block has 3 subblocks, except last one, which has 2 as it has no downsampler
-            ctrl_skip_channels.extend([out_channels] * number_of_subblocks)
-
-        reversed_base_block_out_channels = list(reversed(base_block_out_channels))
-
-        base_out_channels = reversed_base_block_out_channels[0]
-        for i in range(len(down_block_types)):
-            prev_base_output_channel = base_out_channels
-            base_out_channels = reversed_base_block_out_channels[i]
-            ctrl_skip_channels_ = [ctrl_skip_channels.pop() for _ in range(3)]
-
-            self.up_connections.append(
-                ControlNetXSAddon.get_up_connections(
-                    out_channels=base_out_channels,
-                    prev_output_channel=prev_base_output_channel,
-                    ctrl_skip_channels=ctrl_skip_channels_,
-                )
-            )
 
     def forward(self, *args, **kwargs):
         raise ValueError(
@@ -783,7 +783,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             "max_norm_num_groups",
         ]
         params_for_controlnet = {"ctrl_" + k: v for k, v in controlnet.config.items() if k in params_for_controlnet}
-        params_for_controlnet["time_embedding_mix"] = time_embedding_mix
+        params_for_controlnet["time_embedding_mix"] = controlnet.config.time_embedding_mix
 
         # # create model
         model = cls.from_config({**params_for_unet, **params_for_controlnet})
@@ -873,7 +873,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
 
     def forward(
         self,
-        sample: torch.FloatTensor,
+        sample: FloatTensor,
         timestep: Union[torch.Tensor, float, int],
         encoder_hidden_states: torch.Tensor,
         controlnet_cond: Optional[torch.Tensor] = None,
@@ -890,13 +890,13 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         The [`ControlNetXSModel`] forward method.
 
         Args:
-            sample (`torch.FloatTensor`):
+            sample (`FloatTensor`):
                 The noisy input tensor.
             timestep (`Union[torch.Tensor, float, int]`):
                 The number of timesteps to denoise an input.
             encoder_hidden_states (`torch.Tensor`):
                 The encoder hidden states.
-            controlnet_cond (`torch.FloatTensor`):
+            controlnet_cond (`FloatTensor`):
                 The conditional input tensor of shape `(batch_size, sequence_length, hidden_size)`.
             conditioning_scale (`float`, defaults to `1.0`):
                 How much the control model affects the base model outputs.
@@ -1265,7 +1265,9 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
             param.requires_grad = True
 
         # Freeze base part
-        base_parts = [self.base_resnets, self.base_attentions]
+        base_parts = [self.base_resnets]
+        if isinstance(self.base_attentions, nn.ModuleList):  # attentions can be a list of Nones
+            base_parts.append(self.base_attentions)
         if self.base_downsamplers is not None:
             base_parts.append(self.base_downsamplers)
         for part in base_parts:
@@ -1274,16 +1276,16 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states_base: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
-        hidden_states_ctrl: Optional[torch.FloatTensor] = None,
+        hidden_states_base: FloatTensor,
+        temb: FloatTensor,
+        encoder_hidden_states: Optional[FloatTensor] = None,
+        hidden_states_ctrl: Optional[FloatTensor] = None,
         conditioning_scale: Optional[float] = 1.0,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[FloatTensor] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[FloatTensor] = None,
         do_control: bool = True,
-    ) -> Tuple[torch.FloatTensor, Tuple[torch.FloatTensor, ...]]:  # todo umer: output type hint correct?
+    ) -> Tuple[FloatTensor, FloatTensor, Tuple[FloatTensor, ...], Tuple[FloatTensor, ...]]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1297,21 +1299,52 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
         base_blocks = list(zip(self.base_resnets, self.base_attentions))
         ctrl_blocks = list(zip(self.ctrl_resnets, self.ctrl_attentions))
 
+        def create_custom_forward(module, return_dict=None):
+            def custom_forward(*inputs):
+                if return_dict is not None:
+                    return module(*inputs, return_dict=return_dict)
+                else:
+                    return module(*inputs)
+
+            return custom_forward
+
+        def apply_resnet(resnet, hidden_states, temb):
+            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+            if self.training and self.gradient_checkpointing:
+                return torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+            else:
+                return resnet(hidden_states, temb)
+
         for (b_res, b_attn), (c_res, c_attn), b2c, c2b in zip(
             base_blocks, ctrl_blocks, self.base_to_ctrl, self.ctrl_to_base
         ):
-            if self.training and self.gradient_checkpointing:
-                raise NotImplementedError("todo umer")
-            else:
-                # concat base -> ctrl
-                if do_control:
-                    h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
+            # concat base -> ctrl
+            if do_control:
+                h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
 
-                # apply base subblock
-                h_base = b_res(h_base, temb)
-                if b_attn is not None:
-                    h_base = b_attn(
-                        h_base,
+            # apply base subblock
+            h_base = apply_resnet(b_res, h_base, temb)
+            if b_attn is not None:
+                h_base = b_attn(
+                    h_base,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
+                    return_dict=False,
+                )[0]
+
+            # apply ctrl subblock
+            if do_control:
+                h_ctrl = apply_resnet(c_res, h_ctrl, temb)
+                if c_attn is not None:
+                    h_ctrl = c_attn(
+                        h_ctrl,
                         encoder_hidden_states=encoder_hidden_states,
                         cross_attention_kwargs=cross_attention_kwargs,
                         attention_mask=attention_mask,
@@ -1319,22 +1352,9 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                         return_dict=False,
                     )[0]
 
-                # apply ctrl subblock
-                if do_control:
-                    h_ctrl = c_res(h_ctrl, temb)
-                    if c_attn is not None:
-                        h_ctrl = c_attn(
-                            h_ctrl,
-                            encoder_hidden_states=encoder_hidden_states,
-                            cross_attention_kwargs=cross_attention_kwargs,
-                            attention_mask=attention_mask,
-                            encoder_attention_mask=encoder_attention_mask,
-                            return_dict=False,
-                        )[0]
-
-                # add ctrl -> base
-                if do_control:
-                    h_base = h_base + c2b(h_ctrl) * conditioning_scale
+            # add ctrl -> base
+            if do_control:
+                h_base = h_base + c2b(h_ctrl) * conditioning_scale
 
             base_output_states = base_output_states + (h_base,)
             ctrl_output_states = ctrl_output_states + (h_ctrl,)
@@ -1466,16 +1486,16 @@ class ControlNetXSCrossAttnMidBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states_base: torch.FloatTensor,
-        temb: torch.FloatTensor,
-        encoder_hidden_states: torch.FloatTensor,
-        hidden_states_ctrl: Optional[torch.FloatTensor] = None,
+        hidden_states_base: FloatTensor,
+        temb: FloatTensor,
+        encoder_hidden_states: FloatTensor,
+        hidden_states_ctrl: Optional[FloatTensor] = None,
         conditioning_scale: Optional[float] = 1.0,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[FloatTensor] = None,
+        encoder_attention_mask: Optional[FloatTensor] = None,
         do_control: bool = True,
-    ) -> torch.FloatTensor:  # todo umer: output type hint correct?
+    ) -> Tuple[FloatTensor, FloatTensor]:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1624,7 +1644,9 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             param.requires_grad = True
 
         # Freeze base part
-        base_parts = [self.resnets, self.attentions]
+        base_parts = [self.resnets]
+        if isinstance(self.attentions, nn.ModuleList):  # attentions can be a list of Nones
+            base_parts.append(self.attentions)
         if self.upsamplers is not None:
             base_parts.append(self.upsamplers)
         for part in base_parts:
@@ -1633,18 +1655,18 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
 
     def forward(
         self,
-        hidden_states: torch.FloatTensor,
-        res_hidden_states_tuple_base: Tuple[torch.FloatTensor, ...],  # todo umer: why ... in type hint?
-        res_hidden_states_tuple_ctrl: Tuple[torch.FloatTensor, ...],  # todo umer: why ... in type hint?
-        temb: torch.FloatTensor,
-        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        hidden_states: FloatTensor,
+        res_hidden_states_tuple_base: Tuple[FloatTensor, ...],
+        res_hidden_states_tuple_ctrl: Tuple[FloatTensor, ...],
+        temb: FloatTensor,
+        encoder_hidden_states: Optional[FloatTensor] = None,
         conditioning_scale: Optional[float] = 1.0,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
-        attention_mask: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[FloatTensor] = None,
         upsample_size: Optional[int] = None,
-        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[FloatTensor] = None,
         do_control: bool = True,
-    ) -> torch.FloatTensor:  # todo umer: output type hint correct?
+    ) -> FloatTensor:
         if cross_attention_kwargs is not None:
             if cross_attention_kwargs.get("scale", None) is not None:
                 logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
@@ -1660,6 +1682,27 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             resnet_with_upsampler = self.resnets[-1]
             attn_with_upsampler = self.attentions[-1]
 
+        def create_custom_forward(module, return_dict=None):
+            def custom_forward(*inputs):
+                if return_dict is not None:
+                    return module(*inputs, return_dict=return_dict)
+                else:
+                    return module(*inputs)
+
+            return custom_forward
+
+        def apply_resnet(resnet, hidden_states, temb):
+            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+            if self.training and self.gradient_checkpointing:
+                return torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+            else:
+                return resnet(hidden_states, temb)
+
         for resnet, attn, c2b, res_h_base, res_h_ctrl in zip(
             resnets_without_upsampler,
             attn_without_upsampler,
@@ -1670,20 +1713,16 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
             if do_control:
                 hidden_states += c2b(res_h_ctrl) * conditioning_scale
             hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
-
-            if self.training and self.gradient_checkpointing:
-                raise NotImplementedError("todo umer")
-            else:
-                hidden_states = resnet(hidden_states, temb)
-                if attn is not None:
-                    hidden_states = attn(
-                        hidden_states,
-                        encoder_hidden_states=encoder_hidden_states,
-                        cross_attention_kwargs=cross_attention_kwargs,
-                        attention_mask=attention_mask,
-                        encoder_attention_mask=encoder_attention_mask,
-                        return_dict=False,
-                    )[0]
+            hidden_states = apply_resnet(resnet, hidden_states, temb)
+            if attn is not None:
+                hidden_states = attn(
+                    hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    cross_attention_kwargs=cross_attention_kwargs,
+                    attention_mask=attention_mask,
+                    encoder_attention_mask=encoder_attention_mask,
+                    return_dict=False,
+                )[0]
 
         if self.upsamplers is not None:
             c2b = self.ctrl_to_base[-1]

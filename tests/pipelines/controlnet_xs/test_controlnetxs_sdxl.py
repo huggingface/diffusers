@@ -93,7 +93,7 @@ class StableDiffusionXLControlNetXSPipelineFastTests(
         )
         torch.manual_seed(0)
         controlnet = ControlNetXSAddon.from_unet(
-            base_model=unet,
+            unet=unet,
             size_ratio=0.5,
             learn_time_embedding=True,
             conditioning_embedding_out_channels=(16, 32),

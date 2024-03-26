@@ -125,7 +125,7 @@ class ControlNetXSPipelineFastTests(
     def get_dummy_components(self, time_cond_proj_dim=None):
         torch.manual_seed(0)
         unet = UNet2DConditionModel(
-            block_out_channels=(4, 8),
+            block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
             in_channels=4,
@@ -133,13 +133,12 @@ class ControlNetXSPipelineFastTests(
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
-            norm_num_groups=1,
             time_cond_proj_dim=time_cond_proj_dim,
             use_linear_projection=True,
         )
         torch.manual_seed(0)
         controlnet = ControlNetXSAddon.from_unet(
-            base_model=unet,
+            unet=unet,
             size_ratio=0.5,
             num_attention_heads=2,
             learn_time_embedding=True,
@@ -240,9 +239,7 @@ class ControlNetXSPipelineFastTests(
         image_slice = image[0, -3:, -3:, -1]
 
         assert image.shape == (1, 64, 64, 3)
-        expected_slice = np.array(
-            [0.52700454, 0.3930534, 0.25509018, 0.7132304, 0.53696585, 0.46568912, 0.7095368, 0.7059624, 0.4744786]
-        )
+        expected_slice = np.array([0.491, 0.411, 0.292, 0.631, 0.506, 0.439, 0.664, 0.67, 0.447])
 
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-2
 

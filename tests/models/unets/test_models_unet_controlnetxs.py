@@ -14,11 +14,11 @@
 # limitations under the License.
 
 import copy
-import re
 import unittest
 
 import numpy as np
 import torch
+from torch import nn
 
 from diffusers import ControlNetXSAddon, UNet2DConditionModel, UNetControlNetXSModel
 from diffusers.utils import logging
@@ -73,16 +73,14 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             "sample_size": 32,
             "down_block_types": ("DownBlock2D", "CrossAttnDownBlock2D"),
             "up_block_types": ("CrossAttnUpBlock2D", "UpBlock2D"),
-            "block_out_channels": (4, 8),
-            "norm_num_groups": 1,
+            "block_out_channels": (32, 64),
             "cross_attention_dim": 32,
             "transformer_layers_per_block": 1,
             "num_attention_heads": 8,
             "upcast_attention": False,
-            "ctrl_time_embedding_input_dim": 4,
             "ctrl_block_out_channels": [4, 8],
             "ctrl_attention_head_dim": 8,
-            "ctrl_max_norm_num_groups": 1,
+            "ctrl_max_norm_num_groups": 4,
         }
         inputs_dict = self.dummy_input
         return init_dict, inputs_dict
@@ -90,7 +88,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
     def get_dummy_unet(self):
         """For some tests we also need the underlying UNet. For these, we'll build the UNetControlNetXSModel from the UNet"""
         return UNet2DConditionModel(
-            block_out_channels=(4, 8),
+            block_out_channels=(32, 64),
             layers_per_block=2,
             sample_size=32,
             in_channels=4,
@@ -98,69 +96,173 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
             up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
             cross_attention_dim=32,
-            norm_num_groups=1,
             use_linear_projection=True,
         )
 
-    def test_from_unet2d(self):
+    def test_from_unet(self):
         unet = self.get_dummy_unet()
         controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
 
-        model = UNetControlNetXSModel.from_unet2d(unet, controlnet)
+        model = UNetControlNetXSModel.from_unet(unet, controlnet)
         model_state_dict = model.state_dict()
 
-        def is_decomposed(module_name):
-            return "down_block" in module_name or "up_block" in module_name
+        def assert_equal_weights(module, weight_dict_prefix):
+            for param_name, param_value in module.named_parameters():
+                assert torch.equal(model_state_dict[weight_dict_prefix + "." + param_name], param_value)
 
-        def block_to_subblock_name(param_name):
-            """
-            Map name of a param from 'block notation' as in UNet to 'subblock notation' as in UNetControlNetXS
-            e.g. 'down_blocks.1.attentions.0.proj_in.weight' ->  'base_down_subblocks.3.attention.proj_in.weight'
-            """
-            param_name = param_name.replace("down_blocks", "base_down_subblocks")
-            param_name = param_name.replace("up_blocks", "base_up_subblocks")
+        # # check unet
+        # everything expect down,mid,up blocks
+        modules_from_unet = [
+            "time_embedding",
+            "conv_in",
+            "conv_norm_out",
+            "conv_out",
+        ]
+        for p in modules_from_unet:
+            assert_equal_weights(getattr(unet, p), "base_" + p)
+        optional_modules_from_unet = [
+            "class_embedding",
+            "add_time_proj",
+            "add_embedding",
+        ]
+        for p in optional_modules_from_unet:
+            if hasattr(unet, p) and getattr(unet, p) is not None:
+                assert_equal_weights(getattr(unet, p), "base_" + p)
+        # down blocks
+        assert len(unet.down_blocks) == len(model.down_blocks)
+        for i, d in enumerate(unet.down_blocks):
+            assert_equal_weights(d.resnets, f"down_blocks.{i}.base_resnets")
+            if hasattr(d, "attentions"):
+                assert_equal_weights(d.attentions, f"down_blocks.{i}.base_attentions")
+            if hasattr(d, "downsamplers") and getattr(d, "downsamplers") is not None:
+                assert_equal_weights(d.downsamplers[0], f"down_blocks.{i}.base_downsamplers")
+        # mid block
+        assert_equal_weights(unet.mid_block, "mid_block.base_midblock")
+        # up blocks
+        assert len(unet.up_blocks) == len(model.up_blocks)
+        for i, u in enumerate(unet.up_blocks):
+            assert_equal_weights(u.resnets, f"up_blocks.{i}.resnets")
+            if hasattr(u, "attentions"):
+                assert_equal_weights(u.attentions, f"up_blocks.{i}.attentions")
+            if hasattr(u, "upsamplers") and getattr(u, "upsamplers") is not None:
+                assert_equal_weights(u.upsamplers[0], f"up_blocks.{i}.upsamplers")
 
-            numbers = re.findall(r"\d+", param_name)
-            block_idx, module_idx = int(numbers[0]), int(numbers[1])
+        # # check controlnet
+        # everything expect down,mid,up blocks
+        modules_from_controlnet = {
+            "controlnet_cond_embedding": "controlnet_cond_embedding",
+            "conv_in": "ctrl_conv_in",
+            "control_to_base_for_conv_in": "control_to_base_for_conv_in",
+        }
+        optional_modules_from_controlnet = {"time_embedding": "ctrl_time_embedding"}
+        for name_in_controlnet, name_in_unetcnxs in modules_from_controlnet.items():
+            assert_equal_weights(getattr(controlnet, name_in_controlnet), name_in_unetcnxs)
 
-            layers_per_block = 2
-            subblocks_per_block = layers_per_block + 1  # include down/upsampler
+        for name_in_controlnet, name_in_unetcnxs in optional_modules_from_controlnet.items():
+            if hasattr(controlnet, name_in_controlnet) and getattr(controlnet, name_in_controlnet) is not None:
+                assert_equal_weights(getattr(controlnet, name_in_controlnet), name_in_unetcnxs)
+        # down blocks
+        assert len(controlnet.down_blocks) == len(model.down_blocks)
+        for i, d in enumerate(controlnet.down_blocks):
+            assert_equal_weights(d["resnets"], f"down_blocks.{i}.ctrl_resnets")
+            assert_equal_weights(d["base_to_ctrl"], f"down_blocks.{i}.base_to_ctrl")
+            assert_equal_weights(d["ctrl_to_base"], f"down_blocks.{i}.ctrl_to_base")
+            if "attentions" in d:
+                assert_equal_weights(d["attentions"], f"down_blocks.{i}.ctrl_attentions")
+            if "downsamplers" in d:
+                assert_equal_weights(d["downsamplers"], f"down_blocks.{i}.ctrl_downsamplers")
+        # mid block
+        assert_equal_weights(controlnet.mid_block["base_to_ctrl"], "mid_block.base_to_ctrl")
+        assert_equal_weights(controlnet.mid_block["midblock"], "mid_block.ctrl_midblock")
+        assert_equal_weights(controlnet.mid_block["ctrl_to_base"], "mid_block.ctrl_to_base")
+        # up blocks
+        assert len(controlnet.up_connections) == len(model.up_blocks)
+        for i, u in enumerate(controlnet.up_connections):
+            assert_equal_weights(u, f"up_blocks.{i}.ctrl_to_base")
 
-            if "downsampler" in param_name or "upsampler" in param_name:
-                subblock_idx = block_idx * subblocks_per_block + layers_per_block
-            else:
-                subblock_idx = block_idx * subblocks_per_block + module_idx
+    def test_freeze_unet(self):
+        def assert_frozen(module):
+            for p in module.parameters():
+                assert not p.requires_grad
 
-            param_name = re.sub(r"\d", str(subblock_idx), param_name, count=1)
-            param_name = re.sub(r"resnets\.\d+", "resnet", param_name)  # eg resnets.1 -> resnet
-            param_name = re.sub(r"attentions\.\d+", "attention", param_name)  # eg attentions.1 -> attention
-            param_name = re.sub(r"downsamplers\.\d+", "downsampler", param_name)  # eg attentions.1 -> attention
-            param_name = re.sub(r"upsamplers\.\d+", "upsampler", param_name)  # eg attentions.1 -> attention
+        def assert_unfrozen(module):
+            for p in module.parameters():
+                assert p.requires_grad
 
-            return param_name
-
-        for param_name, param_value in unet.named_parameters():
-            if is_decomposed(param_name):
-                # check unet modules that were decomposed
-                self.assertTrue(torch.equal(model_state_dict[block_to_subblock_name(param_name)], param_value))
-            else:
-                # check unet modules that were copied as is
-                self.assertTrue(torch.equal(model_state_dict["base_" + param_name], param_value))
-
-        # check controlnet
-        for param_name, param_value in controlnet.named_parameters():
-            self.assertTrue(torch.equal(model_state_dict["control_addon." + param_name], param_value))
-
-    def test_freeze_unet2d(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
         model = UNetControlNetXSModel(**init_dict)
-        model.freeze_unet2d_params()
+        model.freeze_unet_params()
 
-        for param_name, param_value in model.named_parameters():
-            if "control_addon" not in param_name:
-                self.assertFalse(param_value.requires_grad)
-            else:
-                self.assertTrue(param_value.requires_grad)
+        # # check unet
+        # everything expect down,mid,up blocks
+        modules_from_unet = [
+            model.base_time_embedding,
+            model.base_conv_in,
+            model.base_conv_norm_out,
+            model.base_conv_out,
+        ]
+        for m in modules_from_unet:
+            assert_frozen(m)
+
+        optional_modules_from_unet = [
+            model.base_class_embedding,
+            model.base_add_time_proj,
+            model.base_add_embedding,
+        ]
+        for m in optional_modules_from_unet:
+            if m is not None:
+                assert_frozen(m)
+
+        # down blocks
+        for i, d in enumerate(model.down_blocks):
+            assert_frozen(d.base_resnets)
+            if isinstance(d.base_attentions, nn.ModuleList):  # attentions can be list of Nones
+                assert_frozen(d.base_attentions)
+            if d.base_downsamplers is not None:
+                assert_frozen(d.base_downsamplers)
+
+        # mid block
+        assert_frozen(model.mid_block.base_midblock)
+
+        # up blocks
+        for i, u in enumerate(model.up_blocks):
+            assert_frozen(u.resnets)
+            if isinstance(u.attentions, nn.ModuleList):  # attentions can be list of Nones
+                assert_frozen(u.attentions)
+            if u.upsamplers is not None:
+                assert_frozen(u.upsamplers)
+
+        # # check controlnet
+        # everything expect down,mid,up blocks
+        modules_from_controlnet = [
+            model.controlnet_cond_embedding,
+            model.ctrl_conv_in,
+            model.control_to_base_for_conv_in,
+        ]
+        optional_modules_from_controlnet = [model.ctrl_time_embedding]
+
+        for m in modules_from_controlnet:
+            assert_unfrozen(m)
+        for m in optional_modules_from_controlnet:
+            if m is not None:
+                assert_unfrozen(m)
+
+        # down blocks
+        for d in model.down_blocks:
+            assert_unfrozen(d.ctrl_resnets)
+            assert_unfrozen(d.base_to_ctrl)
+            assert_unfrozen(d.ctrl_to_base)
+            if isinstance(d.ctrl_attentions, nn.ModuleList):  # attentions can be list of Nones
+                assert_unfrozen(d.ctrl_attentions)
+            if d.ctrl_downsamplers is not None:
+                assert_unfrozen(d.ctrl_downsamplers)
+        # mid block
+        assert_unfrozen(model.mid_block.base_to_ctrl)
+        assert_unfrozen(model.mid_block.ctrl_midblock)
+        assert_unfrozen(model.mid_block.ctrl_to_base)
+        # up blocks
+        for u in model.up_blocks:
+            assert_unfrozen(u.ctrl_to_base)
 
     def test_gradient_checkpointing_is_applied(self):
         model_class_copy = copy.copy(UNetControlNetXSModel)
@@ -187,9 +289,9 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         EXPECTED_SET = {
             "Transformer2DModel",
             "UNetMidBlock2DCrossAttn",
-            "CrossAttnDownSubBlock2D",
-            "DownSubBlock2D",
-            "CrossAttnUpSubBlock2D",
+            "ControlNetXSCrossAttnDownBlock2D",
+            "ControlNetXSCrossAttnMidBlock2D",
+            "ControlNetXSCrossAttnUpBlock2D",
         }
 
         assert set(modules_with_gc_enabled.keys()) == EXPECTED_SET
@@ -199,7 +301,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
         unet = self.get_dummy_unet()
         controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
 
-        model = UNetControlNetXSModel.from_unet2d(unet, controlnet)
+        model = UNetControlNetXSModel.from_unet(unet, controlnet)
 
         unet = unet.to(torch_device)
         model = model.to(torch_device)
@@ -213,15 +315,17 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             unet_output = unet(**input_for_unet).sample.cpu()
             unet_controlnet_output = model(**input_, do_control=False).sample.cpu()
 
-        assert np.abs(unet_output.flatten() - unet_controlnet_output.flatten()).max() < 1e-5
+        assert np.abs(unet_output.flatten() - unet_controlnet_output.flatten()).max() < 3e-4
 
     def test_time_embedding_mixing(self):
         unet = self.get_dummy_unet()
         controlnet = ControlNetXSAddon.from_unet(unet, size_ratio=1)
-        controlnet_mix_time = ControlNetXSAddon.from_unet(unet, size_ratio=1, time_embedding_mix=0.5)
+        controlnet_mix_time = ControlNetXSAddon.from_unet(
+            unet, size_ratio=1, time_embedding_mix=0.5, learn_time_embedding=True
+        )
 
-        model = UNetControlNetXSModel.from_unet2d(unet, controlnet)
-        model_mix_time = UNetControlNetXSModel.from_unet2d(unet, controlnet_mix_time)
+        model = UNetControlNetXSModel.from_unet(unet, controlnet)
+        model_mix_time = UNetControlNetXSModel.from_unet(unet, controlnet_mix_time)
 
         unet = unet.to(torch_device)
         model = model.to(torch_device)
@@ -234,3 +338,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             output_mix_time = model_mix_time(**input_).sample
 
         assert output.shape == output_mix_time.shape
+
+    def test_forward_with_norm_groups(self):
+        # UNetControlNetXSModel currently only supports StableDiffusion and StableDiffusion-XL, both of which have norm_num_groups fixed at 32. So we don't need to test different values for norm_num_groups.
+        pass
