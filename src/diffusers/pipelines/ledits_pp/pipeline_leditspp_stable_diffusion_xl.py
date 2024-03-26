@@ -976,7 +976,7 @@ class LEditsPPPipelineStableDiffusionXL(
         if user_mask is not None:
             user_mask = user_mask.to(self.device)
 
-        # TODO: Check inputs
+        # TODO: Check LEdits++ inputs + verify that invert has been run properly
         # 1. Check inputs. Raise error if not correct
         # self.check_inputs(
         #    callback_steps,
@@ -1117,6 +1117,7 @@ class LEditsPPPipelineStableDiffusionXL(
                 guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
             ).to(device=device, dtype=latents.dtype)
 
+        # TODO: Refactor out SEGA/LEdits++ functionality
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=self._num_timesteps) as progress_bar:
             for i, t in enumerate(timesteps):
