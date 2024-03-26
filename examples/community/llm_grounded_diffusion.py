@@ -530,7 +530,7 @@ class LLMGroundedDiffusionPipeline(
                 )
 
         if len(phrases) != len(boxes):
-            ValueError(
+            raise ValueError(
                 "length of `phrases` and `boxes` has to be same, but"
                 f" got: `phrases` {len(phrases)} != `boxes` {len(boxes)}"
             )
