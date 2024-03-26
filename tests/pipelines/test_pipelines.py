@@ -66,6 +66,7 @@ from diffusers.utils.testing_utils import (
     CaptureLogger,
     enable_full_determinism,
     floats_tensor,
+    get_python_version,
     get_tests_dir,
     load_numpy,
     nightly,
@@ -1748,6 +1749,10 @@ class PipelineSlowTests(unittest.TestCase):
 
     @require_python39_or_higher
     @require_torch_2
+    @unittest.skipIf(
+        get_python_version == (3, 12),
+        reason="Torch Dynamo isn't yet supported for Python 3.12.",
+    )
     def test_from_save_pretrained_dynamo(self):
         run_test_in_subprocess(test_case=self, target_func=_test_from_save_pretrained_dynamo, inputs=None)
 
