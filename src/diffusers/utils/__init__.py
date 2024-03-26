@@ -71,6 +71,7 @@ from .import_utils import (
     is_notebook,
     is_onnx_available,
     is_peft_available,
+    is_peft_version,
     is_safetensors_available,
     is_scipy_available,
     is_tensorboard_available,
