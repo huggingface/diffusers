@@ -1027,7 +1027,7 @@ class StableDiffusionXLInpaintPipeline(
                 # because `num_inference_steps` might be even given that every timestep
                 # (except the highest one) is duplicated. If `num_inference_steps` is even it would
                 # mean that we cut the timesteps in the middle of the denoising step
-                # (between 1st and 2nd devirative) which leads to incorrect results. By adding 1
+                # (between 1st and 2nd derivative) which leads to incorrect results. By adding 1
                 # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
                 num_inference_steps = num_inference_steps + 1
 
@@ -1259,7 +1259,7 @@ class StableDiffusionXLInpaintPipeline(
                 `padding_mask_crop` is not `None`, it will first find a rectangular region with the same aspect ration of the image and
                 contains all masked area, and then expand that area based on `padding_mask_crop`. The image and mask_image will then be cropped based on
                 the expanded area before resizing to the original image size for inpainting. This is useful when the masked area is small while the image is large
-                and contain information inreleant for inpainging, such as background.
+                and contain information irrelevant for inpainting, such as background.
             strength (`float`, *optional*, defaults to 0.9999):
                 Conceptually, indicates how much to transform the masked portion of the reference `image`. Must be
                 between 0 and 1. `image` will be used as a starting point, adding more noise to it the larger the
