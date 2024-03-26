@@ -20,9 +20,10 @@ from packaging import version
 
 from ..utils import is_transformers_available, logging
 from .single_file_utils import (
+    create_diffusers_clip_model_from_ldm,
     fetch_diffusers_config,
     fetch_original_config,
-    is_single_file_clip_model,
+    is_clip_model_in_single_file,
     load_single_file_model_checkpoint,
 )
 
@@ -55,10 +56,6 @@ def load_single_file_sub_model(
         library = importlib.import_module(library_name)
         class_obj = getattr(library, class_name)
 
-    diffusers_module = importlib.import_module(__name__.split(".")[0])
-
-    is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
-
     if is_transformers_available():
         transformers_version = version.parse(version.parse(transformers.__version__).base_version)
     else:
@@ -69,6 +66,8 @@ def load_single_file_sub_model(
         and issubclass(class_obj, PreTrainedModel)
         and transformers_version >= version.parse("4.20.0")
     )
+
+    diffusers_module = importlib.import_module(__name__.split(".")[0])
     is_diffusers_single_file_model = issubclass(class_obj, diffusers_module.FromOriginalModelMixin)
 
     if original_config is None:
@@ -88,7 +87,17 @@ def load_single_file_sub_model(
             **kwargs,
         )
 
-    elif is_diffusers_model:
+    elif is_transformers_model and is_clip_model_in_single_file(checkpoint):
+        load_method = create_diffusers_clip_model_from_ldm
+        loaded_sub_model = load_method(
+            checkpoint=checkpoint,
+            original_config=original_config,
+            config=config,
+            torch_dtype=torch_dtype,
+            **kwargs,
+        )
+
+    else:
         load_method = getattr(class_obj, "from_pretrained")
         loaded_sub_model = load_method(
             pretrained_model_name_or_path,
@@ -97,18 +106,6 @@ def load_single_file_sub_model(
             torch_dtype=torch_dtype,
             **kwargs,
         )
-
-    elif is_transformers_model:
-        if is_single_file_clip_model(checkpoint):
-            return
-        else:
-            load_method = getattr(class_obj, "from_pretrained")
-            loaded_sub_model = load_method(
-                pretrained_model_name_or_path,
-                local_files_only=local_files_only,
-                torch_dtype=torch_dtype,
-                **kwargs,
-            )
 
     return loaded_sub_model
 

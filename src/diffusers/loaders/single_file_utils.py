@@ -29,11 +29,7 @@ from ..utils.hub_utils import _get_model_file
 
 
 if is_transformers_available():
-    from transformers import (
-        CLIPTextConfig,
-        CLIPTextModel,
-        CLIPTextModelWithProjection,
-    )
+    pass
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -50,6 +46,9 @@ CHECKPOINT_KEY_NAMES = {
     "controlnet": "control_model.time_embed.0.weight",
     "playground-v2-5": "edm_mean",
     "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
+    "clip": "cond_stage_model.transformer.text_model.embeddings.position_ids",
+    "open_clip": "cond_stage_model.model.token_embedding.weight",
+    "open_clip_sdxl": "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight",
 }
 
 DIFFUSERS_DEFAULT_CONFIGS = {
@@ -191,6 +190,7 @@ PLAYGROUND_VAE_SCALING_FACTOR = 0.5
 LDM_UNET_KEY = "model.diffusion_model."
 LDM_CONTROLNET_KEY = "control_model."
 LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
+OPEN_CLIP_PREFIX = "conditioner.embedders.0.model."
 LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
 
 SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
@@ -324,8 +324,38 @@ def infer_model_type(original_config, checkpoint, model_type=None):
     return model_type
 
 
-def is_single_file_clip_model(checkpoint):
-    return
+def is_clip_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["clip"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_open_clip_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["open_clip"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_open_clip_sdxl_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["open_clip_sdxl"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_clip_model_in_single_file(checkpoint):
+    if is_clip_model(checkpoint):
+        return True
+
+    elif is_open_clip_model(checkpoint):
+        return True
+
+    elif is_open_clip_sdxl_model(checkpoint):
+        return True
+
+    return False
 
 
 def fetch_diffusers_config(checkpoint, subfolder=None):
@@ -1101,73 +1131,11 @@ def convert_ldm_clip_checkpoint(checkpoint):
     return text_model_dict
 
 
-def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_files_only=False, torch_dtype=None):
-    try:
-        config = CLIPTextConfig.from_pretrained(config_name, local_files_only=local_files_only)
-    except Exception:
-        raise ValueError(
-            f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: 'openai/clip-vit-large-patch14'."
-        )
-
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with ctx():
-        text_model = CLIPTextModel(config)
-
-    keys = list(checkpoint.keys())
-    text_model_dict = {}
-
-    remove_prefixes = LDM_CLIP_PREFIX_TO_REMOVE
-
-    for key in keys:
-        for prefix in remove_prefixes:
-            if key.startswith(prefix):
-                diffusers_key = key.replace(prefix, "")
-                text_model_dict[diffusers_key] = checkpoint[key]
-
-    if is_accelerate_available():
-        from ..models.modeling_utils import load_model_dict_into_meta
-
-        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
-        if text_model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in text_model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-    else:
-        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
-            text_model_dict.pop("text_model.embeddings.position_ids", None)
-
-        text_model.load_state_dict(text_model_dict)
-
-    if torch_dtype is not None:
-        text_model = text_model.to(torch_dtype)
-
-    return text_model
-
-
-def create_text_encoder_from_open_clip_checkpoint(
-    config_name,
+def convert_open_clip_checkpoint(
+    text_model,
     checkpoint,
     prefix="cond_stage_model.model.",
-    has_projection=False,
-    local_files_only=False,
-    torch_dtype=None,
-    **config_kwargs,
 ):
-    try:
-        config = CLIPTextConfig.from_pretrained(config_name, **config_kwargs, local_files_only=local_files_only)
-    except Exception:
-        raise ValueError(
-            f"With local_files_only set to {local_files_only}, you must first locally save the configuration in the following path: '{config_name}'."
-        )
-
-    ctx = init_empty_weights if is_accelerate_available() else nullcontext
-    with ctx():
-        text_model = CLIPTextModelWithProjection(config) if has_projection else CLIPTextModel(config)
-
     text_model_dict = {}
     text_proj_key = prefix + "text_projection"
     text_proj_dim = (
@@ -1219,29 +1187,10 @@ def create_text_encoder_from_open_clip_checkpoint(
         else:
             text_model_dict[diffusers_key] = checkpoint[key]
 
-    if is_accelerate_available():
-        from ..models.modeling_utils import load_model_dict_into_meta
+    if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
+        text_model_dict.pop("text_model.embeddings.position_ids", None)
 
-        unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
-        if text_model._keys_to_ignore_on_load_unexpected is not None:
-            for pat in text_model._keys_to_ignore_on_load_unexpected:
-                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
-
-        if len(unexpected_keys) > 0:
-            logger.warning(
-                f"Some weights of the model checkpoint were not used when initializing {text_model.__class__.__name__}: \n {[', '.join(unexpected_keys)]}"
-            )
-
-    else:
-        if not (hasattr(text_model, "embeddings") and hasattr(text_model.embeddings.position_ids)):
-            text_model_dict.pop("text_model.embeddings.position_ids", None)
-
-        text_model.load_state_dict(text_model_dict)
-
-    if torch_dtype is not None:
-        text_model = text_model.to(torch_dtype)
-
-    return text_model
+    return text_model_dict
 
 
 def create_diffusers_unet_from_stable_cascade(
@@ -1442,7 +1391,7 @@ def create_diffusers_vae_from_ldm(
     return model
 
 
-def create_diffusers_text_encoder_from_ldm(
+def create_diffusers_clip_model_from_ldm(
     cls,
     checkpoint,
     config=None,
@@ -1459,9 +1408,19 @@ def create_diffusers_text_encoder_from_ldm(
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
-        model = cls.from_config(model_config, **kwargs)
+        model = cls.from_config(model_config, local_files_only=local_files_only, **kwargs)
 
-    diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
+    if is_clip_model(checkpoint):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
+
+    elif is_open_clip_model(checkpoint):
+        prefix = "cond_stage_model.model."
+        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint)
+
+    else:
+        prefix = "conditioner.embedders.0.model."
+        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
+
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
         if len(unexpected_keys) > 0:
