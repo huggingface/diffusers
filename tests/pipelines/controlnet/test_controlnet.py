@@ -35,6 +35,7 @@ from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetMo
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    get_python_version,
     load_image,
     load_numpy,
     numpy_cosine_similarity_distance,
@@ -992,6 +993,10 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
     @require_python39_or_higher
     @require_torch_2
+    @unittest.skipIf(
+        get_python_version == (3, 12),
+        reason="Torch Dynamo isn't yet supported for Python 3.12.",
+    )
     def test_stable_diffusion_compile(self):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
 
