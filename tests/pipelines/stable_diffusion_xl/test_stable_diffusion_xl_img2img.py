@@ -779,7 +779,14 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
 @slow
 class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
+        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()

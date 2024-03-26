@@ -26,7 +26,7 @@ from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInver
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
-from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_ldm3d import LDM3DPipelineOutput
+from diffusers.pipelines.stable_diffusion_ldm3d.pipeline_stable_diffusion_ldm3d import LDM3DPipelineOutput
 from diffusers.schedulers import DDPMScheduler, KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,

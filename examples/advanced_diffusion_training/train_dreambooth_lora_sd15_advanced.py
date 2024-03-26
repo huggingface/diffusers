@@ -671,7 +671,6 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--use_dora",
-        type=bool,
         action="store_true",
         default=False,
         help=(
