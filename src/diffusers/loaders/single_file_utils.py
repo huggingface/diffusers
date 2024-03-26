@@ -1415,7 +1415,7 @@ def create_diffusers_clip_model_from_ldm(
 
     elif is_open_clip_model(checkpoint):
         prefix = "cond_stage_model.model."
-        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint)
+        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
     else:
         prefix = "conditioner.embedders.0.model."
