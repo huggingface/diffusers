@@ -17,126 +17,15 @@ import importlib
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..utils import is_transformers_available, logging
+from ..utils import logging
 from .single_file_utils import (
-    create_scheduler_from_ldm,
-    create_text_encoders_and_tokenizers_from_ldm,
+    fetch_diffusers_config,
     fetch_original_config,
-    infer_model_type,
     load_single_file_model_checkpoint,
 )
 
 
-if is_transformers_available():
-    pass
-
-
 logger = logging.get_logger(__name__)
-
-# Pipelines that support the SDXL Refiner checkpoint
-REFINER_PIPELINES = [
-    "StableDiffusionXLImg2ImgPipeline",
-    "StableDiffusionXLInpaintPipeline",
-    "StableDiffusionXLControlNetImg2ImgPipeline",
-]
-
-PIPELINE_DEFAULT_CONFIGS = {
-    "StableDiffusionPipeline": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
-    "StableDiffusionImg2ImgPipeline": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
-    "StableDiffusionInpaintPipeline": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-inpainting"},
-    "StableDiffusionControlNetPipeline": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
-    "StableDiffusionControlNetImg2ImgPipeline": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
-    "StableDiffusionControlInpaintPipeline": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
-}
-
-
-if is_transformers_available():
-    from transformers import AutoFeatureExtractor
-
-
-def build_sub_model_components(
-    pipeline_components,
-    pipeline_class_name,
-    component_name,
-    original_config,
-    checkpoint,
-    local_files_only=False,
-    load_safety_checker=False,
-    model_type=None,
-    torch_dtype=None,
-    **kwargs,
-):
-    if component_name in pipeline_components:
-        return {}
-
-    if component_name == "unet":
-        from ..models.unets import UNet2DConditionModel
-
-        unet = UNet2DConditionModel.from_single_file(
-            checkpoint=checkpoint,
-            original_config=original_config,
-            torch_dtype=torch_dtype,
-            **kwargs,
-        )
-        return {"unet": unet}
-
-    if component_name == "vae":
-        from ..models import AutoencoderKL
-
-        vae = AutoencoderKL.from_single_file(
-            checkpoint=checkpoint,
-            original_config=original_config,
-            torch_dtype=torch_dtype,
-            **kwargs,
-        )
-        return {"vae": vae}
-
-    if component_name == "scheduler":
-        scheduler_type = kwargs.get("scheduler_type", "ddim")
-        prediction_type = kwargs.get("prediction_type", None)
-
-        scheduler_components = create_scheduler_from_ldm(
-            pipeline_class_name,
-            original_config,
-            checkpoint,
-            scheduler_type=scheduler_type,
-            prediction_type=prediction_type,
-            model_type=model_type,
-        )
-
-        return scheduler_components
-
-    if component_name in ["text_encoder", "text_encoder_2", "tokenizer", "tokenizer_2"]:
-        text_encoder_components = create_text_encoders_and_tokenizers_from_ldm(
-            original_config,
-            checkpoint,
-            model_type=model_type,
-            local_files_only=local_files_only,
-            torch_dtype=torch_dtype,
-        )
-        return text_encoder_components
-
-    if component_name == "safety_checker":
-        if load_safety_checker:
-            from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-
-            safety_checker = StableDiffusionSafetyChecker.from_pretrained(
-                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only, torch_dtype=torch_dtype
-            )
-        else:
-            safety_checker = None
-        return {"safety_checker": safety_checker}
-
-    if component_name == "feature_extractor":
-        if load_safety_checker:
-            feature_extractor = AutoFeatureExtractor.from_pretrained(
-                "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
-            )
-        else:
-            feature_extractor = None
-        return {"feature_extractor": feature_extractor}
-
-    return
 
 
 def load_single_file_sub_model(
@@ -147,8 +36,9 @@ def load_single_file_sub_model(
     checkpoint,
     pipelines,
     is_pipeline_module,
-    config=None,
     original_config=None,
+    local_files_only=False,
+    torch_dtype=None,
     **kwargs,
 ):
     if is_pipeline_module:
@@ -164,38 +54,32 @@ def load_single_file_sub_model(
 
     if is_single_file_model:
         load_method = getattr(class_obj, "from_single_file")
+        if original_config is None:
+            config = class_obj.load_config(
+                pretrained_model_name_or_path, subfolder=name, local_files_only=local_files_only
+            )
+        else:
+            config = None
+
         loaded_sub_model = load_method(
             checkpoint=checkpoint,
             original_config=original_config,
             config=config,
+            torch_dtype=torch_dtype,
             **kwargs,
         )
 
     else:
         load_method = getattr(class_obj, "from_pretrained")
-        loaded_sub_model = load_method(pretrained_model_name_or_path, subfolder=name, **kwargs)
-
-    return loaded_sub_model
-
-
-def set_additional_components(
-    pipeline_class_name,
-    original_config,
-    checkpoint=None,
-    model_type=None,
-):
-    components = {}
-    if pipeline_class_name in REFINER_PIPELINES:
-        model_type = infer_model_type(original_config, checkpoint=checkpoint, model_type=model_type)
-        is_refiner = model_type == "SDXL-Refiner"
-        components.update(
-            {
-                "requires_aesthetics_score": is_refiner,
-                "force_zeros_for_empty_prompt": False if is_refiner else True,
-            }
+        loaded_sub_model = load_method(
+            pretrained_model_name_or_path,
+            subfolder=name,
+            local_files_only=local_files_only,
+            torch_dtype=torch_dtype,
+            **kwargs,
         )
 
-    return components
+    return loaded_sub_model
 
 
 class FromSingleFileMixin:
@@ -294,8 +178,9 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-
-        class_name = cls.__name__
+        load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
+        local_dir = kwargs.pop("local_dir", None)
+        local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
 
         checkpoint = load_single_file_model_checkpoint(
             pretrained_model_link_or_path,
@@ -308,11 +193,11 @@ class FromSingleFileMixin:
             revision=revision,
         )
         if original_config_file is not None:
-            original_config = fetch_original_config(checkpoint, original_config_file)
+            original_config = fetch_original_config(
+                checkpoint, original_config_file, local_files_only=local_files_only
+            )
         else:
             original_config = None
-
-        config = kwargs.pop("config", None)
 
         from ..pipelines.pipeline_utils import _get_pipeline_class
 
@@ -320,38 +205,37 @@ class FromSingleFileMixin:
             cls,
             config=None,
             cache_dir=cache_dir,
+            load_connected_pipeline=load_connected_pipeline,
         )
-        default_pipeline_model_name_or_path = PIPELINE_DEFAULT_CONFIGS[pipeline_class.__name__][
-            "pretrained_model_name_or_path"
-        ]
-
+        default_pipeline_config = fetch_diffusers_config(checkpoint)
         config_file = hf_hub_download(
-            default_pipeline_model_name_or_path,
-            filename=pipeline_class.config_name,
+            default_pipeline_config["pretrained_model_name_or_path"],
+            filename=cls.config_name,
             cache_dir=cache_dir,
             revision=revision,
             proxies=proxies,
             force_download=force_download,
             resume_download=resume_download,
             token=token,
-            **kwargs,
+            local_files_only=local_files_only,
+            local_dir=local_dir,
+            local_dir_use_symlinks=local_dir_use_symlinks,
         )
-        config_dict = pipeline_class._dict_from_json_file(config_file)
 
-        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
+        config_dict = pipeline_class._dict_from_json_file(config_file)
+        # pop out "_ignore_files" as it is only needed for download
+        config_dict.pop("_ignore_files", None)
+
+        expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
         passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
 
-        # pop out "_ignore_files" as it is only needed for download
-        config_dict.pop("_ignore_files", None)
         init_dict, unused_kwargs, _ = pipeline_class.extract_init_dict(config_dict, **kwargs)
 
         from diffusers import pipelines
 
         init_kwargs = {
-            k: init_dict.pop(k)
-            for k in optional_kwargs
-            if k in init_dict and k not in pipeline_class._optional_components
+            k: init_dict.pop(k) for k in optional_kwargs if k in init_dict and k not in cls._optional_components
         }
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
@@ -367,20 +251,31 @@ class FromSingleFileMixin:
                     checkpoint=checkpoint,
                     library_name=library_name,
                     class_name=class_name,
-                    pretrained_model_name_or_path=default_pipeline_model_name_or_path,
+                    pretrained_model_name_or_path=default_pipeline_config["pretrained_model_name_or_path"],
                     is_pipeline_module=is_pipeline_module,
                     pipelines=pipelines,
                     name=name,
                     torch_dtype=torch_dtype,
-                    config=config,
                     original_config=original_config,
                     **kwargs,
                 )
 
             init_kwargs[name] = loaded_sub_model
 
-        pipe = pipeline_class(**init_kwargs)
+        missing_modules = set(expected_modules) - set(init_kwargs.keys())
+        passed_modules = list(passed_class_obj.keys())
+        optional_modules = pipeline_class._optional_components
 
+        if len(missing_modules) > 0 and missing_modules <= set(passed_modules + optional_modules):
+            for module in missing_modules:
+                init_kwargs[module] = passed_class_obj.get(module, None)
+        elif len(missing_modules) > 0:
+            passed_modules = set(list(init_kwargs.keys()) + list(passed_class_obj.keys())) - optional_kwargs
+            raise ValueError(
+                f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
+            )
+
+        pipe = pipeline_class(**init_kwargs)
         if torch_dtype is not None:
             pipe.to(dtype=torch_dtype)
 

@@ -1085,10 +1085,16 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
             "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.safetensors",
             safety_checker=None,
             controlnet=controlnet_single_file,
-            scheduler_type="pndm",
+            # scheduler_type="pndm",
         )
 
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        PARAMS_TO_IGNORE = [
+            "torch_dtype",
+            "_name_or_path",
+            "architectures",
+            "_use_default_values",
+            "_diffusers_version",
+        ]
         for param_name, param_value in single_file_pipe.controlnet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue

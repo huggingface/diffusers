@@ -58,7 +58,7 @@ class StableCascadeUNetModelSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
         for param_name, param_value in single_file_unet_config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
@@ -82,7 +82,7 @@ class StableCascadeUNetModelSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
         for param_name, param_value in single_file_unet_config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
@@ -101,7 +101,7 @@ class StableCascadeUNetModelSlowTests(unittest.TestCase):
         gc.collect()
         torch.cuda.empty_cache()
 
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
         for param_name, param_value in config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
