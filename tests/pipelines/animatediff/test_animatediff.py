@@ -299,6 +299,9 @@ class AnimateDiffPipelineFastTests(
         max_diff = np.abs(to_np(output_with_offload) - to_np(output_without_offload)).max()
         self.assertLess(max_diff, 1e-4, "XFormers attention should not affect the inference results")
 
+    def test_vae_slicing(self):
+        return super().test_vae_slicing(image_count=2)
+
 
 @slow
 @require_torch_gpu

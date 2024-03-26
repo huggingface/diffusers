@@ -71,15 +71,13 @@ class SDFunctionTesterMixin:
     It provides a set of common tests for PyTorch pipeline that inherit from StableDiffusionMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
     """
 
-    def test_vae_slicing(self):
+    def test_vae_slicing(self, image_count=4):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         # components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
-
-        image_count = 4
 
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
