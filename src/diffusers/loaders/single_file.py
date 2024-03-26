@@ -17,7 +17,7 @@ import importlib
 from huggingface_hub import hf_hub_download
 from huggingface_hub.utils import validate_hf_hub_args
 
-from ..utils import logging
+from ..utils import is_transformers_available, logging
 from .single_file_utils import (
     fetch_diffusers_config,
     fetch_original_config,
@@ -26,6 +26,9 @@ from .single_file_utils import (
 
 
 logger = logging.get_logger(__name__)
+
+if is_transformers_available():
+    from transformers import AutoFeatureExtractor
 
 
 def load_single_file_sub_model(
@@ -76,10 +79,22 @@ def load_single_file_sub_model(
             subfolder=name,
             local_files_only=local_files_only,
             torch_dtype=torch_dtype,
-            **kwargs,
         )
 
     return loaded_sub_model
+
+
+def _legacy_load_safety_checker(local_files_only, torch_dtype):
+    from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
+
+    feature_extractor = AutoFeatureExtractor.from_pretrained(
+        "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only
+    )
+    safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+        "CompVis/stable-diffusion-safety-checker", local_files_only=local_files_only, torch_dtype=torch_dtype
+    )
+
+    return {"safety_checker": safety_checker, "feature_extractor": feature_extractor}
 
 
 class FromSingleFileMixin:
@@ -239,6 +254,16 @@ class FromSingleFileMixin:
         }
         init_kwargs = {**init_kwargs, **passed_pipe_kwargs}
 
+        # remove `null` components
+        def load_module(name, value):
+            if value[0] is None:
+                return False
+            if name in passed_class_obj and passed_class_obj[name] is None:
+                return False
+            return True
+
+        init_dict = {k: v for k, v in init_dict.items() if load_module(k, v)}
+
         for name, (library_name, class_name) in logging.tqdm(init_dict.items(), desc="Loading pipeline components..."):
             loaded_sub_model = None
             is_pipeline_module = hasattr(pipelines, library_name)
@@ -274,6 +299,20 @@ class FromSingleFileMixin:
             raise ValueError(
                 f"Pipeline {pipeline_class} expected {expected_modules}, but only {passed_modules} were passed."
             )
+
+        # deprecated kwargs
+        load_safety_checker = kwargs.pop("load_safety_checker", None)
+        if load_safety_checker is not None:
+            logger.warning(
+                (
+                    "The `load_safety_checker` argument is deprecated and will be removed in a future version. "
+                    "Please pass the arguments `safety_checker` and `feature_extractor` directly to `from_single_file`"
+                    "If no safety checker components are provided, the safety checker will be loaded based"
+                    f"on the default config for the {pipeline_class.__name__}: {default_pipeline_config['pretrained_model_name_or_path']}."
+                )
+            )
+            safety_checker_components = _legacy_load_safety_checker(local_files_only, torch_dtype)
+            init_kwargs.update(safety_checker_components)
 
         pipe = pipeline_class(**init_kwargs)
         if torch_dtype is not None:

@@ -54,7 +54,7 @@ CHECKPOINT_KEY_NAMES = {
 
 DIFFUSERS_DEFAULT_CONFIGS = {
     "xl_base": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-base-1.0"},
-    "xl_refiner": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-refiner"},
+    "xl_refiner": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-refiner-1.0"},
     "xl_inpaint": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"},
     "playground-v2-5": {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
     "upscale": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
@@ -63,6 +63,10 @@ DIFFUSERS_DEFAULT_CONFIGS = {
     "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
     "v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-1"},
     "v1": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
+    "stable_cascade_stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade"},
+    "stable_cascade_stage_b_lite": {"pretrained_model_name_or_path": "stabilityai/stable-cascade"},
+    "stable_cascade_stage_c": {"pretrained_model_name_or_path": "stabilityai/stable-cascade-prior"},
+    "stable_cascade_stage_c_lite": {"pretrained_model_name_or_path": "stabilityai/stable-cascade-prior"},
 }
 
 SCHEDULER_DEFAULT_CONFIG = {
