@@ -543,7 +543,7 @@ class StableDiffusionControlNetXSPipeline(
                     f" {negative_prompt_embeds.shape}."
                 )
 
-        # Check `image`
+        # Check `image` and `controlnet_conditioning_scale`
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.unet, torch._dynamo.eval_frame.OptimizedModule
         )
@@ -553,15 +553,6 @@ class StableDiffusionControlNetXSPipeline(
             and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
         ):
             self.check_image(image, prompt, prompt_embeds)
-        else:
-            assert False
-
-        # Check `controlnet_conditioning_scale`
-        if (
-            isinstance(self.unet, UNetControlNetXSModel)
-            or is_compiled
-            and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
-        ):
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         else:

@@ -126,8 +126,8 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         learn_time_embedding (`bool`, defaults to `False`):
             Whether a time embedding should be learned. If yes, `ControlNetXSModel` will combine the time embeddings of the base model and the addon.
             If no, `ControlNetXSModel` will use the base model's time embedding.
-        attention_head_dim (`list[int]`, defaults to `[4]`):
-            The dimension of the attention heads.
+        num_attention_heads (`list[int]`, defaults to `[4]`):
+            The number of attention heads.
         block_out_channels (`list[int]`, defaults to `[4, 8, 16, 16]`):
             The tuple of output channels for each block.
         base_block_out_channels (`list[int]`, defaults to `[320, 640, 1280, 1280]`):
@@ -155,7 +155,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         conditioning_embedding_out_channels: Tuple[int] = (16, 32, 96, 256),
         time_embedding_mix: float = 1.0,
         learn_time_embedding: bool = False,
-        attention_head_dim: Union[int, Tuple[int]] = 4,
+        num_attention_heads: Union[int, Tuple[int]] = 4,
         block_out_channels: Tuple[int] = (4, 8, 16, 16),
         base_block_out_channels: Tuple[int] = (320, 640, 1280, 1280),
         cross_attention_dim: int = 1024,
@@ -177,13 +177,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         time_embedding_input_dim = base_block_out_channels[0]
         time_embedding_dim = base_block_out_channels[0] * 4
 
-        # `num_attention_heads` defaults to `attention_head_dim`. This looks weird upon first reading it and it is.
-        # The reason for this behavior is to correct for incorrectly named variables that were introduced
-        # when this library was created. The incorrect naming was only discovered much later in https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131
-        # Changing `attention_head_dim` to `num_attention_heads` for 40,000+ configurations is too backwards breaking
-        # which is why we correct for the naming here.
-        num_attention_heads = attention_head_dim
-
         # Check inputs
         if conditioning_channel_order not in ["rgb", "bgr"]:
             raise ValueError(f"unknown `conditioning_channel_order`: {conditioning_channel_order}")
@@ -197,19 +190,12 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             transformer_layers_per_block, repetitions=len(down_block_types)
         )
         cross_attention_dim = repeat_if_not_list(cross_attention_dim, repetitions=len(down_block_types))
-        num_attention_heads = repeat_if_not_list(
-            num_attention_heads, repetitions=len(down_block_types)
-        )  # todo umer: im using # attn heads & dim attn heads. should only be one.
-        attention_head_dim = repeat_if_not_list(attention_head_dim, repetitions=len(down_block_types))
+        # see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why `ControlNetXSAddon` takes `num_attention_heads` instead of `attention_head_dim`
+        num_attention_heads = repeat_if_not_list(num_attention_heads, repetitions=len(down_block_types))
 
         if len(num_attention_heads) != len(down_block_types):
             raise ValueError(
                 f"Must provide the same number of `num_attention_heads` as `down_block_types`. `num_attention_heads`: {num_attention_heads}. `down_block_types`: {down_block_types}."
-            )
-
-        if len(attention_head_dim) != len(down_block_types):
-            raise ValueError(
-                f"Must provide the same number of `attention_head_dim` as `down_block_types`. `attention_head_dim`: {attention_head_dim}. `down_block_types`: {down_block_types}."
             )
 
         # 5 - Create conditioning hint embedding
@@ -255,7 +241,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                     max_norm_num_groups=max_norm_num_groups,
                     has_crossattn=has_crossattn,
                     transformer_layers_per_block=transformer_layers_per_block[i],
-                    num_attention_heads=attention_head_dim[i],
+                    num_attention_heads=num_attention_heads[i],
                     cross_attention_dim=cross_attention_dim[i],
                     add_downsample=not is_final_block,
                     upcast_attention=upcast_attention,
@@ -268,7 +254,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             ctrl_channels=block_out_channels[-1],
             temb_channels=time_embedding_dim,
             transformer_layers_per_block=transformer_layers_per_block[-1],
-            num_attention_heads=attention_head_dim[-1],
+            num_attention_heads=num_attention_heads[-1],
             cross_attention_dim=cross_attention_dim[-1],
             upcast_attention=upcast_attention,
         )
@@ -497,7 +483,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             conditioning_embedding_out_channels=conditioning_embedding_out_channels,
             time_embedding_mix=time_embedding_mix,
             learn_time_embedding=learn_time_embedding,
-            attention_head_dim=num_attention_heads,
+            num_attention_heads=num_attention_heads,
             block_out_channels=block_out_channels,
             base_block_out_channels=unet.config.block_out_channels,
             cross_attention_dim=unet.config.cross_attention_dim,
@@ -564,7 +550,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         ctrl_conditioning_channel_order: str = "rgb",
         ctrl_learn_time_embedding: bool = False,
         ctrl_block_out_channels: Tuple[int] = (4, 8, 16, 16),
-        ctrl_attention_head_dim: Union[int, Tuple[int]] = 4,  # todo umer: # attn heads or dim attn heads?
+        ctrl_num_attention_heads: Union[int, Tuple[int]] = 4,
         ctrl_max_norm_num_groups: int = 32,
     ):
         super().__init__()
@@ -581,7 +567,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         )
         cross_attention_dim = repeat_if_not_list(cross_attention_dim, repetitions=len(down_block_types))
         base_num_attention_heads = repeat_if_not_list(num_attention_heads, repetitions=len(down_block_types))
-        ctrl_attention_head_dim = repeat_if_not_list(ctrl_attention_head_dim, repetitions=len(down_block_types))
+        ctrl_num_attention_heads = repeat_if_not_list(ctrl_num_attention_heads, repetitions=len(down_block_types))
 
         # Create UNet and decompose it into subblocks, which we then save
         base_model = UNet2DConditionModel(
@@ -653,7 +639,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                     has_crossattn=has_crossattn,
                     transformer_layers_per_block=transformer_layers_per_block[i],
                     base_num_attention_heads=base_num_attention_heads[i],
-                    ctrl_num_attention_heads=ctrl_attention_head_dim[i],
+                    ctrl_num_attention_heads=ctrl_num_attention_heads[i],
                     cross_attention_dim=cross_attention_dim[i],
                     add_downsample=not is_final_block,
                     upcast_attention=upcast_attention,
@@ -667,7 +653,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             temb_channels=time_embed_dim,
             transformer_layers_per_block=transformer_layers_per_block[-1],
             base_num_attention_heads=base_num_attention_heads[-1],
-            ctrl_num_attention_heads=ctrl_attention_head_dim[-1],
+            ctrl_num_attention_heads=ctrl_num_attention_heads[-1],
             cross_attention_dim=cross_attention_dim[-1],
             upcast_attention=upcast_attention,
         )
@@ -779,7 +765,7 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
             "conditioning_channel_order",
             "learn_time_embedding",
             "block_out_channels",
-            "attention_head_dim",
+            "num_attention_heads",
             "max_norm_num_groups",
         ]
         params_for_controlnet = {"ctrl_" + k: v for k, v in controlnet.config.items() if k in params_for_controlnet}
@@ -1308,18 +1294,6 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
             return custom_forward
 
-        def apply_resnet(resnet, hidden_states, temb):
-            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-            if self.training and self.gradient_checkpointing:
-                return torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
-            else:
-                return resnet(hidden_states, temb)
-
         for (b_res, b_attn), (c_res, c_attn), b2c, c2b in zip(
             base_blocks, ctrl_blocks, self.base_to_ctrl, self.ctrl_to_base
         ):
@@ -1328,7 +1302,17 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
                 h_ctrl = torch.cat([h_ctrl, b2c(h_base)], dim=1)
 
             # apply base subblock
-            h_base = apply_resnet(b_res, h_base, temb)
+            if self.training and self.gradient_checkpointing:
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                h_base = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(b_res),
+                    h_base,
+                    temb,
+                    **ckpt_kwargs,
+                )
+            else:
+                h_base = b_res(h_base, temb)
+
             if b_attn is not None:
                 h_base = b_attn(
                     h_base,
@@ -1341,7 +1325,16 @@ class ControlNetXSCrossAttnDownBlock2D(nn.Module):
 
             # apply ctrl subblock
             if do_control:
-                h_ctrl = apply_resnet(c_res, h_ctrl, temb)
+                if self.training and self.gradient_checkpointing:
+                    ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                    h_ctrl = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(c_res),
+                        h_ctrl,
+                        temb,
+                        **ckpt_kwargs,
+                    )
+                else:
+                    h_ctrl = c_res(h_ctrl, temb)
                 if c_attn is not None:
                     h_ctrl = c_attn(
                         h_ctrl,
@@ -1691,18 +1684,6 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
 
             return custom_forward
 
-        def apply_resnet(resnet, hidden_states, temb):
-            ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-            if self.training and self.gradient_checkpointing:
-                return torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(resnet),
-                    hidden_states,
-                    temb,
-                    **ckpt_kwargs,
-                )
-            else:
-                return resnet(hidden_states, temb)
-
         for resnet, attn, c2b, res_h_base, res_h_ctrl in zip(
             resnets_without_upsampler,
             attn_without_upsampler,
@@ -1712,8 +1693,20 @@ class ControlNetXSCrossAttnUpBlock2D(nn.Module):
         ):
             if do_control:
                 hidden_states += c2b(res_h_ctrl) * conditioning_scale
+
             hidden_states = torch.cat([hidden_states, res_h_base], dim=1)
-            hidden_states = apply_resnet(resnet, hidden_states, temb)
+
+            if self.training and self.gradient_checkpointing:
+                ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
+                hidden_states = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(resnet),
+                    hidden_states,
+                    temb,
+                    **ckpt_kwargs,
+                )
+            else:
+                hidden_states = resnet(hidden_states, temb)
+
             if attn is not None:
                 hidden_states = attn(
                     hidden_states,

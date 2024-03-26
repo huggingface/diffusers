@@ -589,7 +589,7 @@ class StableDiffusionXLControlNetXSPipeline(
                 "If `negative_prompt_embeds` are provided, `negative_pooled_prompt_embeds` also have to be passed. Make sure to generate `negative_pooled_prompt_embeds` from the same text encoder that was used to generate `negative_prompt_embeds`."
             )
 
-        # Check `image`
+        # Check `image` and ``controlnet_conditioning_scale``
         is_compiled = hasattr(F, "scaled_dot_product_attention") and isinstance(
             self.unet, torch._dynamo.eval_frame.OptimizedModule
         )
@@ -599,15 +599,6 @@ class StableDiffusionXLControlNetXSPipeline(
             and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
         ):
             self.check_image(image, prompt, prompt_embeds)
-        else:
-            assert False
-
-        # Check `controlnet_conditioning_scale`
-        if (
-            isinstance(self.unet, UNetControlNetXSModel)
-            or is_compiled
-            and isinstance(self.unet._orig_mod, UNetControlNetXSModel)
-        ):
             if not isinstance(controlnet_conditioning_scale, float):
                 raise TypeError("For single controlnet: `controlnet_conditioning_scale` must be type `float`.")
         else:

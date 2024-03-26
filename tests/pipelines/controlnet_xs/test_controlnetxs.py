@@ -74,16 +74,20 @@ def _test_stable_diffusion_compile(in_queue, out_queue, timeout):
     try:
         _ = in_queue.get(timeout=timeout)
 
+        controlnet = ControlNetXSAddon.from_pretrained(
+            "UmerHA/Testing-ConrolNetXS-SD2.1-canny", torch_dtype=torch.float16
+        )
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            base_path="stabilityai/stable-diffusion-2-1-base",
-            base_kwargs={"safety_checker": None},
-            addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-canny",
+            "stabilityai/stable-diffusion-2-1-base",
+            controlnet=controlnet,
+            safety_checker=None,
+            torch_dtype=torch.float16,
         )
         pipe.to("cuda")
         pipe.set_progress_bar_config(disable=None)
 
-        pipe.controlnet.to(memory_format=torch.channels_last)
-        pipe.controlnet = torch.compile(pipe.controlnet, mode="reduce-overhead", fullgraph=True)
+        pipe.unet.to(memory_format=torch.channels_last)
+        pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
 
         generator = torch.Generator(device="cpu").manual_seed(0)
         prompt = "bird"
@@ -300,9 +304,11 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         torch.cuda.empty_cache()
 
     def test_canny(self):
+        controlnet = ControlNetXSAddon.from_pretrained(
+            "UmerHA/Testing-ConrolNetXS-SD2.1-canny", torch_dtype=torch.float16
+        )
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            base_path="stabilityai/stable-diffusion-2-1-base",
-            addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-canny",
+            "stabilityai/stable-diffusion-2-1-base", controlnet=controlnet, torch_dtype=torch.float16
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -320,13 +326,15 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         assert image.shape == (768, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        expected_image = np.array([0.1276, 0.1405, 0.1474, 0.1188, 0.1559, 0.1496, 0.1569, 0.1478, 0.1706])
+        expected_image = np.array([0.1963, 0.229, 0.2659, 0.2109, 0.2332, 0.2827, 0.2534, 0.2422, 0.2808])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     def test_depth(self):
+        controlnet = ControlNetXSAddon.from_pretrained(
+            "UmerHA/Testing-ConrolNetXS-SD2.1-depth", torch_dtype=torch.float16
+        )
         pipe = StableDiffusionControlNetXSPipeline.from_pretrained(
-            base_path="stabilityai/stable-diffusion-2-1-base",
-            addon_path="UmerHA/Testing-ConrolNetXS-SD2.1-depth",
+            "stabilityai/stable-diffusion-2-1-base", controlnet=controlnet, torch_dtype=torch.float16
         )
         pipe.enable_model_cpu_offload()
         pipe.set_progress_bar_config(disable=None)
@@ -344,7 +352,7 @@ class ControlNetXSPipelineSlowTests(unittest.TestCase):
         assert image.shape == (512, 512, 3)
 
         original_image = image[-3:, -3:, -1].flatten()
-        expected_image = np.array([0.1101, 0.1026, 0.1212, 0.114, 0.1169, 0.1266, 0.1191, 0.1266, 0.1712])
+        expected_image = np.array([0.4844, 0.4937, 0.4956, 0.4663, 0.5039, 0.5044, 0.4565, 0.4883, 0.4941])
         assert np.allclose(original_image, expected_image, atol=1e-04)
 
     @require_python39_or_higher

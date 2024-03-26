@@ -79,7 +79,7 @@ class UNetControlNetXSModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Tes
             "num_attention_heads": 8,
             "upcast_attention": False,
             "ctrl_block_out_channels": [4, 8],
-            "ctrl_attention_head_dim": 8,
+            "ctrl_num_attention_heads": 8,
             "ctrl_max_norm_num_groups": 4,
         }
         inputs_dict = self.dummy_input
