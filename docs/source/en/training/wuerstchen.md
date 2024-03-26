@@ -53,7 +53,7 @@ accelerate config default
 
 Or if your environment doesn't support an interactive shell, like a notebook, you can use:
 
-```bash
+```py
 from accelerate.utils import write_basic_config
 
 write_basic_config()
@@ -173,7 +173,7 @@ pipeline = AutoPipelineForText2Image.from_pretrained("path/to/saved/model", torc
 
 caption = "A cute bird pokemon holding a shield"
 images = pipeline(
-    caption, 
+    caption,
     width=1024,
     height=1536,
     prior_timesteps=DEFAULT_STAGE_C_TIMESTEPS,
