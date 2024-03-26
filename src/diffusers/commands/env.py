@@ -164,7 +164,7 @@ class EnvironmentCommand(BaseDiffusersCLICommand):
             except FileNotFoundError:
                 pass
         else:
-            print("Are you crazy enough to use or build a new kind of OS like Terry A. Davis did?")
+            print("?")
 
         info = {
             "`diffusers` version": version,
