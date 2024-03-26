@@ -915,7 +915,7 @@ class CustomPipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-components")
 
-        # Check that only loading custom componets "my_unet", "my_scheduler" works
+        # Check that only loading custom components "my_unet", "my_scheduler" works
         pipeline = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-sdxl-custom-components", trust_remote_code=True
         )
@@ -929,7 +929,7 @@ class CustomPipelineTests(unittest.TestCase):
 
         assert images.shape == (1, 64, 64, 3)
 
-        # Check that only loading custom componets "my_unet", "my_scheduler" and explicit custom pipeline works
+        # Check that only loading custom components "my_unet", "my_scheduler" and explicit custom pipeline works
         pipeline = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-sdxl-custom-components", custom_pipeline="my_pipeline", trust_remote_code=True
         )
@@ -948,7 +948,7 @@ class CustomPipelineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             pipeline = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-sdxl-custom-all")
 
-        # Check that only loading custom componets "my_unet", "my_scheduler" and auto custom pipeline works
+        # Check that only loading custom components "my_unet", "my_scheduler" and auto custom pipeline works
         pipeline = DiffusionPipeline.from_pretrained(
             "hf-internal-testing/tiny-sdxl-custom-all", trust_remote_code=True
         )
