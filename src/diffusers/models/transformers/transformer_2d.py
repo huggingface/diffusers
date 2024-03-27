@@ -401,7 +401,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             output = F.log_softmax(logits.double(), dim=1).float()
 
         if self.is_input_patches:
-            output = self._get_output_for_patched_inputs(hidden_states, timestep, class_labels, embedded_timestep)
+            output = self._get_output_for_patched_inputs(
+                hidden_states, timestep, class_labels, embedded_timestep, height=height, width=width
+            )
 
         if not return_dict:
             return (output,)
@@ -454,7 +456,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         output = hidden_states + residual
         return output
 
-    def _get_output_for_patched_inputs(self, hidden_states, timestep, class_labels, embedded_timestep):
+    def _get_output_for_patched_inputs(
+        self, hidden_states, timestep, class_labels, embedded_timestep, height=None, width=None
+    ):
         if self.config.norm_type != "ada_norm_single":
             conditioning = self.transformer_blocks[0].norm1.emb(
                 timestep, class_labels, hidden_dtype=hidden_states.dtype
