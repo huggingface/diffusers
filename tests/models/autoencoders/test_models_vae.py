@@ -392,7 +392,7 @@ class ConsistencyDecoderVAETests(ModelTesterMixin, unittest.TestCase):
         ...
 
 
-class AutoncoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
+class AutoencoderKLTemporalDecoderFastTests(ModelTesterMixin, unittest.TestCase):
     model_class = AutoencoderKLTemporalDecoder
     main_input_name = "sample"
     base_precision = 1e-2
