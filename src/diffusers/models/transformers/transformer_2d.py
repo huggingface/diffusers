@@ -16,14 +16,10 @@ from typing import Any, Dict, Optional
 
 import torch
 import torch.nn.functional as F
-from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, deprecate, is_torch_version, logging
-from ..attention import BasicTransformerBlock
-from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
 from ..modeling_utils import ModelMixin
-from ..normalization import AdaLayerNormSingle
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -72,6 +68,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     """
 
     _supports_gradient_checkpointing = True
+    gradient_checkpointing = False
 
     @register_to_config
     def __init__(
@@ -117,9 +114,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
 
-        conv_cls = nn.Conv2d
-        linear_cls = nn.Linear
-
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
         self.is_input_continuous = (in_channels is not None) and (patch_size is None)
@@ -153,108 +147,102 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 f" {patch_size}. Make sure that `in_channels`, `num_vector_embeds` or `num_patches` is not None."
             )
 
-        # 2. Define input layers
+        # Initialize the appropriate variant and return.
         if self.is_input_continuous:
-            self.in_channels = in_channels
-
-            self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
-            if use_linear_projection:
-                self.proj_in = linear_cls(in_channels, inner_dim)
-            else:
-                self.proj_in = conv_cls(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
-        elif self.is_input_vectorized:
-            assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
-            assert num_vector_embeds is not None, "Transformer2DModel over discrete input must provide num_embed"
-
-            self.height = sample_size
-            self.width = sample_size
-            self.num_vector_embeds = num_vector_embeds
-            self.num_latent_pixels = self.height * self.width
-
-            self.latent_image_embedding = ImagePositionalEmbeddings(
-                num_embed=num_vector_embeds, embed_dim=inner_dim, height=self.height, width=self.width
-            )
-        elif self.is_input_patches:
-            assert sample_size is not None, "Transformer2DModel over patched input must provide sample_size"
-
-            self.height = sample_size
-            self.width = sample_size
-
-            self.patch_size = patch_size
-            interpolation_scale = (
-                interpolation_scale if interpolation_scale is not None else max(self.config.sample_size // 64, 1)
-            )
-            self.pos_embed = PatchEmbed(
-                height=sample_size,
-                width=sample_size,
-                patch_size=patch_size,
+            return Transformer2DModel.create_model(
+                input_type="continuous",
                 in_channels=in_channels,
-                embed_dim=inner_dim,
-                interpolation_scale=interpolation_scale,
+                out_channels=out_channels,
+                inner_dim=inner_dim,
+                num_attention_heads=num_attention_heads,
+                attention_head_dim=attention_head_dim,
+                cross_attention_dim=cross_attention_dim,
+                activation_fn=activation_fn,
+                num_embeds_ada_norm=num_embeds_ada_norm,
+                attention_bias=attention_bias,
+                only_cross_attention=only_cross_attention,
+                double_self_attention=double_self_attention,
+                upcast_attention=upcast_attention,
+                norm_type=norm_type,
+                norm_elementwise_affine=norm_elementwise_affine,
+                norm_eps=norm_eps,
+                attention_type=attention_type,
+                norm_num_groups=norm_num_groups,
+                use_linear_projection=use_linear_projection,
+                dropout=dropout,
+                num_layers=num_layers,
             )
 
-        # 3. Define transformers blocks
-        self.transformer_blocks = nn.ModuleList(
-            [
-                BasicTransformerBlock(
-                    inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
-                )
-                for d in range(num_layers)
-            ]
-        )
-
-        # 4. Define output layers
-        self.out_channels = in_channels if out_channels is None else out_channels
-        if self.is_input_continuous:
-            # TODO: should use out_channels for continuous projections
-            if use_linear_projection:
-                self.proj_out = linear_cls(inner_dim, in_channels)
-            else:
-                self.proj_out = conv_cls(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
         elif self.is_input_vectorized:
-            self.norm_out = nn.LayerNorm(inner_dim)
-            self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
-        elif self.is_input_patches and norm_type != "ada_norm_single":
-            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
-        elif self.is_input_patches and norm_type == "ada_norm_single":
-            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
-            self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+            return Transformer2DModel.create_model(
+                input_type="vectorized",
+                in_channels=in_channels,
+                sample_size=sample_size,
+                num_vector_embeds=num_vector_embeds,
+                inner_dim=inner_dim,
+                num_attention_heads=num_attention_heads,
+                attention_head_dim=attention_head_dim,
+                dropout=dropout,
+                cross_attention_dim=cross_attention_dim,
+                activation_fn=activation_fn,
+                num_embeds_ada_norm=num_embeds_ada_norm,
+                attention_bias=attention_bias,
+                only_cross_attention=only_cross_attention,
+                double_self_attention=double_self_attention,
+                upcast_attention=upcast_attention,
+                norm_type=norm_type,
+                norm_elementwise_affine=norm_elementwise_affine,
+                norm_eps=norm_eps,
+                attention_type=attention_type,
+                num_layers=num_layers,
+            )
 
-        # 5. PixArt-Alpha blocks.
-        self.adaln_single = None
-        self.use_additional_conditions = False
-        if norm_type == "ada_norm_single":
-            self.use_additional_conditions = self.config.sample_size == 128
-            # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
-            # additional conditions until we find better name
-            self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=self.use_additional_conditions)
-
-        self.caption_projection = None
-        if caption_channels is not None:
-            self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
-
-        self.gradient_checkpointing = False
+        elif self.is_input_patches:
+            return Transformer2DModel.create_model(
+                input_type="patched",
+                in_channels=in_channels,
+                sample_size=sample_size,
+                patch_size=patch_size,
+                inner_dim=inner_dim,
+                num_attention_heads=num_attention_heads,
+                attention_head_dim=attention_head_dim,
+                dropout=dropout,
+                cross_attention_dim=cross_attention_dim,
+                activation_fn=activation_fn,
+                num_embeds_ada_norm=num_embeds_ada_norm,
+                attention_bias=attention_bias,
+                only_cross_attention=only_cross_attention,
+                double_self_attention=double_self_attention,
+                upcast_attention=upcast_attention,
+                norm_type=norm_type,
+                norm_elementwise_affine=norm_elementwise_affine,
+                norm_eps=norm_eps,
+                attention_type=attention_type,
+                num_layers=num_layers,
+                interpolation_scale=interpolation_scale,
+                caption_channels=caption_channels,
+            )
 
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
+
+    @classmethod
+    def create_model(cls, input_type, **kwargs):
+        if input_type == "continuous":
+            from .legacy import ContinuousTransformer2DModel
+
+            return ContinuousTransformer2DModel(**kwargs)
+        elif input_type == "vectorized":
+            from .legacy import VectorizedTransformer2DModel
+
+            return VectorizedTransformer2DModel(**kwargs)
+        elif input_type == "patched":
+            from .legacy import PatchedTransformer2DModel
+
+            return PatchedTransformer2DModel(**kwargs)
+        else:
+            raise ValueError(f"Invalid input_type: {input_type}")
 
     def forward(
         self,
