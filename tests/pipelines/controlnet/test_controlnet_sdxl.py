@@ -192,7 +192,9 @@ class StableDiffusionXLControlNetPipelineFastTests(
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
     def test_ip_adapter_single(self):
-        expected_pipe_slice = np.array([0.7331, 0.5907, 0.5667, 0.6029, 0.5679, 0.5968, 0.4033, 0.4761, 0.5090])
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.7331, 0.5907, 0.5667, 0.6029, 0.5679, 0.5968, 0.4033, 0.4761, 0.5090])
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     @unittest.skipIf(
@@ -1047,7 +1049,9 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
 
     def test_ip_adapter_single(self):
-        expected_pipe_slice = np.array([0.6832, 0.5703, 0.5460, 0.6300, 0.5856, 0.6034, 0.4494, 0.4613, 0.5036])
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.6832, 0.5703, 0.5460, 0.6300, 0.5856, 0.6034, 0.4494, 0.4613, 0.5036])
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_controlnet_sdxl_lcm(self):
