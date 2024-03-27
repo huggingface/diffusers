@@ -242,7 +242,7 @@ class IPAdapterTesterMixin:
 
         # forward pass without ip adapter
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
-        if not expected_pipe_slice:
+        if expected_pipe_slice is None:
             output_without_adapter = pipe(**inputs)[0]
             print_tensor_test(output_without_adapter, limit_to_slices=True, max_torch_print=True)
         else:
@@ -255,13 +255,17 @@ class IPAdapterTesterMixin:
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         pipe.set_ip_adapter_scale(0.0)
-        output_without_adapter_scale = pipe(**inputs)[0][0, -3:, -3:, -1]
+        output_without_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice:
+            output_without_adapter_scale = output_without_adapter_scale[0, -3:, -3:, -1]
 
         # forward pass with single ip adapter, but with scale of adapter weights
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         pipe.set_ip_adapter_scale(42.0)
-        output_with_adapter_scale = pipe(**inputs)[0][0, -3:, -3:, -1]
+        output_with_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice:
+            output_with_adapter_scale = output_with_adapter_scale[0, -3:, -3:, -1]
 
         max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
         max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()

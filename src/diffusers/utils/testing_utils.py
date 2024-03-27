@@ -128,7 +128,7 @@ def print_tensor_test(
     test_file, test_class, test_fn = test_name.split("::")
     test_fn = test_fn.split()[0]
     with open(filename, "a") as f:
-        print(";".join([test_file, test_class, test_fn, output_str]), file=f)
+        print("::".join([test_file, test_class, test_fn, output_str]), file=f)
 
 
 def get_tests_dir(append_path=None):
