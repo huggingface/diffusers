@@ -1399,20 +1399,21 @@ def create_diffusers_vae_from_ldm(
 def create_diffusers_clip_model_from_ldm(
     cls,
     checkpoint,
-    subfolder,
+    subfolder=None,
     config=None,
     torch_dtype=None,
-    local_files_only=False,
     **kwargs,
 ):
     if config is None:
-        model_config = fetch_diffusers_config(checkpoint, subfolder=subfolder)
+        config = fetch_diffusers_config(checkpoint, subfolder=subfolder)
+        model_config = cls.config_class.from_pretrained(**config, **kwargs)
+
     else:
         model_config = config
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
-        model = cls.from_pretrained(**model_config, local_files_only=local_files_only)
+        model = cls(model_config)
 
     if is_clip_model(checkpoint):
         diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)

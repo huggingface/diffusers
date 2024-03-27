@@ -355,6 +355,8 @@ def _get_model_file(
                 user_agent=user_agent,
                 subfolder=subfolder,
                 revision=revision or commit_hash,
+                local_dir=local_dir,
+                local_dir_use_symlinks=local_dir_use_symlinks,
             )
             return model_file
 

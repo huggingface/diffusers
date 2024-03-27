@@ -45,6 +45,8 @@ def load_single_file_sub_model(
     is_pipeline_module,
     original_config=None,
     local_files_only=False,
+    local_dir=None,
+    local_dir_use_symlinks="auto",
     torch_dtype=None,
     **kwargs,
 ):
@@ -73,7 +75,10 @@ def load_single_file_sub_model(
     if is_diffusers_single_file_model:
         if original_config is None:
             config = class_obj.load_config(
-                pretrained_model_name_or_path, subfolder=name, local_files_only=local_files_only, **kwargs
+                pretrained_model_name_or_path,
+                subfolder=name,
+                local_files_only=local_files_only,
+                **kwargs,
             )
         else:
             config = None
@@ -89,13 +94,15 @@ def load_single_file_sub_model(
 
     elif is_transformers_model and is_clip_model_in_single_file(class_obj, checkpoint):
         load_method = create_diffusers_clip_model_from_ldm
+        config = class_obj.config_class.from_pretrained(pretrained_model_name_or_path, subfolder=name, **kwargs)
+
         loaded_sub_model = load_method(
             class_obj,
             checkpoint=checkpoint,
             subfolder=name,
-            original_config=None,
-            config=None,
+            config=config,
             torch_dtype=torch_dtype,
+            local_files_only=local_files_only,
             **kwargs,
         )
 
@@ -112,6 +119,9 @@ def load_single_file_sub_model(
 
 
 def _legacy_load_safety_checker(local_files_only, torch_dtype):
+    # Support for loading safety checker components using the deprecated
+    # `load_safety_checker` argument.
+
     from ..pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 
     feature_extractor = AutoFeatureExtractor.from_pretrained(
@@ -233,6 +243,8 @@ class FromSingleFileMixin:
             cache_dir=cache_dir,
             local_files_only=local_files_only,
             revision=revision,
+            local_dir=local_dir,
+            local_dir_use_symlinks=local_dir_use_symlinks,
         )
         if original_config_file is not None:
             original_config = fetch_original_config(
@@ -260,8 +272,6 @@ class FromSingleFileMixin:
             resume_download=resume_download,
             token=token,
             local_files_only=local_files_only,
-            local_dir=local_dir,
-            local_dir_use_symlinks=local_dir_use_symlinks,
         )
 
         config_dict = pipeline_class._dict_from_json_file(config_file)
@@ -309,6 +319,9 @@ class FromSingleFileMixin:
                     name=name,
                     torch_dtype=torch_dtype,
                     original_config=original_config,
+                    local_dir=local_dir,
+                    local_dir_use_symlinks=local_dir_use_symlinks,
+                    local_files_only=local_files_only,
                     **kwargs,
                 )
 
