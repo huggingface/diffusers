@@ -49,9 +49,6 @@ class DifferentialDiffusionMixin:
         )
         generator = kwargs.get("generator", _get_default_value(self.__call__, "generator"))
         denoising_start = kwargs.get("denoising_start", _get_default_value(self.__call__, "denoising_start"))
-        callback_before_step_begin = kwargs.pop(
-            "callback_before_step_begin", _get_default_value(self.__call__, "callback_before_step_begin")
-        )
 
         def callback(pipe, i: int, t: int, callback_kwargs: Dict[str, Any]):
             nonlocal original_with_noise, thresholds, masks
@@ -61,7 +58,7 @@ class DifferentialDiffusionMixin:
             prompt_embeds = callback_kwargs.get("prompt_embeds")
             latents = callback_kwargs.get("latents")
 
-            if i < 0:
+            if i == 0:
                 original_with_noise = self.prepare_latents(
                     image=image,
                     timestep=timesteps,
@@ -77,8 +74,6 @@ class DifferentialDiffusionMixin:
 
                 if denoising_start is None:
                     latents = original_with_noise[:1]
-            elif i == 0:
-                pass
             else:
                 mask = masks[i].unsqueeze(0)
                 mask = mask.to(latents.dtype)
@@ -87,7 +82,7 @@ class DifferentialDiffusionMixin:
 
             callback_results = {}
 
-            if original_callback_on_step_end is not None and (i >= 0 or callback_before_step_begin):
+            if original_callback_on_step_end is not None:
                 callback_kwargs["latents"] = latents
                 result = original_callback_on_step_end(pipe, i, t, callback_kwargs)
                 callback_results.update(result)
@@ -102,6 +97,5 @@ class DifferentialDiffusionMixin:
         return self.__call__(
             callback_on_step_end=callback,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
-            callback_before_step_begin=True,
             **kwargs,
         )
