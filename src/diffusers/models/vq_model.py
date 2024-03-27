@@ -142,21 +142,23 @@ class VQModel(ModelMixin, ConfigMixin):
     ) -> Union[DecoderOutput, torch.FloatTensor]:
         # also go through quantization layer
         if not force_not_quantize:
-            quant, _, _ = self.quantize(h)
+            quant, commit_loss, _ = self.quantize(h)
         elif self.config.lookup_from_codebook:
             quant = self.quantize.get_codebook_entry(h, shape)
+            commit_loss = torch.zeros((h.shape[0])).to(h.device, dtype=h.dtype)
         else:
             quant = h
+            commit_loss = torch.zeros((h.shape[0])).to(h.device, dtype=h.dtype)
         quant2 = self.post_quant_conv(quant)
         dec = self.decoder(quant2, quant if self.config.norm_type == "spatial" else None)
 
         if not return_dict:
-            return (dec,)
+            return dec, commit_loss
 
-        return DecoderOutput(sample=dec)
+        return DecoderOutput(sample=dec, commit_loss=commit_loss)
 
     def forward(
-        self, sample: torch.FloatTensor, return_dict: bool = True
+        self, sample: torch.FloatTensor, return_dict: bool = True, return_loss: bool = False
     ) -> Union[DecoderOutput, Tuple[torch.FloatTensor, ...]]:
         r"""
         The [`VQModel`] forward method.
@@ -165,7 +167,8 @@ class VQModel(ModelMixin, ConfigMixin):
             sample (`torch.FloatTensor`): Input sample.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`models.vq_model.VQEncoderOutput`] instead of a plain tuple.
-
+            return_loss (`bool`, *optional*, defaults to `False`):
+                Whether or not to return a commit loss.
         Returns:
             [`~models.vq_model.VQEncoderOutput`] or `tuple`:
                 If return_dict is True, a [`~models.vq_model.VQEncoderOutput`] is returned, otherwise a plain `tuple`
@@ -173,9 +176,15 @@ class VQModel(ModelMixin, ConfigMixin):
         """
 
         h = self.encode(sample).latents
-        dec = self.decode(h).sample
+        dec = self.decode(h)
 
         if not return_dict:
-            return (dec,)
-
-        return DecoderOutput(sample=dec)
+            if return_loss:
+                return (
+                    dec.sample,
+                    dec.commit_loss,
+                )
+            return (dec.sample,)
+        if return_loss:
+            return dec
+        return DecoderOutput(sample=dec.sample)
