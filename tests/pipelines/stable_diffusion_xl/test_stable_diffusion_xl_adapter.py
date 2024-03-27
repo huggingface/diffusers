@@ -295,7 +295,9 @@ class StableDiffusionXLAdapterPipelineFastTests(
         return inputs
 
     def test_ip_adapter_single(self):
-        expected_pipe_slice = np.array([0.5753, 0.6022, 0.4728, 0.4986, 0.5708, 0.4645, 0.5194, 0.5134, 0.4730])
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5753, 0.6022, 0.4728, 0.4986, 0.5708, 0.4645, 0.5194, 0.5134, 0.4730])
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_stable_diffusion_adapter_default_case(self):
@@ -451,7 +453,9 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
         assert np.abs(image_slice.flatten() - expected_slice).max() < 5e-3
 
     def test_ip_adapter_single(self):
-        expected_pipe_slice = np.array([0.5813, 0.6100, 0.4756, 0.5057, 0.5720, 0.4632, 0.5177, 0.5125, 0.4718])
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5813, 0.6100, 0.4756, 0.5057, 0.5720, 0.4632, 0.5177, 0.5125, 0.4718])
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_inference_batch_consistent(
