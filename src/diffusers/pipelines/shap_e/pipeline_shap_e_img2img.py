@@ -86,7 +86,7 @@ class ShapEImg2ImgPipeline(DiffusionPipeline):
 
     Args:
         prior ([`PriorTransformer`]):
-            The canonincal unCLIP prior to approximate the image embedding from the text embedding.
+            The canonical unCLIP prior to approximate the image embedding from the text embedding.
         image_encoder ([`~transformers.CLIPVisionModel`]):
             Frozen image-encoder.
         image_processor ([`~transformers.CLIPImageProcessor`]):

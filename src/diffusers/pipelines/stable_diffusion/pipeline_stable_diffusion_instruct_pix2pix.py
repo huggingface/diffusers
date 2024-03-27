@@ -194,7 +194,7 @@ class StableDiffusionInstructPix2PixPipeline(
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
             image_guidance_scale (`float`, *optional*, defaults to 1.5):
-                Push the generated image towards the inital `image`. Image guidance scale is enabled by setting
+                Push the generated image towards the initial `image`. Image guidance scale is enabled by setting
                 `image_guidance_scale > 1`. Higher image guidance scale encourages generated images that are closely
                 linked to the source `image`, usually at the expense of lower image quality. This pipeline requires a
                 value of at least `1`.
