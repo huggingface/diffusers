@@ -1051,11 +1051,11 @@ class StableDiffusionSSD1BControlNetPipelineFastTests(StableDiffusionXLControlNe
         # make sure that it's equal
         assert np.abs(image_slice.flatten() - expected_slice).max() < 1e-4
 
-    def test_ip_adapter_single(self):
-        expected_pipe_slice = None
-        if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.6832, 0.5703, 0.5460, 0.6300, 0.5856, 0.6034, 0.4494, 0.4613, 0.5036])
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+    # def test_ip_adapter_single(self):
+    #     expected_pipe_slice = None
+    #     if torch_device == "cpu":
+    #         expected_pipe_slice = np.array([0.6832, 0.5703, 0.5460, 0.6300, 0.5856, 0.6034, 0.4494, 0.4613, 0.5036])
+    #     return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_controlnet_sdxl_lcm(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
