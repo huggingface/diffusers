@@ -32,6 +32,8 @@ class PatchedTransformer2DModel(Transformer2DModel):
         interpolation_scale,
         caption_channels,
     ):
+        super().__init__()
+
         assert sample_size is not None, "Transformer2DModel over patched input must provide sample_size"
 
         self.in_channels = in_channels

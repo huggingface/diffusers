@@ -28,6 +28,8 @@ class VectorizedTransformer2DModel(Transformer2DModel):
         attention_type,
         num_layers,
     ):
+        super().__init__()
+
         assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
         assert num_vector_embeds is not None, "Transformer2DModel over discrete input must provide num_embed"
 

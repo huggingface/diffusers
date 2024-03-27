@@ -29,6 +29,8 @@ class ContinuousTransformer2DModel(Transformer2DModel):
         dropout,
         num_layers,
     ):
+        super().__init__()
+
         self.in_channels = in_channels
 
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
