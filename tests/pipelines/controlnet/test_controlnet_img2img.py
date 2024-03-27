@@ -370,6 +370,10 @@ class StableDiffusionMultiControlNetPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = np.array([0.5293, 0.7339, 0.6642, 0.3950, 0.5212, 0.5175, 0.7002, 0.5907, 0.5182])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)

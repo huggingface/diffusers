@@ -449,6 +449,8 @@ class StableDiffusionMultiControlNetPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
+
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
@@ -458,6 +460,10 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = np.array([0.2422, 0.3425, 0.4048, 0.5351, 0.3503, 0.2419, 0.4645, 0.4570, 0.3804])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
@@ -662,6 +668,10 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = np.array([0.5264, 0.3203, 0.1602, 0.8235, 0.6332, 0.4593, 0.7226, 0.7777, 0.4780])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
