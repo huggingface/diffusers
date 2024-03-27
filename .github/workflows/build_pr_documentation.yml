@@ -12,6 +12,7 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+
 jobs:
   build:
     uses: huggingface/doc-builder/.github/workflows/build_pr_documentation.yml@test-install-deps-with-uv
