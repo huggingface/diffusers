@@ -174,6 +174,10 @@ class ControlNetImg2ImgPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = np.array([0.7096, 0.5149, 0.3571, 0.5897, 0.4715, 0.4052, 0.6098, 0.6886, 0.4213])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
