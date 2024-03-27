@@ -18,6 +18,6 @@ jobs:
     with:
       commit_sha: ${{ github.event.pull_request.head.sha }}
       pr_number: ${{ github.event.number }}
-      install_libgl1: true
       package: diffusers
+      install_libgl1: true
       languages: en ko zh ja pt
