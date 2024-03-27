@@ -70,14 +70,14 @@ def load_single_file_sub_model(
     diffusers_module = importlib.import_module(__name__.split(".")[0])
     is_diffusers_single_file_model = issubclass(class_obj, diffusers_module.FromOriginalModelMixin)
 
-    if original_config is None:
-        config = class_obj.load_config(
-            pretrained_model_name_or_path, subfolder=name, local_files_only=local_files_only, **kwargs
-        )
-    else:
-        config = None
-
     if is_diffusers_single_file_model:
+        if original_config is None:
+            config = class_obj.load_config(
+                pretrained_model_name_or_path, subfolder=name, local_files_only=local_files_only, **kwargs
+            )
+        else:
+            config = None
+
         load_method = getattr(class_obj, "from_single_file")
         loaded_sub_model = load_method(
             checkpoint=checkpoint,
@@ -87,12 +87,14 @@ def load_single_file_sub_model(
             **kwargs,
         )
 
-    elif is_transformers_model and is_clip_model_in_single_file(checkpoint):
+    elif is_transformers_model and is_clip_model_in_single_file(class_obj, checkpoint):
         load_method = create_diffusers_clip_model_from_ldm
         loaded_sub_model = load_method(
+            class_obj,
             checkpoint=checkpoint,
-            original_config=original_config,
-            config=config,
+            subfolder=name,
+            original_config=None,
+            config=None,
             torch_dtype=torch_dtype,
             **kwargs,
         )
@@ -104,7 +106,6 @@ def load_single_file_sub_model(
             subfolder=name,
             local_files_only=local_files_only,
             torch_dtype=torch_dtype,
-            **kwargs,
         )
 
     return loaded_sub_model
@@ -339,6 +340,17 @@ class FromSingleFileMixin:
             )
             safety_checker_components = _legacy_load_safety_checker(local_files_only, torch_dtype)
             init_kwargs.update(safety_checker_components)
+
+        scheduler_type = kwargs.pop("scheduler_type", None)
+        if scheduler_type is not None:
+            logger.warning(
+                (
+                    "The `scheduler_type` argument is deprecated and will be ignored. "
+                    "Please pass an instance of a Scheduler object directly to the `scheduler` in `from_single_file`."
+                    "If no scheduler is provided, it will be loaded based"
+                    f"on the default config for the {pipeline_class.__name__}: {default_pipeline_config['pretrained_model_name_or_path']}."
+                )
+            )
 
         pipe = pipeline_class(**init_kwargs)
         if torch_dtype is not None:

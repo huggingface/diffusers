@@ -345,14 +345,13 @@ def is_open_clip_sdxl_model(checkpoint):
     return False
 
 
-def is_clip_model_in_single_file(checkpoint):
-    if is_clip_model(checkpoint):
-        return True
-
-    elif is_open_clip_model(checkpoint):
-        return True
-
-    elif is_open_clip_sdxl_model(checkpoint):
+def is_clip_model_in_single_file(class_obj, checkpoint):
+    is_clip_in_checkpoint = any(
+        [is_clip_model(checkpoint), is_open_clip_model(checkpoint), is_open_clip_sdxl_model(checkpoint)]
+    )
+    if (
+        class_obj.__name__ == "CLIPTextModel" or class_obj.__name__ == "CLIPTextModelWithProjection"
+    ) and is_clip_in_checkpoint:
         return True
 
     return False
@@ -1394,21 +1393,20 @@ def create_diffusers_vae_from_ldm(
 def create_diffusers_clip_model_from_ldm(
     cls,
     checkpoint,
+    subfolder,
     config=None,
     torch_dtype=None,
     local_files_only=False,
     **kwargs,
 ):
     if config is None:
-        config = fetch_diffusers_config(checkpoint, subfolder="text_encoder")
-        model_config = cls.load_config(**config, **kwargs)
-
+        model_config = fetch_diffusers_config(checkpoint, subfolder=subfolder)
     else:
         model_config = config
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
-        model = cls.from_config(model_config, local_files_only=local_files_only, **kwargs)
+        model = cls.from_pretrained(**model_config, local_files_only=local_files_only)
 
     if is_clip_model(checkpoint):
         diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
@@ -1417,9 +1415,12 @@ def create_diffusers_clip_model_from_ldm(
         prefix = "cond_stage_model.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
-    else:
+    elif is_open_clip_sdxl_model(checkpoint):
         prefix = "conditioner.embedders.0.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
+
+    else:
+        raise ValueError("The provided checkpoint does not seem to contain a valid CLIP model.")
 
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
