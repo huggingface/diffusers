@@ -223,7 +223,7 @@ class ControlNetPipelineFastTests(
 
     def test_ip_adapter_single(self):
         expected_pipe_slice = np.array([0.5234, 0.3333, 0.1745, 0.7605, 0.6224, 0.4637, 0.6989, 0.7526, 0.4665])
-        return super().test_ip_adapter_single(expected_pipe_slice)
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
