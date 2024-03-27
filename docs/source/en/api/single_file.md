@@ -6,24 +6,24 @@ The `from_single_file` method also supports loading models in their originally d
 
 ## Pipelines that currently support `from_single_file` loading
 
-- [StableDiffusionPipeline]()
-- [StableDiffusionImg2ImgPipeline]()
-- [StableDiffusionInpaintPipeline]()
-- [StableDiffusionControlNetPipeline]()
-- [StableDiffusionControlNetImg2ImgPipeline]()
-- [StableDiffusionControlNetInpaintPipeline]()
-- [StableDiffusionUpscalePipeline]()
-- [StableDiffusionXLPipeline]()
-- [StableDiffusionXLImg2ImgPipeline]()
-- [StableDiffusionXLInpaintPipeline]()
-- [StableDiffusionXLControlNetPipeline]()
+- [`StableDiffusionPipeline`]
+- [`StableDiffusionImg2ImgPipeline`]
+- [`StableDiffusionInpaintPipeline`]
+- [`StableDiffusionControlNetPipeline`]
+- [`StableDiffusionControlNetImg2ImgPipeline`]
+- [`StableDiffusionControlNetInpaintPipeline`]
+- [`StableDiffusionUpscalePipeline`]
+- [`StableDiffusionXLPipeline`]
+- [`StableDiffusionXLImg2ImgPipeline`]
+- [`StableDiffusionXLInpaintPipeline`]
+- [`StableDiffusionXLControlNetPipeline`]
 
 ## Models that currently support `from_single_file` loading
 
-- [UNet2DConditionModel]()
-- [StableCascadeUNet]()
-- [AutoencoderKL]()
-- [ControlNetModel]()
+- [`UNet2DConditionModel`]
+- [`StableCascadeUNet`]
+- [`AutoencoderKL`]
+- [`ControlNetModel`]
 
 ## Usage Examples
 
@@ -37,6 +37,8 @@ pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path)
 ```
 
 ## Setting components in a Pipeline using `from_single_file`
+
+Swap components of the pipeline by passing them directly to the `from_single_file` method. e.g If you would like use a different scheduler than the pipeline default.
 
 ```python
 from diffusers import StableDiffusionXLPipeline, DDIMScheduler
@@ -67,7 +69,14 @@ model = StableCascadeUNet.from_single_file(ckpt_path)
 
 ## Override configuration options when using single file loading
 
-In order to override configuration options when loading a model or pipeline using `from_single_file`, you can pass the relevant arguments directly to the `from_single_file` method.
+Override the default model or pipeline configuration options when using `from_single_file` by passing in the relevant arguments directly to the `from_single_file` method. Any argument that is supported by the Model or Pipeline class can be configured in this way
+
+```python
+from diffusers import StableDiffusionXLImg2ImgPipeline
+
+ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-xl-refiner-1.0/blob/main/sd_xl_refiner_1.0_0.9vae.safetensors"
+pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, requires_aesthetics_score=True)
+```
 
 ```python
 from diffusers import UNet2DConditionModel
