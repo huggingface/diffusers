@@ -56,6 +56,7 @@ USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 
 if is_torch_available():
     import torch
+    torch.set_printoptions(threshold=10_000)
 
     # Set a backend environment variable for any extra module import required for a custom accelerator
     if "DIFFUSERS_TEST_BACKEND" in os.environ:
