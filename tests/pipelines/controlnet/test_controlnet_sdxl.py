@@ -190,7 +190,7 @@ class StableDiffusionXLControlNetPipelineFastTests(
 
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
-    
+
     def test_ip_adapter_single(self):
         expected_pipe_slice = np.array([0.7331, 0.5907, 0.5667, 0.6029, 0.5679, 0.5968, 0.4033, 0.4761, 0.5090])
         return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)

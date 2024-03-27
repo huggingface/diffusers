@@ -449,8 +449,6 @@ class StableDiffusionMultiControlNetPipelineFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
-
-
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
