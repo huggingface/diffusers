@@ -28,6 +28,7 @@ from torch import nn
 from ..models.embeddings import (
     ImageProjection,
     IPAdapterFaceIDImageProjection,
+    IPAdapterFaceIDPlusImageProjection,
     IPAdapterFullImageProjection,
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
@@ -749,6 +750,58 @@ class UNet2DConditionLoadersMixin:
                 diffusers_name = diffusers_name.replace("proj.3", "norm")
                 updated_state_dict[diffusers_name] = value
 
+        elif "perceiver_resampler.proj_in.weight" in state_dict:
+            # IP-Adapter Face ID Plus
+            id_embeddings_dim = state_dict["proj.0.weight"].shape[1]
+            embed_dims = state_dict["perceiver_resampler.proj_in.weight"].shape[0]
+            hidden_dims = state_dict["perceiver_resampler.proj_in.weight"].shape[1]
+            output_dims = state_dict["perceiver_resampler.proj_out.weight"].shape[0]
+            heads = state_dict["perceiver_resampler.layers.0.0.to_q.weight"].shape[0] // 64
+
+            with init_context():
+                image_projection = IPAdapterFaceIDPlusImageProjection(
+                    embed_dims=embed_dims,
+                    output_dims=output_dims,
+                    hidden_dims=hidden_dims,
+                    heads=heads,
+                    id_embeddings_dim=id_embeddings_dim,
+                )
+
+            for key, value in state_dict.items():
+                diffusers_name = key.replace("perceiver_resampler.", "")
+                diffusers_name = diffusers_name.replace("0.to", "2.to")
+                diffusers_name = diffusers_name.replace("0.1.0.", "0.3.0.")
+                diffusers_name = diffusers_name.replace("0.1.1.", "0.3.1.")
+                diffusers_name = diffusers_name.replace("1.1.0.", "1.3.0.")
+                diffusers_name = diffusers_name.replace("1.1.1.", "1.3.1.")
+                diffusers_name = diffusers_name.replace("2.1.0.", "2.3.0.")
+                diffusers_name = diffusers_name.replace("2.1.1.", "2.3.1.")
+                diffusers_name = diffusers_name.replace("3.1.0.", "3.3.0.")
+                diffusers_name = diffusers_name.replace("3.1.1.", "3.3.1.")
+                diffusers_name = diffusers_name.replace(".3.1.weight", ".3.1.net.0.proj.weight")
+                diffusers_name = diffusers_name.replace(".1.3.weight", ".3.1.net.2.weight")
+
+                if "norm1" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm1", "0")] = value
+                elif "norm2" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("0.norm2", "1")] = value
+                elif "to_kv" in diffusers_name:
+                    v_chunk = value.chunk(2, dim=0)
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_k")] = v_chunk[0]
+                    updated_state_dict[diffusers_name.replace("to_kv", "to_v")] = v_chunk[1]
+                elif "to_out" in diffusers_name:
+                    updated_state_dict[diffusers_name.replace("to_out", "to_out.0")] = value
+                elif "proj.0.weight" == diffusers_name:
+                    updated_state_dict["proj.net.0.proj.weight"] = value
+                elif "proj.0.bias" == diffusers_name:
+                    updated_state_dict["proj.net.0.proj.bias"] = value
+                elif "proj.2.weight" == diffusers_name:
+                    updated_state_dict["proj.net.2.weight"] = value
+                elif "proj.2.bias" == diffusers_name:
+                    updated_state_dict["proj.net.2.bias"] = value
+                else:
+                    updated_state_dict[diffusers_name] = value
+
         elif "norm.weight" in state_dict:
             # IP-Adapter Face ID
             clip_embeddings_dim_in = state_dict["proj.0.weight"].shape[1]
@@ -875,6 +928,9 @@ class UNet2DConditionLoadersMixin:
                     elif "proj.3.weight" in state_dict["image_proj"]:
                         # IP-Adapter Full Face
                         num_image_text_embeds += [257]  # 256 CLIP tokens + 1 CLS token
+                    elif "perceiver_resampler.proj_in.weight" in state_dict:
+                        # IP-Adapter Face ID Plus
+                        num_image_text_embeds += [4]
                     elif "norm.weight" in state_dict["image_proj"]:
                         # IP-Adapter Face ID
                         num_image_text_embeds += [4]
