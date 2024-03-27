@@ -32,6 +32,7 @@ class DifferentialDiffusionSDPipeline(StableDiffusionImg2ImgPipeline, Differenti
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
         # Differential Diffusion specific
+        original_image: PipelineImageInput = None,
         map: torch.FloatTensor = None,
         **kwargs,
     ):
@@ -56,6 +57,7 @@ class DifferentialDiffusionSDPipeline(StableDiffusionImg2ImgPipeline, Differenti
             clip_skip=clip_skip,
             callback_on_step_end=callback_on_step_end,
             callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+            original_image=original_image,
             map=map,
             **kwargs,
         )
