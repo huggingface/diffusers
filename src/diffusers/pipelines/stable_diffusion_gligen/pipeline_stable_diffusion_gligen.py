@@ -469,7 +469,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline, StableDiffusionMixin):
                 )
 
         if len(gligen_phrases) != len(gligen_boxes):
-            ValueError(
+            raise ValueError(
                 "length of `gligen_phrases` and `gligen_boxes` has to be same, but"
                 f" got: `gligen_phrases` {len(gligen_phrases)} != `gligen_boxes` {len(gligen_boxes)}"
             )

@@ -72,7 +72,7 @@ class PeftLoraLoaderMixinTests:
     unet_kwargs = None
     vae_kwargs = None
 
-    def get_dummy_components(self, scheduler_cls=None):
+    def get_dummy_components(self, scheduler_cls=None, use_dora=False):
         scheduler_cls = self.scheduler_cls if scheduler_cls is None else scheduler_cls
         rank = 4
 
@@ -96,10 +96,15 @@ class PeftLoraLoaderMixinTests:
             lora_alpha=rank,
             target_modules=["q_proj", "k_proj", "v_proj", "out_proj"],
             init_lora_weights=False,
+            use_dora=use_dora,
         )
 
         unet_lora_config = LoraConfig(
-            r=rank, lora_alpha=rank, target_modules=["to_q", "to_k", "to_v", "to_out.0"], init_lora_weights=False
+            r=rank,
+            lora_alpha=rank,
+            target_modules=["to_q", "to_k", "to_v", "to_out.0"],
+            init_lora_weights=False,
+            use_dora=use_dora,
         )
 
         if self.has_two_text_encoders:
@@ -1072,6 +1077,37 @@ class PeftLoraLoaderMixinTests:
             self.assertTrue(
                 np.allclose(output_all_lora_fused, ouputs_all_lora, atol=1e-3, rtol=1e-3),
                 "Fused lora should not change the output",
+            )
+
+    @require_peft_version_greater(peft_version="0.9.0")
+    def test_simple_inference_with_dora(self):
+        for scheduler_cls in [DDIMScheduler, LCMScheduler]:
+            components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls, use_dora=True)
+            pipe = self.pipeline_class(**components)
+            pipe = pipe.to(torch_device)
+            pipe.set_progress_bar_config(disable=None)
+            _, _, inputs = self.get_dummy_inputs(with_generator=False)
+
+            output_no_dora_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+            self.assertTrue(output_no_dora_lora.shape == (1, 64, 64, 3))
+
+            pipe.text_encoder.add_adapter(text_lora_config)
+            pipe.unet.add_adapter(unet_lora_config)
+
+            self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
+            self.assertTrue(check_if_lora_correctly_set(pipe.unet), "Lora not correctly set in Unet")
+
+            if self.has_two_text_encoders:
+                pipe.text_encoder_2.add_adapter(text_lora_config)
+                self.assertTrue(
+                    check_if_lora_correctly_set(pipe.text_encoder_2), "Lora not correctly set in text encoder 2"
+                )
+
+            output_dora_lora = pipe(**inputs, generator=torch.manual_seed(0)).images
+
+            self.assertFalse(
+                np.allclose(output_dora_lora, output_no_dora_lora, atol=1e-3, rtol=1e-3),
+                "DoRA lora should change the output",
             )
 
     @unittest.skip("This is failing for now - need to investigate")
