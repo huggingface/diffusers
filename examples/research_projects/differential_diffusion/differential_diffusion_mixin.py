@@ -27,6 +27,8 @@ class DifferentialDiffusionMixin:
         if not all(kwarg in prepare_latents_possible_kwargs for kwarg in prepare_latents_required_kwargs):
             raise ValueError(f"`prepare_latents` must have the following arguments: {prepare_latents_required_kwargs}")
 
+        self._is_sdxl = hasattr(self, "text_encoder_2")
+
     def _inference(self, map: torch.FloatTensor, **kwargs):
         if map is None:
             raise ValueError("`map` must be provided for differential diffusion.")
@@ -48,7 +50,7 @@ class DifferentialDiffusionMixin:
             "num_images_per_prompt", _get_default_value(self.__call__, "num_images_per_prompt")
         )
         generator = kwargs.get("generator", _get_default_value(self.__call__, "generator"))
-        denoising_start = kwargs.get("denoising_start", _get_default_value(self.__call__, "denoising_start"))
+        denoising_start = kwargs.get("denoising_start", _get_default_value(self.__call__, "denoising_start")) if self._is_sdxl else None
 
         def callback(pipe, i: int, t: int, callback_kwargs: Dict[str, Any]):
             nonlocal original_with_noise, thresholds, masks
@@ -70,7 +72,10 @@ class DifferentialDiffusionMixin:
                 )
                 thresholds = torch.arange(num_inference_steps, dtype=map.dtype) / num_inference_steps
                 thresholds = thresholds.unsqueeze(1).unsqueeze(1).to(prompt_embeds.device)
-                masks = map > (thresholds + (denoising_start or 0))
+                if self._is_sdxl:
+                    masks = map > (thresholds + (denoising_start or 0))
+                else:
+                    masks = map > thresholds
 
                 if denoising_start is None:
                     latents = original_with_noise[:1]
