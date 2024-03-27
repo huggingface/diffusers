@@ -37,7 +37,7 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, print_tensor_test, require_torch, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
 
 from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
@@ -244,7 +244,6 @@ class IPAdapterTesterMixin:
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         if expected_pipe_slice is None:
             output_without_adapter = pipe(**inputs)[0]
-            print_tensor_test(output_without_adapter, limit_to_slices=True, max_torch_print=True)
         else:
             output_without_adapter = expected_pipe_slice
 
