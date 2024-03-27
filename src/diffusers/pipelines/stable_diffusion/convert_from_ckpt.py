@@ -16,7 +16,7 @@
 
 import re
 from contextlib import nullcontext
-from io import BytesIO
+from io import BytesIO, IOBase
 from typing import Dict, Optional, Union
 
 import requests
@@ -1809,7 +1809,7 @@ def download_from_original_stable_diffusion_ckpt(
 
 def download_controlnet_from_original_ckpt(
     checkpoint_path: str,
-    original_config_file: str,
+    original_config_file: str | IOBase,
     image_size: int = 512,
     extract_ema: bool = False,
     num_in_channels: Optional[int] = None,
@@ -1838,7 +1838,11 @@ def download_controlnet_from_original_ckpt(
     while "state_dict" in checkpoint:
         checkpoint = checkpoint["state_dict"]
 
-    original_config = yaml.safe_load(original_config_file)
+    if isinstance(original_config_file, IOBase):
+        original_config = yaml.safe_load(original_config_file)
+    else:
+        with open(original_config_file, "r") as config_stream:
+            original_config = yaml.safe_load(config_stream)
 
     if num_in_channels is not None:
         original_config["model"]["params"]["unet_config"]["params"]["in_channels"] = num_in_channels
