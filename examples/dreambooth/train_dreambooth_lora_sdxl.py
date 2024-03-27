@@ -100,6 +100,8 @@ def determine_scheduler_type(pretrained_model_name_or_path, revision):
 def save_model_card(
     repo_id: str,
     use_dora: bool,
+    edm_training: bool,
+    scheduler_type: str,
     images=None,
     base_model: str = None,
     train_text_encoder=False,
@@ -165,8 +167,16 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         "lora" if not use_dora else "dora",
         "template:sd-lora",
     ]
+    edm_tag = f"""
+edm-training
+inference:
+    parameters:
+        scheduler: {scheduler_type}
+"""
     if "playground" in base_model:
-        tags.extend(["playground", "playground-diffusers"])
+        tags.extend(["playground", "playground-diffusers", edm_tag])
+    elif edm_training:
+        tags.extend(["stable-diffusion-xl", "stable-diffusion-xl-diffusers", edm_tag])
     else:
         tags.extend(["stable-diffusion-xl", "stable-diffusion-xl-diffusers"])
 
@@ -1941,6 +1951,8 @@ def main(args):
             save_model_card(
                 repo_id,
                 use_dora=args.use_dora,
+                edm_training=args.do_edm_style_training,
+                scheduler_type=scheduler_type,
                 images=images,
                 base_model=args.pretrained_model_name_or_path,
                 train_text_encoder=args.train_text_encoder,
