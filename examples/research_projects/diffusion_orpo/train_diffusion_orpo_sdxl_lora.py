@@ -323,7 +323,13 @@ def parse_args(input_args=None):
         "--beta_orpo",
         type=float,
         default=5000,
-        help="ORPO contribution factor.",
+        help="ORPO weighting factor T* signal-to-noise.",
+    )
+    parser.add_argument(
+        "--lambda_orpo",
+        type=float,
+        default=0.1,
+        help="OR loss weighting factor.",
     )
     parser.add_argument(
         "--learning_rate",
@@ -995,7 +1001,7 @@ def main(args):
                 ratio_losses = F.logsigmoid(scale_term * log_odds)
 
                 # Full ORPO loss
-                loss = (model_losses_w - ratio_losses).mean()
+                loss = (model_losses_w - args.lambda_orpo * ratio_losses).mean()
 
                 # Backprop.
                 accelerator.backward(loss)
