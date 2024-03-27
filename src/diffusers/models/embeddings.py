@@ -894,6 +894,104 @@ class IPAdapterPlusImageProjection(nn.Module):
         return self.norm_out(latents)
 
 
+class IPAdapterFaceIDPlusImageProjection(nn.Module):
+    """FacePerceiverResampler of IP-Adapter Plus.
+
+    Args:
+    ----
+        embed_dims (int): The feature dimension. Defaults to 768.
+        output_dims (int): The number of output channels, that is the same
+            number of the channels in the
+            `unet.config.cross_attention_dim`. Defaults to 1024.
+        hidden_dims (int): The number of hidden channels. Defaults to 1280.
+        depth (int): The number of blocks. Defaults to 8.
+        dim_head (int): The number of head channels. Defaults to 64.
+        heads (int): Parallel attention heads. Defaults to 16.
+        num_queries (int): The number of queries. Defaults to 8.
+        ffn_ratio (float): The expansion ratio of feedforward network hidden
+            layer channels. Defaults to 4.
+    """
+
+    def __init__(
+        self,
+        embed_dims: int = 768,
+        output_dims: int = 768,
+        hidden_dims: int = 1280,
+        id_embeddings_dim = 512,
+        depth: int = 4,
+        dim_head: int = 64,
+        heads: int = 16,
+        num_tokens=4,
+        num_queries: int = 8,
+        ffn_ratio: float = 4,
+        ffproj_ratio: int = 2,
+    ) -> None:
+        super().__init__()
+        from .attention import FeedForward
+
+        self.num_tokens = num_tokens
+        self.embed_dim = embed_dims
+        self.clip_embeds = None
+
+        self.proj = FeedForward(id_embeddings_dim, embed_dims*num_tokens, activation_fn="gelu", mult=ffproj_ratio)
+        self.norm = nn.LayerNorm(embed_dims)
+
+        self.proj_in = nn.Linear(hidden_dims, embed_dims)
+
+        self.proj_out = nn.Linear(embed_dims, output_dims)
+        self.norm_out = nn.LayerNorm(output_dims)
+
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        nn.LayerNorm(embed_dims),
+                        nn.LayerNorm(embed_dims),
+                        Attention(
+                            query_dim=embed_dims,
+                            dim_head=dim_head,
+                            heads=heads,
+                            out_bias=False,
+                        ),
+                        nn.Sequential(
+                            nn.LayerNorm(embed_dims),
+                            FeedForward(embed_dims, embed_dims, activation_fn="gelu", mult=ffn_ratio, bias=False),
+                        ),
+                    ]
+                )
+            )
+
+    def forward(self, id_embeds: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Args:
+        ----
+            id_embeds (torch.Tensor): Input Tensor (ID embeds).
+
+        Returns:
+        -------
+            torch.Tensor: Output Tensor.
+        """
+        id_embeds = self.proj(id_embeds)
+        id_embeds = id_embeds.reshape(-1, self.num_tokens, self.embed_dim)
+        latents = self.norm(id_embeds)
+
+        clip_embeds = self.proj_in(self.clip_embeds)
+        x = clip_embeds.reshape(-1, clip_embeds.shape[2], clip_embeds.shape[3])
+
+        for ln0, ln1, attn, ff in self.layers:
+
+            encoder_hidden_states = ln0(x)
+            latents = ln1(latents)
+            latents = torch.cat([encoder_hidden_states, latents], dim=-2)
+            latents = attn(latents, encoder_hidden_states) + latents
+            latents = ff(latents) + latents
+
+        latents = self.proj_out(latents)
+        return self.norm_out(latents)
+
+
 class MultiIPAdapterImageProjection(nn.Module):
     def __init__(self, IPAdapterImageProjectionLayers: Union[List[nn.Module], Tuple[nn.Module]]):
         super().__init__()
