@@ -322,7 +322,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--beta_orpo",
         type=float,
-        default=0.1,
+        default=5000,
         help="ORPO contribution factor.",
     )
     parser.add_argument(
@@ -990,9 +990,9 @@ def main(args):
                     torch.log(1 - torch.exp(model_losses_w)) - torch.log(1 - torch.exp(model_losses_l))
                 )
 
-                # Ratio loss.
-                ratio = F.logsigmoid(log_odds)
-                ratio_losses = args.beta_orpo * ratio
+                # Ratio loss:
+                scale_term = -0.5 * args.beta_orpo
+                ratio_losses = F.logsigmoid(scale_term * log_odds)
 
                 # Full ORPO loss
                 loss = (model_losses_w - ratio_losses).mean()
