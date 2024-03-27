@@ -56,7 +56,6 @@ USE_PEFT_BACKEND = _required_peft_version and _required_transformers_version
 
 if is_torch_available():
     import torch
-    torch.set_printoptions(threshold=10_000)
 
     # Set a backend environment variable for any extra module import required for a custom accelerator
     if "DIFFUSERS_TEST_BACKEND" in os.environ:
@@ -106,10 +105,21 @@ def numpy_cosine_similarity_distance(a, b):
     return distance
 
 
-def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
+def print_tensor_test(
+    tensor,
+    limit_to_slices=None,
+    max_torch_print=None,
+    filename="test_corrections.txt",
+    expected_tensor_name="expected_slice",
+):
+    if max_torch_print:
+        torch.set_printoptions(threshold=10_000)
+
     test_name = os.environ.get("PYTEST_CURRENT_TEST")
     if not torch.is_tensor(tensor):
         tensor = torch.from_numpy(tensor)
+    if limit_to_slices:
+        tensor = tensor[0, -3:, -3:, -1]
 
     tensor_str = str(tensor.detach().cpu().flatten().to(torch.float32)).replace("\n", "")
     # format is usually:

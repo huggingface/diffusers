@@ -243,7 +243,7 @@ class IPAdapterTesterMixin:
         # forward pass without ip adapter
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         output_without_adapter = pipe(**inputs)[0]
-        print_tensor_test(output_without_adapter)
+        print_tensor_test(output_without_adapter, limit_to_slices=True, max_torch_print=True)
 
         adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
         pipe.unet._load_ip_adapter_weights(adapter_state_dict)
