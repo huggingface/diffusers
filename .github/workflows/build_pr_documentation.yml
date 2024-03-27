@@ -12,7 +12,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
-
 jobs:
   build:
     uses: huggingface/doc-builder/.github/workflows/build_pr_documentation.yml@test-install-deps-with-uv
@@ -22,4 +21,3 @@ jobs:
       install_libgl1: true
       package: diffusers
       languages: en ko zh ja pt
-      custom_container: "" # no need for transformer's docker image
