@@ -1601,10 +1601,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
-            if isinstance(self.controlnet, MultiControlNetModel):
-                controlnet_keep.append(keeps)
-            else:
-                controlnet_keep.append(keeps[0])
+            controlnet_keep.append(keeps if isinstance(controlnet, MultiControlNetModel) else keeps[0])
 
         # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         height, width = latents.shape[-2:]
