@@ -341,7 +341,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
             height, width = hidden_states.shape[-2] // self.patch_size, hidden_states.shape[-1] // self.patch_size
-            hidden_states, embedded_timestep = self._operate_on_patched_inputs(
+            hidden_states, timestep, embedded_timestep = self._operate_on_patched_inputs(
                 hidden_states, timestep, added_cond_kwargs
             )
 
@@ -439,7 +439,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
             )
 
-        return hidden_states, embedded_timestep
+        return hidden_states, timestep, embedded_timestep
 
     def _get_output_for_continuous_inputs(self, hidden_states, residual, batch_size, height, width, inner_dim):
         if not self.use_linear_projection:
