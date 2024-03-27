@@ -244,7 +244,6 @@ class IPAdapterTesterMixin:
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         if expected_pipe_slice is None:
             output_without_adapter = pipe(**inputs)[0]
-            print_tensor_test(output_without_adapter, limit_to_slices=True, max_torch_print=True)
         else:
             output_without_adapter = expected_pipe_slice
 
