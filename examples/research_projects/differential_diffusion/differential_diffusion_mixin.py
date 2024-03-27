@@ -50,7 +50,11 @@ class DifferentialDiffusionMixin:
             "num_images_per_prompt", _get_default_value(self.__call__, "num_images_per_prompt")
         )
         generator = kwargs.get("generator", _get_default_value(self.__call__, "generator"))
-        denoising_start = kwargs.get("denoising_start", _get_default_value(self.__call__, "denoising_start")) if self._is_sdxl else None
+        denoising_start = (
+            kwargs.get("denoising_start", _get_default_value(self.__call__, "denoising_start"))
+            if self._is_sdxl
+            else None
+        )
 
         def callback(pipe, i: int, t: int, callback_kwargs: Dict[str, Any]):
             nonlocal original_with_noise, thresholds, masks

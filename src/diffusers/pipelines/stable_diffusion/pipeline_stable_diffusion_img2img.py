@@ -198,7 +198,6 @@ class StableDiffusionImg2ImgPipeline(
     model_cpu_offload_seq = "text_encoder->image_encoder->unet->vae"
     _optional_components = ["safety_checker", "feature_extractor", "image_encoder"]
     _exclude_from_cpu_offload = ["safety_checker"]
-    _callback_tensor_inputs = ["latents", "prompt_embeds", "negative_prompt_embeds"]
 
     def __init__(
         self,
@@ -639,7 +638,6 @@ class StableDiffusionImg2ImgPipeline(
         negative_prompt_embeds=None,
         ip_adapter_image=None,
         ip_adapter_image_embeds=None,
-        callback_on_step_end_tensor_inputs=None,
     ):
         if strength < 0 or strength > 1:
             raise ValueError(f"The value of strength should in [0.0, 1.0] but is {strength}")
@@ -650,12 +648,6 @@ class StableDiffusionImg2ImgPipeline(
                 f" {type(callback_steps)}."
             )
 
-        if callback_on_step_end_tensor_inputs is not None and not all(
-            k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
-        ):
-            raise ValueError(
-                f"`callback_on_step_end_tensor_inputs` has to be in {self._callback_tensor_inputs}, but found {[k for k in callback_on_step_end_tensor_inputs if k not in self._callback_tensor_inputs]}"
-            )
         if prompt is not None and prompt_embeds is not None:
             raise ValueError(
                 f"Cannot forward both `prompt`: {prompt} and `prompt_embeds`: {prompt_embeds}. Please make sure to"
@@ -957,7 +949,6 @@ class StableDiffusionImg2ImgPipeline(
             negative_prompt_embeds,
             ip_adapter_image,
             ip_adapter_image_embeds,
-            callback_on_step_end_tensor_inputs,
         )
 
         self._guidance_scale = guidance_scale
