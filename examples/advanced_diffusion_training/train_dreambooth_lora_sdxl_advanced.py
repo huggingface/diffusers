@@ -129,7 +129,9 @@ def save_model_card(
     if base_new_tokens_off_token_abstractions and token_abstraction_dict:
         ti_keys = []
         for key in token_abstraction_dict.keys():
-            instance_prompt_webui = re.sub(rf"<{key}_\d+>", "", re.sub(rf"<{key}_\d+>", embeddings_filename, instance_prompt, count=1))
+            instance_prompt_webui = re.sub(
+                rf"<{key}_\d+>", "", re.sub(rf"<{key}_\d+>", embeddings_filename, instance_prompt, count=1)
+            )
             ti_keys += [f'"{match}"' for match in re.findall(rf"<{key}_\d+>", instance_prompt)]
         ti_keys = ", ".join(ti_keys)
     else:
@@ -364,14 +366,7 @@ def parse_args(input_args=None):
         "--base_new_tokens_off_token_abstractions",
         default=False,
         action="store_true",
-        help="utilize <TOK_0><TOK_1>... per each token instead of the default <si><si+1>..."
-    )
-
-    parser.add_argument(
-        "--base_new_tokens_off_token_abstractions",
-        default=False,
-        action="store_true",
-        help="utilize <TOK_0><TOK_1>... per each token instead of the default <si><si+1>..."
+        help="utilize <TOK_0><TOK_1>... per each token instead of the default <si><si+1>...",
     )
 
     parser.add_argument(
@@ -798,9 +793,9 @@ class TokenEmbeddingsHandler:
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
-            self.embeddings_settings[
-                f"original_embeddings_{idx}"
-            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            self.embeddings_settings[f"original_embeddings_{idx}"] = (
+                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            )
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)
@@ -1331,9 +1326,7 @@ def main(args):
         token_idx = 0
         for i, token in enumerate(token_abstraction_list):
             if args.base_new_tokens_off_token_abstractions:
-                token_abstraction_dict[token] = [
-                    f"<{token}_{j}>" for j in range(args.num_new_tokens_per_abstraction)
-                ]
+                token_abstraction_dict[token] = [f"<{token}_{j}>" for j in range(args.num_new_tokens_per_abstraction)]
             else:
                 token_abstraction_dict[token] = [
                     f"<s{token_idx + i + j}>" for j in range(args.num_new_tokens_per_abstraction)
