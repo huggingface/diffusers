@@ -111,12 +111,6 @@ class StableDiffusionPanoramaPipelineFastTests(
         }
         return inputs
 
-    def test_ip_adapter_single(self):
-        expected_pipe_slice = None
-        if torch_device == "cpu":
-            expected_pipe_slice = np.array([0.6185, 0.5373, 0.4915, 0.4134, 0.4114, 0.4564, 0.5128, 0.4977, 0.4758])
-        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
-
     def test_stable_diffusion_panorama_default_case(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
