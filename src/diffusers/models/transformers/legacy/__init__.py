@@ -1,3 +1,3 @@
 from .transformer_2d_continuous import ContinuousTransformer2DModel
-from .transformers_2d_patched import VectorizedTransformer2DModel
+from .transformers_2d_patched import PatchedTransformer2DModel
 from .transformers_2d_vectorized import VectorizedTransformer2DModel
