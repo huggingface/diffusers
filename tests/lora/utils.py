@@ -31,6 +31,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     require_peft_backend,
     require_peft_version_greater,
+    skip_mps,
     torch_device,
 )
 
@@ -923,6 +924,7 @@ class PeftLoraLoaderMixinTests:
                 "output with no lora and output with lora disabled should give same results",
             )
 
+    @skip_mps
     def test_lora_fuse_nan(self):
         for scheduler_cls in [DDIMScheduler, LCMScheduler]:
             components, text_lora_config, unet_lora_config = self.get_dummy_components(scheduler_cls)
