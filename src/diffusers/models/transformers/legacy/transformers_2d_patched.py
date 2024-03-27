@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 
-from ...attention import BasicTransformerBlock
 from ...embeddings import PatchEmbed, PixArtAlphaTextProjection
 from ...normalization import AdaLayerNormSingle
 from ..transformer_2d import Transformer2DModel
@@ -54,27 +53,23 @@ class PatchedTransformer2DModel(Transformer2DModel):
             interpolation_scale=interpolation_scale,
         )
 
-        self.transformer_blocks = nn.ModuleList(
-            [
-                BasicTransformerBlock(
-                    inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
-                )
-                for d in range(num_layers)
-            ]
+        self.transformer_blocks = self._get_transformer_blocks(
+            inner_dim=inner_dim,
+            num_attention_heads=num_attention_heads,
+            attention_head_dim=attention_head_dim,
+            dropout=dropout,
+            cross_attention_dim=cross_attention_dim,
+            activation_fn=activation_fn,
+            num_embeds_ada_norm=num_embeds_ada_norm,
+            attention_bias=attention_bias,
+            only_cross_attention=only_cross_attention,
+            double_self_attention=double_self_attention,
+            upcast_attention=upcast_attention,
+            norm_type=norm_type,
+            norm_elementwise_affine=norm_elementwise_affine,
+            norm_eps=norm_eps,
+            attention_type=attention_type,
+            num_layers=num_layers,
         )
 
         if norm_type != "ada_norm_single":

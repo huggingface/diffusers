@@ -15,10 +15,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from ...configuration_utils import ConfigMixin, register_to_config
 from ...utils import BaseOutput, deprecate, is_torch_version, logging
+from ..attention import BasicTransformerBlock
 from ..modeling_utils import ModelMixin
 
 
@@ -149,7 +151,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # Initialize the appropriate variant and return.
         if self.is_input_continuous:
-            return Transformer2DModel.create_model(
+            return Transformer2DModel._create_model(
                 input_type="continuous",
                 in_channels=in_channels,
                 out_channels=out_channels,
@@ -174,7 +176,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             )
 
         elif self.is_input_vectorized:
-            return Transformer2DModel.create_model(
+            return Transformer2DModel._create_model(
                 input_type="vectorized",
                 in_channels=in_channels,
                 sample_size=sample_size,
@@ -198,7 +200,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             )
 
         elif self.is_input_patches:
-            return Transformer2DModel.create_model(
+            return Transformer2DModel._create_model(
                 input_type="patched",
                 in_channels=in_channels,
                 sample_size=sample_size,
@@ -227,8 +229,51 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
+    def _get_transformer_blocks(
+        self,
+        inner_dim,
+        num_attention_heads,
+        attention_head_dim,
+        dropout,
+        cross_attention_dim,
+        activation_fn,
+        num_embeds_ada_norm,
+        attention_bias,
+        only_cross_attention,
+        double_self_attention,
+        upcast_attention,
+        norm_type,
+        norm_elementwise_affine,
+        norm_eps,
+        attention_type,
+        num_layers,
+    ):
+        transformer_blocks = nn.ModuleList(
+            [
+                BasicTransformerBlock(
+                    inner_dim,
+                    num_attention_heads,
+                    attention_head_dim,
+                    dropout=dropout,
+                    cross_attention_dim=cross_attention_dim,
+                    activation_fn=activation_fn,
+                    num_embeds_ada_norm=num_embeds_ada_norm,
+                    attention_bias=attention_bias,
+                    only_cross_attention=only_cross_attention,
+                    double_self_attention=double_self_attention,
+                    upcast_attention=upcast_attention,
+                    norm_type=norm_type,
+                    norm_elementwise_affine=norm_elementwise_affine,
+                    norm_eps=norm_eps,
+                    attention_type=attention_type,
+                )
+                for d in range(num_layers)
+            ]
+        )
+        return transformer_blocks
+
     @classmethod
-    def create_model(cls, input_type, **kwargs):
+    def _create_model(cls, input_type, **kwargs):
         if input_type == "continuous":
             from .legacy import ContinuousTransformer2DModel
 
