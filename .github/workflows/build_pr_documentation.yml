@@ -21,3 +21,4 @@ jobs:
       package: diffusers
       install_libgl1: true
       languages: en ko zh ja pt
+      custom_container: ""
