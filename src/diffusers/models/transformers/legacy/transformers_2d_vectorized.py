@@ -28,31 +28,10 @@ class VectorizedTransformer2DModel(Transformer2DModel):
         attention_type,
         num_layers,
     ):
-        super().__init__(
-            num_attention_heads=num_attention_heads,
-            attention_head_dim=attention_head_dim,
-            in_channels=in_channels,
-            num_layers=num_layers,
-            dropout=dropout,
-            cross_attention_dim=cross_attention_dim,
-            attention_bias=attention_bias,
-            sample_size=sample_size,
-            num_vector_embeds=num_vector_embeds,
-            activation_fn=activation_fn,
-            num_embeds_ada_norm=num_embeds_ada_norm,
-            only_cross_attention=only_cross_attention,
-            double_self_attention=double_self_attention,
-            upcast_attention=upcast_attention,
-            norm_type=norm_type,
-            norm_elementwise_affine=norm_elementwise_affine,
-            norm_eps=norm_eps,
-            attention_typ=attention_type,
-        )
-
-        self.in_channels = in_channels
-
         assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
         assert num_vector_embeds is not None, "Transformer2DModel over discrete input must provide num_embed"
+
+        self.in_channels = in_channels
 
         self.height = sample_size
         self.width = sample_size

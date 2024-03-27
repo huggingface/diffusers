@@ -32,32 +32,9 @@ class PatchedTransformer2DModel(Transformer2DModel):
         interpolation_scale,
         caption_channels,
     ):
-        super().__init__(
-            num_attention_heads=num_attention_heads,
-            attention_head_dim=attention_head_dim,
-            in_channels=in_channels,
-            dropout=dropout,
-            cross_attention_dim=cross_attention_dim,
-            attention_bias=attention_bias,
-            sample_size=sample_size,
-            patch_size=patch_size,
-            activation_fn=activation_fn,
-            num_embeds_ada_norm=num_embeds_ada_norm,
-            only_cross_attention=only_cross_attention,
-            double_self_attention=double_self_attention,
-            upcast_attention=upcast_attention,
-            norm_type=norm_type,
-            norm_elementwise_affine=norm_elementwise_affine,
-            norm_eps=norm_eps,
-            attention_type=attention_type,
-            num_layers=num_layers,
-            interpolation_scale=interpolation_scale,
-            caption_channels=caption_channels,
-        )
+        assert sample_size is not None, "Transformer2DModel over patched input must provide sample_size"
 
         self.in_channels = in_channels
-
-        assert sample_size is not None, "Transformer2DModel over patched input must provide sample_size"
 
         self.height = sample_size
         self.width = sample_size

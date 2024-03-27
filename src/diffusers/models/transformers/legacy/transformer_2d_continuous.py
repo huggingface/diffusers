@@ -29,28 +29,6 @@ class ContinuousTransformer2DModel(Transformer2DModel):
         dropout,
         num_layers,
     ):
-        super().__init__(
-            num_attention_heads=num_attention_heads,
-            attention_head_dim=attention_head_dim,
-            in_channels=in_channels,
-            out_channels=out_channels,
-            num_layers=num_layers,
-            dropout=dropout,
-            norm_num_groups=norm_num_groups,
-            cross_attention_dim=cross_attention_dim,
-            attention_bias=attention_bias,
-            activation_fn=activation_fn,
-            num_embeds_ada_norm=num_embeds_ada_norm,
-            use_linear_projection=use_linear_projection,
-            only_cross_attention=only_cross_attention,
-            double_self_attention=double_self_attention,
-            upcast_attention=upcast_attention,
-            norm_type=norm_type,
-            norm_elementwise_affine=norm_elementwise_affine,
-            norm_eps=norm_eps,
-            attention_type=attention_type,
-        )
-
         self.in_channels = in_channels
 
         self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
