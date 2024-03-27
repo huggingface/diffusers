@@ -52,6 +52,7 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.T
             "callback_on_step_end_tensor_inputs",
         ]
     )
+    test_from_pipe = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
