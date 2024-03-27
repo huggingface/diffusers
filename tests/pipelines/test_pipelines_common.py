@@ -634,10 +634,16 @@ class PipelineTesterMixin:
             "treatment when `do_classifier_free_guidance` is `True`. `pipeline_params.py` provides some common"
             " sets of parameters such as `TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS`. If your pipeline's "
             "set of cfg arguments has minor changes from one of the common sets of cfg arguments, "
-            "do not make modifications to the existing common sets of cfg arguments. I.e. for inpaint pipeine, you "
+            "do not make modifications to the existing common sets of cfg arguments. I.e. for inpaint pipeline, you "
             " need to adjust batch size of `mask` and `masked_image_latents` so should set the attribute as"
             "`callback_cfg_params = TEXT_TO_IMAGE_CFG_PARAMS.union({'mask', 'masked_image_latents'})`"
         )
+
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def tearDown(self):
         # clean up the VRAM after each test in case of CUDA runtime errors
@@ -1229,7 +1235,7 @@ class PipelineTesterMixin:
         )
 
         def callback_inputs_subset(pipe, i, t, callback_kwargs):
-            # interate over callback args
+            # iterate over callback args
             for tensor_name, tensor_value in callback_kwargs.items():
                 # check that we're only passing in allowed tensor inputs
                 assert tensor_name in pipe._callback_tensor_inputs
@@ -1240,7 +1246,7 @@ class PipelineTesterMixin:
             for tensor_name in pipe._callback_tensor_inputs:
                 assert tensor_name in callback_kwargs
 
-            # interate over callback args
+            # iterate over callback args
             for tensor_name, tensor_value in callback_kwargs.items():
                 # check that we're only passing in allowed tensor inputs
                 assert tensor_name in pipe._callback_tensor_inputs

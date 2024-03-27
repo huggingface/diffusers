@@ -630,7 +630,7 @@ class StableDiffusionXLImg2ImgPipeline(
                 # because `num_inference_steps` might be even given that every timestep
                 # (except the highest one) is duplicated. If `num_inference_steps` is even it would
                 # mean that we cut the timesteps in the middle of the denoising step
-                # (between 1st and 2nd devirative) which leads to incorrect results. By adding 1
+                # (between 1st and 2nd derivative) which leads to incorrect results. By adding 1
                 # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
                 num_inference_steps = num_inference_steps + 1
 
@@ -1352,7 +1352,16 @@ class StableDiffusionXLImg2ImgPipeline(
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
 
                 # compute the previous noisy sample x_t -> x_t-1
+                latents_dtype = latents.dtype
                 latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False)[0]
+                if latents.dtype != latents_dtype:
+                    if torch.backends.mps.is_available():
+                        # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                        latents = latents.to(latents_dtype)
+                    else:
+                        raise ValueError(
+                            "For the given accelerator, there seems to be an unexpected problem in type-casting. Please file an issue on the PyTorch GitHub repository. See also: https://github.com/huggingface/diffusers/pull/7446/."
+                        )
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
@@ -1387,6 +1396,14 @@ class StableDiffusionXLImg2ImgPipeline(
             if needs_upcasting:
                 self.upcast_vae()
                 latents = latents.to(next(iter(self.vae.post_quant_conv.parameters())).dtype)
+            elif latents.dtype != self.vae.dtype:
+                if torch.backends.mps.is_available():
+                    # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
+                    self.vae = self.vae.to(latents.dtype)
+                else:
+                    raise ValueError(
+                        "For the given accelerator, there seems to be an unexpected problem in type-casting. Please file an issue on the PyTorch GitHub repository. See also: https://github.com/huggingface/diffusers/pull/7446/."
+                    )
 
             # unscale/denormalize the latents
             # denormalize with the mean and std if available and not None
