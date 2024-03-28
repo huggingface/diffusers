@@ -52,6 +52,7 @@ if is_transformers_available():
 if is_accelerate_available():
     import accelerate
     from accelerate import dispatch_model
+    from accelerate.hooks import remove_hook_from_module
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -595,9 +596,18 @@ def load_sub_model(
         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
 
     if isinstance(loaded_sub_model, torch.nn.Module) and isinstance(device_map, dict):
+        # remove hooks
+        remove_hook_from_module(loaded_sub_model, recurse=True)
         needs_offloading_to_cpu = device_map[""] == "cpu"
+
         if needs_offloading_to_cpu:
-            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True, main_device=0)
+            dispatch_model(
+                loaded_sub_model,
+                state_dict=loaded_sub_model.state_dict(),
+                device_map=device_map,
+                force_hooks=True,
+                main_device=0,
+            )
         else:
             dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
 
