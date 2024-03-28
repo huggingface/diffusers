@@ -43,6 +43,10 @@ jobs:
         run: |
           ruff check examples tests src utils scripts
           ruff format examples tests src utils scripts --check
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Quality check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make style && make quality'" >> $GITHUB_STEP_SUMMARY
 
   check_repository_consistency:
     needs: check_code_quality
@@ -62,6 +66,10 @@ jobs:
           python utils/check_copies.py
           python utils/check_dummies.py
           make deps_table_check_updated
+      - name: Check if failure
+        if: ${{ failure() }}
+        run: |
+          echo "Repo consistency check failed. Please ensure the right dependency versions are installed with 'pip install -e .[quality]' and run 'make fix-copies'" >> $GITHUB_STEP_SUMMARY
 
   run_fast_tests:
     needs: [check_code_quality, check_repository_consistency]
