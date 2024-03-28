@@ -29,6 +29,25 @@ def buffered_writer(raw_f):
 
 
 def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None, fps: int = 10) -> str:
+    """
+    Exports a sequence of PIL.Image.Image objects as an animated GIF.
+
+    This function allows for the easy creation of an animated GIF from a list of images.
+    Optionally, a path to save the output GIF can be specified. If not, the GIF is saved
+    to a temporary file, and its path is returned.
+
+    Args:
+        image (List[PIL.Image.Image]): A list of PIL.Image.Image objects to be converted into an animated GIF.
+        output_gif_path (str, optional): The path where the animated GIF will be saved. If None, a temporary path is used.
+        fps (int, optional): The frames per second of the animated GIF. Defaults to 10.
+
+    Returns:
+        str: The path to the saved animated GIF.
+
+    Example:
+        images = [PIL.Image.open(path) for path in image_paths]
+        gif_path = export_to_gif(images, 'output.gif', fps=15)
+    """
     if output_gif_path is None:
         output_gif_path = tempfile.NamedTemporaryFile(suffix=".gif").name
 
@@ -45,8 +64,31 @@ def export_to_gif(image: List[PIL.Image.Image], output_gif_path: str = None, fps
 
 def export_to_ply(mesh, output_ply_path: str = None):
     """
-    Write a PLY file for a mesh.
+    Exports a 3D mesh to a PLY file.
+
+    This function saves a given 3D mesh object to a PLY file format, commonly used in 3D graphics.
+    Mesh vertices, faces, and optionally vertex colors are written to the file. If no path is provided,
+    the mesh is saved to a temporary file, and its path is returned.
+
+    Args:
+        mesh: A mesh object containing vertices, faces, and optionally vertex colors. The mesh object must
+              have `verts`, `faces`, and `vertex_channels` attributes.
+        output_ply_path (str, optional): The path where the PLY file will be saved. If None, a temporary path is used.
+
+    Returns:
+        str: The path to the saved PLY file.
+
+    Note:
+        The mesh object is expected to have the following attributes:
+        - verts: Coordinates of mesh vertices.
+        - faces: Indices of vertices forming each face.
+        - vertex_channels: Vertex colors for each vertex.
+
+    Example:
+        mesh = load_mesh('my_mesh.obj')
+        ply_path = export_to_ply(mesh, 'output.ply')
     """
+
     if output_ply_path is None:
         output_ply_path = tempfile.NamedTemporaryFile(suffix=".ply").name
 
@@ -96,6 +138,31 @@ def export_to_ply(mesh, output_ply_path: str = None):
 
 
 def export_to_obj(mesh, output_obj_path: str = None):
+    """
+    Exports a 3D mesh to an OBJ file.
+
+    This function converts a given 3D mesh into the OBJ file format, widely used for representing 3D models.
+    Both the geometry (vertices and faces) and optionally vertex colors are included. If no path is specified,
+    the OBJ is saved to a temporary file, and its path is returned.
+
+    Args:
+        mesh: A mesh object containing vertices, faces, and optionally vertex colors. The mesh object must
+              have `verts`, `faces`, and `vertex_channels` attributes.
+        output_obj_path (str, optional): The path where the OBJ file will be saved. If None, a temporary path is used.
+
+    Returns:
+        str: The path to the saved OBJ file.
+
+    Note:
+        The mesh object is expected to have the following attributes:
+        - verts: Coordinates of mesh vertices.
+        - faces: Indices of vertices forming each face.
+        - vertex_channels: Vertex colors for each vertex.
+
+    Example:
+        mesh = load_mesh('my_mesh.obj')
+        obj_path = export_to_obj(mesh, 'output.obj')
+    """
     if output_obj_path is None:
         output_obj_path = tempfile.NamedTemporaryFile(suffix=".obj").name
 
@@ -118,6 +185,31 @@ def export_to_obj(mesh, output_obj_path: str = None):
 def export_to_video(
     video_frames: Union[List[np.ndarray], List[PIL.Image.Image]], output_video_path: str = None, fps: int = 10
 ) -> str:
+    """
+    Exports a 3D mesh to an OBJ file.
+
+    This function converts a given 3D mesh into the OBJ file format, widely used for representing 3D models.
+    Both the geometry (vertices and faces) and optionally vertex colors are included. If no path is specified,
+    the OBJ is saved to a temporary file, and its path is returned.
+
+    Args:
+        mesh: A mesh object containing vertices, faces, and optionally vertex colors. The mesh object must
+              have `verts`, `faces`, and `vertex_channels` attributes.
+        output_obj_path (str, optional): The path where the OBJ file will be saved. If None, a temporary path is used.
+
+    Returns:
+        str: The path to the saved OBJ file.
+
+    Note:
+        The mesh object is expected to have the following attributes:
+        - verts: Coordinates of mesh vertices.
+        - faces: Indices of vertices forming each face.
+        - vertex_channels: Vertex colors for each vertex.
+
+    Example:
+        mesh = load_mesh('my_mesh.obj')
+        obj_path = export_to_obj(mesh, 'output.obj')
+    """
     if is_opencv_available():
         import cv2
     else:
