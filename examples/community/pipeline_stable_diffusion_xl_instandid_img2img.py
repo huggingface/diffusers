@@ -930,7 +930,8 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2I
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
+            add_neg_time_ids = add_neg_time_ids.repeat(batch_size * num_images_per_prompt, 1)
+            add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
@@ -982,7 +983,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2I
                     control_model_input,
                     t,
                     encoder_hidden_states=prompt_image_emb,
-                    controlnet_cond=image,
+                    controlnet_cond=control_image,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     added_cond_kwargs=controlnet_added_cond_kwargs,
