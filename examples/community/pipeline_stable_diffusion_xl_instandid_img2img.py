@@ -546,6 +546,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2I
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
         control_image: PipelineImageInput = None,
+        strength: float = 0.8,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -749,6 +750,8 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2I
             prompt,
             prompt_2,
             control_image,
+            strength,
+            num_inference_steps,
             callback_steps,
             negative_prompt,
             negative_prompt_2,
@@ -756,6 +759,8 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2I
             negative_prompt_embeds,
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
+            None,
+            None,
             controlnet_conditioning_scale,
             control_guidance_start,
             control_guidance_end,
@@ -834,11 +839,11 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2I
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
-            height, width = image.shape[-2:]
+            height, width = control_image.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
             control_images = []
 
-            for control_image_ in control_images:
+            for control_image_ in control_image:
                 control_image_ = self.prepare_control_image(
                     image=control_image_,
                     width=width,
@@ -861,6 +866,7 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2I
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
         timesteps = self.scheduler.timesteps
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare latent variables
@@ -876,12 +882,12 @@ class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2I
         )
 
         # # 6.5 Optionally get Guidance Scale Embedding
-        # timestep_cond = None
-        # if self.unet.config.time_cond_proj_dim is not None:
-        #     guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
-        #     timestep_cond = self.get_guidance_scale_embedding(
-        #         guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
-        #     ).to(device=device, dtype=latents.dtype)
+        timestep_cond = None
+        if self.unet.config.time_cond_proj_dim is not None:
+            guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
+            timestep_cond = self.get_guidance_scale_embedding(
+                guidance_scale_tensor, embedding_dim=self.unet.config.time_cond_proj_dim
+            ).to(device=device, dtype=latents.dtype)
 
         # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
