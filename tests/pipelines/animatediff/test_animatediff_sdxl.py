@@ -17,7 +17,7 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_CALLBACK_CFG_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin, SDFunctionTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, SDFunctionTesterMixin
 
 
 def to_np(tensor):
@@ -28,7 +28,7 @@ def to_np(tensor):
 
 
 class AnimateDiffPipelineSDXLFastTests(
-    IPAdapterTesterMixin, PipelineTesterMixin, SDFunctionTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
 ):
     pipeline_class = AnimateDiffSDXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -264,6 +264,9 @@ class AnimateDiffPipelineSDXLFastTests(
             pooled_prompt_embeds=pooled_prompt_embeds,
             negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
         )
+    
+    def test_save_load_optional_components(self):
+        self._test_save_load_optional_components()
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
