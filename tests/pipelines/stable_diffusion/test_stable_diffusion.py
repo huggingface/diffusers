@@ -50,6 +50,7 @@ from diffusers.utils.testing_utils import (
     load_numpy,
     nightly,
     numpy_cosine_similarity_distance,
+    require_accelerate_version_greater,
     require_python39_or_higher,
     require_torch_2,
     require_torch_gpu,
@@ -1429,6 +1430,7 @@ class StableDiffusionPipelineNightlyTests(unittest.TestCase):
 # (sayakpaul): This test suite was run in the DGX with two GPUs (1, 2).
 @slow
 @require_torch_multi_gpu
+@require_accelerate_version_greater("0.27.0")
 class StableDiffusionPipelineDeviceMapTests(unittest.TestCase):
     def tearDown(self):
         super().tearDown()
