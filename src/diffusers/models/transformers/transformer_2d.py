@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -157,7 +157,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         elif self.is_input_vectorized == "vectorized":
             input_type = "vectorized"
 
-        self.model = Transformer2DModel._create_model(
+        return Transformer2DModel._create_model(
             input_type=input_type,
             in_channels=in_channels,
             out_channels=out_channels,
@@ -197,68 +197,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             return PatchedTransformer2DModel(**kwargs)
         else:
             raise ValueError(f"Invalid input_type: {input_type}")
-
-    def forward(
-        self,
-        hidden_states: torch.Tensor,
-        encoder_hidden_states: Optional[torch.Tensor] = None,
-        timestep: Optional[torch.LongTensor] = None,
-        added_cond_kwargs: Dict[str, torch.Tensor] = None,
-        class_labels: Optional[torch.LongTensor] = None,
-        cross_attention_kwargs: Dict[str, Any] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-        encoder_attention_mask: Optional[torch.Tensor] = None,
-        return_dict: bool = True,
-    ):
-        """
-        The [`Transformer2DModel`] forward method.
-
-        Args:
-            hidden_states (`torch.LongTensor` of shape `(batch size, num latent pixels)` if discrete, `torch.FloatTensor` of shape `(batch size, channel, height, width)` if continuous):
-                Input `hidden_states`.
-            encoder_hidden_states ( `torch.FloatTensor` of shape `(batch size, sequence len, embed dims)`, *optional*):
-                Conditional embeddings for cross attention layer. If not given, cross-attention defaults to
-                self-attention.
-            timestep ( `torch.LongTensor`, *optional*):
-                Used to indicate denoising step. Optional timestep to be applied as an embedding in `AdaLayerNorm`.
-            class_labels ( `torch.LongTensor` of shape `(batch size, num classes)`, *optional*):
-                Used to indicate class labels conditioning. Optional class labels to be applied as an embedding in
-                `AdaLayerZeroNorm`.
-            cross_attention_kwargs ( `Dict[str, Any]`, *optional*):
-                A kwargs dictionary that if specified is passed along to the `AttentionProcessor` as defined under
-                `self.processor` in
-                [diffusers.models.attention_processor](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
-            attention_mask ( `torch.Tensor`, *optional*):
-                An attention mask of shape `(batch, key_tokens)` is applied to `encoder_hidden_states`. If `1` the mask
-                is kept, otherwise if `0` it is discarded. Mask will be converted into a bias, which adds large
-                negative values to the attention scores corresponding to "discard" tokens.
-            encoder_attention_mask ( `torch.Tensor`, *optional*):
-                Cross-attention mask applied to `encoder_hidden_states`. Two formats supported:
-
-                    * Mask `(batch, sequence_length)` True = keep, False = discard.
-                    * Bias `(batch, 1, sequence_length)` 0 = keep, -10000 = discard.
-
-                If `ndim == 2`: will be interpreted as a mask, then converted into a bias consistent with the format
-                above. This bias will be added to the cross-attention scores.
-            return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`~models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain
-                tuple.
-
-        Returns:
-            If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
-            `tuple` where the first element is the sample tensor.
-        """
-        return self.model(
-            hidden_states,
-            encoder_hidden_states,
-            timestep,
-            added_cond_kwargs,
-            class_labels,
-            cross_attention_kwargs,
-            attention_mask,
-            encoder_attention_mask,
-            return_dict,
-        )
 
 
 def _get_transformer_blocks(
