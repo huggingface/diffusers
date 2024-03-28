@@ -155,21 +155,6 @@ class AudioLDM2ProjectionModel(ModelMixin, ConfigMixin):
         )
 
 
-class AudioLDMLearnablePositionalEmbedding(ModelMixin, ConfigMixin):
-    @register_to_config
-    def __init__(self, hidden_size: int = 192, max_pad_length: int = 310):
-        super().__init__()
-        self.hidden_size = hidden_size
-        self.max_pad_length = max_pad_length
-        self.learnable_positional_embedding = torch.nn.Parameter(
-            torch.zeros((1, self.hidden_size, self.max_pad_length))
-        )
-
-    def forward(self, x):
-        x = (x.permute(0, 2, 1) + self.learnable_positional_embedding).permute(0, 2, 1)
-        return x
-
-
 class AudioLDM2UNet2DConditionModel(ModelMixin, ConfigMixin, UNet2DConditionLoadersMixin):
     r"""
     A conditional 2D UNet model that takes a noisy sample, conditional state, and a timestep and returns a sample
