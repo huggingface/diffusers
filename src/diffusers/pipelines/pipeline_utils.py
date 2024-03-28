@@ -990,7 +990,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         self._offload_device = device
 
         self.to("cpu", silence_dtype_warnings=True)
-        device_mod = getattr(torch, self.device.type, None)
+        device_mod = getattr(torch, device.type, None)
         if hasattr(device_mod, "empty_cache") and device_mod.is_available():
             device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
