@@ -654,27 +654,21 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 " install accelerate\n```\n."
             )
 
-        if device_map is not None and not is_torch_version(">=", "1.9.0"):
-            raise NotImplementedError(
-                "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
-                " `device_map=None`."
-            )
-
         if low_cpu_mem_usage is True and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
                 "Low memory initialization requires torch >= 1.9.0. Please either update your PyTorch version or set"
                 " `low_cpu_mem_usage=False`."
             )
 
-        if device_map is not None and not is_accelerate_available():
-            raise NotImplementedError(
-                "Using `device_map` requires the `accelerate` library. Please install it using: `pip install accelerate`."
-            )
-
         if device_map is not None and not is_torch_version(">=", "1.9.0"):
             raise NotImplementedError(
                 "Loading and dispatching requires torch >= 1.9.0. Please either update your PyTorch version or set"
                 " `device_map=None`."
+            )
+
+        if device_map is not None and not is_accelerate_available():
+            raise NotImplementedError(
+                "Using `device_map` requires the `accelerate` library. Please install it using: `pip install accelerate`."
             )
 
         if device_map is not None and not isinstance(device_map, str):
@@ -684,6 +678,10 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             raise NotImplementedError(
                 f"{device_map} not supported. Supported strategies are: {', '.join(SUPPORTED_DEVICE_MAP)}"
             )
+
+        if device_map is not None and device_map in SUPPORTED_DEVICE_MAP:
+            if is_accelerate_version(">=", "0.28.0"):
+                raise NotImplementedError("Please upgrade your `accelerate` version to the latest one.")
 
         if low_cpu_mem_usage is False and device_map is not None:
             raise ValueError(
