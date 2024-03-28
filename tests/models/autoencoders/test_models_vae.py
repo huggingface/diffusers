@@ -816,7 +816,7 @@ class AutoencoderKLIntegrationTests(unittest.TestCase):
         )
         vae = AutoencoderKL.from_pretrained("CompVis/stable-diffusion-v1-4", subfolder="vae")
 
-        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values"]
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "_use_default_values", "_diffusers_version"]
         for param_name, param_value in vae_single_file.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue

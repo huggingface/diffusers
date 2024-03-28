@@ -43,8 +43,8 @@ from ..utils import (
     set_weights_and_activate_adapters,
 )
 from .single_file_utils import (
-    convert_stable_cascade_unet_single_file_to_diffusers,
-    infer_stable_cascade_single_file_config,
+    create_diffusers_unet_from_ldm,
+    create_diffusers_unet_from_stable_cascade,
     load_single_file_model_checkpoint,
 )
 from .utils import AttnProcsLayers
@@ -65,6 +65,12 @@ LORA_WEIGHT_NAME_SAFE = "pytorch_lora_weights.safetensors"
 
 CUSTOM_DIFFUSION_WEIGHT_NAME = "pytorch_custom_diffusion_weights.bin"
 CUSTOM_DIFFUSION_WEIGHT_NAME_SAFE = "pytorch_custom_diffusion_weights.safetensors"
+
+COMPATIBLE_SINGLE_FILE_CLASSES = ["StableCascadeUNet", "UNet2DConditionModel"]
+SINGLE_FILE_LOADABLE_CLASSES = {
+    "StableCascadeUNet": create_diffusers_unet_from_stable_cascade,
+    "UNet2DConditionModel": create_diffusers_unet_from_ldm,
+}
 
 
 class UNet2DConditionLoadersMixin:
@@ -910,10 +916,11 @@ class FromOriginalUNetMixin:
 
     @classmethod
     @validate_hf_hub_args
-    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
+    def from_single_file(cls, pretrained_model_link_or_path: Optional[str] = None, **kwargs):
         r"""
-        Instantiate a [`StableCascadeUNet`] from pretrained StableCascadeUNet weights saved in the original `.ckpt` or
-        `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
+        Instantiate a UNet from pretrained weights saved in the original `.ckpt`, `.bin`, or
+        `.safetensors` format. The model is set in evaluation mode (`model.eval()`) by default.
+        Currently supported checkpoints: StableCascade, SDXL, SD, Playground v2.5, etc.
 
         Parameters:
             pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
@@ -952,10 +959,19 @@ class FromOriginalUNetMixin:
 
         """
         class_name = cls.__name__
-        if class_name != "StableCascadeUNet":
-            raise ValueError("FromOriginalUNetMixin is currently only compatible with StableCascadeUNet")
+        if class_name not in SINGLE_FILE_LOADABLE_CLASSES:
+            raise ValueError(
+                f"FromOriginalUNetMixin is currently only compatible with {', '.join(SINGLE_FILE_LOADABLE_CLASSES.keys())}"
+            )
+
+        checkpoint = kwargs.pop("checkpoint", None)
+        if pretrained_model_link_or_path is None and checkpoint is None:
+            raise ValueError(
+                "Please provide either a `pretrained_model_link_or_path` or a `checkpoint` to load the model from."
+            )
 
         config = kwargs.pop("config", None)
+
         resume_download = kwargs.pop("resume_download", False)
         force_download = kwargs.pop("force_download", False)
         proxies = kwargs.pop("proxies", None)
@@ -965,39 +981,25 @@ class FromOriginalUNetMixin:
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
 
-        checkpoint = load_single_file_model_checkpoint(
-            pretrained_model_link_or_path,
-            resume_download=resume_download,
-            force_download=force_download,
-            proxies=proxies,
-            token=token,
-            cache_dir=cache_dir,
-            local_files_only=local_files_only,
-            revision=revision,
+        if checkpoint is None:
+            checkpoint = load_single_file_model_checkpoint(
+                pretrained_model_link_or_path,
+                resume_download=resume_download,
+                force_download=force_download,
+                proxies=proxies,
+                token=token,
+                cache_dir=cache_dir,
+                local_files_only=local_files_only,
+                revision=revision,
+            )
+
+        model_loading_fn = SINGLE_FILE_LOADABLE_CLASSES[class_name]
+        model = model_loading_fn(
+            cls,
+            checkpoint=checkpoint,
+            config=config,
+            torch_dtype=torch_dtype,
+            **kwargs,
         )
-
-        if config is None:
-            config = infer_stable_cascade_single_file_config(checkpoint)
-            model_config = cls.load_config(**config, **kwargs)
-        else:
-            model_config = config
-
-        ctx = init_empty_weights if is_accelerate_available() else nullcontext
-        with ctx():
-            model = cls.from_config(model_config, **kwargs)
-
-        diffusers_format_checkpoint = convert_stable_cascade_unet_single_file_to_diffusers(checkpoint)
-        if is_accelerate_available():
-            unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
-            if len(unexpected_keys) > 0:
-                logger.warn(
-                    f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
-                )
-
-        else:
-            model.load_state_dict(diffusers_format_checkpoint)
-
-        if torch_dtype is not None:
-            model.to(torch_dtype)
 
         return model
