@@ -138,6 +138,43 @@ class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.T
 
         assert isinstance(pipe.unet, UNetMotionModel)
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array(
+                [
+                    0.5609,
+                    0.5756,
+                    0.4830,
+                    0.4420,
+                    0.4547,
+                    0.5129,
+                    0.3779,
+                    0.4042,
+                    0.3772,
+                    0.4450,
+                    0.5710,
+                    0.5536,
+                    0.4835,
+                    0.4308,
+                    0.5578,
+                    0.5578,
+                    0.4395,
+                    0.5440,
+                    0.6051,
+                    0.4651,
+                    0.6258,
+                    0.5662,
+                    0.3988,
+                    0.5108,
+                    0.4153,
+                    0.3993,
+                    0.4803,
+                ]
+            )
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     @unittest.skip("Attention slicing is not enabled in this pipeline")
     def test_attention_slicing_forward_pass(self):
         pass

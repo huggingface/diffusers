@@ -185,6 +185,9 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=4e-4)
 
+    def test_karras_schedulers_shape(self):
+        super().test_karras_schedulers_shape(num_inference_steps_for_strength_for_iterations=3)
+
 
 @require_torch_gpu
 @nightly
