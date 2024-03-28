@@ -1,11 +1,11 @@
-This project is an attempt to check if it's possible to apply to [ORPO](https://arxiv.org/abs/2403.07691) on a text-conditioned diffusion model to align it on preference data WITHOUT a reference model. The implementation is based on https://github.com/huggingface/trl/pull/1435/. 
+This project is an attempt to check if it's possible to apply [ORPO](https://arxiv.org/abs/2403.07691) on a text-conditioned diffusion model to align it on preference data WITHOUT a reference model. The implementation is based on https://github.com/huggingface/trl/pull/1435/. 
 
 > [!WARNING] 
 > We assume that MSE in the diffusion formulation approximates the log-probs as required by ORPO (hat-tip to [@kashif](https://github.com/kashif) for the idea). So, please consider this to be extremely experimental.
 
 ## Training
 
-Here's training command you can use on a 40GB A100 to validate things on a [small preference
+Here's the training command you can use on a 40GB A100 to validate things on a [small preference
 dataset](https://hf.co/datasets/kashif/pickascore): 
 
 ```bash
@@ -58,7 +58,7 @@ accelerate launch --multi_gpu train_diffusion_orpo_sdxl_lora_wds.py \
   --push_to_hub
 ```
 
-We tested the above on a node of 8 H100s but it should also work on A100s. It requires the `webdataset` library for faster dataloading. Note that we kept the dataset shards on an S3 bucket but it should be also possible to have them stored locally. 
+We tested the above on a node of 8 H100s but it should also work on A100s. It requires the `webdataset` library for faster data loading. Note that we kept the dataset shards on an S3 bucket but it should be also possible to have them stored locally. 
 
 You can use the code below to convert the original dataset into `webdataset` shards:
 

@@ -322,8 +322,20 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--beta_orpo",
         type=float,
+        default=5000,
+        help="ORPO weighting factor T* signal-to-noise.",
+    )
+    parser.add_argument(
+        "--lambda_orpo",
+        type=float,
         default=0.1,
-        help="ORPO contribution factor.",
+        help="OR loss weighting factor.",
+    )
+    parser.add_argument(
+        "--label_noise_prob",
+        type=float,
+        default=None,
+        help="Apply label noise to the preference labels by flipping them.",
     )
     parser.add_argument(
         "--learning_rate",
@@ -768,6 +780,10 @@ def main(args):
                 else:
                     label_0 = 1
 
+            # Label noise.
+            if args.label_noise_prob is not None and random.random() < args.label_noise_prob:
+                label_0 = 1 - label_0
+
             if label_0 == 0:
                 im_tup = im_tup[::-1]
 
@@ -982,18 +998,20 @@ def main(args):
 
                 # ODDS ratio loss.
                 # In the diffusion formulation, we're assuming that the MSE loss
-                # approximates the logp.
+                # upper-bounds the logp.
                 model_losses = F.mse_loss(model_pred.float(), target.float(), reduction="none")
                 model_losses = model_losses.mean(dim=list(range(1, len(model_losses.shape))))
                 model_losses_w, model_losses_l = model_losses.chunk(2)
-                log_odds = model_losses_w - model_losses_l
+                log_odds = (model_losses_w - model_losses_l) - (
+                    torch.log1p(-torch.exp(model_losses_w)) - torch.log1p(-torch.exp(model_losses_l))
+                )
 
-                # Ratio loss.
-                ratio = F.logsigmoid(log_odds)
-                ratio_losses = args.beta_orpo * ratio
+                # Ratio loss:
+                scale_term = -0.5 * args.beta_orpo
+                ratio_losses = F.logsigmoid(scale_term * log_odds)
 
                 # Full ORPO loss
-                loss = model_losses_w.mean() - ratio_losses.mean()
+                loss = (model_losses_w - args.lambda_orpo * ratio_losses).mean()
 
                 # Backprop.
                 accelerator.backward(loss)
