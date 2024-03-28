@@ -46,6 +46,15 @@ except Exception:
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
+try:
+    import insightface
+except ImportError:
+    logger.warning(
+        "To use instant id pipelines, please install the insightface library: `pip install insightface`."
+        "Please refer to: https://huggingface.co/InstantX/InstantID for further instructions"
+    )
+
+optimizer_class = bnb.optim.AdamW8bit
 
 def FeedForward(dim, mult=4):
     inner_dim = int(dim * mult)
