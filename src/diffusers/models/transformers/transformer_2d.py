@@ -115,7 +115,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.use_linear_projection = use_linear_projection
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
-        inner_dim = num_attention_heads * attention_head_dim
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
@@ -154,74 +153,16 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Initialize the right blocks.
         if self.is_input_continuous:
-            self._init_continuous_input(
-                in_channels,
-                out_channels,
-                inner_dim,
-                num_attention_heads,
-                attention_head_dim,
-                cross_attention_dim,
-                activation_fn,
-                num_embeds_ada_norm,
-                attention_bias,
-                only_cross_attention,
-                double_self_attention,
-                upcast_attention,
-                norm_type,
-                norm_elementwise_affine,
-                norm_eps,
-                attention_type,
-                norm_num_groups,
-                use_linear_projection,
-                dropout,
-                num_layers,
-            )
+            self._init_continuous_input(in_channels=in_channels, use_linear_projection=use_linear_projection)
         elif self.is_input_vectorized:
-            self._init_vectorized_inputs(
-                in_channels,
-                sample_size,
-                num_vector_embeds,
-                inner_dim,
-                num_attention_heads,
-                attention_head_dim,
-                dropout,
-                cross_attention_dim,
-                activation_fn,
-                num_embeds_ada_norm,
-                attention_bias,
-                only_cross_attention,
-                double_self_attention,
-                upcast_attention,
-                norm_type,
-                norm_elementwise_affine,
-                norm_eps,
-                attention_type,
-                num_layers,
-            )
+            self._init_vectorized_inputs(sample_size)
         elif self.is_input_patches:
             self._init_patched_inputs(
-                in_channels,
-                out_channels,
-                sample_size,
-                patch_size,
-                inner_dim,
-                num_attention_heads,
-                attention_head_dim,
-                dropout,
-                cross_attention_dim,
-                activation_fn,
-                num_embeds_ada_norm,
-                attention_bias,
-                only_cross_attention,
-                double_self_attention,
-                upcast_attention,
-                norm_type,
-                norm_elementwise_affine,
-                norm_eps,
-                attention_type,
-                num_layers,
-                interpolation_scale,
-                caption_channels,
+                in_channels=in_channels,
+                sample_size=sample_size,
+                patch_size=patch_size,
+                interpolation_scale=interpolation_scale,
+                caption_channels=caption_channels,
             )
 
         # Others.
@@ -231,29 +172,14 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
     def _init_continuous_input(
         self,
         in_channels,
-        out_channels,
-        inner_dim,
-        num_attention_heads,
-        attention_head_dim,
-        cross_attention_dim,
-        activation_fn,
-        num_embeds_ada_norm,
-        attention_bias,
-        only_cross_attention,
-        double_self_attention,
-        upcast_attention,
-        norm_type,
-        norm_elementwise_affine,
-        norm_eps,
-        attention_type,
-        norm_num_groups,
         use_linear_projection,
-        dropout,
-        num_layers,
     ):
         self.use_linear_projection = use_linear_projection
+        inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
-        self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
+        self.norm = torch.nn.GroupNorm(
+            num_groups=self.config.norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True
+        )
         if use_linear_projection:
             self.proj_in = torch.nn.Linear(in_channels, inner_dim)
         else:
@@ -263,112 +189,80 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             [
                 BasicTransformerBlock(
                     inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
+                    self.config.num_attention_heads,
+                    self.config.attention_head_dim,
+                    dropout=self.config.dropout,
+                    cross_attention_dim=self.config.cross_attention_dim,
+                    activation_fn=self.config.activation_fn,
+                    num_embeds_ada_norm=self.config.num_embeds_ada_norm,
+                    attention_bias=self.config.attention_bias,
+                    only_cross_attention=self.config.only_cross_attention,
+                    double_self_attention=self.config.double_self_attention,
+                    upcast_attention=self.config.upcast_attention,
+                    norm_type=self.config.norm_type,
+                    norm_elementwise_affine=self.config.norm_elementwise_affine,
+                    norm_eps=self.config.norm_eps,
+                    attention_type=self.config.attention_type,
                 )
-                for d in range(num_layers)
+                for _ in range(self.config.num_layers)
             ]
         )
-        # TODO: should use out_channels for continuous projections
-        if use_linear_projection:
-            self.proj_out = torch.nn.Linear(inner_dim, in_channels)
-        else:
-            self.proj_out = torch.nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
 
-    def _init_vectorized_inputs(
-        self,
-        in_channels,
-        sample_size,
-        num_vector_embeds,
-        inner_dim,
-        num_attention_heads,
-        attention_head_dim,
-        dropout,
-        cross_attention_dim,
-        activation_fn,
-        num_embeds_ada_norm,
-        attention_bias,
-        only_cross_attention,
-        double_self_attention,
-        upcast_attention,
-        norm_type,
-        norm_elementwise_affine,
-        norm_eps,
-        attention_type,
-        num_layers,
-    ):
+        # Use out_channels or default to in_channels
+        out_channels = self.out_channels if self.out_channels is not None else in_channels
+
+        if use_linear_projection:
+            self.proj_out = torch.nn.Linear(inner_dim, out_channels)
+        else:
+            self.proj_out = torch.nn.Conv2d(inner_dim, out_channels, kernel_size=1, stride=1, padding=0)
+
+    def _init_vectorized_inputs(self, sample_size):
         assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
-        assert num_vector_embeds is not None, "Transformer2DModel over discrete input must provide num_embed"
+        assert (
+            self.config.num_vector_embeds is not None
+        ), "Transformer2DModel over discrete input must provide num_embed"
 
         self.height = sample_size
         self.width = sample_size
-        self.num_vector_embeds = num_vector_embeds
         self.num_latent_pixels = self.height * self.width
 
+        inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+
         self.latent_image_embedding = ImagePositionalEmbeddings(
-            num_embed=num_vector_embeds, embed_dim=inner_dim, height=self.height, width=self.width
+            num_embed=self.config.num_vector_embeds, embed_dim=inner_dim, height=self.height, width=self.width
         )
 
         self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
                     inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
+                    self.config.num_attention_heads,
+                    self.config.attention_head_dim,
+                    dropout=self.config.dropout,
+                    cross_attention_dim=self.config.cross_attention_dim,
+                    activation_fn=self.config.activation_fn,
+                    num_embeds_ada_norm=self.config.num_embeds_ada_norm,
+                    attention_bias=self.config.attention_bias,
+                    only_cross_attention=self.config.only_cross_attention,
+                    double_self_attention=self.config.double_self_attention,
+                    upcast_attention=self.config.upcast_attention,
+                    norm_type=self.config.norm_type,
+                    norm_elementwise_affine=self.config.norm_elementwise_affine,
+                    norm_eps=self.config.norm_eps,
+                    attention_type=self.config.attention_type,
                 )
-                for d in range(num_layers)
+                for d in range(self.config.num_layers)
             ]
         )
 
         self.norm_out = nn.LayerNorm(inner_dim)
-        self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
+        self.out = nn.Linear(inner_dim, self.config.num_vector_embeds - 1)
 
     def _init_patched_inputs(
         self,
         in_channels,
-        out_channels,
         sample_size,
         patch_size,
-        inner_dim,
-        num_attention_heads,
-        attention_head_dim,
-        dropout,
-        cross_attention_dim,
-        activation_fn,
-        num_embeds_ada_norm,
-        attention_bias,
-        only_cross_attention,
-        double_self_attention,
-        upcast_attention,
-        norm_type,
-        norm_elementwise_affine,
-        norm_eps,
-        attention_type,
-        num_layers,
         interpolation_scale,
         caption_channels,
     ):
@@ -376,6 +270,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         self.height = sample_size
         self.width = sample_size
+        inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
         self.patch_size = patch_size
         interpolation_scale = (
@@ -394,38 +289,38 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             [
                 BasicTransformerBlock(
                     inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
+                    self.config.num_attention_heads,
+                    self.config.attention_head_dim,
+                    dropout=self.config.dropout,
+                    cross_attention_dim=self.config.cross_attention_dim,
+                    activation_fn=self.config.activation_fn,
+                    num_embeds_ada_norm=self.config.num_embeds_ada_norm,
+                    attention_bias=self.config.attention_bias,
+                    only_cross_attention=self.config.only_cross_attention,
+                    double_self_attention=self.config.double_self_attention,
+                    upcast_attention=self.config.upcast_attention,
+                    norm_type=self.config.norm_type,
+                    norm_elementwise_affine=self.config.norm_elementwise_affine,
+                    norm_eps=self.config.norm_eps,
+                    attention_type=self.config.attention_type,
                 )
-                for d in range(num_layers)
+                for d in range(self.config.num_layers)
             ]
         )
 
-        if norm_type != "ada_norm_single":
+        if self.config.norm_type != "ada_norm_single":
             self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
             self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
-        elif norm_type == "ada_norm_single":
+            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.config.out_channels)
+        elif self.config.norm_type == "ada_norm_single":
             self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
             self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
-            self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.out_channels)
+            self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.config.out_channels)
 
         # PixArt-Alpha blocks.
         self.adaln_single = None
         self.use_additional_conditions = False
-        if norm_type == "ada_norm_single":
+        if self.config.norm_type == "ada_norm_single":
             self.use_additional_conditions = self.config.sample_size == 128
             # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
             # additional conditions until we find better name
