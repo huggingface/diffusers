@@ -1108,6 +1108,98 @@ class PipelineTesterMixin:
         )
 
     @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
+    )
+    def test_cpu_offload_forward_pass_twice(self, expected_max_diff=2e-4):
+        import accelerate
+
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.enable_model_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload = pipe(**inputs)[0]
+
+        pipe.enable_model_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload_twice = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_with_offload_twice)).max()
+        self.assertLess(
+            max_diff, expected_max_diff, "running CPU offloading 2nd time should not affect the inference results"
+        )
+        offloaded_modules = [
+            v
+            for k, v in pipe.components.items()
+            if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
+        ]
+        (
+            self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
+            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
+        )
+
+        offloaded_modules_with_hooks = [v for v in offloaded_modules if hasattr(v, "_hf_hook")]
+        (
+            self.assertTrue(all(isinstance(v, accelerate.hooks.CpuOffload) for v in offloaded_modules_with_hooks)),
+            f"Not installed correct hook: {[v for v in offloaded_modules_with_hooks if not isinstance(v, accelerate.hooks.CpuOffload)]}",
+        )
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+    )
+    def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
+        import accelerate
+
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.enable_sequential_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload = pipe(**inputs)[0]
+
+        pipe.nable_sequential_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload_twice = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_with_offload_twice)).max()
+        self.assertLess(
+            max_diff, expected_max_diff, "running sequential offloading second time should have the inference results"
+        )
+        offloaded_modules = [
+            v
+            for k, v in pipe.components.items()
+            if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
+        ]
+        (
+            self.assertTrue(all(v.device.type == "meta" for v in offloaded_modules)),
+            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'meta']}",
+        )
+
+        offloaded_modules_with_hooks = [v for v in offloaded_modules if hasattr(v, "_hf_hook")]
+        (
+            self.assertTrue(
+                all(isinstance(v, accelerate.hooks.AlignDevicesHook) for v in offloaded_modules_with_hooks)
+            ),
+            f"Not installed correct hook: {[v for v in offloaded_modules_with_hooks if not isinstance(v, accelerate.hooks.AlignDevicesHook)]}",
+        )
+
+    @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
         reason="XFormers attention is only available with CUDA and `xformers` installed",
     )
