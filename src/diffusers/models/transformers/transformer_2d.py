@@ -153,13 +153,16 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Initialize the right blocks.
         if self.is_input_continuous:
-            self._init_continuous_input(in_channels=in_channels, use_linear_projection=use_linear_projection)
+            self._init_continuous_input(
+                in_channels=in_channels, use_linear_projection=use_linear_projection, norm_type=norm_type
+            )
         elif self.is_input_vectorized:
-            self._init_vectorized_inputs(sample_size)
+            self._init_vectorized_inputs(sample_size=sample_size, norm_type=norm_type)
         elif self.is_input_patches:
             self._init_patched_inputs(
                 in_channels=in_channels,
                 sample_size=sample_size,
+                norm_type=norm_type,
                 patch_size=patch_size,
                 interpolation_scale=interpolation_scale,
                 caption_channels=caption_channels,
@@ -169,11 +172,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.out_channels = in_channels if out_channels is None else out_channels
         self.gradient_checkpointing = False
 
-    def _init_continuous_input(
-        self,
-        in_channels,
-        use_linear_projection,
-    ):
+    def _init_continuous_input(self, in_channels, use_linear_projection, norm_type):
         self.use_linear_projection = use_linear_projection
         inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
 
@@ -199,7 +198,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     only_cross_attention=self.config.only_cross_attention,
                     double_self_attention=self.config.double_self_attention,
                     upcast_attention=self.config.upcast_attention,
-                    norm_type=self.config.norm_type,
+                    norm_type=norm_type,
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
                     attention_type=self.config.attention_type,
@@ -216,7 +215,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         else:
             self.proj_out = torch.nn.Conv2d(inner_dim, out_channels, kernel_size=1, stride=1, padding=0)
 
-    def _init_vectorized_inputs(self, sample_size):
+    def _init_vectorized_inputs(self, sample_size, norm_type):
         assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
         assert (
             self.config.num_vector_embeds is not None
@@ -246,7 +245,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     only_cross_attention=self.config.only_cross_attention,
                     double_self_attention=self.config.double_self_attention,
                     upcast_attention=self.config.upcast_attention,
-                    norm_type=self.config.norm_type,
+                    norm_type=norm_type,
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
                     attention_type=self.config.attention_type,
@@ -262,6 +261,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self,
         in_channels,
         sample_size,
+        norm_type,
         patch_size,
         interpolation_scale,
         caption_channels,
@@ -299,7 +299,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     only_cross_attention=self.config.only_cross_attention,
                     double_self_attention=self.config.double_self_attention,
                     upcast_attention=self.config.upcast_attention,
-                    norm_type=self.config.norm_type,
+                    norm_type=norm_type,
                     norm_elementwise_affine=self.config.norm_elementwise_affine,
                     norm_eps=self.config.norm_eps,
                     attention_type=self.config.attention_type,
