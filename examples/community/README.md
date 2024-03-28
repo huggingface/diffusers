@@ -66,6 +66,7 @@ Please also check out our [Community Scripts](https://github.com/huggingface/dif
 |   InstantID Pipeline                                                                                               | Stable Diffusion XL Pipeline that supports InstantID                                                                                                                                                                                                                                                                                                                                                 |  [InstantID Pipeline](#instantid-pipeline) | [![Hugging Face Space](https://img.shields.io/badge/🤗%20Hugging%20Face-Space-yellow)](https://huggingface.co/spaces/InstantX/InstantID) | [Haofan Wang](https://github.com/haofanwang) |
 |   UFOGen Scheduler                                                                                               | Scheduler for UFOGen Model (compatible with Stable Diffusion pipelines)                                                                                                                                                                                                                                                                                                                                                 |  [UFOGen Scheduler](#ufogen-scheduler) | - | [dg845](https://github.com/dg845) |
 | Stable Diffusion XL IPEX Pipeline | Accelerate Stable Diffusion XL inference pipeline with BF16/FP32 precision on Intel Xeon CPUs with [IPEX](https://github.com/intel/intel-extension-for-pytorch) | [Stable Diffusion XL on IPEX](#stable-diffusion-xl-on-ipex) | - | [Dan Li](https://github.com/ustcuna/) |
+| RAVE Pipeline                                                                                                    | Implementation of [RAVE: Randomized Noise Shuffling for Fast and Consistent Video Editing with Diffusion Models](https://arxiv.org/abs/2312.04524)                                                                                                                                                                                                                                                                                                                                                                                                                                   | [RAVE Pipeline](#rave-pipeline) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://drive.google.com/file/d/1yhRG6md-QXS1YaRC1CdpL_q0ahvPyflk/view?usp=sharing) | [Aryan V S](https://github.com/a-r-r-o-w) |
 
 To load a custom pipeline you just need to pass the `custom_pipeline` argument to `DiffusionPipeline`, as one of the files in `diffusers/examples/community`. Feel free to send a PR with your own pipelines, we will merge them quickly.
 
@@ -3743,3 +3744,49 @@ onestep_image = pipe(prompt, num_inference_steps=1).images[0]
 # Multistep sampling
 multistep_image = pipe(prompt, num_inference_steps=4).images[0]
 ```
+
+### RAVE Pipeline
+
+This pipeline is the implementation of [RAVE: Randomized Noise Shuffling for Fast and Consistent Video Editing with Diffusion Models](https://arxiv.org/abs/2312.04524). Checkout [this](https://github.com/huggingface/diffusers/pull/6490) PR for results.
+
+```python
+import imageio
+import torch
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.utils import export_to_gif
+from PIL import Image
+
+controlnet = ControlNetModel.from_pretrained("lllyasviel/sd-controlnet-depth", torch_dtype=torch.float16)
+model_id = "runwayml/stable-diffusion-v1-5"
+pipe = DiffusionPipeline.from_pretrained(model_id, controlnet=controlnet, torch_dtype=torch.float16, custom_pipeline="pipeline_rave")
+pipe = pipe.to("cuda")
+
+def load_video(file_path):
+    images = []
+    vid = imageio.get_reader(file_path)
+    for i, frame in enumerate(vid):
+        pil_image = Image.fromarray(frame)
+        images.append(pil_image)
+    return images
+
+video = load_video("racoon-playing-instrument.gif")
+
+output = pipe(
+    video=video,
+    controlnet_processor_id="depth_midas",
+    prompt="A panda playing a guitar",
+    negative_prompt="low quality, worst quality",
+    height=512,
+    width=512,
+    guidance_scale=8,
+    num_inference_steps=50,
+    
+    # RAVE parameters
+    grid_size=2,
+    use_shuffling=True,
+    vae_batch_size=2,
+    inversion_prompt="",
+    num_inversion_steps=50,
+    apply_inversion_on_grid=True,
+)
+export_to_gif(output.frames, "animation.gif")
