@@ -22,7 +22,7 @@ import PIL.Image
 import torch
 import torch.nn as nn
 
-from diffusers import StableDiffusionXLControlNetPipeline
+from diffusers import StableDiffusionXLControlNetImg2ImgPipeline
 from diffusers.image_processor import PipelineImageInput
 from diffusers.models import ControlNetModel
 from diffusers.pipelines.controlnet.multicontrolnet import MultiControlNetModel
@@ -53,6 +53,8 @@ except ImportError:
         "To use instant id pipelines, please install the insightface library: `pip install insightface`."
         "Please refer to: https://huggingface.co/InstantX/InstantID for further instructions"
     )
+
+optimizer_class = bnb.optim.AdamW8bit
 
 def FeedForward(dim, mult=4):
     inner_dim = int(dim * mult)
@@ -445,7 +447,7 @@ def draw_kps(image_pil, kps, color_list=[(255, 0, 0), (0, 255, 0), (0, 0, 255), 
     return out_img_pil
 
 
-class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
+class StableDiffusionXLInstantIDImg2ImgPipeline(StableDiffusionXLControlNetImg2ImgPipeline):
     def cuda(self, dtype=torch.float16, use_xformers=False):
         self.to("cuda", dtype)
 
@@ -552,6 +554,8 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         prompt: Union[str, List[str]] = None,
         prompt_2: Optional[Union[str, List[str]]] = None,
         image: PipelineImageInput = None,
+        control_image: PipelineImageInput = None,
+        strength: float = 0.8,
         height: Optional[int] = None,
         width: Optional[int] = None,
         num_inference_steps: int = 50,
@@ -580,6 +584,8 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         negative_original_size: Optional[Tuple[int, int]] = None,
         negative_crops_coords_top_left: Tuple[int, int] = (0, 0),
         negative_target_size: Optional[Tuple[int, int]] = None,
+        aesthetic_score: float = 6.0,
+        negative_aesthetic_score: float = 2.5,
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
@@ -752,7 +758,9 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         self.check_inputs(
             prompt,
             prompt_2,
-            image,
+            control_image,
+            strength,
+            num_inference_steps,
             callback_steps,
             negative_prompt,
             negative_prompt_2,
@@ -760,6 +768,8 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
             negative_prompt_embeds,
             pooled_prompt_embeds,
             negative_pooled_prompt_embeds,
+            None,
+            None,
             controlnet_conditioning_scale,
             control_guidance_start,
             control_guidance_end,
@@ -823,10 +833,12 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
         prompt_image_emb = prompt_image_emb.repeat(1, num_images_per_prompt, 1)
         prompt_image_emb = prompt_image_emb.view(bs_embed * num_images_per_prompt, seq_len, -1)
 
-        # 4. Prepare image
+        # 4. Prepare image and controlnet_conditioning_image
+        image = self.image_processor.preprocess(image, height=height, width=width).to(dtype=torch.float32)
+
         if isinstance(controlnet, ControlNetModel):
-            image = self.prepare_image(
-                image=image,
+            control_image = self.prepare_control_image(
+                image=control_image,
                 width=width,
                 height=height,
                 batch_size=batch_size * num_images_per_prompt,
@@ -836,13 +848,13 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 guess_mode=guess_mode,
             )
-            height, width = image.shape[-2:]
+            height, width = control_image.shape[-2:]
         elif isinstance(controlnet, MultiControlNetModel):
-            images = []
+            control_images = []
 
-            for image_ in image:
-                image_ = self.prepare_image(
-                    image=image_,
+            for control_image_ in control_image:
+                control_image_ = self.prepare_control_image(
+                    image=control_image_,
                     width=width,
                     height=height,
                     batch_size=batch_size * num_images_per_prompt,
@@ -853,32 +865,32 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
                     guess_mode=guess_mode,
                 )
 
-                images.append(image_)
+                control_images.append(control_image_)
 
-            image = images
-            height, width = image[0].shape[-2:]
+            control_image = control_images
+            height, width = control_image[0].shape[-2:]
         else:
             assert False
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
-        timesteps = self.scheduler.timesteps
+        timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
+        latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
         self._num_timesteps = len(timesteps)
 
         # 6. Prepare latent variables
-        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
-            batch_size * num_images_per_prompt,
-            num_channels_latents,
-            height,
-            width,
+            image,
+            latent_timestep,
+            batch_size,
+            num_images_per_prompt,
             prompt_embeds.dtype,
             device,
             generator,
-            latents,
+            True,
         )
 
-        # 6.5 Optionally get Guidance Scale Embedding
+        # # 6.5 Optionally get Guidance Scale Embedding
         timestep_cond = None
         if self.unet.config.time_cond_proj_dim is not None:
             guidance_scale_tensor = torch.tensor(self.guidance_scale - 1).repeat(batch_size * num_images_per_prompt)
@@ -899,41 +911,42 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
             controlnet_keep.append(keeps[0] if isinstance(controlnet, ControlNetModel) else keeps)
 
         # 7.2 Prepare added time ids & embeddings
-        if isinstance(image, list):
-            original_size = original_size or image[0].shape[-2:]
+        if isinstance(control_image, list):
+            original_size = original_size or control_image[0].shape[-2:]
         else:
-            original_size = original_size or image.shape[-2:]
+            original_size = original_size or control_image.shape[-2:]
         target_size = target_size or (height, width)
 
+        if negative_original_size is None:
+            negative_original_size = original_size
+        if negative_target_size is None:
+            negative_target_size = target_size
         add_text_embeds = pooled_prompt_embeds
+
         if self.text_encoder_2 is None:
             text_encoder_projection_dim = int(pooled_prompt_embeds.shape[-1])
         else:
             text_encoder_projection_dim = self.text_encoder_2.config.projection_dim
 
-        add_time_ids = self._get_add_time_ids(
+        add_time_ids, add_neg_time_ids = self._get_add_time_ids(
             original_size,
             crops_coords_top_left,
             target_size,
+            aesthetic_score,
+            negative_aesthetic_score,
+            negative_original_size,
+            negative_crops_coords_top_left,
+            negative_target_size,
             dtype=prompt_embeds.dtype,
             text_encoder_projection_dim=text_encoder_projection_dim,
         )
-
-        if negative_original_size is not None and negative_target_size is not None:
-            negative_add_time_ids = self._get_add_time_ids(
-                negative_original_size,
-                negative_crops_coords_top_left,
-                negative_target_size,
-                dtype=prompt_embeds.dtype,
-                text_encoder_projection_dim=text_encoder_projection_dim,
-            )
-        else:
-            negative_add_time_ids = add_time_ids
+        add_time_ids = add_time_ids.repeat(batch_size * num_images_per_prompt, 1)
 
         if self.do_classifier_free_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
             add_text_embeds = torch.cat([negative_pooled_prompt_embeds, add_text_embeds], dim=0)
-            add_time_ids = torch.cat([negative_add_time_ids, add_time_ids], dim=0)
+            add_neg_time_ids = add_neg_time_ids.repeat(batch_size * num_images_per_prompt, 1)
+            add_time_ids = torch.cat([add_neg_time_ids, add_time_ids], dim=0)
 
         prompt_embeds = prompt_embeds.to(device)
         add_text_embeds = add_text_embeds.to(device)
@@ -985,7 +998,7 @@ class StableDiffusionXLInstantIDPipeline(StableDiffusionXLControlNetPipeline):
                     control_model_input,
                     t,
                     encoder_hidden_states=prompt_image_emb,
-                    controlnet_cond=image,
+                    controlnet_cond=control_image,
                     conditioning_scale=cond_scale,
                     guess_mode=guess_mode,
                     added_cond_kwargs=controlnet_added_cond_kwargs,
