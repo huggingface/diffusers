@@ -637,7 +637,7 @@ def main(args):
                     generator=generator,
                     batch_size=args.eval_batch_size,
                     num_inference_steps=args.ddpm_num_inference_steps,
-                    output_type="numpy",
+                    output_type="np",
                 ).images
 
                 if args.use_ema:

@@ -54,7 +54,7 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -911,6 +911,7 @@ def main(args):
         )
         precomputed_dataset = precomputed_dataset.with_transform(preprocess_train)
 
+    del compute_vae_encodings_fn, compute_embeddings_fn, text_encoder_one, text_encoder_two
     del text_encoders, tokenizers, vae
     gc.collect()
     torch.cuda.empty_cache()

@@ -70,7 +70,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -656,7 +656,6 @@ def parse_args(input_args=None):
     )
     parser.add_argument(
         "--use_dora",
-        type=bool,
         action="store_true",
         default=False,
         help=(

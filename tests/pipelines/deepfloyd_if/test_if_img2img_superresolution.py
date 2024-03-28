@@ -57,7 +57,7 @@ class IFImg2ImgSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipelineT
             "original_image": original_image,
             "generator": generator,
             "num_inference_steps": 2,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return inputs
@@ -92,6 +92,12 @@ class IFImg2ImgSuperResolutionPipelineFastTests(PipelineTesterMixin, IFPipelineT
 @slow
 @require_torch_gpu
 class IFImg2ImgSuperResolutionPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -106,6 +112,10 @@ class IFImg2ImgSuperResolutionPipelineSlowTests(unittest.TestCase):
         )
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload()
+
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
 
         generator = torch.Generator(device="cpu").manual_seed(0)
 

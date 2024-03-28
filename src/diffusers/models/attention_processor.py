@@ -424,7 +424,7 @@ class Attention(nn.Module):
         # If doesn't apply LoRA do `add_k_proj` or `add_v_proj`
         is_lora_activated.pop("add_k_proj", None)
         is_lora_activated.pop("add_v_proj", None)
-        # 2. else it is not posssible that only some layers have LoRA activated
+        # 2. else it is not possible that only some layers have LoRA activated
         if not all(is_lora_activated.values()):
             raise ValueError(
                 f"Make sure that either all layers or no layers have LoRA activated, but have {is_lora_activated}"
@@ -2098,7 +2098,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
 
 class IPAdapterAttnProcessor(nn.Module):
     r"""
-    Attention processor for Multiple IP-Adapater.
+    Attention processor for Multiple IP-Adapters.
 
     Args:
         hidden_size (`int`):
@@ -2152,8 +2152,8 @@ class IPAdapterAttnProcessor(nn.Module):
                 encoder_hidden_states, ip_hidden_states = encoder_hidden_states
             else:
                 deprecation_message = (
-                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
-                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                    "You have passed a tensor as `encoder_hidden_states`. This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to suppress this warning."
                 )
                 deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
                 end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
@@ -2253,7 +2253,7 @@ class IPAdapterAttnProcessor(nn.Module):
 
 class IPAdapterAttnProcessor2_0(torch.nn.Module):
     r"""
-    Attention processor for IP-Adapater for PyTorch 2.0.
+    Attention processor for IP-Adapter for PyTorch 2.0.
 
     Args:
         hidden_size (`int`):
@@ -2312,8 +2312,8 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                 encoder_hidden_states, ip_hidden_states = encoder_hidden_states
             else:
                 deprecation_message = (
-                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
-                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                    "You have passed a tensor as `encoder_hidden_states`. This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to suppress this warning."
                 )
                 deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
                 end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]

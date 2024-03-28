@@ -63,7 +63,7 @@ from diffusers.utils.import_utils import is_xformers_available
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -1178,7 +1178,7 @@ def main(args):
                         grads_text_encoder = text_encoder.get_input_embeddings().weight.grad
                     # Get the index for tokens that we want to zero the grads for
                     index_grads_to_zero = torch.arange(len(tokenizer)) != modifier_token_id[0]
-                    for i in range(len(modifier_token_id[1:])):
+                    for i in range(1, len(modifier_token_id)):
                         index_grads_to_zero = index_grads_to_zero & (
                             torch.arange(len(tokenizer)) != modifier_token_id[i]
                         )
