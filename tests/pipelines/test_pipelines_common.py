@@ -1146,6 +1146,10 @@ class PipelineTesterMixin:
             f"Not installed correct hook: {[v for v in offloaded_modules_with_hooks if not isinstance(v, accelerate.hooks.CpuOffload)]}",
         )
 
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+    )
     def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
         import accelerate
 
