@@ -407,8 +407,9 @@ class AudioLDM2Pipeline(DiffusionPipeline):
 
         # Define tokenizers and text encoders
         tokenizers = [self.tokenizer, self.tokenizer_2]
+        is_vits_text_encoder = isinstance(self.text_encoder_2, VitsModel)
 
-        if self.text_encoder_2.config.model_type == "vits":
+        if is_vits_text_encoder:
             text_encoders = [self.text_encoder, self.text_encoder_2.text_encoder]
         else:
             text_encoders = [self.text_encoder, self.text_encoder_2]
@@ -418,10 +419,11 @@ class AudioLDM2Pipeline(DiffusionPipeline):
             attention_mask_list = []
 
             for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+                use_prompt = isinstance(
+                    tokenizer, (RobertaTokenizer, RobertaTokenizerFast, T5Tokenizer, T5TokenizerFast)
+                )
                 text_inputs = tokenizer(
-                    prompt
-                    if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast, T5Tokenizer, T5TokenizerFast))
-                    else transcription,
+                    prompt if use_prompt else transcription,
                     padding="max_length"
                     if isinstance(tokenizer, (RobertaTokenizer, RobertaTokenizerFast, VitsTokenizer))
                     else True,
@@ -454,7 +456,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     prompt_embeds = prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
                     attention_mask = attention_mask.new_ones((batch_size, 1))
-                elif text_encoder.config.model_type == "vits":
+                elif is_vits_text_encoder:
                     # Add end_token_id and attention mask in the end of sequence phonemes
                     for text_input_id, text_attention_mask in zip(text_input_ids, attention_mask):
                         for idx, phoneme_id in enumerate(text_input_id):
@@ -562,7 +564,7 @@ class AudioLDM2Pipeline(DiffusionPipeline):
                     negative_prompt_embeds = negative_prompt_embeds[:, None, :]
                     # make sure that we attend to this single hidden-state
                     negative_attention_mask = negative_attention_mask.new_ones((batch_size, 1))
-                elif text_encoder.config.model_type == "vits":
+                elif is_vits_text_encoder:
                     negative_prompt_embeds = torch.zeros(
                         batch_size,
                         tokenizer.model_max_length,
