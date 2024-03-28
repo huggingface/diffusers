@@ -37,6 +37,7 @@ from diffusers.utils import load_image
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
     is_flaky,
+    load_pt,
     numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
@@ -302,6 +303,30 @@ class IPAdapterSDIntegrationTests(IPAdapterNightlyTestsMixin):
         images = pipeline(**inputs).images
         image_slice = images[0, :3, :3, -1].flatten()
         expected_slice = np.array([0.5234, 0.5352, 0.5625, 0.5713, 0.5947, 0.6206, 0.5786, 0.6187, 0.6494])
+
+        max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
+        assert max_diff < 5e-4
+
+    def test_text_to_image_face_id(self):
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            "runwayml/stable-diffusion-v1-5", safety_checker=None, torch_dtype=self.dtype
+        )
+        pipeline.to(torch_device)
+        pipeline.load_ip_adapter(
+            "h94/IP-Adapter-FaceID",
+            subfolder=None,
+            weight_name="ip-adapter-faceid_sd15.bin",
+            image_encoder_folder=None,
+        )
+        pipeline.set_ip_adapter_scale(0.7)
+
+        inputs = self.get_dummy_inputs()
+        inputs["ip_adapter_image"] = load_pt(
+            "https://huggingface.co/datasets/fabiorigano/testing-images/resolve/main/ai_face2.ipadpt"
+        )
+        images = pipeline(**inputs).images
+        image_slice = images[0, :3, :3, -1].flatten()
+        expected_slice = np.array([0.1665, 0.1626, 0.2187, 0.1882, 0.1702, 0.2144, 0.1624, 0.2012, 0.2173])
 
         max_diff = numpy_cosine_similarity_distance(image_slice, expected_slice)
         assert max_diff < 5e-4
