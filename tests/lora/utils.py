@@ -934,8 +934,7 @@ class PeftLoraLoaderMixinTests:
             _, _, inputs = self.get_dummy_inputs(with_generator=False)
 
             pipe.text_encoder.add_adapter(text_lora_config, "adapter-1")
-            key_list = [key for key, _ in pipe.unet.named_modules()]
-            print(f"key_list: {key_list}")
+
             pipe.unet.add_adapter(unet_lora_config, "adapter-1")
 
             self.assertTrue(check_if_lora_correctly_set(pipe.text_encoder), "Lora not correctly set in text encoder")
