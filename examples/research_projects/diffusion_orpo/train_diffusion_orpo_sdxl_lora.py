@@ -332,6 +332,12 @@ def parse_args(input_args=None):
         help="OR loss weighting factor.",
     )
     parser.add_argument(
+        "--label_noise_prob",
+        type=float,
+        default=None,
+        help="Apply label noise to the preference labels by flipping them.",
+    )
+    parser.add_argument(
         "--learning_rate",
         type=float,
         default=5e-4,
@@ -773,6 +779,10 @@ def main(args):
                     label_0 = 0
                 else:
                     label_0 = 1
+
+            # Label noise.
+            if args.label_noise_prob is not None and random.random() < args.label_noise_prob:
+                label_0 = 1 - label_0
 
             if label_0 == 0:
                 im_tup = im_tup[::-1]
