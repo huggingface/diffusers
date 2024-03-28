@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import contextlib
 import gc
 import itertools
 import json
@@ -41,6 +40,7 @@ from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
+from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
@@ -62,7 +62,9 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
     check_min_version,
+    convert_all_state_dict_to_peft,
     convert_state_dict_to_diffusers,
+    convert_state_dict_to_kohya,
     convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
@@ -205,11 +207,18 @@ def log_validation(
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
-    inference_ctx = (
-        contextlib.nullcontext() if "playground" in args.pretrained_model_name_or_path else torch.cuda.amp.autocast()
-    )
+    enable_autocast = True
+    if torch.backends.mps.is_available() or (
+        accelerator.mixed_precision == "fp16" or accelerator.mixed_precision == "bf16"
+    ):
+        enable_autocast = False
+    if "playground" in args.pretrained_model_name_or_path:
+        enable_autocast = False
 
-    with inference_ctx:
+    with torch.autocast(
+        accelerator.device.type,
+        enabled=enable_autocast,
+    ):
         images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
     for tracker in accelerator.trackers:
@@ -227,7 +236,8 @@ def log_validation(
             )
 
     del pipeline
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     return images
 
@@ -395,6 +405,11 @@ def parse_args(input_args=None):
         type=str,
         default="lora-dreambooth-model",
         help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--output_kohya_format",
+        action="store_true",
+        help="Flag to additionally generate final state dict in the Kohya format so that it becomes compatible with A111, Comfy, Kohya, etc.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
@@ -959,6 +974,12 @@ def main(args):
     if args.do_edm_style_training and args.snr_gamma is not None:
         raise ValueError("Min-SNR formulation is not supported when conducting EDM-style training.")
 
+    if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
+        # due to pytorch#99272, MPS does not yet support bfloat16.
+        raise ValueError(
+            "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
+        )
+
     logging_dir = Path(args.output_dir, args.logging_dir)
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
@@ -1001,7 +1022,8 @@ def main(args):
         cur_class_images = len(list(class_images_dir.iterdir()))
 
         if cur_class_images < args.num_class_images:
-            torch_dtype = torch.float16 if accelerator.device.type == "cuda" else torch.float32
+            has_supported_fp16_accelerator = torch.cuda.is_available() or torch.backends.mps.is_available()
+            torch_dtype = torch.float16 if has_supported_fp16_accelerator else torch.float32
             if args.prior_generation_precision == "fp32":
                 torch_dtype = torch.float32
             elif args.prior_generation_precision == "fp16":
@@ -1125,6 +1147,12 @@ def main(args):
         weight_dtype = torch.float16
     elif accelerator.mixed_precision == "bf16":
         weight_dtype = torch.bfloat16
+
+    if torch.backends.mps.is_available() and weight_dtype == torch.bfloat16:
+        # due to pytorch#99272, MPS does not yet support bfloat16.
+        raise ValueError(
+            "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
+        )
 
     # Move unet, vae and text_encoder to device and cast to weight_dtype
     unet.to(accelerator.device, dtype=weight_dtype)
@@ -1270,7 +1298,7 @@ def main(args):
 
     # Enable TF32 for faster training on Ampere GPUs,
     # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
-    if args.allow_tf32:
+    if args.allow_tf32 and torch.cuda.is_available():
         torch.backends.cuda.matmul.allow_tf32 = True
 
     if args.scale_lr:
@@ -1447,7 +1475,8 @@ def main(args):
     if not args.train_text_encoder and not train_dataset.custom_instance_prompts:
         del tokenizers, text_encoders
         gc.collect()
-        torch.cuda.empty_cache()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     # If custom instance prompts are NOT provided (i.e. the instance prompt is used for all images),
     # pack the statically computed variables appropriately here. This is so that we don't
@@ -1890,6 +1919,11 @@ def main(args):
             text_encoder_lora_layers=text_encoder_lora_layers,
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
+        if args.output_kohya_format:
+            lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
+            peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
+            kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
+            save_file(kohya_state_dict, f"{args.output_dir}/pytorch_lora_weights_kohya.safetensors")
 
         # Final inference
         # Load previous pipeline
