@@ -1146,12 +1146,31 @@ class PipelineTesterMixin:
             f"Not installed correct hook: {[v for v in offloaded_modules_with_hooks if not isinstance(v, accelerate.hooks.CpuOffload)]}",
         )
 
+    def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
+        import accelerate
+
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe.set_progress_bar_config(disable=None)
+
         pipe.enable_sequential_cpu_offload()
         inputs = self.get_dummy_inputs(generator_device)
-        output_with_offload_sequential = pipe(**inputs)[0]
+        output_with_offload = pipe(**inputs)[0]
 
-        max_diff = np.abs(to_np(output_with_offload) - to_np(output_with_offload_sequential)).max()
-        self.assertLess(max_diff, expected_max_diff, "running sequential offloading should have the inference results")
+        pipe.nable_sequential_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload_twice = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_with_offload_twice)).max()
+        self.assertLess(
+            max_diff, expected_max_diff, "running sequential offloading second time should have the inference results"
+        )
         offloaded_modules = [
             v
             for k, v in pipe.components.items()
