@@ -295,6 +295,20 @@ try:
 except importlib_metadata.PackageNotFoundError:
     _torchvision_available = False
 
+# Taken from https://stackoverflow.com/a/39662359.
+# Adapted to make it work with Google colab as well.
+_is_notebook = False
+try:
+    shell_class = get_ipython().__class__  # type: ignore # noqa: F821
+    for parent_class in shell_class.__mro__:  # e.g. "is subclass of"
+        if parent_class.__name__ == "ZMQInteractiveShell":
+            _is_notebook = True  # Jupyter notebook, Google colab or qtconsole
+            break
+except NameError:
+    pass  # Probably standard Python interpreter
+
+_is_google_colab = "google.colab" in sys.modules
+
 
 def is_torch_available():
     return _torch_available
@@ -390,6 +404,18 @@ def is_peft_available():
 
 def is_torchvision_available():
     return _torchvision_available
+
+
+def is_safetensors_available():
+    return _safetensors_available
+
+
+def is_notebook():
+    return _is_notebook
+
+
+def is_google_colab():
+    return _is_google_colab
 
 
 # docstyle-ignore
@@ -499,6 +525,15 @@ INVISIBLE_WATERMARK_IMPORT_ERROR = """
 {0} requires the invisible-watermark library but it was not found in your environment. You can install it with pip: `pip install invisible-watermark>=0.2.0`
 """
 
+# docstyle-ignore
+PEFT_IMPORT_ERROR = """
+{0} requires the peft library but it was not found in your environment. You can install it with pip: `pip install peft`
+"""
+
+# docstyle-ignore
+SAFETENSORS_IMPORT_ERROR = """
+{0} requires the safetensors library but it was not found in your environment. You can install it with pip: `pip install safetensors`
+"""
 
 BACKENDS_MAPPING = OrderedDict(
     [
@@ -520,6 +555,8 @@ BACKENDS_MAPPING = OrderedDict(
         ("ftfy", (is_ftfy_available, FTFY_IMPORT_ERROR)),
         ("torchsde", (is_torchsde_available, TORCHSDE_IMPORT_ERROR)),
         ("invisible_watermark", (is_invisible_watermark_available, INVISIBLE_WATERMARK_IMPORT_ERROR)),
+        ("peft", (is_peft_available, PEFT_IMPORT_ERROR)),
+        ("safetensors", (is_safetensors_available, SAFETENSORS_IMPORT_ERROR)),
     ]
 )
 
