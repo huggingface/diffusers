@@ -492,7 +492,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
         output_1 = sd_pipe(**inputs)
 
         assert np.abs(image - output_1.images).max() < 1e-3
-        
+
         # multiple prompts, multiple image conditioning
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"], inputs["prompt"], inputs["prompt"], inputs["prompt"]]
