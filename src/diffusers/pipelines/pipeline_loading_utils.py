@@ -22,15 +22,19 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import torch
-from huggingface_hub import (
-    model_info,
-)
+from huggingface_hub import model_info
+from huggingface_hub.utils import validate_hf_hub_args
 from packaging import version
 
+from .. import __version__
 from ..utils import (
+    FLAX_WEIGHTS_NAME,
+    ONNX_EXTERNAL_WEIGHTS_NAME,
+    ONNX_WEIGHTS_NAME,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     get_class_from_dynamic_module,
+    is_accelerate_available,
     is_peft_available,
     is_transformers_available,
     logging,
@@ -44,9 +48,11 @@ if is_transformers_available():
     from transformers.utils import FLAX_WEIGHTS_NAME as TRANSFORMERS_FLAX_WEIGHTS_NAME
     from transformers.utils import SAFE_WEIGHTS_NAME as TRANSFORMERS_SAFE_WEIGHTS_NAME
     from transformers.utils import WEIGHTS_NAME as TRANSFORMERS_WEIGHTS_NAME
-from huggingface_hub.utils import validate_hf_hub_args
 
-from ..utils import FLAX_WEIGHTS_NAME, ONNX_EXTERNAL_WEIGHTS_NAME, ONNX_WEIGHTS_NAME
+if is_accelerate_available():
+    import accelerate
+    from accelerate import dispatch_model
+    from accelerate.hooks import remove_hook_from_module
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -358,6 +364,120 @@ def _get_pipeline_class(
     return pipeline_cls
 
 
+def _load_empty_model(
+    library_name: str,
+    class_name: str,
+    importable_classes: List[Any],
+    pipelines: Any,
+    is_pipeline_module: bool,
+    name: str,
+    torch_dtype: Union[str, torch.dtype],
+    cached_folder: Union[str, os.PathLike],
+    **kwargs,
+):
+    # retrieve class objects.
+    class_obj, _ = get_class_obj_and_candidates(
+        library_name,
+        class_name,
+        importable_classes,
+        pipelines,
+        is_pipeline_module,
+        component_name=name,
+        cache_dir=cached_folder,
+    )
+
+    if is_transformers_available():
+        transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+    else:
+        transformers_version = "N/A"
+
+    # Determine library.
+    is_transformers_model = (
+        is_transformers_available()
+        and issubclass(class_obj, PreTrainedModel)
+        and transformers_version >= version.parse("4.20.0")
+    )
+    diffusers_module = importlib.import_module(__name__.split(".")[0])
+    is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
+
+    model = None
+    config_path = cached_folder
+    user_agent = {
+        "diffusers": __version__,
+        "file_type": "model",
+        "framework": "pytorch",
+    }
+
+    if is_diffusers_model or is_transformers_model:
+        if hasattr(class_obj, "load_config"):
+            # Load config and then the model on meta.
+            config, unused_kwargs, commit_hash = class_obj.load_config(
+                os.path.join(config_path, name),
+                cache_dir=cached_folder,
+                return_unused_kwargs=True,
+                return_commit_hash=True,
+                force_download=kwargs.pop("force_download", False),
+                resume_download=kwargs.pop("resume_download", False),
+                proxies=kwargs.pop("proxies", None),
+                local_files_only=kwargs.pop("local_files_only", False),
+                token=kwargs.pop("token", None),
+                revision=kwargs.pop("revision", None),
+                subfolder=kwargs.pop("subfolder", None),
+                user_agent=user_agent,
+            )
+            with accelerate.init_empty_weights():
+                model = class_obj.from_config(config, **unused_kwargs)
+        else:
+            config_class = getattr(class_obj, "config_class", None)
+            if config_class is None:
+                raise ValueError("`config_class` cannot be None. Please double-check the model.")
+
+            config = config_class.from_pretrained(
+                cached_folder,
+                subfolder=name,
+                force_download=kwargs.pop("force_download", False),
+                resume_download=kwargs.pop("resume_download", False),
+                proxies=kwargs.pop("proxies", None),
+                local_files_only=kwargs.pop("local_files_only", False),
+                token=kwargs.pop("token", None),
+                revision=kwargs.pop("revision", None),
+                user_agent=user_agent,
+            )
+            with accelerate.init_empty_weights():
+                model = class_obj(config)
+
+    if model is not None:
+        model = model.to(dtype=torch_dtype)
+    return model
+
+
+def _assign_components_to_devices(
+    module_sizes: Dict[str, float], device_memory: Dict[str, float], device_mapping_strategy: str = "balanced"
+):
+    device_ids = list(device_memory.keys())
+    device_cycle = device_ids + device_ids[::-1]
+
+    deivce_id_component_mapping = {}
+    current_device_index = 0
+    for component in module_sizes:
+        device_id = device_cycle[current_device_index % len(device_cycle)]
+
+        component_memory = module_sizes[component]
+        curr_device_memory = device_memory[device_id]
+
+        # If the GPU doesn't fit the current component offload to the CPU.
+        if component_memory > curr_device_memory:
+            deivce_id_component_mapping["cpu"] = [component]
+        else:
+            if device_id not in deivce_id_component_mapping:
+                deivce_id_component_mapping[device_id] = [component]
+            else:
+                deivce_id_component_mapping[device_id].append(component)
+        current_device_index += 1
+
+    return deivce_id_component_mapping
+
+
 def load_sub_model(
     library_name: str,
     class_name: str,
@@ -474,6 +594,22 @@ def load_sub_model(
     else:
         # else load from the root directory
         loaded_sub_model = load_method(cached_folder, **loading_kwargs)
+
+    if isinstance(loaded_sub_model, torch.nn.Module) and isinstance(device_map, dict):
+        # remove hooks
+        remove_hook_from_module(loaded_sub_model, recurse=True)
+        needs_offloading_to_cpu = device_map[""] == "cpu"
+
+        if needs_offloading_to_cpu:
+            dispatch_model(
+                loaded_sub_model,
+                state_dict=loaded_sub_model.state_dict(),
+                device_map=device_map,
+                force_hooks=True,
+                main_device=0,
+            )
+        else:
+            dispatch_model(loaded_sub_model, device_map=device_map, force_hooks=True)
 
     return loaded_sub_model
 

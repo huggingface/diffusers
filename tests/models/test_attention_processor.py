@@ -90,9 +90,7 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
         ).images
 
         # the initial conversion succeeds
-        pipe = DiffusionPipeline.from_pretrained(
-            "hf-internal-testing/tiny-stable-diffusion-pipe", device_map="sequential", safety_checker=None
-        )
+        pipe = DiffusionPipeline.from_pretrained("hf-internal-testing/tiny-stable-diffusion-pipe", safety_checker=None)
 
         conversion = pipe(
             "foo",
@@ -106,7 +104,7 @@ class DeprecatedAttentionBlockTests(unittest.TestCase):
             pipe.save_pretrained(tmpdir)
 
             # can also load the converted weights
-            pipe = DiffusionPipeline.from_pretrained(tmpdir, device_map="sequential", safety_checker=None)
+            pipe = DiffusionPipeline.from_pretrained(tmpdir, safety_checker=None)
 
         after_conversion = pipe(
             "foo",
