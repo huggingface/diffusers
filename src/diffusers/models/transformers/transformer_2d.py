@@ -19,12 +19,14 @@ import torch.nn.functional as F
 from torch import nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
-from ...utils import USE_PEFT_BACKEND, BaseOutput, deprecate, is_torch_version
+from ...utils import BaseOutput, deprecate, is_torch_version, logging
 from ..attention import BasicTransformerBlock
 from ..embeddings import ImagePositionalEmbeddings, PatchEmbed, PixArtAlphaTextProjection
-from ..lora import LoRACompatibleConv, LoRACompatibleLinear
 from ..modeling_utils import ModelMixin
 from ..normalization import AdaLayerNormSingle
+
+
+logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
 @dataclass
@@ -115,8 +117,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
 
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        conv_cls = nn.Conv2d
+        linear_cls = nn.Linear
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
@@ -127,7 +129,7 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         if norm_type == "layer_norm" and num_embeds_ada_norm is not None:
             deprecation_message = (
                 f"The configuration file of this model: {self.__class__} is outdated. `norm_type` is either not set or"
-                " incorrectly set to `'layer_norm'`.Make sure to set `norm_type` to `'ada_norm'` in the config."
+                " incorrectly set to `'layer_norm'`. Make sure to set `norm_type` to `'ada_norm'` in the config."
                 " Please make sure to update the config accordingly as leaving `norm_type` might led to incorrect"
                 " results in future versions. If you have downloaded this checkpoint from the Hugging Face Hub, it"
                 " would be very nice if you could open a Pull request for the `transformer/config.json` file"
@@ -304,6 +306,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             If `return_dict` is True, an [`~models.transformer_2d.Transformer2DModelOutput`] is returned, otherwise a
             `tuple` where the first element is the sample tensor.
         """
+        if cross_attention_kwargs is not None:
+            if cross_attention_kwargs.get("scale", None) is not None:
+                logger.warning("Passing `scale` to `cross_attention_kwargs` is deprecated. `scale` will be ignored.")
         # ensure attention_mask is a bias, and give it a singleton query_tokens dimension.
         #   we may have done this conversion already, e.g. if we came here via UNet2DConditionModel#forward.
         #   we can tell by counting dims; if ndim == 2: it's a mask rather than a bias.
@@ -327,9 +332,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             encoder_attention_mask = (1 - encoder_attention_mask.to(hidden_states.dtype)) * -10000.0
             encoder_attention_mask = encoder_attention_mask.unsqueeze(1)
 
-        # Retrieve lora scale.
-        lora_scale = cross_attention_kwargs.get("scale", 1.0) if cross_attention_kwargs is not None else 1.0
-
         # 1. Input
         if self.is_input_continuous:
             batch, _, height, width = hidden_states.shape
@@ -337,21 +339,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
             hidden_states = self.norm(hidden_states)
             if not self.use_linear_projection:
-                hidden_states = (
-                    self.proj_in(hidden_states, scale=lora_scale)
-                    if not USE_PEFT_BACKEND
-                    else self.proj_in(hidden_states)
-                )
+                hidden_states = self.proj_in(hidden_states)
                 inner_dim = hidden_states.shape[1]
                 hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
             else:
                 inner_dim = hidden_states.shape[1]
                 hidden_states = hidden_states.permute(0, 2, 3, 1).reshape(batch, height * width, inner_dim)
-                hidden_states = (
-                    self.proj_in(hidden_states, scale=lora_scale)
-                    if not USE_PEFT_BACKEND
-                    else self.proj_in(hidden_states)
-                )
+                hidden_states = self.proj_in(hidden_states)
 
         elif self.is_input_vectorized:
             hidden_states = self.latent_image_embedding(hidden_states)
@@ -414,17 +408,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         if self.is_input_continuous:
             if not self.use_linear_projection:
                 hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
-                hidden_states = (
-                    self.proj_out(hidden_states, scale=lora_scale)
-                    if not USE_PEFT_BACKEND
-                    else self.proj_out(hidden_states)
-                )
+                hidden_states = self.proj_out(hidden_states)
             else:
-                hidden_states = (
-                    self.proj_out(hidden_states, scale=lora_scale)
-                    if not USE_PEFT_BACKEND
-                    else self.proj_out(hidden_states)
-                )
+                hidden_states = self.proj_out(hidden_states)
                 hidden_states = hidden_states.reshape(batch, height, width, inner_dim).permute(0, 3, 1, 2).contiguous()
 
             output = hidden_states + residual

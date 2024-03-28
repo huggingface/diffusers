@@ -41,6 +41,7 @@ from peft import LoraConfig, set_peft_model_state_dict
 from peft.utils import get_peft_model_state_dict
 from PIL import Image
 from PIL.ImageOps import exif_transpose
+from safetensors.torch import load_file, save_file
 from torch.utils.data import Dataset
 from torchvision import transforms
 from torchvision.transforms.functional import crop
@@ -62,7 +63,9 @@ from diffusers.optimization import get_scheduler
 from diffusers.training_utils import _set_state_dict_into_text_encoder, cast_training_params, compute_snr
 from diffusers.utils import (
     check_min_version,
+    convert_all_state_dict_to_peft,
     convert_state_dict_to_diffusers,
+    convert_state_dict_to_kohya,
     convert_unet_state_dict_to_peft,
     is_wandb_available,
 )
@@ -75,7 +78,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__)
 
@@ -395,6 +398,11 @@ def parse_args(input_args=None):
         type=str,
         default="lora-dreambooth-model",
         help="The output directory where the model predictions and checkpoints will be written.",
+    )
+    parser.add_argument(
+        "--output_kohya_format",
+        action="store_true",
+        help="Flag to additionally generate final state dict in the Kohya format so that it becomes compatible with A111, Comfy, Kohya, etc.",
     )
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
@@ -1141,7 +1149,7 @@ def main(args):
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, "
                     "please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
@@ -1317,14 +1325,14 @@ def main(args):
 
     # Optimizer creation
     if not (args.optimizer.lower() == "prodigy" or args.optimizer.lower() == "adamw"):
-        logger.warn(
+        logger.warning(
             f"Unsupported choice of optimizer: {args.optimizer}.Supported optimizers include [adamW, prodigy]."
             "Defaulting to adamW"
         )
         args.optimizer = "adamw"
 
     if args.use_8bit_adam and not args.optimizer.lower() == "adamw":
-        logger.warn(
+        logger.warning(
             f"use_8bit_adam is ignored when optimizer is not set to 'AdamW'. Optimizer was "
             f"set to {args.optimizer.lower()}"
         )
@@ -1358,11 +1366,11 @@ def main(args):
         optimizer_class = prodigyopt.Prodigy
 
         if args.learning_rate <= 0.1:
-            logger.warn(
+            logger.warning(
                 "Learning rate is too low. When using prodigy, it's generally better to set learning rate around 1.0"
             )
         if args.train_text_encoder and args.text_encoder_lr:
-            logger.warn(
+            logger.warning(
                 f"Learning rates were provided both for the unet and the text encoder- e.g. text_encoder_lr:"
                 f" {args.text_encoder_lr} and learning_rate: {args.learning_rate}. "
                 f"When using prodigy only learning_rate is used as the initial learning rate."
@@ -1890,6 +1898,11 @@ def main(args):
             text_encoder_lora_layers=text_encoder_lora_layers,
             text_encoder_2_lora_layers=text_encoder_2_lora_layers,
         )
+        if args.output_kohya_format:
+            lora_state_dict = load_file(f"{args.output_dir}/pytorch_lora_weights.safetensors")
+            peft_state_dict = convert_all_state_dict_to_peft(lora_state_dict)
+            kohya_state_dict = convert_state_dict_to_kohya(peft_state_dict)
+            save_file(kohya_state_dict, f"{args.output_dir}/pytorch_lora_weights_kohya.safetensors")
 
         # Final inference
         # Load previous pipeline

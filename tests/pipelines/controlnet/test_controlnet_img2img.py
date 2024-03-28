@@ -164,7 +164,7 @@ class ControlNetImg2ImgPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
             "control_image": control_image,
         }
@@ -210,7 +210,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -313,7 +313,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
             "control_image": control_image,
         }
