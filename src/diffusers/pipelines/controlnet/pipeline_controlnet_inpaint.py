@@ -628,15 +628,22 @@ class StableDiffusionControlNetInpaintPipeline(
 
                 image_embeds.append(single_image_embeds)
         else:
+            repeat_dims = [1]
             image_embeds = []
             for single_image_embeds in ip_adapter_image_embeds:
                 if do_classifier_free_guidance:
                     single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-                    single_negative_image_embeds = single_negative_image_embeds.repeat(num_images_per_prompt, 1, 1)
-                    single_image_embeds = single_image_embeds.repeat(num_images_per_prompt, 1, 1)
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
+                    single_negative_image_embeds = single_negative_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
+                    )
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                 else:
-                    single_image_embeds = single_image_embeds.repeat(num_images_per_prompt, 1, 1)
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
                 image_embeds.append(single_image_embeds)
 
         return image_embeds
@@ -871,9 +878,9 @@ class StableDiffusionControlNetInpaintPipeline(
                 raise ValueError(
                     f"`ip_adapter_image_embeds` has to be of type `list` but is {type(ip_adapter_image_embeds)}"
                 )
-            elif ip_adapter_image_embeds[0].ndim != 3:
+            elif ip_adapter_image_embeds[0].ndim not in [3, 4]:
                 raise ValueError(
-                    f"`ip_adapter_image_embeds` has to be a list of 3D tensors but is {ip_adapter_image_embeds[0].ndim}D"
+                    f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
     # Copied from diffusers.pipelines.controlnet.pipeline_controlnet.StableDiffusionControlNetPipeline.check_image
@@ -1164,7 +1171,7 @@ class StableDiffusionControlNetInpaintPipeline(
                 `padding_mask_crop` is not `None`, it will first find a rectangular region with the same aspect ration of the image and
                 contains all masked area, and then expand that area based on `padding_mask_crop`. The image and mask_image will then be cropped based on
                 the expanded area before resizing to the original image size for inpainting. This is useful when the masked area is small while the image is large
-                and contain information inreleant for inpainging, such as background.
+                and contain information irrelevant for inpainting, such as background.
             strength (`float`, *optional*, defaults to 1.0):
                 Indicates extent to transform the reference `image`. Must be between 0 and 1. `image` is used as a
                 starting point and more noise is added the higher the `strength`. The number of denoising steps depends
@@ -1234,7 +1241,7 @@ class StableDiffusionControlNetInpaintPipeline(
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 

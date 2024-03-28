@@ -510,15 +510,22 @@ class StableDiffusionControlNetPipeline(
 
                 image_embeds.append(single_image_embeds)
         else:
+            repeat_dims = [1]
             image_embeds = []
             for single_image_embeds in ip_adapter_image_embeds:
                 if do_classifier_free_guidance:
                     single_negative_image_embeds, single_image_embeds = single_image_embeds.chunk(2)
-                    single_negative_image_embeds = single_negative_image_embeds.repeat(num_images_per_prompt, 1, 1)
-                    single_image_embeds = single_image_embeds.repeat(num_images_per_prompt, 1, 1)
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
+                    single_negative_image_embeds = single_negative_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_negative_image_embeds.shape[1:]))
+                    )
                     single_image_embeds = torch.cat([single_negative_image_embeds, single_image_embeds])
                 else:
-                    single_image_embeds = single_image_embeds.repeat(num_images_per_prompt, 1, 1)
+                    single_image_embeds = single_image_embeds.repeat(
+                        num_images_per_prompt, *(repeat_dims * len(single_image_embeds.shape[1:]))
+                    )
                 image_embeds.append(single_image_embeds)
 
         return image_embeds
@@ -726,9 +733,9 @@ class StableDiffusionControlNetPipeline(
                 raise ValueError(
                     f"`ip_adapter_image_embeds` has to be of type `list` but is {type(ip_adapter_image_embeds)}"
                 )
-            elif ip_adapter_image_embeds[0].ndim != 3:
+            elif ip_adapter_image_embeds[0].ndim not in [3, 4]:
                 raise ValueError(
-                    f"`ip_adapter_image_embeds` has to be a list of 3D tensors but is {ip_adapter_image_embeds[0].ndim}D"
+                    f"`ip_adapter_image_embeds` has to be a list of 3D or 4D tensors but is {ip_adapter_image_embeds[0].ndim}D"
                 )
 
     def check_image(self, image, prompt, prompt_embeds):
@@ -817,20 +824,22 @@ class StableDiffusionControlNetPipeline(
         return latents
 
     # Copied from diffusers.pipelines.latent_consistency_models.pipeline_latent_consistency_text2img.LatentConsistencyModelPipeline.get_guidance_scale_embedding
-    def get_guidance_scale_embedding(self, w, embedding_dim=512, dtype=torch.float32):
+    def get_guidance_scale_embedding(
+        self, w: torch.Tensor, embedding_dim: int = 512, dtype: torch.dtype = torch.float32
+    ) -> torch.FloatTensor:
         """
         See https://github.com/google-research/vdm/blob/dc27b98a554f65cdc654b800da5aa1846545d41b/model_vdm.py#L298
 
         Args:
-            timesteps (`torch.Tensor`):
-                generate embedding vectors at these timesteps
+            w (`torch.Tensor`):
+                Generate embedding vectors with a specified guidance scale to subsequently enrich timestep embeddings.
             embedding_dim (`int`, *optional*, defaults to 512):
-                dimension of the embeddings to generate
-            dtype:
-                data type of the generated embeddings
+                Dimension of the embeddings to generate.
+            dtype (`torch.dtype`, *optional*, defaults to `torch.float32`):
+                Data type of the generated embeddings.
 
         Returns:
-            `torch.FloatTensor`: Embedding vectors with shape `(len(timesteps), embedding_dim)`
+            `torch.FloatTensor`: Embedding vectors with shape `(len(w), embedding_dim)`.
         """
         assert len(w.shape) == 1
         w = w * 1000.0
@@ -993,7 +1002,7 @@ class StableDiffusionControlNetPipeline(
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 

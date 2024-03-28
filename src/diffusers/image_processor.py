@@ -332,7 +332,7 @@ class VaeImageProcessor(ConfigMixin):
         image: Union[PIL.Image.Image, np.ndarray, torch.Tensor],
         height: int,
         width: int,
-        resize_mode: str = "default",  # "defalt", "fill", "crop"
+        resize_mode: str = "default",  # "default", "fill", "crop"
     ) -> Union[PIL.Image.Image, np.ndarray, torch.Tensor]:
         """
         Resize image.
@@ -448,7 +448,7 @@ class VaeImageProcessor(ConfigMixin):
         image: PipelineImageInput,
         height: Optional[int] = None,
         width: Optional[int] = None,
-        resize_mode: str = "default",  # "defalt", "fill", "crop"
+        resize_mode: str = "default",  # "default", "fill", "crop"
         crops_coords: Optional[Tuple[int, int, int, int]] = None,
     ) -> torch.Tensor:
         """
@@ -479,7 +479,7 @@ class VaeImageProcessor(ConfigMixin):
             if isinstance(image, torch.Tensor):
                 # if image is a pytorch tensor could have 2 possible shapes:
                 #    1. batch x height x width: we should insert the channel dimension at position 1
-                #    2. channnel x height x width: we should insert batch dimension at position 0,
+                #    2. channel x height x width: we should insert batch dimension at position 0,
                 #       however, since both channel and batch dimension has same size 1, it is same to insert at position 1
                 #    for simplicity, we insert a dimension of size 1 at position 1 for both cases
                 image = image.unsqueeze(1)

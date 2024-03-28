@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.enable_model_cpu_offload()
 
         >>> prompt = "Spiderman is surfing"
-        >>> video_frames = pipe(prompt).frames
+        >>> video_frames = pipe(prompt).frames[0]
         >>> video_path = export_to_video(video_frames)
         >>> video_path
         ```
@@ -76,7 +76,7 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
         outputs = torch.stack(outputs)
 
     elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
 
     return outputs
 
@@ -374,6 +374,7 @@ class TextToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInve
             extra_step_kwargs["generator"] = generator
         return extra_step_kwargs
 
+    # Copied from diffusers.pipelines.stable_diffusion_k_diffusion.pipeline_stable_diffusion_k_diffusion.StableDiffusionKDiffusionPipeline.check_inputs
     def check_inputs(
         self,
         prompt,
@@ -646,13 +647,14 @@ class TextToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInve
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
+        # 8. Post processing
         if output_type == "latent":
-            return TextToVideoSDPipelineOutput(frames=latents)
+            video = latents
+        else:
+            video_tensor = self.decode_latents(latents)
+            video = tensor2vid(video_tensor, self.image_processor, output_type)
 
-        video_tensor = self.decode_latents(latents)
-        video = tensor2vid(video_tensor, self.image_processor, output_type)
-
-        # Offload all models
+        # 9. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:

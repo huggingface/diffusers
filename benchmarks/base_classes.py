@@ -236,6 +236,35 @@ class InpaintingBenchmark(ImageToImageBenchmark):
         )
 
 
+class IPAdapterTextToImageBenchmark(TextToImageBenchmark):
+    url = "https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_neg_embed.png"
+    image = load_image(url)
+
+    def __init__(self, args):
+        pipe = self.pipeline_class.from_pretrained(args.ckpt, torch_dtype=torch.float16).to("cuda")
+        pipe.load_ip_adapter(
+            args.ip_adapter_id[0],
+            subfolder="models" if "sdxl" not in args.ip_adapter_id[1] else "sdxl_models",
+            weight_name=args.ip_adapter_id[1],
+        )
+
+        if args.run_compile:
+            pipe.unet.to(memory_format=torch.channels_last)
+            print("Run torch compile")
+            pipe.unet = torch.compile(pipe.unet, mode="reduce-overhead", fullgraph=True)
+
+        pipe.set_progress_bar_config(disable=True)
+        self.pipe = pipe
+
+    def run_inference(self, pipe, args):
+        _ = pipe(
+            prompt=PROMPT,
+            ip_adapter_image=self.image,
+            num_inference_steps=args.num_inference_steps,
+            num_images_per_prompt=args.batch_size,
+        )
+
+
 class ControlNetBenchmark(TextToImageBenchmark):
     pipeline_class = StableDiffusionControlNetPipeline
     aux_network_class = ControlNetModel

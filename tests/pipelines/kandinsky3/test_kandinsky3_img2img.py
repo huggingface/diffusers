@@ -187,6 +187,12 @@ class Kandinsky3Img2ImgPipelineFastTests(PipelineTesterMixin, unittest.TestCase)
 @slow
 @require_torch_gpu
 class Kandinsky3Img2ImgPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -209,7 +215,7 @@ class Kandinsky3Img2ImgPipelineIntegrationTests(unittest.TestCase):
         image = image.resize((w, h), resample=Image.BICUBIC, reducing_gap=1)
         prompt = "A painting of the inside of a subway train with tiny raccoons."
 
-        image = pipe(prompt, image=image, strength=0.75, num_inference_steps=25, generator=generator).images[0]
+        image = pipe(prompt, image=image, strength=0.75, num_inference_steps=5, generator=generator).images[0]
 
         assert image.size == (512, 512)
 

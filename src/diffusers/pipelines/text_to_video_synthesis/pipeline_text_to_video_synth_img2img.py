@@ -52,7 +52,7 @@ EXAMPLE_DOC_STRING = """
         >>> pipe.to("cuda")
 
         >>> prompt = "spiderman running in the desert"
-        >>> video_frames = pipe(prompt, num_inference_steps=40, height=320, width=576, num_frames=24).frames
+        >>> video_frames = pipe(prompt, num_inference_steps=40, height=320, width=576, num_frames=24).frames[0]
         >>> # safe low-res video
         >>> video_path = export_to_video(video_frames, output_video_path="./video_576_spiderman.mp4")
 
@@ -73,7 +73,7 @@ EXAMPLE_DOC_STRING = """
         >>> video = [Image.fromarray(frame).resize((1024, 576)) for frame in video_frames]
 
         >>> # and denoise it
-        >>> video_frames = pipe(prompt, video=video, strength=0.6).frames
+        >>> video_frames = pipe(prompt, video=video, strength=0.6).frames[0]
         >>> video_path = export_to_video(video_frames, output_video_path="./video_1024_spiderman.mp4")
         >>> video_path
         ```
@@ -111,7 +111,7 @@ def tensor2vid(video: torch.Tensor, processor: "VaeImageProcessor", output_type:
         outputs = torch.stack(outputs)
 
     elif not output_type == "pil":
-        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil]")
+        raise ValueError(f"{output_type} does not exist. Please choose one of ['np', 'pt', 'pil']")
 
     return outputs
 
@@ -694,13 +694,13 @@ class VideoToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInv
         timesteps, num_inference_steps = self.get_timesteps(num_inference_steps, strength, device)
         latent_timestep = timesteps[:1].repeat(batch_size * num_images_per_prompt)
 
-        # 5. Prepare latent variables
+        # 6. Prepare latent variables
         latents = self.prepare_latents(video, latent_timestep, batch_size, prompt_embeds.dtype, device, generator)
 
-        # 6. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
+        # 7. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
-        # 7. Denoising loop
+        # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
@@ -740,20 +740,18 @@ class VideoToVideoSDPipeline(DiffusionPipeline, StableDiffusionMixin, TextualInv
                         step_idx = i // getattr(self.scheduler, "order", 1)
                         callback(step_idx, t, latents)
 
-        if output_type == "latent":
-            return TextToVideoSDPipelineOutput(frames=latents)
-
         # manually for max memory savings
         if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
             self.unet.to("cpu")
 
+        # 9. Post processing
         if output_type == "latent":
-            return TextToVideoSDPipelineOutput(frames=latents)
+            video = latents
+        else:
+            video_tensor = self.decode_latents(latents)
+            video = tensor2vid(video_tensor, self.image_processor, output_type)
 
-        video_tensor = self.decode_latents(latents)
-        video = tensor2vid(video_tensor, self.image_processor, output_type)
-
-        # Offload all models
+        # 10. Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
