@@ -862,13 +862,13 @@ class PipelineTesterMixin:
             output = pipe(**self.get_dummy_inputs(generator_device))[0]
         else:
             output = expected_slice
-            
+
         output_tuple = pipe(**self.get_dummy_inputs(generator_device), return_dict=False)[0]
 
         if expected_slice is None:
             max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
         else:
-            max_diff = np.abs(to_np(output) - to_np(output_tuple)[0, -3:, -3:, -1]).max()
+            max_diff = np.abs(to_np(output) - to_np(output_tuple)[0, -3:, -3:, -1].flatten()).max()
         self.assertLess(max_diff, expected_max_difference)
 
     def test_components_function(self):
