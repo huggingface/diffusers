@@ -37,11 +37,7 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import (
-    CaptureLogger,
-    require_torch,
-    torch_device,
-)
+from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
 
 from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
@@ -71,15 +67,13 @@ class SDFunctionTesterMixin:
     It provides a set of common tests for PyTorch pipeline that inherit from StableDiffusionMixin, e.g. vae_slicing, vae_tiling, freeu, etc.
     """
 
-    def test_vae_slicing(self):
+    def test_vae_slicing(self, image_count=4):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
         # components["scheduler"] = LMSDiscreteScheduler.from_config(components["scheduler"].config)
         pipe = self.pipeline_class(**components)
         pipe = pipe.to(device)
         pipe.set_progress_bar_config(disable=None)
-
-        image_count = 4
 
         inputs = self.get_dummy_inputs(device)
         inputs["prompt"] = [inputs["prompt"]] * image_count
@@ -124,9 +118,10 @@ class SDFunctionTesterMixin:
 
         # test that tiled decode works with various shapes
         shapes = [(1, 4, 73, 97), (1, 4, 97, 73), (1, 4, 49, 65), (1, 4, 65, 49)]
-        for shape in shapes:
-            zeros = torch.zeros(shape).to(torch_device)
-            pipe.vae.decode(zeros)
+        with torch.no_grad():
+            for shape in shapes:
+                zeros = torch.zeros(shape).to(torch_device)
+                pipe.vae.decode(zeros)
 
     def test_freeu_enabled(self):
         components = self.get_dummy_components()
@@ -240,7 +235,11 @@ class IPAdapterTesterMixin:
         inputs["return_dict"] = False
         return inputs
 
-    def test_ip_adapter_single(self, expected_max_diff: float = 1e-4):
+    def test_ip_adapter_single(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
+        # Raising the tolerance for this test when it's run on a CPU because we
+        # compare against static slices and that can be shaky (with a VVVV low probability).
+        expected_max_diff = 9e-4 if torch_device == "cpu" else expected_max_diff
+
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
@@ -248,7 +247,10 @@ class IPAdapterTesterMixin:
 
         # forward pass without ip adapter
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
-        output_without_adapter = pipe(**inputs)[0]
+        if expected_pipe_slice is None:
+            output_without_adapter = pipe(**inputs)[0]
+        else:
+            output_without_adapter = expected_pipe_slice
 
         adapter_state_dict = create_ip_adapter_state_dict(pipe.unet)
         pipe.unet._load_ip_adapter_weights(adapter_state_dict)
@@ -258,12 +260,16 @@ class IPAdapterTesterMixin:
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         pipe.set_ip_adapter_scale(0.0)
         output_without_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_without_adapter_scale = output_without_adapter_scale[0, -3:, -3:, -1].flatten()
 
         # forward pass with single ip adapter, but with scale of adapter weights
         inputs = self._modify_inputs_for_ip_adapter_test(self.get_dummy_inputs(torch_device))
         inputs["ip_adapter_image_embeds"] = [self._get_dummy_image_embeds(cross_attention_dim)]
         pipe.set_ip_adapter_scale(42.0)
         output_with_adapter_scale = pipe(**inputs)[0]
+        if expected_pipe_slice is not None:
+            output_with_adapter_scale = output_with_adapter_scale[0, -3:, -3:, -1].flatten()
 
         max_diff_without_adapter_scale = np.abs(output_without_adapter_scale - output_without_adapter).max()
         max_diff_with_adapter_scale = np.abs(output_with_adapter_scale - output_without_adapter).max()
@@ -513,7 +519,9 @@ class PipelineKarrasSchedulerTesterMixin:
     equivalence of dict and tuple outputs, etc.
     """
 
-    def test_karras_schedulers_shape(self):
+    def test_karras_schedulers_shape(
+        self, num_inference_steps_for_strength=4, num_inference_steps_for_strength_for_iterations=5
+    ):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
 
@@ -526,13 +534,13 @@ class PipelineKarrasSchedulerTesterMixin:
         inputs["num_inference_steps"] = 2
 
         if "strength" in inputs:
-            inputs["num_inference_steps"] = 4
+            inputs["num_inference_steps"] = num_inference_steps_for_strength
             inputs["strength"] = 0.5
 
         outputs = []
         for scheduler_enum in KarrasDiffusionSchedulers:
             if "KDPM2" in scheduler_enum.name:
-                inputs["num_inference_steps"] = 5
+                inputs["num_inference_steps"] = num_inference_steps_for_strength_for_iterations
 
             scheduler_cls = getattr(diffusers, scheduler_enum.name)
             pipe.scheduler = scheduler_cls.from_config(pipe.scheduler.config)
@@ -1105,6 +1113,98 @@ class PipelineTesterMixin:
         (
             self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
             f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
+        )
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.17.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.17.0` or higher",
+    )
+    def test_cpu_offload_forward_pass_twice(self, expected_max_diff=2e-4):
+        import accelerate
+
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.enable_model_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload = pipe(**inputs)[0]
+
+        pipe.enable_model_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload_twice = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_with_offload_twice)).max()
+        self.assertLess(
+            max_diff, expected_max_diff, "running CPU offloading 2nd time should not affect the inference results"
+        )
+        offloaded_modules = [
+            v
+            for k, v in pipe.components.items()
+            if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
+        ]
+        (
+            self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
+            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
+        )
+
+        offloaded_modules_with_hooks = [v for v in offloaded_modules if hasattr(v, "_hf_hook")]
+        (
+            self.assertTrue(all(isinstance(v, accelerate.hooks.CpuOffload) for v in offloaded_modules_with_hooks)),
+            f"Not installed correct hook: {[v for v in offloaded_modules_with_hooks if not isinstance(v, accelerate.hooks.CpuOffload)]}",
+        )
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+    )
+    def test_sequential_offload_forward_pass_twice(self, expected_max_diff=2e-4):
+        import accelerate
+
+        generator_device = "cpu"
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+
+        pipe.set_progress_bar_config(disable=None)
+
+        pipe.enable_sequential_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload = pipe(**inputs)[0]
+
+        pipe.nable_sequential_cpu_offload()
+        inputs = self.get_dummy_inputs(generator_device)
+        output_with_offload_twice = pipe(**inputs)[0]
+
+        max_diff = np.abs(to_np(output_with_offload) - to_np(output_with_offload_twice)).max()
+        self.assertLess(
+            max_diff, expected_max_diff, "running sequential offloading second time should have the inference results"
+        )
+        offloaded_modules = [
+            v
+            for k, v in pipe.components.items()
+            if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
+        ]
+        (
+            self.assertTrue(all(v.device.type == "meta" for v in offloaded_modules)),
+            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'meta']}",
+        )
+
+        offloaded_modules_with_hooks = [v for v in offloaded_modules if hasattr(v, "_hf_hook")]
+        (
+            self.assertTrue(
+                all(isinstance(v, accelerate.hooks.AlignDevicesHook) for v in offloaded_modules_with_hooks)
+            ),
+            f"Not installed correct hook: {[v for v in offloaded_modules_with_hooks if not isinstance(v, accelerate.hooks.AlignDevicesHook)]}",
         )
 
     @unittest.skipIf(
