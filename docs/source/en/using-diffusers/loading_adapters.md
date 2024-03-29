@@ -182,19 +182,11 @@ scales = {
 pipe.set_adapters("my_adapter", scales)
 ```
 
-This also works with multiple adapters:
-```python
-pipe = ... # create pipeline
-pipe.load_lora_weights(..., adapter_name="my_adapter_1") 
-pipe.load_lora_weights(..., adapter_name="my_adapter_2") 
-scales_1 = { ... }
-scales_2 = { ... }
-pipe.set_adapters(["my_adapter_1", "my_adapter_2"], [scales_1, scales_2])
-```
+This also works with multiple adapters - see [this guide](https://huggingface.co/docs/diffusers/tutorials/using_peft_for_inference#customize-adapters-strength) for how to do it.
 
 <Tip warning={true}>
 
-Currently, [`~loaders.LoraLoaderMixin.set_adapters`] only supports scaling attention weights. If a LoRa has other parts (e.g., resnets or down-/upsamplers), they will keep a scale of 1.0.
+Currently, [`~loaders.LoraLoaderMixin.set_adapters`] only supports scaling attention weights. If a LoRA has other parts (e.g., resnets or down-/upsamplers), they will keep a scale of 1.0.
 
 </Tip>
 

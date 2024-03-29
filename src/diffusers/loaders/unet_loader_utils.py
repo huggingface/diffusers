@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-def translate_into_actual_layer_name(name):
+def _translate_into_actual_layer_name(name):
     """Translate user-friendly name (e.g. 'mid') into actual layer name (e.g. 'mid_block.attentions.0')"""
     if name == "mid":
         return "mid_block.attentions.0"
@@ -38,7 +38,7 @@ def translate_into_actual_layer_name(name):
     return ".".join((updown, block, attn))
 
 
-def maybe_expand_lora_scales(unet: "UNet2DConditionModel", weight_scales: List[Union[float, Dict]]):
+def _maybe_expand_lora_scales(unet: "UNet2DConditionModel", weight_scales: List[Union[float, Dict]]):
     blocks_with_transformer = {
         "down": [i for i, block in enumerate(unet.down_blocks) if hasattr(block, "attentions")],
         "up": [i for i, block in enumerate(unet.up_blocks) if hasattr(block, "attentions")],
@@ -46,7 +46,7 @@ def maybe_expand_lora_scales(unet: "UNet2DConditionModel", weight_scales: List[U
     transformer_per_block = {"down": unet.config.layers_per_block, "up": unet.config.layers_per_block + 1}
 
     expanded_weight_scales = [
-        maybe_expand_lora_scales_for_one_adapter(
+        _maybe_expand_lora_scales_for_one_adapter(
             weight_for_adapter, blocks_with_transformer, transformer_per_block, unet.state_dict()
         )
         for weight_for_adapter in weight_scales
@@ -55,7 +55,7 @@ def maybe_expand_lora_scales(unet: "UNet2DConditionModel", weight_scales: List[U
     return expanded_weight_scales
 
 
-def maybe_expand_lora_scales_for_one_adapter(
+def _maybe_expand_lora_scales_for_one_adapter(
     scales: Union[float, Dict],
     blocks_with_transformer: Dict[str, int],
     transformer_per_block: Dict[str, int],
@@ -146,9 +146,9 @@ def maybe_expand_lora_scales_for_one_adapter(
         del scales[updown]
 
     for layer in scales.keys():
-        if not any(translate_into_actual_layer_name(layer) in module for module in state_dict.keys()):
+        if not any(_translate_into_actual_layer_name(layer) in module for module in state_dict.keys()):
             raise ValueError(
                 f"Can't set lora scale for layer {layer}. It either doesn't exist in this unet or it has no attentions."
             )
 
-    return {translate_into_actual_layer_name(name): weight for name, weight in scales.items()}
+    return {_translate_into_actual_layer_name(name): weight for name, weight in scales.items()}

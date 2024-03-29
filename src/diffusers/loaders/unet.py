@@ -47,7 +47,7 @@ from .single_file_utils import (
     infer_stable_cascade_single_file_config,
     load_single_file_model_checkpoint,
 )
-from .unet_loader_utils import maybe_expand_lora_scales
+from .unet_loader_utils import _maybe_expand_lora_scales
 from .utils import AttnProcsLayers
 
 
@@ -613,7 +613,7 @@ class UNet2DConditionLoadersMixin:
         weights = [w if w is not None else 1.0 for w in weights]
 
         # e.g. [{...}, 7] -> [{expanded dict...}, 7]
-        weights = maybe_expand_lora_scales(self, weights)
+        weights = _maybe_expand_lora_scales(self, weights)
 
         set_weights_and_activate_adapters(self, adapter_names, weights)
 

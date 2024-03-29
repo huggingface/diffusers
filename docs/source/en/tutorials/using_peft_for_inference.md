@@ -136,7 +136,7 @@ image
 ### Customize adapters strength
 For even more customization, you can control how strongly the adapter affects each part of the pipeline. For this, pass a dictionary with the control strengths (called "scales") to [`~diffusers.loaders.UNet2DConditionLoadersMixin.set_adapters`].
 
-For example, here's how you can turn on the adapter for the `text_encoder` and `down` parts, but turn it off for the `mid` and `up` parts:
+For example, here's how you can turn on the adapter for the `down` parts, but turn it off for the `mid` and `up` parts:
 ```python
 pipe.enable_lora()  # enable lora again, after we disabled it above
 prompt = "toy_face of a hacker with a hoodie, pixel art"
