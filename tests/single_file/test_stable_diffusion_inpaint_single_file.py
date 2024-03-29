@@ -147,3 +147,37 @@ class StableDiffusionInpaintPipelineSingleFileSlowTests(unittest.TestCase):
             assert (
                 pipe.safety_checker.config.to_dict()[param_name] == param_value
             ), f"{param_name} differs between single file loading and pretrained loading"
+
+    def test_single_file_inpaint_component_configs_four_channel_unet(self):
+        # Test that a 4 channel UNet is configured properly with a single file inpainting pipeline checkpoint
+        pipe = StableDiffusionInpaintPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+
+        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-inpainting/blob/main/v1-5-pruned-emaonly.ckpt"
+        single_file_pipe = StableDiffusionInpaintPipeline.from_single_file(ckpt_path, load_safety_checker=True)
+
+        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
+            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
+                continue
+            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        for param_name, param_value in single_file_pipe.unet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.unet.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.vae.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.vae.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.safety_checker.config.to_dict().items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.safety_checker.config.to_dict()[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
