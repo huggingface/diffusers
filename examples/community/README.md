@@ -99,11 +99,13 @@ You can find additional information about Text2Video-Zero in the [paper](https:/
 
 ```python
 import torch
-from examples.community.pipeline_stable_diffusion_hdpainter import StableDiffusionHDPainterPipeline
-from diffusers import DDIMScheduler
+from diffusers import DiffusionPipeline, DDIMScheduler
 from diffusers.utils import load_image, make_image_grid
 
-pipe = StableDiffusionHDPainterPipeline.from_pretrained("stabilityai/stable-diffusion-2-inpainting").to('cuda')
+pipe = DiffusionPipeline.from_pretrained(
+    "stabilityai/stable-diffusion-2-inpainting",
+    custom_pipeline="hd_painter"
+)
 pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
 
 prompt = "wooden boat"

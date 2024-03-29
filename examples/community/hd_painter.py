@@ -14,16 +14,16 @@ from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion_inpaint impo
     StableDiffusionInpaintPipeline,
     retrieve_timesteps,
 )
-from diffusers.utils import USE_PEFT_BACKEND, deprecate
+from diffusers.utils import deprecate
 
 
 class RASGAttnProcessor:
     def __init__(self, mask, token_idx, scale_factor):
-        self.attention_scores = None # Stores the last output of the similarity matrix here. Each layer will get its own RASGAttnProcessor assigned
+        self.attention_scores = None  # Stores the last output of the similarity matrix here. Each layer will get its own RASGAttnProcessor assigned
         self.mask = mask
         self.token_idx = token_idx
         self.scale_factor = scale_factor
-        self.mask_resoltuion = mask.shape[-1] * mask.shape[-2] # 64 x 64 if the image is 512x512
+        self.mask_resoltuion = mask.shape[-1] * mask.shape[-2]  # 64 x 64 if the image is 512x512
 
     def __call__(
         self,
@@ -37,8 +37,6 @@ class RASGAttnProcessor:
         # Same as the default AttnProcessor up untill the part where similarity matrix gets saved
         downscale_factor = self.mask_resoltuion // hidden_states.shape[1]
         residual = hidden_states
-
-        args = () if USE_PEFT_BACKEND else (scale,)
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -73,12 +71,12 @@ class RASGAttnProcessor:
 
         # Automatically recognize the resolution and save the attention similarity values
         # We need to use the values before the softmax function, hence the rewritten get_attention_scores function.
-        if downscale_factor == self.scale_factor ** 2:
+        if downscale_factor == self.scale_factor**2:
             self.attention_scores = get_attention_scores(attn, query, key, attention_mask)
             attention_probs = self.attention_scores.softmax(dim=-1)
             attention_probs = attention_probs.to(query.dtype)
         else:
-            attention_probs = attn.get_attention_scores(query, key, attention_mask) # Original code
+            attention_probs = attn.get_attention_scores(query, key, attention_mask)  # Original code
 
         hidden_states = torch.bmm(attention_probs, value)
         hidden_states = attn.batch_to_head_dim(hidden_states)
@@ -98,35 +96,35 @@ class RASGAttnProcessor:
 
         return hidden_states
 
+
 class PAIntAAttnProcessor:
     def __init__(self, transformer_block, mask, token_idx, do_classifier_free_guidance, scale_factors):
-        self.transformer_block = transformer_block # Stores the parent transformer block.
+        self.transformer_block = transformer_block  # Stores the parent transformer block.
         self.mask = mask
         self.scale_factors = scale_factors
         self.do_classifier_free_guidance = do_classifier_free_guidance
         self.token_idx = token_idx
         self.shape = mask.shape[2:]
-        self.mask_resoltuion = mask.shape[-1] * mask.shape[-2] # 64 x 64
+        self.mask_resoltuion = mask.shape[-1] * mask.shape[-2]  # 64 x 64
         self.default_processor = AttnProcessor()
 
     def __call__(
-            self,
-            attn: Attention,
-            hidden_states: torch.FloatTensor,
-            encoder_hidden_states: Optional[torch.FloatTensor] = None,
-            attention_mask: Optional[torch.FloatTensor] = None,
-            temb: Optional[torch.FloatTensor] = None,
-            scale: float = 1.0,
-        ) -> torch.Tensor:
-
+        self,
+        attn: Attention,
+        hidden_states: torch.FloatTensor,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        temb: Optional[torch.FloatTensor] = None,
+        scale: float = 1.0,
+    ) -> torch.Tensor:
         # Automatically recognize the resolution of the current attention layer and resize the masks accordingly
         downscale_factor = self.mask_resoltuion // hidden_states.shape[1]
 
         mask = None
         for factor in self.scale_factors:
-            if downscale_factor == factor ** 2:
+            if downscale_factor == factor**2:
                 shape = (self.shape[0] // factor, self.shape[1] // factor)
-                mask = F.interpolate(self.mask, shape, mode = 'bicubic') # B, 1, H, W
+                mask = F.interpolate(self.mask, shape, mode="bicubic")  # B, 1, H, W
                 break
         if mask is None:
             return self.default_processor(attn, hidden_states, encoder_hidden_states, attention_mask, temb, scale)
@@ -139,8 +137,6 @@ class PAIntAAttnProcessor:
         # ================================================== #
         # =============== SELF ATTENTION 1 ================= #
         # ================================================== #
-
-        args = () if USE_PEFT_BACKEND else (scale,)
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -174,8 +170,12 @@ class PAIntAAttnProcessor:
         value = attn.head_to_batch_dim(value)
 
         # self_attention_probs = attn.get_attention_scores(query, key, attention_mask) # We can't use post-softmax attention scores in this case
-        self_attention_scores = get_attention_scores(attn, query, key, attention_mask) # The custom function returns pre-softmax probabilities
-        self_attention_probs = self_attention_scores.softmax(dim=-1) # Manually compute the probabilities here, the scores will be reused in the second part of PAIntA
+        self_attention_scores = get_attention_scores(
+            attn, query, key, attention_mask
+        )  # The custom function returns pre-softmax probabilities
+        self_attention_probs = self_attention_scores.softmax(
+            dim=-1
+        )  # Manually compute the probabilities here, the scores will be reused in the second part of PAIntA
         self_attention_probs = self_attention_probs.to(query.dtype)
 
         hidden_states = torch.bmm(self_attention_probs, value)
@@ -191,7 +191,7 @@ class PAIntAAttnProcessor:
         if input_ndim == 4:
             hidden_states = hidden_states.transpose(-1, -2).reshape(batch_size, channel, height, width)
 
-        if attn.residual_connection: # So many residuals everywhere
+        if attn.residual_connection:  # So many residuals everywhere
             hidden_states = hidden_states + residual
 
         self_attention_output_hidden_states = hidden_states / attn.rescale_output_factor
@@ -206,7 +206,9 @@ class PAIntAAttnProcessor:
         # The SelfAttention block recieves the normalized latents from the BasicTransformerBlock,
         # But the residual of the output is the non-normalized version.
         # Therefore we unnormalize the input hidden state here
-        unnormalized_input_hidden_states = (input_hidden_states + self.transformer_block.norm1.bias) * self.transformer_block.norm1.weight
+        unnormalized_input_hidden_states = (
+            input_hidden_states + self.transformer_block.norm1.bias
+        ) * self.transformer_block.norm1.weight
 
         # TODO: return if neccessary
         # if self.use_ada_layer_norm_zero:
@@ -226,7 +228,8 @@ class PAIntAAttnProcessor:
 
         # 3. Cross-Attention
         if self.transformer_block.use_ada_layer_norm:
-            transformer_norm_hidden_states = self.transformer_block.norm2(transformer_hidden_states, timestep)
+            # transformer_norm_hidden_states = self.transformer_block.norm2(transformer_hidden_states, timestep)
+            raise NotImplementedError()
         elif self.transformer_block.use_ada_layer_norm_zero or self.transformer_block.use_layer_norm:
             transformer_norm_hidden_states = self.transformer_block.norm2(transformer_hidden_states)
         elif self.transformer_block.use_ada_layer_norm_single:
@@ -234,13 +237,13 @@ class PAIntAAttnProcessor:
             # https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L70C1-L76C103
             transformer_norm_hidden_states = transformer_hidden_states
         elif self.transformer_block.use_ada_layer_norm_continuous:
-            transformer_norm_hidden_states = self.transformer_block.norm2(transformer_hidden_states, added_cond_kwargs["pooled_text_emb"])
+            # transformer_norm_hidden_states = self.transformer_block.norm2(transformer_hidden_states, added_cond_kwargs["pooled_text_emb"])
+            raise NotImplementedError()
         else:
             raise ValueError("Incorrect norm")
 
         if self.transformer_block.pos_embed is not None and self.transformer_block.use_ada_layer_norm_single is False:
             transformer_norm_hidden_states = self.transformer_block.pos_embed(transformer_norm_hidden_states)
-
 
         # ================================================== #
         # ================= CROSS ATTENTION ================ #
@@ -250,16 +253,22 @@ class PAIntAAttnProcessor:
         # The similarity matrix is used to obtain scaling coefficients for the attention matrix of the self attention
         # We reuse the previously computed self-attention matrix, and only repeat the steps after the softmax
 
-        cross_attention_input_hidden_states = transformer_norm_hidden_states # Renaming the variable for the sake of readability
+        cross_attention_input_hidden_states = (
+            transformer_norm_hidden_states  # Renaming the variable for the sake of readability
+        )
 
         # TODO: check if classifier_free_guidance is being used before splitting here
         if self.do_classifier_free_guidance:
             # Our scaling coefficients depend only on the conditional part, so we split the inputs
-            _cross_attention_input_hidden_states_unconditional, cross_attention_input_hidden_states_conditional = cross_attention_input_hidden_states.chunk(2)
+            _cross_attention_input_hidden_states_unconditional, cross_attention_input_hidden_states_conditional = (
+                cross_attention_input_hidden_states.chunk(2)
+            )
 
             # Same split for the encoder_hidden_states i.e. the tokens
             # Since the SelfAttention processors don't get the encoder states as input, we inject them into the processor in the begining.
-            _encoder_hidden_states_unconditional, encoder_hidden_states_conditional = self.encoder_hidden_states.chunk(2)
+            _encoder_hidden_states_unconditional, encoder_hidden_states_conditional = self.encoder_hidden_states.chunk(
+                2
+            )
         else:
             cross_attention_input_hidden_states_conditional = cross_attention_input_hidden_states
             encoder_hidden_states_conditional = self.encoder_hidden_states.chunk(2)
@@ -269,7 +278,6 @@ class PAIntAAttnProcessor:
         cross_attention_hidden_states = cross_attention_input_hidden_states_conditional
         cross_attention_encoder_hidden_states = encoder_hidden_states_conditional
 
-        args = () if USE_PEFT_BACKEND else (scale,)
         attn2 = self.transformer_block.attn2
 
         if attn2.spatial_norm is not None:
@@ -279,19 +287,29 @@ class PAIntAAttnProcessor:
 
         if input_ndim == 4:
             batch_size, channel, height, width = cross_attention_hidden_states.shape
-            cross_attention_hidden_states = cross_attention_hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
+            cross_attention_hidden_states = cross_attention_hidden_states.view(
+                batch_size, channel, height * width
+            ).transpose(1, 2)
 
-        batch_size, sequence_length, _ = cross_attention_hidden_states.shape # It is definitely a cross attention, so no need for an if block
+        batch_size, sequence_length, _ = (
+            cross_attention_hidden_states.shape
+        )  # It is definitely a cross attention, so no need for an if block
         # TODO: change the attention_mask here
-        attention_mask = attn2.prepare_attention_mask(None, sequence_length, batch_size) # I assume the attention mask is the same...
+        attention_mask = attn2.prepare_attention_mask(
+            None, sequence_length, batch_size
+        )  # I assume the attention mask is the same...
 
         if attn2.group_norm is not None:
-            cross_attention_hidden_states = attn2.group_norm(cross_attention_hidden_states.transpose(1, 2)).transpose(1, 2)
+            cross_attention_hidden_states = attn2.group_norm(cross_attention_hidden_states.transpose(1, 2)).transpose(
+                1, 2
+            )
 
         query2 = attn2.to_q(cross_attention_hidden_states)
 
         if attn2.norm_cross:
-            cross_attention_encoder_hidden_states = attn2.norm_encoder_hidden_states(cross_attention_encoder_hidden_states)
+            cross_attention_encoder_hidden_states = attn2.norm_encoder_hidden_states(
+                cross_attention_encoder_hidden_states
+            )
 
         key2 = attn2.to_k(cross_attention_encoder_hidden_states)
         query2 = attn2.head_to_batch_dim(query2)
@@ -309,7 +327,7 @@ class PAIntAAttnProcessor:
         mask = (mask > 0.5).to(self_attention_output_hidden_states.dtype)
         m = mask.to(self_attention_output_hidden_states.device)
         # m = rearrange(m, 'b c h w -> b (h w) c').contiguous()
-        m = m.permute(0,2,3,1).reshape((m.shape[0], -1, m.shape[1])).contiguous() # B HW 1
+        m = m.permute(0, 2, 3, 1).reshape((m.shape[0], -1, m.shape[1])).contiguous()  # B HW 1
         m = torch.matmul(m, m.permute(0, 2, 1)) + (1 - m)
 
         # # Compute scaling coefficients for the similarity matrix
@@ -330,25 +348,28 @@ class PAIntAAttnProcessor:
 
         batch_size, dims, channels = cross_attention_probs.shape
         batch_size = batch_size // attn.heads
-        cross_attention_probs = cross_attention_probs.reshape((batch_size, attn.heads, dims, channels)) # B, D, HW, T
+        cross_attention_probs = cross_attention_probs.reshape((batch_size, attn.heads, dims, channels))  # B, D, HW, T
 
-        cross_attention_probs = cross_attention_probs.mean(dim = 1) # B, HW, T
+        cross_attention_probs = cross_attention_probs.mean(dim=1)  # B, HW, T
         cross_attention_probs = cross_attention_probs[..., self.token_idx].sum(dim=-1)  # B, HW
-        cross_attention_probs = cross_attention_probs.reshape((batch_size,) + shape) #, B, H, W
+        cross_attention_probs = cross_attention_probs.reshape((batch_size,) + shape)  # , B, H, W
 
-        gaussian_smoothing = GaussianSmoothing(channels=1, kernel_size=3, sigma=0.5, dim=2).to(self_attention_output_hidden_states.device)
-        cross_attention_probs = gaussian_smoothing(cross_attention_probs[:,None])[:,0] # optional smoothing B, H, W
+        gaussian_smoothing = GaussianSmoothing(channels=1, kernel_size=3, sigma=0.5, dim=2).to(
+            self_attention_output_hidden_states.device
+        )
+        cross_attention_probs = gaussian_smoothing(cross_attention_probs[:, None])[:, 0]  # optional smoothing B, H, W
 
         # Median normalization
-        cross_attention_probs = cross_attention_probs.reshape(batch_size, -1) # B, HW
-        cross_attention_probs = (cross_attention_probs - cross_attention_probs.median(dim = -1, keepdim = True).values) / cross_attention_probs.max(dim = -1, keepdim = True).values
-        cross_attention_probs = cross_attention_probs.clip(0,1)
-
+        cross_attention_probs = cross_attention_probs.reshape(batch_size, -1)  # B, HW
+        cross_attention_probs = (
+            cross_attention_probs - cross_attention_probs.median(dim=-1, keepdim=True).values
+        ) / cross_attention_probs.max(dim=-1, keepdim=True).values
+        cross_attention_probs = cross_attention_probs.clip(0, 1)
 
         c = (1 - m) * cross_attention_probs.reshape(batch_size, 1, -1) + m
-        c = c.repeat_interleave(attn.heads, 0) # BD, HW
+        c = c.repeat_interleave(attn.heads, 0)  # BD, HW
         if self.do_classifier_free_guidance:
-            c = torch.cat([c, c]) # 2BD, HW
+            c = torch.cat([c, c])  # 2BD, HW
 
         # Rescaling the original self-attention matrix
         self_attention_scores_rescaled = self_attention_scores * c
@@ -373,24 +394,25 @@ class PAIntAAttnProcessor:
 
         return hidden_states
 
+
 class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
     def get_tokenized_prompt(self, prompt):
         out = self.tokenizer(prompt)
         return [self.tokenizer.decode(x) for x in out["input_ids"]]
 
     def init_attn_processors(
-            self,
-            mask,
-            token_idx,
-            use_painta = True,
-            use_rasg = True,
-            painta_scale_factors = [2, 4], # 64x64 -> [16x16, 32x32]
-            rasg_scale_factor = 4, # 64x64 -> 16x16
-            self_attention_layer_name = 'attn1',
-            cross_attention_layer_name = 'attn2',
-            list_of_painta_layer_names = None,
-            list_of_rasg_layer_names = None,
-        ):
+        self,
+        mask,
+        token_idx,
+        use_painta=True,
+        use_rasg=True,
+        painta_scale_factors=[2, 4],  # 64x64 -> [16x16, 32x32]
+        rasg_scale_factor=4,  # 64x64 -> 16x16
+        self_attention_layer_name="attn1",
+        cross_attention_layer_name="attn2",
+        list_of_painta_layer_names=None,
+        list_of_rasg_layer_names=None,
+    ):
         default_processor = AttnProcessor()
         width, height = mask.shape[-2:]
         width, height = width // self.vae_scale_factor, height // self.vae_scale_factor
@@ -400,21 +422,21 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
 
         attn_processors = {}
         for x in self.unet.attn_processors:
-            if (
-                (list_of_painta_layer_names is None and self_attention_layer_name in x)
-                or (list_of_painta_layer_names is not None and x in list_of_painta_layer_names)
+            if (list_of_painta_layer_names is None and self_attention_layer_name in x) or (
+                list_of_painta_layer_names is not None and x in list_of_painta_layer_names
             ):
                 if use_painta:
-                    transformer_block = self.unet.get_submodule(x.replace('.attn1.processor',''))
-                    attn_processors[x] = PAIntAAttnProcessor(transformer_block, mask, token_idx, self.do_classifier_free_guidance, painta_scale_factors)
+                    transformer_block = self.unet.get_submodule(x.replace(".attn1.processor", ""))
+                    attn_processors[x] = PAIntAAttnProcessor(
+                        transformer_block, mask, token_idx, self.do_classifier_free_guidance, painta_scale_factors
+                    )
                 else:
                     attn_processors[x] = default_processor
-            elif (
-                (list_of_rasg_layer_names is None and cross_attention_layer_name in x)
-                or (list_of_rasg_layer_names is not None and x in list_of_rasg_layer_names)
+            elif (list_of_rasg_layer_names is None and cross_attention_layer_name in x) or (
+                list_of_rasg_layer_names is not None and x in list_of_rasg_layer_names
             ):
                 if use_rasg:
-                    attn_processors[x] = RASGAttnProcessor(mask, token_idx, rasg_scale_factor )
+                    attn_processors[x] = RASGAttnProcessor(mask, token_idx, rasg_scale_factor)
                 else:
                     attn_processors[x] = default_processor
 
@@ -422,7 +444,6 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
         # import json
         # with open('/home/hayk.manukyan/repos/diffusers/debug.txt', 'a')  as f:
         #     json.dump({x:str(y) for x,y in self.unet.attn_processors.items()}, f, indent=4)
-
 
     @torch.no_grad()
     def __call__(
@@ -453,14 +474,14 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
         clip_skip: int = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        use_painta = True,
-        use_rasg = True,
-        self_attention_layer_name = '.attn1',
-        cross_attention_layer_name = '.attn2',
-        painta_scale_factors = [2, 4], # 16 x 16 and 32 x 32
-        rasg_scale_factor = 4, # 16x16 by default
-        list_of_painta_layer_names = None,
-        list_of_rasg_layer_names = None,
+        use_painta=True,
+        use_rasg=True,
+        self_attention_layer_name=".attn1",
+        cross_attention_layer_name=".attn2",
+        painta_scale_factors=[2, 4],  # 16 x 16 and 32 x 32
+        rasg_scale_factor=4,  # 16x16 by default
+        list_of_painta_layer_names=None,
+        list_of_rasg_layer_names=None,
         **kwargs,
     ):
         callback = kwargs.pop("callback", None)
@@ -634,19 +655,22 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
         # 7.5 Setting up HD-Painter
 
         # Get the indices of the tokens to be modified by both RASG and PAIntA
-        try:
-            token_idx = list(range(1, self.get_tokenized_prompt(prompt_no_positives).index('<|endoftext|>'))) + [self.get_tokenized_prompt(prompt).index('<|endoftext|>')]
-        except:
-            # For some of the test cases the prompt seems to be synthetic, and <|endoftext|> cannot be found.
-            # Since this probably only happens for test cases, I hardcode token_idx to [1] just for the test
-            token_idx = [1]
+        token_idx = list(range(1, self.get_tokenized_prompt(prompt_no_positives).index("<|endoftext|>"))) + [
+            self.get_tokenized_prompt(prompt).index("<|endoftext|>")
+        ]
 
         # Setting up the attention processors
         self.init_attn_processors(
-            mask_condition, token_idx, use_painta, use_rasg,
-            painta_scale_factors = painta_scale_factors, rasg_scale_factor=rasg_scale_factor,
-            self_attention_layer_name=self_attention_layer_name, cross_attention_layer_name=cross_attention_layer_name,
-            list_of_painta_layer_names = list_of_painta_layer_names, list_of_rasg_layer_names = list_of_rasg_layer_names,
+            mask_condition,
+            token_idx,
+            use_painta,
+            use_rasg,
+            painta_scale_factors=painta_scale_factors,
+            rasg_scale_factor=rasg_scale_factor,
+            self_attention_layer_name=self_attention_layer_name,
+            cross_attention_layer_name=cross_attention_layer_name,
+            list_of_painta_layer_names=list_of_painta_layer_names,
+            list_of_rasg_layer_names=list_of_rasg_layer_names,
         )
 
         # 8. Check that sizes of mask, masked image and latents match
@@ -671,8 +695,7 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
         extra_step_kwargs = self.prepare_extra_step_kwargs(generator, eta)
 
         if use_rasg:
-            extra_step_kwargs['generator'] = None
-
+            extra_step_kwargs["generator"] = None
 
         # 9.1 Add image embeds for IP-Adapter
         added_cond_kwargs = {"image_embeds": image_embeds} if ip_adapter_image is not None else None
@@ -697,10 +720,16 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
 
                 if t < 500 and painta_active:
                     self.init_attn_processors(
-                        mask_condition, token_idx, False, use_rasg,
-                        painta_scale_factors = painta_scale_factors, rasg_scale_factor=rasg_scale_factor,
-                        self_attention_layer_name=self_attention_layer_name, cross_attention_layer_name=cross_attention_layer_name,
-                        list_of_painta_layer_names = list_of_painta_layer_names, list_of_rasg_layer_names = list_of_rasg_layer_names,
+                        mask_condition,
+                        token_idx,
+                        False,
+                        use_rasg,
+                        painta_scale_factors=painta_scale_factors,
+                        rasg_scale_factor=rasg_scale_factor,
+                        self_attention_layer_name=self_attention_layer_name,
+                        cross_attention_layer_name=cross_attention_layer_name,
+                        list_of_painta_layer_names=list_of_painta_layer_names,
+                        list_of_rasg_layer_names=list_of_rasg_layer_names,
                     )
                     painta_active = False
 
@@ -741,28 +770,37 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
 
                     if use_rasg:
                         # Perform RASG
-                        _,_,height, width = mask_condition.shape # 512 x 512
-                        scale_factor = self.vae_scale_factor * rasg_scale_factor # 8 * 4 = 32
+                        _, _, height, width = mask_condition.shape  # 512 x 512
+                        scale_factor = self.vae_scale_factor * rasg_scale_factor  # 8 * 4 = 32
 
                         # TODO: Fix for > 1 batch_size
-                        rasg_mask = F.interpolate(mask_condition, (height // scale_factor, width // scale_factor), mode = 'bicubic')[0,0] # mode is nearest by default, B, H, W
+                        rasg_mask = F.interpolate(
+                            mask_condition, (height // scale_factor, width // scale_factor), mode="bicubic"
+                        )[0, 0]  # mode is nearest by default, B, H, W
 
                         # Aggregate the saved attention maps
                         attn_map = []
                         for processor in self.unet.attn_processors.values():
                             if hasattr(processor, "attention_scores") and processor.attention_scores is not None:
                                 if self.do_classifier_free_guidance:
-                                    attn_map.append(processor.attention_scores.chunk(2)[1]) # (B/2) x H, 256, 77
+                                    attn_map.append(processor.attention_scores.chunk(2)[1])  # (B/2) x H, 256, 77
                                 else:
-                                    attn_map.append(processor.attention_scores) # B x H, 256, 77 ?
+                                    attn_map.append(processor.attention_scores)  # B x H, 256, 77 ?
 
-                        attn_map = torch.cat(attn_map).mean(0).permute(1,0).reshape((-1, height // scale_factor, width // scale_factor)) # 77, 16, 16
+                        attn_map = (
+                            torch.cat(attn_map)
+                            .mean(0)
+                            .permute(1, 0)
+                            .reshape((-1, height // scale_factor, width // scale_factor))
+                        )  # 77, 16, 16
 
                         # Compute the attention score
-                        attn_score = -sum([
-                            F.binary_cross_entropy_with_logits(x - 1.0, rasg_mask.to(device))
-                            for x in attn_map[token_idx]
-                        ])
+                        attn_score = -sum(
+                            [
+                                F.binary_cross_entropy_with_logits(x - 1.0, rasg_mask.to(device))
+                                for x in attn_map[token_idx]
+                            ]
+                        )
 
                         # Backward the score and compute the gradients
                         attn_score.backward()
@@ -770,14 +808,15 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
                         # Normalzie the gradients and compute the noise component
                         variance_noise = latents.grad.detach()
                         # print("VARIANCE SHAPE", variance_noise.shape)
-                        variance_noise -= torch.mean(variance_noise, [1,2,3], keepdim = True)
-                        variance_noise /= torch.std(variance_noise, [1,2,3], keepdim = True)
+                        variance_noise -= torch.mean(variance_noise, [1, 2, 3], keepdim=True)
+                        variance_noise /= torch.std(variance_noise, [1, 2, 3], keepdim=True)
                     else:
                         variance_noise = None
 
-
                 # compute the previous noisy sample x_t -> x_t-1
-                latents = self.scheduler.step(noise_pred, t, latents, **extra_step_kwargs, return_dict=False, variance_noise = variance_noise)[0]
+                latents = self.scheduler.step(
+                    noise_pred, t, latents, **extra_step_kwargs, return_dict=False, variance_noise=variance_noise
+                )[0]
 
                 if num_channels_unet == 4:
                     init_latents_proper = image_latents
@@ -850,6 +889,7 @@ class StableDiffusionHDPainterPipeline(StableDiffusionInpaintPipeline):
 
 # ============= Utility Functions ============== #
 
+
 class GaussianSmoothing(nn.Module):
     """
     Apply gaussian smoothing on a
@@ -863,6 +903,7 @@ class GaussianSmoothing(nn.Module):
         dim (int, optional): The number of dimensions of the data.
             Default value is 2 (spatial).
     """
+
     def __init__(self, channels, kernel_size, sigma, dim=2):
         super(GaussianSmoothing, self).__init__()
         if isinstance(kernel_size, numbers.Number):
@@ -873,16 +914,10 @@ class GaussianSmoothing(nn.Module):
         # The gaussian kernel is the product of the
         # gaussian function of each dimension.
         kernel = 1
-        meshgrids = torch.meshgrid(
-            [
-                torch.arange(size, dtype=torch.float32)
-                for size in kernel_size
-            ]
-        )
+        meshgrids = torch.meshgrid([torch.arange(size, dtype=torch.float32) for size in kernel_size])
         for size, std, mgrid in zip(kernel_size, sigma, meshgrids):
             mean = (size - 1) / 2
-            kernel *= 1 / (std * math.sqrt(2 * math.pi)) * \
-                      torch.exp(-((mgrid - mean) / (2 * std)) ** 2)
+            kernel *= 1 / (std * math.sqrt(2 * math.pi)) * torch.exp(-(((mgrid - mean) / (2 * std)) ** 2))
 
         # Make sure sum of values in gaussian kernel equals 1.
         kernel = kernel / torch.sum(kernel)
@@ -891,7 +926,7 @@ class GaussianSmoothing(nn.Module):
         kernel = kernel.view(1, 1, *kernel.size())
         kernel = kernel.repeat(channels, *[1] * (kernel.dim() - 1))
 
-        self.register_buffer('weight', kernel)
+        self.register_buffer("weight", kernel)
         self.groups = channels
 
         if dim == 1:
@@ -901,9 +936,7 @@ class GaussianSmoothing(nn.Module):
         elif dim == 3:
             self.conv = F.conv3d
         else:
-            raise RuntimeError(
-                'Only 1, 2 and 3 dimensions are supported. Received {}.'.format(dim)
-            )
+            raise RuntimeError("Only 1, 2 and 3 dimensions are supported. Received {}.".format(dim))
 
     def forward(self, input):
         """
@@ -913,47 +946,46 @@ class GaussianSmoothing(nn.Module):
         Returns:
             filtered (torch.Tensor): Filtered output.
         """
-        return self.conv(input, weight=self.weight.to(input.dtype), groups=self.groups, padding='same')
+        return self.conv(input, weight=self.weight.to(input.dtype), groups=self.groups, padding="same")
+
 
 def get_attention_scores(
-        self, query: torch.Tensor, key: torch.Tensor, attention_mask: torch.Tensor = None
-    ) -> torch.Tensor:
-        r"""
-        Compute the attention scores.
+    self, query: torch.Tensor, key: torch.Tensor, attention_mask: torch.Tensor = None
+) -> torch.Tensor:
+    r"""
+    Compute the attention scores.
 
-        Args:
-            query (`torch.Tensor`): The query tensor.
-            key (`torch.Tensor`): The key tensor.
-            attention_mask (`torch.Tensor`, *optional*): The attention mask to use. If `None`, no mask is applied.
+    Args:
+        query (`torch.Tensor`): The query tensor.
+        key (`torch.Tensor`): The key tensor.
+        attention_mask (`torch.Tensor`, *optional*): The attention mask to use. If `None`, no mask is applied.
 
-        Returns:
-            `torch.Tensor`: The attention probabilities/scores.
-        """
-        dtype = query.dtype
-        if self.upcast_attention:
-            query = query.float()
-            key = key.float()
+    Returns:
+        `torch.Tensor`: The attention probabilities/scores.
+    """
+    if self.upcast_attention:
+        query = query.float()
+        key = key.float()
 
-        if attention_mask is None:
-            baddbmm_input = torch.empty(
-                query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device
-            )
-            beta = 0
-        else:
-            baddbmm_input = attention_mask
-            beta = 1
-
-        attention_scores = torch.baddbmm(
-            baddbmm_input,
-            query,
-            key.transpose(-1, -2),
-            beta=beta,
-            alpha=self.scale,
+    if attention_mask is None:
+        baddbmm_input = torch.empty(
+            query.shape[0], query.shape[1], key.shape[1], dtype=query.dtype, device=query.device
         )
-        del baddbmm_input
+        beta = 0
+    else:
+        baddbmm_input = attention_mask
+        beta = 1
 
-        if self.upcast_softmax:
-            attention_scores = attention_scores.float()
+    attention_scores = torch.baddbmm(
+        baddbmm_input,
+        query,
+        key.transpose(-1, -2),
+        beta=beta,
+        alpha=self.scale,
+    )
+    del baddbmm_input
 
-        return attention_scores
+    if self.upcast_softmax:
+        attention_scores = attention_scores.float()
 
+    return attention_scores
