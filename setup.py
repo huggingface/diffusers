@@ -72,7 +72,11 @@ To create the package for PyPI.
 9. Upload the final version to the actual PyPI:
    twine upload dist/* -r pypi
 
-10. Prepare the release notes and publish them on GitHub once everything is looking hunky-dory.
+10. Prepare the release notes and publish them on GitHub once everything is looking hunky-dory. You can use the following
+    Space to fetch all the commits applicable for the release: https://huggingface.co/spaces/lysandre/github-release. Repo should
+    be `huggingface/diffusers`. `tag` should be the previous release tag (v0.26.1, for example), and `branch` should be
+    the latest release branch (v0.27.0-release, for example). It denotes all commits that have happened on branch
+    v0.27.0-release after the tag v0.26.1 was created.
 
 11. Run `make post-release` (or, for a patch release, `make post-patch`). If you were on a branch for the release,
     you need to go back to main before executing this.
@@ -81,9 +85,8 @@ To create the package for PyPI.
 import os
 import re
 import sys
-from distutils.core import Command
 
-from setuptools import find_packages, setup
+from setuptools import Command, find_packages, setup
 
 
 # IMPORTANT:
@@ -164,7 +167,7 @@ def deps_list(*pkgs):
 
 class DepsTableUpdateCommand(Command):
     """
-    A custom distutils command that updates the dependency table.
+    A custom command that updates the dependency table.
     usage: python setup.py deps_table_update
     """
 

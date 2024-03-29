@@ -661,9 +661,9 @@ class StableDiffusionControlNetPipeline(
                 raise ValueError(
                     f"For multiple controlnets: `image` must have the same length as the number of controlnets, but got {len(image)} images and {len(self.controlnet.nets)} ControlNets."
                 )
-
-            for image_ in image:
-                self.check_image(image_, prompt, prompt_embeds)
+            else:
+                for image_ in image:
+                    self.check_image(image_, prompt, prompt_embeds)
         else:
             assert False
 
@@ -1002,7 +1002,7 @@ class StableDiffusionControlNetPipeline(
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
