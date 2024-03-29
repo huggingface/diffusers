@@ -57,6 +57,7 @@ class ControlNetPipelineSDXLFastTests(
     image_latents_params = TEXT_TO_IMAGE_IMAGE_PARAMS
 
     def get_dummy_components(self):
+        torch.manual_seed(0)
         unet = UNet2DConditionModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
@@ -74,6 +75,7 @@ class ControlNetPipelineSDXLFastTests(
             projection_class_embeddings_input_dim=80,  # 6 * 8 + 32
             cross_attention_dim=64,
         )
+        torch.manual_seed(0)
         controlnet = ControlNetModel(
             block_out_channels=(32, 64),
             layers_per_block=2,
@@ -123,6 +125,7 @@ class ControlNetPipelineSDXLFastTests(
         text_encoder = CLIPTextModel(text_encoder_config)
         tokenizer = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
+        torch.manual_seed(0)
         text_encoder_2 = CLIPTextModelWithProjection(text_encoder_config)
         tokenizer_2 = CLIPTokenizer.from_pretrained("hf-internal-testing/tiny-random-clip")
 
@@ -185,6 +188,7 @@ class ControlNetPipelineSDXLFastTests(
     # def test_dict_tuple_outputs_equivalent(self):
     #     expected_slice = None
     #     if torch_device == "cpu":
+                # 0.5433, 0.4865, 0.4654, 0.5596, 0.5238, 0.4869, 0.5809, 0.5657, 0.4339
     #         expected_slice = np.array([0.5362, 0.4936, 0.4656, 0.5778, 0.5256, 0.4790, 0.6009, 0.5727, 0.4301])
     #     super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
