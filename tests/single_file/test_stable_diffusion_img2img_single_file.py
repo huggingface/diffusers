@@ -5,7 +5,7 @@ import torch
 
 from diffusers import (
     DDIMScheduler,
-    StableDiffusionPipeline,
+    StableDiffusionImg2ImgPipeline,
 )
 from diffusers.models.attention_processor import AttnProcessor
 from diffusers.utils.testing_utils import (
@@ -35,7 +35,7 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase):
     def test_single_file_format_inference_is_same_sd15(self):
         ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
 
-        sf_pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
+        sf_pipe = StableDiffusionImg2ImgPipeline.from_single_file(ckpt_path)
         sf_pipe.scheduler = DDIMScheduler.from_config(sf_pipe.scheduler.config)
         sf_pipe.unet.set_attn_processor(AttnProcessor())
         sf_pipe.to("cuda")
@@ -43,7 +43,7 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         image_single_file = sf_pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_attn_processor(AttnProcessor())
         pipe.to("cuda")
@@ -56,10 +56,10 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_single_file_component_configs_sd15(self):
-        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
 
         ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
-        single_file_pipe = StableDiffusionPipeline.from_single_file(ckpt_path, load_safety_checker=True)
+        single_file_pipe = StableDiffusionImg2ImgPipeline.from_single_file(ckpt_path, load_safety_checker=True)
 
         for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
             if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
@@ -91,7 +91,7 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase):
     def test_single_file_format_inference_is_same_sd21(self):
         ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
 
-        sf_pipe = StableDiffusionPipeline.from_single_file(ckpt_path)
+        sf_pipe = StableDiffusionImg2ImgPipeline.from_single_file(ckpt_path)
         sf_pipe.scheduler = DDIMScheduler.from_config(sf_pipe.scheduler.config)
         sf_pipe.unet.set_attn_processor(AttnProcessor())
         sf_pipe.to("cuda")
@@ -99,7 +99,7 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase):
         generator = torch.Generator(device="cpu").manual_seed(0)
         image_single_file = sf_pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
 
-        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
         pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
         pipe.unet.set_attn_processor(AttnProcessor())
         pipe.to("cuda")
@@ -112,10 +112,10 @@ class StableDiffusionPipelineSingleFileSlowTests(unittest.TestCase):
         assert max_diff < 1e-3
 
     def test_single_file_component_configs_sd21(self):
-        pipe = StableDiffusionPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
+        pipe = StableDiffusionImg2ImgPipeline.from_pretrained("stabilityai/stable-diffusion-2-1")
 
         ckpt_path = "https://huggingface.co/stabilityai/stable-diffusion-2-1/blob/main/v2-1_768-ema-pruned.safetensors"
-        single_file_pipe = StableDiffusionPipeline.from_single_file(ckpt_path, load_safety_checker=True)
+        single_file_pipe = StableDiffusionImg2ImgPipeline.from_single_file(ckpt_path, load_safety_checker=True)
 
         for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
             if param_name in ["torch_dtype", "architectures", "_name_or_path"]:

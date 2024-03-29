@@ -45,7 +45,6 @@ from ..utils import (
 from .single_file_utils import (
     create_diffusers_unet_from_ldm,
     create_diffusers_unet_from_stable_cascade,
-    load_single_file_model_checkpoint,
 )
 from .utils import AttnProcsLayers
 
