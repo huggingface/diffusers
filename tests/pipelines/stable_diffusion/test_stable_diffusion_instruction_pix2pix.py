@@ -271,6 +271,11 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
 @slow
 @require_torch_gpu
 class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
