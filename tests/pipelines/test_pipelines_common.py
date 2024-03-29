@@ -37,7 +37,7 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device, print_tensor_test
 
 from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
@@ -859,6 +859,7 @@ class PipelineTesterMixin:
 
         generator_device = "cpu"
         output = pipe(**self.get_dummy_inputs(generator_device))[0]
+        print_tensor_test(output)
         output_tuple = pipe(**self.get_dummy_inputs(generator_device), return_dict=False)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
