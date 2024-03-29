@@ -236,6 +236,10 @@ class IPAdapterTesterMixin:
         return inputs
 
     def test_ip_adapter_single(self, expected_max_diff: float = 1e-4, expected_pipe_slice=None):
+        # Raising the tolerance for this test when it's run on a CPU because we
+        # compare against static slices and that can be shaky (with a VVVV low probability).
+        expected_max_diff = 9e-4 if torch_device == "cpu" else expected_max_diff
+
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components).to(torch_device)
         pipe.set_progress_bar_config(disable=None)
