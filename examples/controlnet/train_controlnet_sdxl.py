@@ -125,7 +125,11 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         )
 
     image_logs = []
-    inference_ctx = contextlib.nullcontext() if is_final_validation else torch.autocast("cuda")
+    inference_ctx = (
+        contextlib.nullcontext()
+        if (is_final_validation or torch.backends.mps.is_available())
+        else torch.autocast("cuda")
+    )
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
@@ -791,6 +795,12 @@ def main(args):
         )
 
     logging_dir = Path(args.output_dir, args.logging_dir)
+
+    if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
+        # due to pytorch#99272, MPS does not yet support bfloat16.
+        raise ValueError(
+            "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
+        )
 
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
 

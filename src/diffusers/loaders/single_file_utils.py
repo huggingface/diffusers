@@ -50,6 +50,8 @@ if is_transformers_available():
 if is_accelerate_available():
     from accelerate import init_empty_weights
 
+    from ..models.modeling_utils import load_model_dict_into_meta
+
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 CONFIG_URLS = {
@@ -977,8 +979,6 @@ def create_diffusers_controlnet_model_from_ldm(
         controlnet = ControlNetModel(**diffusers_config)
 
     if is_accelerate_available():
-        from ..models.modeling_utils import load_model_dict_into_meta
-
         unexpected_keys = load_model_dict_into_meta(
             controlnet, diffusers_format_controlnet_checkpoint, dtype=torch_dtype
         )
@@ -1155,8 +1155,6 @@ def create_text_encoder_from_ldm_clip_checkpoint(config_name, checkpoint, local_
                 text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
-        from ..models.modeling_utils import load_model_dict_into_meta
-
         unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
         if text_model._keys_to_ignore_on_load_unexpected is not None:
             for pat in text_model._keys_to_ignore_on_load_unexpected:
@@ -1250,8 +1248,6 @@ def create_text_encoder_from_open_clip_checkpoint(
             text_model_dict[diffusers_key] = checkpoint[key]
 
     if is_accelerate_available():
-        from ..models.modeling_utils import load_model_dict_into_meta
-
         unexpected_keys = load_model_dict_into_meta(text_model, text_model_dict, dtype=torch_dtype)
         if text_model._keys_to_ignore_on_load_unexpected is not None:
             for pat in text_model._keys_to_ignore_on_load_unexpected:
@@ -1317,8 +1313,6 @@ def create_diffusers_unet_model_from_ldm(
         unet = UNet2DConditionModel(**unet_config)
 
     if is_accelerate_available():
-        from ..models.modeling_utils import load_model_dict_into_meta
-
         unexpected_keys = load_model_dict_into_meta(unet, diffusers_format_unet_checkpoint, dtype=torch_dtype)
         if unet._keys_to_ignore_on_load_unexpected is not None:
             for pat in unet._keys_to_ignore_on_load_unexpected:
@@ -1379,8 +1373,6 @@ def create_diffusers_vae_model_from_ldm(
         vae = AutoencoderKL(**vae_config)
 
     if is_accelerate_available():
-        from ..models.modeling_utils import load_model_dict_into_meta
-
         unexpected_keys = load_model_dict_into_meta(vae, diffusers_format_vae_checkpoint, dtype=torch_dtype)
         if vae._keys_to_ignore_on_load_unexpected is not None:
             for pat in vae._keys_to_ignore_on_load_unexpected:

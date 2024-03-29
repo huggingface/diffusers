@@ -506,6 +506,15 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         assert np.abs(image - output_1.images).max() < 1e-3
 
+        # multiple prompts, multiple image conditioning
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"], inputs["prompt"], inputs["prompt"]]
+        inputs["image"] = [inputs["image"], inputs["image"], inputs["image"], inputs["image"]]
+        output_2 = sd_pipe(**inputs)
+        image = output_2.images
+
+        assert image.shape == (4, 64, 64, 3)
+
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
     IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
