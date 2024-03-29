@@ -207,6 +207,11 @@ class StableDiffusionLDM3DPipelineFastTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class StableDiffusionLDM3DPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -253,6 +258,11 @@ class StableDiffusionLDM3DPipelineSlowTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class StableDiffusionPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

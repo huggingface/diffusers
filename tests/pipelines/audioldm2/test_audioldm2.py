@@ -493,6 +493,11 @@ class AudioLDM2PipelineFastTests(PipelineTesterMixin, unittest.TestCase):
 
 @nightly
 class AudioLDM2PipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

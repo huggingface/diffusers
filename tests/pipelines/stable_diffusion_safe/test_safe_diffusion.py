@@ -28,6 +28,12 @@ from diffusers.utils.testing_utils import floats_tensor, nightly, require_torch_
 
 
 class SafeDiffusionPipelineFastTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -258,6 +264,12 @@ class SafeDiffusionPipelineFastTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class SafeDiffusionPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
