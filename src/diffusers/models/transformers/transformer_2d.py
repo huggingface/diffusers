@@ -102,6 +102,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         interpolation_scale: float = None,
     ):
         super().__init__()
+
+        # Validate inputs.
         if patch_size is not None:
             if norm_type not in ["ada_norm", "ada_norm_zero", "ada_norm_single"]:
                 raise NotImplementedError(
@@ -112,9 +114,13 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                     f"When using a `patch_size` and this `norm_type` ({norm_type}), `num_embeds_ada_norm` cannot be None."
                 )
 
+        # Set some common variables used across the board.
         self.use_linear_projection = use_linear_projection
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
+        self.in_channels = in_channels
+        self.out_channels = in_channels if out_channels is None else out_channels
+        self.gradient_checkpointing = False
 
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
@@ -149,8 +155,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 f" {patch_size}. Make sure that `in_channels`, `num_vector_embeds` or `num_patches` is not None."
             )
 
-        self.in_channels = in_channels
-
         # 2. Initialize the right blocks.
         if self.is_input_continuous:
             self._init_continuous_input(
@@ -167,10 +171,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 interpolation_scale=interpolation_scale,
                 caption_channels=caption_channels,
             )
-
-        # Others.
-        self.out_channels = in_channels if out_channels is None else out_channels
-        self.gradient_checkpointing = False
 
     def _init_continuous_input(self, in_channels, use_linear_projection, norm_type):
         self.use_linear_projection = use_linear_projection
