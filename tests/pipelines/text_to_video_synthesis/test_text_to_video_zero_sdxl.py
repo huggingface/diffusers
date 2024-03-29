@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import contextlib
+import gc
 import inspect
 import io
 import re
@@ -382,6 +383,18 @@ class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCas
 @nightly
 @require_torch_gpu
 class TextToVideoZeroSDXLPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        # clean up the VRAM after each test
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_full_model(self):
         model_id = "stabilityai/stable-diffusion-xl-base-1.0"
         pipe = TextToVideoZeroSDXLPipeline.from_pretrained(
