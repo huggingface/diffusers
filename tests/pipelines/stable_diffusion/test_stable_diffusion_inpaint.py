@@ -970,9 +970,6 @@ class StableDiffusionInpaintPipelineAsymmetricAutoencoderKLSlowTests(unittest.Te
 
         assert image_out.shape == (512, 512, 3)
 
-    def test_download_ckpt_diff_format_is_same(self):
-        pass
-
 
 @nightly
 @require_torch_gpu
