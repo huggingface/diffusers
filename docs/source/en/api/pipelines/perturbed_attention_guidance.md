@@ -26,11 +26,9 @@ This implementation is based on [Diffusers](https://huggingface.co/docs/diffuser
 ```
 from diffusers import StableDiffusionPipeline
 
-pipe = StableDiffusionPipeline.from_pretrained(
+pipe = StableDiffusionPAGPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    custom_pipeline="hyoungwoncho/sd_perturbed_attention_guidance",
-    torch_dtype=torch.float16,
-    safety_checker=None
+    torch_dtype=torch.float16
 )
 
 device="cuda"
