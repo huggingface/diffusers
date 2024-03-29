@@ -68,7 +68,7 @@ class PAGIdentitySelfAttnProcessor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
-        
+
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -77,10 +77,10 @@ class PAGIdentitySelfAttnProcessor:
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-        
+
         # chunk
         hidden_states_org, hidden_states_ptb = hidden_states.chunk(2)
-        
+
         # original path
         batch_size, sequence_length, _ = hidden_states_org.shape
 
@@ -182,7 +182,7 @@ class PAGCFGIdentitySelfAttnProcessor:
         if len(args) > 0 or kwargs.get("scale", None) is not None:
             deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
             deprecate("scale", "1.0.0", deprecation_message)
-        
+
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -191,11 +191,11 @@ class PAGCFGIdentitySelfAttnProcessor:
         if input_ndim == 4:
             batch_size, channel, height, width = hidden_states.shape
             hidden_states = hidden_states.view(batch_size, channel, height * width).transpose(1, 2)
-        
+
         # chunk
         hidden_states_uncond, hidden_states_org, hidden_states_ptb = hidden_states.chunk(3)
         hidden_states_org = torch.cat([hidden_states_uncond, hidden_states_org])
-        
+
         # original path
         batch_size, sequence_length, _ = hidden_states_org.shape
 
@@ -252,7 +252,7 @@ class PAGCFGIdentitySelfAttnProcessor:
         value = attn.to_v(hidden_states_ptb)
         hidden_states_ptb = value
         hidden_states_ptb = hidden_states_ptb.to(query.dtype)
-        
+
         # linear proj
         hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
         # dropout
@@ -998,7 +998,7 @@ class StableDiffusionPAGPipeline(
         return pred_original_sample
     
     def pred_x0(self, latents, noise_pred, t, generator, device, prompt_embeds, output_type):
-        
+
         pred_z0 = self.pred_z0(latents, noise_pred, t)
         pred_x0 = self.vae.decode(
             pred_z0 / self.vae.config.scaling_factor,
@@ -1008,7 +1008,7 @@ class StableDiffusionPAGPipeline(
         pred_x0, ____ = self.run_safety_checker(pred_x0, device, prompt_embeds.dtype)
         do_denormalize = [True] * pred_x0.shape[0]
         pred_x0 = self.image_processor.postprocess(pred_x0, output_type=output_type, do_denormalize=do_denormalize)
-        
+
         return pred_x0
 
     @property
@@ -1324,14 +1324,14 @@ class StableDiffusionPAGPipeline(
                         up_layers.append(module)
                     else:
                         raise ValueError(f"Invalid layer type: {layer_type}")
-        
+
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
         self._num_timesteps = len(timesteps)
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 if self.interrupt:
                     continue
-                
+
                 #cfg
                 if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
                     latent_model_input = torch.cat([latents] * 2)
@@ -1344,15 +1344,15 @@ class StableDiffusionPAGPipeline(
                 #no
                 else:
                     latent_model_input = latents
-                
+
                 # change attention layer in UNet if use PAG
                 if self.do_adversarial_guidance:
-                    
+
                     if self.do_classifier_free_guidance:
                         replace_processor = PAGCFGIdentitySelfAttnProcessor()
                     else:
                         replace_processor = PAGIdentitySelfAttnProcessor()
-                    
+
                     drop_layers = self.pag_applied_layers_index
                     for drop_layer in drop_layers:
                         try:
@@ -1368,9 +1368,9 @@ class StableDiffusionPAGPipeline(
                             raise ValueError(
                                 f"Invalid layer index: {drop_layer}. Available layers: {len(down_layers)} down layers, {len(mid_layers)} mid layers, {len(up_layers)} up layers."
                             )
-                
+
                 latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
-                
+
                 # predict the noise residual
                 noise_pred = self.unet(
                     latent_model_input,
@@ -1381,43 +1381,43 @@ class StableDiffusionPAGPipeline(
                     added_cond_kwargs=added_cond_kwargs,
                     return_dict=False,
                 )[0]
-                
+
                 # perform guidance
-                
+
                 # cfg
                 if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
                     
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    
+
                     delta = noise_pred_text - noise_pred_uncond
                     noise_pred = noise_pred_uncond + self.guidance_scale * delta
-                    
+
                 # pag
                 elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
-                    
+
                     noise_pred_original, noise_pred_perturb = noise_pred.chunk(2)
-                    
+
                     signal_scale = self.pag_scale
                     if self.do_pag_adaptive_scaling:
                         signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000-t)
                         if signal_scale<0:
                             signal_scale = 0
-                    
+
                     noise_pred = noise_pred_original + signal_scale * (noise_pred_original - noise_pred_perturb)
-                    
+
                 # both
                 elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
-                    
+
                     noise_pred_uncond, noise_pred_text, noise_pred_text_perturb = noise_pred.chunk(3)
-                    
+
                     signal_scale = self.pag_scale
                     if self.do_pag_adaptive_scaling:
                         signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000-t)
                         if signal_scale<0:
                             signal_scale = 0
-                    
+
                     noise_pred = noise_pred_text + (self.guidance_scale-1.0) * (noise_pred_text - noise_pred_uncond) + signal_scale * (noise_pred_text - noise_pred_text_perturb)
-                
+
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
                     noise_pred = rescale_noise_cfg(noise_pred, noise_pred_text, guidance_rescale=self.guidance_rescale)
@@ -1443,9 +1443,7 @@ class StableDiffusionPAGPipeline(
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
-                0
-            ]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[0]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
@@ -1463,7 +1461,7 @@ class StableDiffusionPAGPipeline(
 
         if not return_dict:
             return (image, has_nsfw_concept)
-            
+
         # change attention layer in UNet if use PAG
         if self.do_adversarial_guidance:
             drop_layers = self.pag_applied_layers_index
