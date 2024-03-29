@@ -56,6 +56,7 @@ except ImportError:
 
 optimizer_class = bnb.optim.AdamW8bit
 
+
 def FeedForward(dim, mult=4):
     inner_dim = int(dim * mult)
     return nn.Sequential(

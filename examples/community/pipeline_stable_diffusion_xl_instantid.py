@@ -54,6 +54,7 @@ except ImportError:
         "Please refer to: https://huggingface.co/InstantX/InstantID for further instructions"
     )
 
+
 def FeedForward(dim, mult=4):
     inner_dim = int(dim * mult)
     return nn.Sequential(
