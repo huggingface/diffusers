@@ -1088,15 +1088,15 @@ class PipelineTesterMixin:
         # additional components that are not in the pipeline, but expected in the original pipeline
         original_pipe_additional_components = {}
         # additional components that are in the pipeline, but not expected in the original pipeline
-        additional_components = {}
+        current_pipe_additional_components = {}
         # components expected in the original pipeline
         original_expected_modules, _ = original_pipeline_class._get_signature_keys(original_pipeline_class)
 
-        for k, v in components.items():
-            if k in original_expected_modules:
-                original_pipe_components[k] = v
+        for name, component in components.items():
+            if name in original_expected_modules:
+                original_pipe_components[name] = component
             else:
-                additional_components[k] = v
+               current_pipe_additional_components[name] = component
         for k in original_expected_modules:
             if k not in original_pipe_components:
                 if k in original_pipeline_class._optional_components:
@@ -1124,7 +1124,7 @@ class PipelineTesterMixin:
         output1 = pipe1(**inputs)[0]
 
         # pipe2 (created with `from_pipe`): original pipeline(sd/sdxl) -> pipeline
-        pipe2 = self.pipeline_class.from_pipe(pipe_original, **additional_components)
+        pipe2 = self.pipeline_class.from_pipe(pipe_original, **current_pipe_additional_components)
         pipe2.to(torch_device)
         pipe2.set_progress_bar_config(disable=None)
         pipe2_config = {k: v for k, v in pipe2.config.items() if not k.startswith("_")}
@@ -1137,14 +1137,14 @@ class PipelineTesterMixin:
         ## for pipelines such as animtediff and pia, the unet changes from UNet2DConditionModel to UNetMotionModel during __init__
         changed_components = {}
         original_signature_types = original_pipeline_class._get_signature_types()
-        for k, v in pipe2.components.items():
+        for name, component in pipe2.components.items():
             if (
-                k in original_expected_modules
-                and v is not None
-                and isinstance(v, torch.nn.Module)
-                and type(v) not in original_signature_types[k]
+                name in original_expected_modules
+                and component is not None
+                and isinstance(component, torch.nn.Module)
+                and type(component) not in original_signature_types[k]
             ):
-                changed_components[k] = original_pipe_components[k]
+                changed_components[name] = original_pipe_components[name]
 
         pipe_original_2 = original_pipeline_class.from_pipe(
             pipe2, **changed_components, **original_pipe_additional_components

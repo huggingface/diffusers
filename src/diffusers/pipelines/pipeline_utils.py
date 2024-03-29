@@ -1485,7 +1485,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             elif get_origin(v.annotation) == Union:
                 signature_types[k] = get_args(v.annotation)
             else:
-                logger.warn(f"cannot get type annotation for Parameter {k} of {cls}.")
+                logger.warning(f"cannot get type annotation for Parameter {k} of {cls}.")
         return signature_types
 
     @property
@@ -1669,8 +1669,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     @classmethod
     def from_pipe(cls, pipeline: "DiffusionPipeline", **kwargs) -> "DiffusionPipeline":
         r"""
-        Create a new pipeline from a given pipeline. This method is useful to create a new pipeline with the same
-        weights and configurations without reallocating additional memory.
+        Create a new pipeline from a given pipeline. This method is useful to create a new pipeline from the existing pipeline components without reallocating additional memory.
 
         Arguments:
             pipeline (`DiffusionPipeline`):
@@ -1728,19 +1727,19 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
 
         original_class_obj = {}
-        for k, v in pipeline.components.items():
-            if k in expected_modules and k not in passed_class_obj:
+        for name, component in pipeline.components.items():
+            if name in expected_modules and name not in passed_class_obj:
                 if (
-                    not isinstance(v, torch.nn.Module)
-                    or type(v) in signature_types[k]
-                    or (v is None and k in cls._optional_components)
+                    not isinstance(component, torch.nn.Module)
+                    or type(component) in signature_types[name]
+                    or (component is None and name in cls._optional_components)
                 ):
-                    original_class_obj[k] = v
+                    original_class_obj[name] = component
                 else:
                     logger.warn(
-                        f"component {k} is not switched over to new pipeline because type does not match the expected."
-                        f" {k} is {type(v)} while the new pipeline expect {signature_types[k]}."
-                        f" please pass the correct type of component to the new pipeline. `from_pipe(..., {k}={k})`"
+                        f"component {name} is not switched over to new pipeline because type does not match the expected."
+                        f" {name} is {type(component)} while the new pipeline expect {signature_types[name]}."
+                        f" please pass the correct type of component to the new pipeline. `from_pipe(..., {name}={name})`"
                     )
 
         # allow users pass optional kwargs to override the original pipelines config attribute
