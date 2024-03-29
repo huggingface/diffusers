@@ -51,7 +51,6 @@ logger.warning(
         "Please refer to: https://huggingface.co/InstantX/InstantID for further instructions regarding inference"
     )
 
-optimizer_class = bnb.optim.AdamW8bit
 
 
 def FeedForward(dim, mult=4):
