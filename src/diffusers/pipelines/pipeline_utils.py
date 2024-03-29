@@ -1218,6 +1218,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 offload_buffers = len(model._parameters) > 0
                 cpu_offload(model, device, offload_buffers=offload_buffers)
 
+    def reset_device_map(self):
+        r"""
+        Resets the device maps (if any) to None.
+        """
+        if self.hf_device_map is None:
+            return
+        else:
+            self.remove_all_hooks()
+            for name, component in self.components.items():
+                if isinstance(component, torch.nn.Module):
+                    component.to("cpu")
+
     @classmethod
     @validate_hf_hub_args
     def download(cls, pretrained_model_name, **kwargs) -> Union[str, os.PathLike]:
