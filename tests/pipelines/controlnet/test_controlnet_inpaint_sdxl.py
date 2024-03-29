@@ -298,6 +298,7 @@ class ControlNetPipelineSDXLFastTests(
 
         output = sd_pipe(**inputs)
         image_slice = output.images[0, -3:, -3:, -1]
+        print(", ".join([str(round(x, 4)) for x in image_slice.flatten().tolist()]))
         expected_slice = np.array(
             [0.5381963, 0.4836803, 0.45821992, 0.5577731, 0.51210403, 0.4794795, 0.59282357, 0.5647199, 0.43100584]
         )
