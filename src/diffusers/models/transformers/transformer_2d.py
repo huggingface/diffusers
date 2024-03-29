@@ -334,49 +334,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value
 
-    def _get_transformer_blocks(
-        self,
-        inner_dim,
-        num_attention_heads,
-        attention_head_dim,
-        dropout,
-        cross_attention_dim,
-        activation_fn,
-        num_embeds_ada_norm,
-        attention_bias,
-        only_cross_attention,
-        double_self_attention,
-        upcast_attention,
-        norm_type,
-        norm_elementwise_affine,
-        norm_eps,
-        attention_type,
-        num_layers,
-    ):
-        transformer_blocks = nn.ModuleList(
-            [
-                BasicTransformerBlock(
-                    inner_dim,
-                    num_attention_heads,
-                    attention_head_dim,
-                    dropout=dropout,
-                    cross_attention_dim=cross_attention_dim,
-                    activation_fn=activation_fn,
-                    num_embeds_ada_norm=num_embeds_ada_norm,
-                    attention_bias=attention_bias,
-                    only_cross_attention=only_cross_attention,
-                    double_self_attention=double_self_attention,
-                    upcast_attention=upcast_attention,
-                    norm_type=norm_type,
-                    norm_elementwise_affine=norm_elementwise_affine,
-                    norm_eps=norm_eps,
-                    attention_type=attention_type,
-                )
-                for d in range(num_layers)
-            ]
-        )
-        return transformer_blocks
-
     def forward(
         self,
         hidden_states: torch.Tensor,
