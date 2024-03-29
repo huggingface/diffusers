@@ -860,7 +860,6 @@ class PipelineTesterMixin:
         generator_device = "cpu"
         if expected_slice is None:
             output = pipe(**self.get_dummy_inputs(generator_device))[0]
-            print(output[0, -3:, -3:, -1, -1].flatten())
         else:
             output = expected_slice
 
@@ -873,8 +872,7 @@ class PipelineTesterMixin:
                 max_diff = np.abs(to_np(output) - to_np(output_tuple)[0, -3:, -3:, -1].flatten()).max()
             else:
                 max_diff = np.abs(to_np(output) - to_np(output_tuple)[0, -3:, -3:, -1, -1].flatten()).max()
-        
-        assert output is None
+
         self.assertLess(max_diff, expected_max_difference)
 
     def test_components_function(self):
