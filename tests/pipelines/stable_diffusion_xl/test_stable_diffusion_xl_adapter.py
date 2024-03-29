@@ -668,6 +668,11 @@ class StableDiffusionXLMultiAdapterPipelineFastTests(
 @slow
 @require_torch_gpu
 class AdapterSDXLPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
