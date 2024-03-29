@@ -516,6 +516,12 @@ class StableVideoDiffusionPipelineFastTests(PipelineTesterMixin, unittest.TestCa
 @slow
 @require_torch_gpu
 class StableVideoDiffusionPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
