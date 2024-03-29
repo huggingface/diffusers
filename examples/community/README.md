@@ -1,10 +1,12 @@
-# Community Examples
+# Community Pipeline Examples
 
 > **For more information about community pipelines, please have a look at [this issue](https://github.com/huggingface/diffusers/issues/841).**
 
-**Community** examples consist of both inference and training examples that have been added by the community.
-Please have a look at the following table to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
-If a community doesn't work as expected, please open an issue and ping the author on it.
+**Community pipeline** examples consist pipelines that have been added by the community.
+Please have a look at the following tables to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
+If a community pipeline doesn't work as expected, please open an issue and ping the author on it.
+
+Please also check out our [Community Scripts](https://github.com/huggingface/diffusers/blob/main/examples/community/README_community_scripts.md) examples for tips and tricks that you can use with diffusers without having to run a community pipeline.
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
@@ -105,7 +107,7 @@ pipeline_output = pipe(
     # processing_res=768,     # (optional) Maximum resolution of processing. If set to 0: will not resize at all. Defaults to 768.
     # match_input_res=True,   # (optional) Resize depth prediction to match input resolution.
     # batch_size=0,           # (optional) Inference batch size, no bigger than `num_ensemble`. If set to 0, the script will automatically decide the proper batch size. Defaults to 0.
-    # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral".
+    # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral". Set to `None` to skip colormap generation.
     # show_progress_bar=True, # (optional) If true, will show progress bars of the inference progress.
 )
 
@@ -750,7 +752,7 @@ This example produces the following images:
 ![image](https://user-images.githubusercontent.com/4313860/198328706-295824a4-9856-4ce5-8e66-278ceb42fd29.png)
 
 ### GlueGen Stable Diffusion Pipeline
-GlueGen is a minimal adapter that allow alignment between any encoder (Text Encoder of different language, Multilingual Roberta, AudioClip) and CLIP text encoder used in standard Stable Diffusion model. This method allows easy language adaptation to available english Stable Diffusion checkpoints without the need of an image captioning dataset as well as long training hours. 
+GlueGen is a minimal adapter that allow alignment between any encoder (Text Encoder of different language, Multilingual Roberta, AudioClip) and CLIP text encoder used in standard Stable Diffusion model. This method allows easy language adaptation to available english Stable Diffusion checkpoints without the need of an image captioning dataset as well as long training hours.
 
 Make sure you downloaded `gluenet_French_clip_overnorm_over3_noln.ckpt` for French (there are also pre-trained weights for Chinese, Italian, Japanese, Spanish or train your own) at [GlueGen's official repo](https://github.com/salesforce/GlueGen/tree/main)
 
@@ -782,9 +784,9 @@ if __name__ == "__main__":
     ).to(device)
     pipeline.load_language_adapter("gluenet_French_clip_overnorm_over3_noln.ckpt", num_token=token_max_length, dim=1024, dim_out=768, tensor_norm=tensor_norm)
 
-    prompt = "une voiture sur la plage" 
+    prompt = "une voiture sur la plage"
 
-    generator = torch.Generator(device=device).manual_seed(42) 
+    generator = torch.Generator(device=device).manual_seed(42)
     image = pipeline(prompt, generator=generator).images[0]
     image.save("gluegen_output_fr.png")
 ```
@@ -933,7 +935,7 @@ image = pipe(prompt, generator=generator, num_inference_steps=50).images[0]
 ### Checkpoint Merger Pipeline
 Based on the AUTOMATIC1111/webui for checkpoint merging. This is a custom pipeline that merges upto 3 pretrained model checkpoints as long as they are in the HuggingFace model_index.json format.
 
-The checkpoint merging is currently memory intensive as it modifies the weights of a DiffusionPipeline object in place. Expect atleast 13GB RAM Usage on Kaggle GPU kernels and
+The checkpoint merging is currently memory intensive as it modifies the weights of a DiffusionPipeline object in place. Expect at least 13GB RAM Usage on Kaggle GPU kernels and
 on colab you might run out of the 12GB memory even while merging two checkpoints.
 
 Usage:-
@@ -1755,7 +1757,7 @@ with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
 ```
 
 The following code compares the performance of the original stable diffusion xl pipeline with the ipex-optimized pipeline.
-By using this optimized pipeline, we can get about 1.4-2 times performance boost with BFloat16 on fourth generation of Intel Xeon CPUs, 
+By using this optimized pipeline, we can get about 1.4-2 times performance boost with BFloat16 on fourth generation of Intel Xeon CPUs,
 code-named Sapphire Rapids.
 
 ```python
@@ -1826,7 +1828,7 @@ This approach is using (optional) CoCa model to avoid writing image description.
 
 This SDXL pipeline support unlimited length prompt and negative prompt, compatible with A1111 prompt weighted style.
 
-You can provide both `prompt` and `prompt_2`. If only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline. 
+You can provide both `prompt` and `prompt_2`. If only one prompt is provided, `prompt_2` will be a copy of the provided `prompt`. Here is a sample code to use this pipeline.
 
 ```python
 from diffusers import DiffusionPipeline
@@ -1887,7 +1889,7 @@ In the above code, the `prompt2` is appended to the `prompt`, which is more than
 
 For more results, checkout [PR #6114](https://github.com/huggingface/diffusers/pull/6114).
 
-## Example Images Mixing (with CoCa)
+### Example Images Mixing (with CoCa)
 ```python
 import requests
 from io import BytesIO
@@ -2934,7 +2936,7 @@ pipe(prompt =prompt, rp_args = rp_args)
 
 The Pipeline supports `compel` syntax. Input prompts using the `compel` structure will be automatically applied and processed.
 
-## Diffusion Posterior Sampling Pipeline
+### Diffusion Posterior Sampling Pipeline
 * Reference paper
     ```
     @article{chung2022diffusion,
@@ -3397,7 +3399,7 @@ invert_prompt = "A lying cat"
 input_image = "siamese.jpg"
 steps = 50
 
-# Provide prompt used for generation. Same if reconstruction 
+# Provide prompt used for generation. Same if reconstruction
 prompt = "A lying cat"
 # or different if editing.
 prompt = "A lying dog"
@@ -3414,15 +3416,13 @@ pipeline(prompt, uncond, inverted_latent, guidance_scale=7.5, num_inference_step
 
 ### Rerender A Video
 
-This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender A Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `examples/community/rerender_a_video.py`:
+This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender A Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `gmflow_dir`. After that, you can run the pipeline with:
 
 ```py
+import sys
 gmflow_dir = "/path/to/gmflow"
-```
+sys.path.insert(0, gmflow_dir)
 
-After that, you can run the pipeline with:
-
-```py
 from diffusers import ControlNetModel, AutoencoderKL, DDIMScheduler
 from diffusers.utils import export_to_video
 import numpy as np
@@ -3493,7 +3493,7 @@ output_frames = pipe(
     mask_end=0.8,
     mask_strength=0.5,
     negative_prompt='longbody, lowres, bad anatomy, bad hands, missing fingers, extra digit, fewer digits, cropped, worst quality, low quality'
-).frames
+).frames[0]
 
 export_to_video(
     output_frames, "/path/to/video.mp4", 5)
@@ -3561,14 +3561,17 @@ pipe.disable_style_aligned()
 
 This pipeline adds experimental support for the image-to-video task using AnimateDiff. Refer to [this](https://github.com/huggingface/diffusers/pull/6328) PR for more examples and results.
 
+This pipeline relies on a "hack" discovered by the community that allows the generation of videos given an input image with AnimateDiff. It works by creating a copy of the image `num_frames` times and progressively adding more noise to the image based on the strength and latent interpolation method.
+
 ```py
 import torch
 from diffusers import MotionAdapter, DiffusionPipeline, DDIMScheduler
 from diffusers.utils import export_to_gif, load_image
 
+model_id = "SG161222/Realistic_Vision_V5.1_noVAE"
 adapter = MotionAdapter.from_pretrained("guoyww/animatediff-motion-adapter-v1-5-2")
-pipe = DiffusionPipeline.from_pretrained("SG161222/Realistic_Vision_V5.1_noVAE", motion_adapter=adapter, custom_pipeline="pipeline_animatediff_img2video").to("cuda")
-pipe.scheduler = DDIMScheduler(beta_schedule="linear", steps_offset=1, clip_sample=False, timespace_spacing="linspace")
+pipe = DiffusionPipeline.from_pretrained(model_id, motion_adapter=adapter, custom_pipeline="pipeline_animatediff_img2video").to("cuda")
+pipe.scheduler = DDIMScheduler.from_pretrained(model_id, subfolder="scheduler", clip_sample=False, timestep_spacing="linspace", beta_schedule="linear", steps_offset=1)
 
 image = load_image("snail.png")
 output = pipe(
@@ -3633,8 +3636,8 @@ image = torch.from_numpy(faces[0].normed_embedding).unsqueeze(0)
 images = pipeline(
     prompt="A photo of a girl wearing a black dress, holding red roses in hand, upper body, behind is the Eiffel Tower",
     image_embeds=image,
-    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality", 
-    num_inference_steps=20, num_images_per_prompt=num_images, width=512, height=704, 
+    negative_prompt="monochrome, lowres, bad anatomy, worst quality, low quality",
+    num_inference_steps=20, num_images_per_prompt=num_images, width=512, height=704,
     generator=generator
 ).images
 

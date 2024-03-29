@@ -60,7 +60,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ def log_validation(pipeline, pipeline_params, controlnet_params, tokenizer, args
 
         wandb.log({"validation": formatted_images})
     else:
-        logger.warn(f"image logging not implemented for {args.report_to}")
+        logger.warning(f"image logging not implemented for {args.report_to}")
 
     return image_logs
 
@@ -169,6 +169,7 @@ These are controlnet weights trained on {base_model} with new type of conditioni
         "diffusers",
         "controlnet",
         "jax-diffusers-event",
+        "diffusers-training",
     ]
     model_card = populate_model_card(model_card, tags=tags)
 

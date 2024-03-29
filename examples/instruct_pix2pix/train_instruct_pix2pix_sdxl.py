@@ -59,7 +59,7 @@ if is_wandb_available():
     import wandb
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -71,12 +71,7 @@ TORCH_DTYPE_MAPPING = {"fp32": torch.float32, "fp16": torch.float16, "bf16": tor
 
 
 def log_validation(
-    pipeline,
-    args,
-    accelerator,
-    generator,
-    global_step,
-    is_final_validation=False,
+    pipeline, args, accelerator, generator, global_step, is_final_validation=False, enable_autocast=True
 ):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -96,7 +91,7 @@ def log_validation(
         else Image.open(image_url_or_path).convert("RGB")
     )(args.val_image_url_or_path)
 
-    with torch.autocast(str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"):
+    with torch.autocast(accelerator.device.type, enabled=enable_autocast):
         edited_images = []
         # Run inference
         for val_img_idx in range(args.num_validation_images):
@@ -497,6 +492,13 @@ def main():
             ),
         )
     logging_dir = os.path.join(args.output_dir, args.logging_dir)
+
+    if torch.backends.mps.is_available() and args.mixed_precision == "bf16":
+        # due to pytorch#99272, MPS does not yet support bfloat16.
+        raise ValueError(
+            "Mixed precision training with bfloat16 is not supported on MPS. Please use fp16 (recommended) or fp32 instead."
+        )
+
     accelerator_project_config = ProjectConfiguration(project_dir=args.output_dir, logging_dir=logging_dir)
     accelerator = Accelerator(
         gradient_accumulation_steps=args.gradient_accumulation_steps,
@@ -580,7 +582,7 @@ def main():
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -981,6 +983,13 @@ def main():
     if accelerator.is_main_process:
         accelerator.init_trackers("instruct-pix2pix-xl", config=vars(args))
 
+    # Some configurations require autocast to be disabled.
+    enable_autocast = True
+    if torch.backends.mps.is_available() or (
+        accelerator.mixed_precision == "fp16" or accelerator.mixed_precision == "bf16"
+    ):
+        enable_autocast = False
+
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1193,6 +1202,7 @@ def main():
                         generator,
                         global_step,
                         is_final_validation=False,
+                        enable_autocast=enable_autocast,
                     )
 
                     if args.use_ema:
@@ -1242,6 +1252,7 @@ def main():
                 generator,
                 global_step,
                 is_final_validation=True,
+                enable_autocast=enable_autocast,
             )
 
     accelerator.end_training()

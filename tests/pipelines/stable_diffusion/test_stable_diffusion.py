@@ -370,6 +370,12 @@ class StableDiffusionPipelineFastTests(
 
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_stable_diffusion_ddim_factor_8(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -775,7 +781,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -950,7 +956,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=2,
-            output_type="numpy",
+            output_type="np",
         )
         image_chunked = output_chunked.images
 
@@ -966,7 +972,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=2,
-            output_type="numpy",
+            output_type="np",
         )
         image = output.images
 
@@ -1238,6 +1244,11 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class StableDiffusionPipelineCkptTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -1295,10 +1306,48 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
 
         assert max_diff < 1e-3
 
+    def test_single_file_component_configs(self):
+        pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+
+        ckpt_path = "https://huggingface.co/runwayml/stable-diffusion-v1-5/blob/main/v1-5-pruned-emaonly.ckpt"
+        single_file_pipe = StableDiffusionPipeline.from_single_file(ckpt_path, load_safety_checker=True)
+
+        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
+            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
+                continue
+            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        for param_name, param_value in single_file_pipe.unet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.unet.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.vae.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.vae.config[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.safety_checker.config.to_dict().items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.safety_checker.config.to_dict()[param_name] == param_value
+            ), f"{param_name} differs between single file loading and pretrained loading"
+
 
 @nightly
 @require_torch_gpu
 class StableDiffusionPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

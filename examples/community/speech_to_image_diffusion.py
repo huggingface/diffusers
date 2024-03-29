@@ -18,6 +18,7 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
+from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import StableDiffusionPipelineOutput
 from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.utils import logging
@@ -26,7 +27,7 @@ from diffusers.utils import logging
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
 
 
-class SpeechToImagePipeline(DiffusionPipeline):
+class SpeechToImagePipeline(DiffusionPipeline, StableDiffusionMixin):
     def __init__(
         self,
         speech_model: WhisperForConditionalGeneration,
@@ -61,14 +62,6 @@ class SpeechToImagePipeline(DiffusionPipeline):
             scheduler=scheduler,
             feature_extractor=feature_extractor,
         )
-
-    def enable_attention_slicing(self, slice_size: Optional[Union[str, int]] = "auto"):
-        if slice_size == "auto":
-            slice_size = self.unet.config.attention_head_dim // 2
-        self.unet.set_attention_slice(slice_size)
-
-    def disable_attention_slicing(self):
-        self.enable_attention_slicing(None)
 
     @torch.no_grad()
     def __call__(

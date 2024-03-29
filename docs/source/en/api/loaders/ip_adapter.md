@@ -23,3 +23,7 @@ Learn how to load an IP-Adapter checkpoint and image in the IP-Adapter [loading]
 ## IPAdapterMixin
 
 [[autodoc]] loaders.ip_adapter.IPAdapterMixin
+
+## IPAdapterMaskProcessor
+
+[[autodoc]] image_processor.IPAdapterMaskProcessor

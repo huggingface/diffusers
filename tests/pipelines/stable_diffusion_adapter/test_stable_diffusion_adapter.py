@@ -246,7 +246,7 @@ class AdapterTests:
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -593,6 +593,11 @@ class StableDiffusionMultiAdapterPipelineFastTests(AdapterTests, PipelineTesterM
 @slow
 @require_torch_gpu
 class StableDiffusionAdapterPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

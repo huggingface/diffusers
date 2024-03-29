@@ -23,8 +23,8 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    python3 -m pip install --no-cache-dir \
+RUN python3 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
+    python3 -m uv pip install --no-cache-dir \
     torch \
     torchvision \
     torchaudio \
