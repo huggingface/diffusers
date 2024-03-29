@@ -860,6 +860,7 @@ class PipelineTesterMixin:
         generator_device = "cpu"
         if expected_slice is None:
             output = pipe(**self.get_dummy_inputs(generator_device))[0]
+            print_tensor_test(output, limit_to_slices=True, max_torch_print=True)
         else:
             output = expected_slice
 

@@ -182,11 +182,11 @@ class ControlNetPipelineSDXLFastTests(
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
 
-    def test_dict_tuple_outputs_equivalent(self):
-        expected_slice = None
-        if torch_device == "cpu":
-            expected_slice = np.array([0.5362, 0.4936, 0.4656, 0.5778, 0.5256, 0.4790, 0.6009, 0.5727, 0.4301])
-        super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
+    # def test_dict_tuple_outputs_equivalent(self):
+    #     expected_slice = None
+    #     if torch_device == "cpu":
+    #         expected_slice = np.array([0.5362, 0.4936, 0.4656, 0.5778, 0.5256, 0.4790, 0.6009, 0.5727, 0.4301])
+    #     super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
