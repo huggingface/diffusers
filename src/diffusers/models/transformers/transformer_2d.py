@@ -116,8 +116,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # Set some common variables used across the board.
         self.use_linear_projection = use_linear_projection
+        self.interpolation_scale = interpolation_scale
+        self.caption_channels = caption_channels
         self.num_attention_heads = num_attention_heads
         self.attention_head_dim = attention_head_dim
+        self.inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
         self.in_channels = in_channels
         self.out_channels = in_channels if out_channels is None else out_channels
         self.gradient_checkpointing = False
@@ -157,37 +160,25 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         # 2. Initialize the right blocks.
         if self.is_input_continuous:
-            self._init_continuous_input(
-                in_channels=in_channels, use_linear_projection=use_linear_projection, norm_type=norm_type
-            )
+            self._init_continuous_input(norm_type=norm_type)
         elif self.is_input_vectorized:
-            self._init_vectorized_inputs(sample_size=sample_size, norm_type=norm_type)
+            self._init_vectorized_inputs(norm_type=norm_type)
         elif self.is_input_patches:
-            self._init_patched_inputs(
-                in_channels=in_channels,
-                sample_size=sample_size,
-                norm_type=norm_type,
-                patch_size=patch_size,
-                interpolation_scale=interpolation_scale,
-                caption_channels=caption_channels,
-            )
+            self._init_patched_inputs(norm_type=norm_type)
 
-    def _init_continuous_input(self, in_channels, use_linear_projection, norm_type):
-        self.use_linear_projection = use_linear_projection
-        inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
-
+    def _init_continuous_input(self, norm_type):
         self.norm = torch.nn.GroupNorm(
-            num_groups=self.config.norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True
+            num_groups=self.config.norm_num_groups, num_channels=self.in_channels, eps=1e-6, affine=True
         )
-        if use_linear_projection:
-            self.proj_in = torch.nn.Linear(in_channels, inner_dim)
+        if self.use_linear_projection:
+            self.proj_in = torch.nn.Linear(self.in_channels, self.inner_dim)
         else:
-            self.proj_in = torch.nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
+            self.proj_in = torch.nn.Conv2d(self.in_channels, self.inner_dim, kernel_size=1, stride=1, padding=0)
 
         self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
-                    inner_dim,
+                    self.inner_dim,
                     self.config.num_attention_heads,
                     self.config.attention_head_dim,
                     dropout=self.config.dropout,
@@ -208,33 +199,29 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         )
 
         # Use out_channels or default to in_channels
-        out_channels = self.out_channels if self.out_channels is not None else in_channels
-
-        if use_linear_projection:
-            self.proj_out = torch.nn.Linear(inner_dim, out_channels)
+        if self.use_linear_projection:
+            self.proj_out = torch.nn.Linear(self.inner_dim, self.out_channels)
         else:
-            self.proj_out = torch.nn.Conv2d(inner_dim, out_channels, kernel_size=1, stride=1, padding=0)
+            self.proj_out = torch.nn.Conv2d(self.inner_dim, self.out_channels, kernel_size=1, stride=1, padding=0)
 
-    def _init_vectorized_inputs(self, sample_size, norm_type):
-        assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
+    def _init_vectorized_inputs(self, norm_type):
+        assert self.config.sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
         assert (
             self.config.num_vector_embeds is not None
         ), "Transformer2DModel over discrete input must provide num_embed"
 
-        self.height = sample_size
-        self.width = sample_size
+        self.height = self.config.sample_size
+        self.width = self.config.sample_size
         self.num_latent_pixels = self.height * self.width
 
-        inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
-
         self.latent_image_embedding = ImagePositionalEmbeddings(
-            num_embed=self.config.num_vector_embeds, embed_dim=inner_dim, height=self.height, width=self.width
+            num_embed=self.config.num_vector_embeds, embed_dim=self.inner_dim, height=self.height, width=self.width
         )
 
         self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
-                    inner_dim,
+                    self.inner_dim,
                     self.config.num_attention_heads,
                     self.config.attention_head_dim,
                     dropout=self.config.dropout,
@@ -254,41 +241,34 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             ]
         )
 
-        self.norm_out = nn.LayerNorm(inner_dim)
-        self.out = nn.Linear(inner_dim, self.config.num_vector_embeds - 1)
+        self.norm_out = nn.LayerNorm(self.inner_dim)
+        self.out = nn.Linear(self.inner_dim, self.config.num_vector_embeds - 1)
 
-    def _init_patched_inputs(
-        self,
-        in_channels,
-        sample_size,
-        norm_type,
-        patch_size,
-        interpolation_scale,
-        caption_channels,
-    ):
-        assert sample_size is not None, "Transformer2DModel over patched input must provide sample_size"
+    def _init_patched_inputs(self, norm_type):
+        assert self.config.sample_size is not None, "Transformer2DModel over patched input must provide sample_size"
 
-        self.height = sample_size
-        self.width = sample_size
-        inner_dim = self.config.num_attention_heads * self.config.attention_head_dim
+        self.height = self.config.sample_size
+        self.width = self.config.sample_size
 
-        self.patch_size = patch_size
+        self.patch_size = self.config.patch_size
         interpolation_scale = (
-            interpolation_scale if interpolation_scale is not None else max(self.config.sample_size // 64, 1)
+            self.config.interpolation_scale
+            if self.config.interpolation_scale is not None
+            else max(self.config.sample_size // 64, 1)
         )
         self.pos_embed = PatchEmbed(
-            height=sample_size,
-            width=sample_size,
-            patch_size=patch_size,
-            in_channels=in_channels,
-            embed_dim=inner_dim,
+            height=self.config.sample_size,
+            width=self.config.sample_size,
+            patch_size=self.config.patch_size,
+            in_channels=self.in_channels,
+            embed_dim=self.inner_dim,
             interpolation_scale=interpolation_scale,
         )
 
         self.transformer_blocks = nn.ModuleList(
             [
                 BasicTransformerBlock(
-                    inner_dim,
+                    self.inner_dim,
                     self.config.num_attention_heads,
                     self.config.attention_head_dim,
                     dropout=self.config.dropout,
@@ -309,13 +289,17 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         )
 
         if self.config.norm_type != "ada_norm_single":
-            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.proj_out_1 = nn.Linear(inner_dim, 2 * inner_dim)
-            self.proj_out_2 = nn.Linear(inner_dim, patch_size * patch_size * self.config.out_channels)
+            self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
+            self.proj_out_1 = nn.Linear(self.inner_dim, 2 * self.inner_dim)
+            self.proj_out_2 = nn.Linear(
+                self.inner_dim, self.config.patch_size * self.config.patch_size * self.out_channels
+            )
         elif self.config.norm_type == "ada_norm_single":
-            self.norm_out = nn.LayerNorm(inner_dim, elementwise_affine=False, eps=1e-6)
-            self.scale_shift_table = nn.Parameter(torch.randn(2, inner_dim) / inner_dim**0.5)
-            self.proj_out = nn.Linear(inner_dim, patch_size * patch_size * self.config.out_channels)
+            self.norm_out = nn.LayerNorm(self.inner_dim, elementwise_affine=False, eps=1e-6)
+            self.scale_shift_table = nn.Parameter(torch.randn(2, self.inner_dim) / self.inner_dim**0.5)
+            self.proj_out = nn.Linear(
+                self.inner_dim, self.config.patch_size * self.config.patch_size * self.out_channels
+            )
 
         # PixArt-Alpha blocks.
         self.adaln_single = None
@@ -324,11 +308,15 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             self.use_additional_conditions = self.config.sample_size == 128
             # TODO(Sayak, PVP) clean this, for now we use sample size to determine whether to use
             # additional conditions until we find better name
-            self.adaln_single = AdaLayerNormSingle(inner_dim, use_additional_conditions=self.use_additional_conditions)
+            self.adaln_single = AdaLayerNormSingle(
+                self.inner_dim, use_additional_conditions=self.use_additional_conditions
+            )
 
         self.caption_projection = None
-        if caption_channels is not None:
-            self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
+        if self.caption_channels is not None:
+            self.caption_projection = PixArtAlphaTextProjection(
+                in_features=self.caption_channels, hidden_size=self.inner_dim
+            )
 
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
