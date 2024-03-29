@@ -127,11 +127,11 @@ tags:
 """
     if edm_training:
         tags_str += f"""
-            - edm-training
-            inference:
-                parameters:
-                    scheduler: {scheduler_type}
-            """
+- edm-training
+inference:
+    parameters:
+        scheduler: {scheduler_type}
+"""
     # images
     img_str = "widget:\n"
     for i, image in enumerate(images):
