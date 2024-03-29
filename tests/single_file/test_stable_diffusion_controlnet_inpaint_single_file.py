@@ -81,7 +81,6 @@ class StableDiffusionControlNetInpaintPipelineSingleFileSlowTests(unittest.TestC
         max_diff = numpy_cosine_similarity_distance(images[0].flatten(), images[1].flatten())
         assert max_diff < 1e-3
 
-
     def test_single_file_component_configs(self):
         controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11p_sd15_canny", variant="fp16")
         pipe = StableDiffusionControlNetInpaintPipeline.from_pretrained(

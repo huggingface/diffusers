@@ -39,7 +39,6 @@ from diffusers.utils.testing_utils import (
     enable_full_determinism,
     floats_tensor,
     load_numpy,
-    numpy_cosine_similarity_distance,
     require_torch_gpu,
     slow,
     torch_device,
