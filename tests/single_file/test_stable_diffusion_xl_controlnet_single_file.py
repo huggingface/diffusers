@@ -112,4 +112,3 @@ class StableDiffusionXLControlNetPipelineSingleFileSlowTests(unittest.TestCase):
             assert (
                 pipe.vae.config[param_name] == param_value
             ), f"{param_name} differs between single file loading and pretrained loading"
-
