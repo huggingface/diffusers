@@ -461,7 +461,6 @@ def _assign_components_to_devices(
     current_device_index = 0
     for component in module_sizes:
         device_id = device_cycle[current_device_index % len(device_cycle)]
-
         component_memory = module_sizes[component]
         curr_device_memory = device_memory[device_id]
 
@@ -476,7 +475,8 @@ def _assign_components_to_devices(
         current_device_index += 1
 
         # Update the device memory.
-        device_memory[device_id] -= component_memory
+        if "cpu" not in deivce_id_component_mapping:
+            device_memory[device_id] -= component_memory
 
     return deivce_id_component_mapping
 

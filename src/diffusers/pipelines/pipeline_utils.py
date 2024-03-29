@@ -1233,6 +1233,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             for name, component in self.components.items():
                 if isinstance(component, torch.nn.Module):
                     component.to("cpu")
+            self.hf_device_map = None
 
     @classmethod
     @validate_hf_hub_args
