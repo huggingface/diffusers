@@ -862,7 +862,7 @@ class PipelineTesterMixin:
             output = pipe(**self.get_dummy_inputs(generator_device))[0]
         else:
             output = expected_slice
-        print_tensor_test(output, limit_to_slices=True, max_torch_print=True)
+            
         output_tuple = pipe(**self.get_dummy_inputs(generator_device), return_dict=False)[0]
 
         if expected_slice is None:
