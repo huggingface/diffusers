@@ -408,43 +408,42 @@ def _load_empty_model(
         "framework": "pytorch",
     }
 
-    if is_diffusers_model or is_transformers_model:
-        if hasattr(class_obj, "load_config"):
-            # Load config and then the model on meta.
-            config, unused_kwargs, commit_hash = class_obj.load_config(
-                os.path.join(config_path, name),
-                cache_dir=cached_folder,
-                return_unused_kwargs=True,
-                return_commit_hash=True,
-                force_download=kwargs.pop("force_download", False),
-                resume_download=kwargs.pop("resume_download", False),
-                proxies=kwargs.pop("proxies", None),
-                local_files_only=kwargs.pop("local_files_only", False),
-                token=kwargs.pop("token", None),
-                revision=kwargs.pop("revision", None),
-                subfolder=kwargs.pop("subfolder", None),
-                user_agent=user_agent,
-            )
-            with accelerate.init_empty_weights():
-                model = class_obj.from_config(config, **unused_kwargs)
-        else:
-            config_class = getattr(class_obj, "config_class", None)
-            if config_class is None:
-                raise ValueError("`config_class` cannot be None. Please double-check the model.")
+    if is_diffusers_model:
+        # Load config and then the model on meta.
+        config, unused_kwargs, commit_hash = class_obj.load_config(
+            os.path.join(config_path, name),
+            cache_dir=cached_folder,
+            return_unused_kwargs=True,
+            return_commit_hash=True,
+            force_download=kwargs.pop("force_download", False),
+            resume_download=kwargs.pop("resume_download", False),
+            proxies=kwargs.pop("proxies", None),
+            local_files_only=kwargs.pop("local_files_only", False),
+            token=kwargs.pop("token", None),
+            revision=kwargs.pop("revision", None),
+            subfolder=kwargs.pop("subfolder", None),
+            user_agent=user_agent,
+        )
+        with accelerate.init_empty_weights():
+            model = class_obj.from_config(config, **unused_kwargs)
+    elif is_transformers_model:
+        config_class = getattr(class_obj, "config_class", None)
+        if config_class is None:
+            raise ValueError("`config_class` cannot be None. Please double-check the model.")
 
-            config = config_class.from_pretrained(
-                cached_folder,
-                subfolder=name,
-                force_download=kwargs.pop("force_download", False),
-                resume_download=kwargs.pop("resume_download", False),
-                proxies=kwargs.pop("proxies", None),
-                local_files_only=kwargs.pop("local_files_only", False),
-                token=kwargs.pop("token", None),
-                revision=kwargs.pop("revision", None),
-                user_agent=user_agent,
-            )
-            with accelerate.init_empty_weights():
-                model = class_obj(config)
+        config = config_class.from_pretrained(
+            cached_folder,
+            subfolder=name,
+            force_download=kwargs.pop("force_download", False),
+            resume_download=kwargs.pop("resume_download", False),
+            proxies=kwargs.pop("proxies", None),
+            local_files_only=kwargs.pop("local_files_only", False),
+            token=kwargs.pop("token", None),
+            revision=kwargs.pop("revision", None),
+            user_agent=user_agent,
+        )
+        with accelerate.init_empty_weights():
+            model = class_obj(config)
 
     if model is not None:
         model = model.to(dtype=torch_dtype)
@@ -456,6 +455,7 @@ def _assign_components_to_devices(
 ):
     device_ids = list(device_memory.keys())
     device_cycle = device_ids + device_ids[::-1]
+    device_memory = device_memory.copy()
 
     deivce_id_component_mapping = {}
     current_device_index = 0
@@ -474,6 +474,9 @@ def _assign_components_to_devices(
             else:
                 deivce_id_component_mapping[device_id].append(component)
         current_device_index += 1
+
+        # Update the device memory.
+        device_memory[device_id] -= component_memory
 
     return deivce_id_component_mapping
 

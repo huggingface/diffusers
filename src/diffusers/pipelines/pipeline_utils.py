@@ -1032,7 +1032,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         # 11. Save where the model was instantiated from
         model.register_to_config(_name_or_path=pretrained_model_name_or_path)
-        if device_map is not None and isinstance(device_map, str) and device_map in ["balanced"]:
+        if device_map is not None:
             setattr(model, "hf_device_map", final_device_map)
         return model
 
