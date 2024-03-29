@@ -53,7 +53,7 @@ CHECKPOINT_KEY_NAMES = {
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
 }
 
-DIFFUSERS_DEFAULT_CONFIGS = {
+DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
     "xl_base": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-base-1.0"},
     "xl_refiner": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-refiner-1.0"},
     "xl_inpaint": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"},
@@ -369,30 +369,30 @@ def fetch_diffusers_config(checkpoint, subfolder=None):
         and checkpoint[CHECKPOINT_KEY_NAMES["inpainting"]].shape[1] == 9
     ):
         if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
-            model_config = DIFFUSERS_DEFAULT_CONFIGS["inpainting_v2"]
+            model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["inpainting_v2"]
         else:
-            model_config = DIFFUSERS_DEFAULT_CONFIGS["inpainting"]
+            model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["inpainting"]
 
     elif CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["v2"]
+        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["v2"]
 
     elif CHECKPOINT_KEY_NAMES["playground-v2-5"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["playground-v2-5"]
+        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["playground-v2-5"]
 
     elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["xl_base"]
+        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["xl_base"]
 
     elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["xl_refiner"]
+        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["xl_refiner"]
 
     elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["upscale"]
+        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["upscale"]
 
     elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["controlnet"]
+        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["controlnet"]
 
     else:
-        model_config = DIFFUSERS_DEFAULT_CONFIGS["v1"]
+        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["v1"]
 
     if subfolder:
         model_config["subfolder"] = subfolder
