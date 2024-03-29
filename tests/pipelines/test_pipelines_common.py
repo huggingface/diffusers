@@ -860,6 +860,7 @@ class PipelineTesterMixin:
         generator_device = "cpu"
         if expected_slice is None:
             output = pipe(**self.get_dummy_inputs(generator_device))[0]
+            print(output[0, -3:, -3:, -1, -1].flatten())
             print(output.shape)
         else:
             output = expected_slice
