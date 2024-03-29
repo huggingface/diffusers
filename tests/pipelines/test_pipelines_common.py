@@ -874,6 +874,7 @@ class PipelineTesterMixin:
             else:
                 max_diff = np.abs(to_np(output) - to_np(output_tuple)[0, -3:, -3:, -1, -1].flatten()).max()
         
+        assert output is None
         self.assertLess(max_diff, expected_max_difference)
 
     def test_components_function(self):
