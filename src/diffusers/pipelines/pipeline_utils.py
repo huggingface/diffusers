@@ -371,9 +371,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                 return False
 
-            return hasattr(module, "_hf_hook") and not isinstance(
-                module._hf_hook, (accelerate.hooks.CpuOffload, accelerate.hooks.AlignDevicesHook)
-            )
+            return hasattr(module, "_hf_hook") and isinstance(module._hf_hook, accelerate.hooks.AlignDevicesHook)
 
         def module_is_offloaded(module):
             if not is_accelerate_available() or is_accelerate_version("<", "0.17.0.dev0"):
@@ -939,6 +937,16 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                     return torch.device(module._hf_hook.execution_device)
         return self.device
 
+    def remove_all_hooks(self):
+        r"""
+        Removes all hooks that were added when using `enable_sequential_cpu_offload` or `enable_model_cpu_offload`.
+        """
+        for _, model in self.components.items():
+            if isinstance(model, torch.nn.Module) and hasattr(model, "_hf_hook"):
+                is_sequential_cpu_offload = isinstance(getattr(model, "_hf_hook"), accelerate.hooks.AlignDevicesHook)
+                accelerate.hooks.remove_hook_from_module(model, recurse=is_sequential_cpu_offload)
+        self._all_hooks = []
+
     def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
@@ -963,6 +971,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         else:
             raise ImportError("`enable_model_cpu_offload` requires `accelerate v0.17.0` or higher.")
 
+        self.remove_all_hooks()
+
         torch_device = torch.device(device)
         device_index = torch_device.index
 
@@ -979,15 +989,13 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         device = torch.device(f"{device_type}:{self._offload_gpu_id}")
         self._offload_device = device
 
-        if self.device.type != "cpu":
-            self.to("cpu", silence_dtype_warnings=True)
-            device_mod = getattr(torch, self.device.type, None)
-            if hasattr(device_mod, "empty_cache") and device_mod.is_available():
-                device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
+        self.to("cpu", silence_dtype_warnings=True)
+        device_mod = getattr(torch, device.type, None)
+        if hasattr(device_mod, "empty_cache") and device_mod.is_available():
+            device_mod.empty_cache()  # otherwise we don't see the memory savings (but they probably exist)
 
         all_model_components = {k: v for k, v in self.components.items() if isinstance(v, torch.nn.Module)}
 
-        self._all_hooks = []
         hook = None
         for model_str in self.model_cpu_offload_seq.split("->"):
             model = all_model_components.pop(model_str, None)
@@ -1021,11 +1029,6 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             # `enable_model_cpu_offload` has not be called, so silently do nothing
             return
 
-        for hook in self._all_hooks:
-            # offload model and remove hook from model
-            hook.offload()
-            hook.remove()
-
         # make sure the model is in the same state as before calling it
         self.enable_model_cpu_offload(device=getattr(self, "_offload_device", "cuda"))
 
@@ -1048,6 +1051,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             from accelerate import cpu_offload
         else:
             raise ImportError("`enable_sequential_cpu_offload` requires `accelerate v0.14.0` or higher")
+        self.remove_all_hooks()
 
         torch_device = torch.device(device)
         device_index = torch_device.index
