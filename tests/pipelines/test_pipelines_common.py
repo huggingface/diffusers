@@ -859,7 +859,7 @@ class PipelineTesterMixin:
 
         generator_device = "cpu"
         output = pipe(**self.get_dummy_inputs(generator_device))[0]
-        print_tensor_test(output)
+        print_tensor_test(output, limit_to_slices=True, max_torch_print=True)
         output_tuple = pipe(**self.get_dummy_inputs(generator_device), return_dict=False)[0]
 
         max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
