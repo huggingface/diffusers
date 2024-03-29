@@ -574,6 +574,11 @@ class UniDiffuserPipelineFastTests(
 @nightly
 @require_torch_gpu
 class UniDiffuserPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -690,6 +695,11 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class UniDiffuserPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
