@@ -24,6 +24,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
             "beta_schedule": "linear",
             "solver_order": 2,
             "solver_type": "bh2",
+            "final_sigmas_type": "sigma_min",
         }
 
         config.update(**kwargs)
