@@ -208,11 +208,7 @@ def log_validation(
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
     enable_autocast = True
-    if torch.backends.mps.is_available() or (
-        accelerator.mixed_precision == "fp16" or accelerator.mixed_precision == "bf16"
-    ):
-        enable_autocast = False
-    if "playground" in args.pretrained_model_name_or_path:
+    if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
         enable_autocast = False
 
     with torch.autocast(

@@ -988,9 +988,7 @@ def main(args):
 
     # Some configurations require autocast to be disabled.
     enable_autocast = True
-    if torch.backends.mps.is_available() or (
-        accelerator.mixed_precision == "fp16" or accelerator.mixed_precision == "bf16"
-    ):
+    if torch.backends.mps.is_available():
         enable_autocast = False
 
     # Train!
