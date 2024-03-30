@@ -291,7 +291,7 @@ class MarigoldPipeline(DiffusionPipeline):
         if isinstance(self.scheduler, DDIMScheduler):
             if n_step < 10:
                 logging.warning(
-                    f"Too few denoising step: {n_step}. Recommended to use the LCM checkpoint for few-step inference."
+                    f"Too few denoising steps: {n_step}. Recommended to use the LCM checkpoint for few-step inference."
                 )
         elif isinstance(self.scheduler, LCMScheduler):
             if not 1 <= n_step <= 4:
