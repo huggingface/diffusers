@@ -1,10 +1,12 @@
-# Community Examples
+# Community Pipeline Examples
 
 > **For more information about community pipelines, please have a look at [this issue](https://github.com/huggingface/diffusers/issues/841).**
 
-**Community** examples consist of both inference and training examples that have been added by the community.
-Please have a look at the following table to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
-If a community doesn't work as expected, please open an issue and ping the author on it.
+**Community pipeline** examples consist pipelines that have been added by the community.
+Please have a look at the following tables to get an overview of all community examples. Click on the **Code Example** to get a copy-and-paste ready code example that you can try out.
+If a community pipeline doesn't work as expected, please open an issue and ping the author on it.
+
+Please also check out our [Community Scripts](https://github.com/huggingface/diffusers/blob/main/examples/community/README_community_scripts.md) examples for tips and tricks that you can use with diffusers without having to run a community pipeline.
 
 | Example                                                                                                                               | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Code Example                                                                              | Colab                                                                                                                                                                                                              |                                                        Author |
 |:--------------------------------------------------------------------------------------------------------------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|:------------------------------------------------------------------------------------------|:-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------:|
@@ -105,7 +107,7 @@ pipeline_output = pipe(
     # processing_res=768,     # (optional) Maximum resolution of processing. If set to 0: will not resize at all. Defaults to 768.
     # match_input_res=True,   # (optional) Resize depth prediction to match input resolution.
     # batch_size=0,           # (optional) Inference batch size, no bigger than `num_ensemble`. If set to 0, the script will automatically decide the proper batch size. Defaults to 0.
-    # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral".
+    # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral". Set to `None` to skip colormap generation.
     # show_progress_bar=True, # (optional) If true, will show progress bars of the inference progress.
 )
 
@@ -933,7 +935,7 @@ image = pipe(prompt, generator=generator, num_inference_steps=50).images[0]
 ### Checkpoint Merger Pipeline
 Based on the AUTOMATIC1111/webui for checkpoint merging. This is a custom pipeline that merges upto 3 pretrained model checkpoints as long as they are in the HuggingFace model_index.json format.
 
-The checkpoint merging is currently memory intensive as it modifies the weights of a DiffusionPipeline object in place. Expect atleast 13GB RAM Usage on Kaggle GPU kernels and
+The checkpoint merging is currently memory intensive as it modifies the weights of a DiffusionPipeline object in place. Expect at least 13GB RAM Usage on Kaggle GPU kernels and
 on colab you might run out of the 12GB memory even while merging two checkpoints.
 
 Usage:-
@@ -1887,7 +1889,7 @@ In the above code, the `prompt2` is appended to the `prompt`, which is more than
 
 For more results, checkout [PR #6114](https://github.com/huggingface/diffusers/pull/6114).
 
-## Example Images Mixing (with CoCa)
+### Example Images Mixing (with CoCa)
 ```python
 import requests
 from io import BytesIO
@@ -2934,7 +2936,7 @@ pipe(prompt =prompt, rp_args = rp_args)
 
 The Pipeline supports `compel` syntax. Input prompts using the `compel` structure will be automatically applied and processed.
 
-## Diffusion Posterior Sampling Pipeline
+### Diffusion Posterior Sampling Pipeline
 * Reference paper
     ```
     @article{chung2022diffusion,
@@ -3414,15 +3416,13 @@ pipeline(prompt, uncond, inverted_latent, guidance_scale=7.5, num_inference_step
 
 ### Rerender A Video
 
-This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender A Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `examples/community/rerender_a_video.py`:
+This is the Diffusers implementation of zero-shot video-to-video translation pipeline [Rerender A Video](https://github.com/williamyang1991/Rerender_A_Video) (without Ebsynth postprocessing). To run the code, please install gmflow. Then modify the path in `gmflow_dir`. After that, you can run the pipeline with:
 
 ```py
+import sys
 gmflow_dir = "/path/to/gmflow"
-```
+sys.path.insert(0, gmflow_dir)
 
-After that, you can run the pipeline with:
-
-```py
 from diffusers import ControlNetModel, AutoencoderKL, DDIMScheduler
 from diffusers.utils import export_to_video
 import numpy as np
@@ -3743,3 +3743,80 @@ onestep_image = pipe(prompt, num_inference_steps=1).images[0]
 # Multistep sampling
 multistep_image = pipe(prompt, num_inference_steps=4).images[0]
 ```
+
+# Perturbed-Attention Guidance
+
+[Project](https://ku-cvlab.github.io/Perturbed-Attention-Guidance/) / [arXiv](https://arxiv.org/abs/2403.17377) / [GitHub](https://github.com/KU-CVLAB/Perturbed-Attention-Guidance)
+
+This implementation is based on [Diffusers](https://huggingface.co/docs/diffusers/index). StableDiffusionPAGPipeline is a modification of StableDiffusionPipeline to support Perturbed-Attention Guidance (PAG).
+
+## Example Usage
+
+```
+import os
+import torch
+
+from accelerate.utils import set_seed
+
+from diffusers import StableDiffusionPipeline
+from diffusers.utils import load_image, make_image_grid
+from diffusers.utils.torch_utils import randn_tensor
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    custom_pipeline="hyoungwoncho/sd_perturbed_attention_guidance",
+    torch_dtype=torch.float16
+)
+
+device="cuda"
+pipe = pipe.to(device)
+
+pag_scale = 5.0
+pag_applied_layers_index = ['m0']
+
+batch_size = 4
+seed=10
+
+base_dir = "./results/"
+grid_dir = base_dir + "/pag" + str(pag_scale) + "/"
+
+if not os.path.exists(grid_dir):
+    os.makedirs(grid_dir)
+
+set_seed(seed)
+
+latent_input = randn_tensor(shape=(batch_size,4,64,64),generator=None, device=device, dtype=torch.float16)
+
+output_baseline = pipe(
+    "",
+    width=512,
+    height=512,
+    num_inference_steps=50,
+    guidance_scale=0.0,
+    pag_scale=0.0,
+    pag_applied_layers_index=pag_applied_layers_index,
+    num_images_per_prompt=batch_size,
+    latents=latent_input
+).images
+
+output_pag = pipe(
+    "",
+    width=512,
+    height=512,
+    num_inference_steps=50,
+    guidance_scale=0.0,
+    pag_scale=5.0,
+    pag_applied_layers_index=pag_applied_layers_index,
+    num_images_per_prompt=batch_size,
+    latents=latent_input
+).images
+
+grid_image = make_image_grid(output_baseline + output_pag, rows=2, cols=batch_size)
+grid_image.save(grid_dir + "sample.png")
+```
+
+## PAG Parameters
+
+pag_scale : gudiance scale of PAG (ex: 5.0)
+
+pag_applied_layers_index : index of the layer to apply perturbation (ex: ['m0'])

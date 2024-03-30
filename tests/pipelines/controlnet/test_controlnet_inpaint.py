@@ -155,7 +155,7 @@ class ControlNetInpaintPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
             "mask_image": mask_image,
             "control_image": control_image,
@@ -273,7 +273,7 @@ class MultiControlNetInpaintPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -375,7 +375,7 @@ class MultiControlNetInpaintPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
             "mask_image": mask_image,
             "control_image": control_image,
@@ -445,6 +445,11 @@ class MultiControlNetInpaintPipelineFastTests(
 @slow
 @require_torch_gpu
 class ControlNetInpaintPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
