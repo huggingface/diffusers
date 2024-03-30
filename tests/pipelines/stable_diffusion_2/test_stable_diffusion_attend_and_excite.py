@@ -206,6 +206,11 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
         super().tearDownClass()
         torch.use_deterministic_algorithms(True)
 
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

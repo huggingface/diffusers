@@ -702,6 +702,11 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 @slow
 @require_torch_gpu
 class ControlNetPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -1153,6 +1158,11 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

@@ -294,6 +294,11 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 @require_torch_gpu
 @nightly
 class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -366,6 +371,11 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class StableDiffusionDiffEditPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
