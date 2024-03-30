@@ -342,6 +342,12 @@ class AnimateDiffPipelineFastTests(
 @slow
 @require_torch_gpu
 class AnimateDiffPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
