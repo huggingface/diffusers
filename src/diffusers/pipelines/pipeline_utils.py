@@ -1704,7 +1704,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
         # true_optional_modules are optional components with default value in signature so it is ok not to pass them to `__init__`
         # e.g. `image_encoder` for StableDiffusionPipeline
-        parameters = inspect.signature(cls.__init__).parameter
+        parameters = inspect.signature(cls.__init__).parameters
         true_optional_modules = set(
             {k for k, v in parameters.items() if v.default != inspect._empty and k in expected_modules}
         )
