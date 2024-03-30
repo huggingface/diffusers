@@ -166,16 +166,10 @@ Please adhere to the licensing terms as described [here](https://huggingface.co/
         "lora" if not use_dora else "dora",
         "template:sd-lora",
     ]
-    edm_tag = f"""
-edm-training
-inference:
-    parameters:
-        scheduler: {scheduler_type}
-"""
     if "playground" in base_model:
-        tags.extend(["playground", "playground-diffusers", edm_tag])
+        tags.extend(["playground", "playground-diffusers", "edm-training"])
     elif edm_training:
-        tags.extend(["stable-diffusion-xl", "stable-diffusion-xl-diffusers", edm_tag])
+        tags.extend(["stable-diffusion-xl", "stable-diffusion-xl-diffusers", "edm-training"])
     else:
         tags.extend(["stable-diffusion-xl", "stable-diffusion-xl-diffusers"])
 
