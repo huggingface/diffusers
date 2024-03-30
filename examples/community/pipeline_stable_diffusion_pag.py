@@ -12,8 +12,11 @@ from diffusers.configuration_utils import FrozenDict
 from diffusers.image_processor import PipelineImageInput, VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, IPAdapterMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, ImageProjection, UNet2DConditionModel
-from diffusers.models.attention_processor import FusedAttnProcessor2_0
+from diffusers.models.attention_processor import Attention, AttnProcessor2_0, FusedAttnProcessor2_0
 from diffusers.models.lora import adjust_lora_scale_text_encoder
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
+from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import (
     USE_PEFT_BACKEND,
@@ -24,11 +27,6 @@ from diffusers.utils import (
     unscale_lora_layers,
 )
 from diffusers.utils.torch_utils import randn_tensor
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
-from diffusers.pipelines.stable_diffusion.pipeline_output import StableDiffusionPipelineOutput
-from diffusers.pipelines.stable_diffusion.safety_checker import StableDiffusionSafetyChecker
-
-from diffusers.models.attention_processor import Attention, AttnProcessor2_0
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -113,7 +111,7 @@ class PAGIdentitySelfAttnProcessor:
 
         hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states_org = hidden_states_org.to(query.dtype)
-        
+
         # linear proj
         hidden_states_org = attn.to_out[0](hidden_states_org)
         # dropout
@@ -135,12 +133,12 @@ class PAGIdentitySelfAttnProcessor:
             hidden_states_ptb = attn.group_norm(hidden_states_ptb.transpose(1, 2)).transpose(1, 2)
 
         value = attn.to_v(hidden_states_ptb)
-        
+
         hidden_states_ptb = torch.zeros(value.shape).to(value.get_device())
-        #hidden_states_ptb = value
-        
+        # hidden_states_ptb = value
+
         hidden_states_ptb = hidden_states_ptb.to(query.dtype)
-        
+
         # linear proj
         hidden_states_ptb = attn.to_out[0](hidden_states_ptb)
         # dropout
@@ -207,7 +205,7 @@ class PAGCFGIdentitySelfAttnProcessor:
 
         if attn.group_norm is not None:
             hidden_states_org = attn.group_norm(hidden_states_org.transpose(1, 2)).transpose(1, 2)
-        
+
         query = attn.to_q(hidden_states_org)
         key = attn.to_k(hidden_states_org)
         value = attn.to_v(hidden_states_org)
@@ -228,7 +226,7 @@ class PAGCFGIdentitySelfAttnProcessor:
 
         hidden_states_org = hidden_states_org.transpose(1, 2).reshape(batch_size, -1, attn.heads * head_dim)
         hidden_states_org = hidden_states_org.to(query.dtype)
-        
+
         # linear proj
         hidden_states_org = attn.to_out[0](hidden_states_org)
         # dropout
@@ -976,7 +974,7 @@ class StableDiffusionPAGPipeline(
             emb = torch.nn.functional.pad(emb, (0, 1))
         assert emb.shape == (w.shape[0], embedding_dim)
         return emb
-    
+
     def pred_z0(self, sample, model_output, timestep):
         alpha_prod_t = self.scheduler.alphas_cumprod[timestep].to(sample.device)
 
@@ -996,15 +994,10 @@ class StableDiffusionPAGPipeline(
             )
 
         return pred_original_sample
-    
-    def pred_x0(self, latents, noise_pred, t, generator, device, prompt_embeds, output_type):
 
+    def pred_x0(self, latents, noise_pred, t, generator, device, prompt_embeds, output_type):
         pred_z0 = self.pred_z0(latents, noise_pred, t)
-        pred_x0 = self.vae.decode(
-            pred_z0 / self.vae.config.scaling_factor,
-            return_dict=False,
-            generator=generator
-        )[0]
+        pred_x0 = self.vae.decode(pred_z0 / self.vae.config.scaling_factor, return_dict=False, generator=generator)[0]
         pred_x0, ____ = self.run_safety_checker(pred_x0, device, prompt_embeds.dtype)
         do_denormalize = [True] * pred_x0.shape[0]
         pred_x0 = self.image_processor.postprocess(pred_x0, output_type=output_type, do_denormalize=do_denormalize)
@@ -1041,35 +1034,34 @@ class StableDiffusionPAGPipeline(
     @property
     def interrupt(self):
         return self._interrupt
-    
+
     @property
     def pag_scale(self):
         return self._pag_scale
-    
+
     @property
     def do_adversarial_guidance(self):
         return self._pag_scale > 0
-    
+
     @property
     def pag_adaptive_scaling(self):
         return self._pag_adaptive_scaling
-    
+
     @property
     def do_pag_adaptive_scaling(self):
         return self._pag_adaptive_scaling > 0
-    
+
     @property
     def pag_drop_rate(self):
         return self._pag_drop_rate
-    
+
     @property
     def pag_applied_layers(self):
         return self._pag_applied_layers
-    
+
     @property
     def pag_applied_layers_index(self):
         return self._pag_applied_layers_index
-
 
     @torch.no_grad()
     @replace_example_docstring(EXAMPLE_DOC_STRING)
@@ -1084,8 +1076,8 @@ class StableDiffusionPAGPipeline(
         pag_scale: float = 0.0,
         pag_adaptive_scaling: float = 0.0,
         pag_drop_rate: float = 0.5,
-        pag_applied_layers: List[str] = ['down'], #['down', 'mid', 'up']
-        pag_applied_layers_index: List[str] = ['d4'], #['d4', 'd5', 'm0']
+        pag_applied_layers: List[str] = ["down"],  # ['down', 'mid', 'up']
+        pag_applied_layers_index: List[str] = ["d4"],  # ['d4', 'd5', 'm0']
         negative_prompt: Optional[Union[str, List[str]]] = None,
         num_images_per_prompt: Optional[int] = 1,
         eta: float = 0.0,
@@ -1221,7 +1213,7 @@ class StableDiffusionPAGPipeline(
         self._clip_skip = clip_skip
         self._cross_attention_kwargs = cross_attention_kwargs
         self._interrupt = False
-        
+
         self._pag_scale = pag_scale
         self._pag_adaptive_scaling = pag_adaptive_scaling
         self._pag_drop_rate = pag_drop_rate
@@ -1258,14 +1250,14 @@ class StableDiffusionPAGPipeline(
         # For classifier free guidance, we need to do two forward passes.
         # Here we concatenate the unconditional and text embeddings into a single batch
         # to avoid doing two forward passes
-        
-        #cfg
+
+        # cfg
         if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
-        #pag
+        # pag
         elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
             prompt_embeds = torch.cat([prompt_embeds, prompt_embeds])
-        #both
+        # both
         elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds, prompt_embeds])
 
@@ -1314,13 +1306,13 @@ class StableDiffusionPAGPipeline(
             mid_layers = []
             up_layers = []
             for name, module in self.unet.named_modules():
-                if 'attn1' in name and 'to' not in name:
-                    layer_type = name.split('.')[0].split('_')[0]
-                    if layer_type == 'down':
+                if "attn1" in name and "to" not in name:
+                    layer_type = name.split(".")[0].split("_")[0]
+                    if layer_type == "down":
                         down_layers.append(module)
-                    elif layer_type == 'mid':
+                    elif layer_type == "mid":
                         mid_layers.append(module)
-                    elif layer_type == 'up':
+                    elif layer_type == "up":
                         up_layers.append(module)
                     else:
                         raise ValueError(f"Invalid layer type: {layer_type}")
@@ -1332,22 +1324,21 @@ class StableDiffusionPAGPipeline(
                 if self.interrupt:
                     continue
 
-                #cfg
+                # cfg
                 if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
                     latent_model_input = torch.cat([latents] * 2)
-                #pag
+                # pag
                 elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
                     latent_model_input = torch.cat([latents] * 2)
-                #both
+                # both
                 elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
                     latent_model_input = torch.cat([latents] * 3)
-                #no
+                # no
                 else:
                     latent_model_input = latents
 
                 # change attention layer in UNet if use PAG
                 if self.do_adversarial_guidance:
-
                     if self.do_classifier_free_guidance:
                         replace_processor = PAGCFGIdentitySelfAttnProcessor()
                     else:
@@ -1356,11 +1347,11 @@ class StableDiffusionPAGPipeline(
                     drop_layers = self.pag_applied_layers_index
                     for drop_layer in drop_layers:
                         try:
-                            if drop_layer[0] == 'd':
+                            if drop_layer[0] == "d":
                                 down_layers[int(drop_layer[1])].processor = replace_processor
-                            elif drop_layer[0] == 'm':
+                            elif drop_layer[0] == "m":
                                 mid_layers[int(drop_layer[1])].processor = replace_processor
-                            elif drop_layer[0] == 'u':
+                            elif drop_layer[0] == "u":
                                 up_layers[int(drop_layer[1])].processor = replace_processor
                             else:
                                 raise ValueError(f"Invalid layer type: {drop_layer[0]}")
@@ -1386,7 +1377,6 @@ class StableDiffusionPAGPipeline(
 
                 # cfg
                 if self.do_classifier_free_guidance and not self.do_adversarial_guidance:
-                    
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
 
                     delta = noise_pred_text - noise_pred_uncond
@@ -1394,29 +1384,31 @@ class StableDiffusionPAGPipeline(
 
                 # pag
                 elif not self.do_classifier_free_guidance and self.do_adversarial_guidance:
-
                     noise_pred_original, noise_pred_perturb = noise_pred.chunk(2)
 
                     signal_scale = self.pag_scale
                     if self.do_pag_adaptive_scaling:
-                        signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000-t)
-                        if signal_scale<0:
+                        signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000 - t)
+                        if signal_scale < 0:
                             signal_scale = 0
 
                     noise_pred = noise_pred_original + signal_scale * (noise_pred_original - noise_pred_perturb)
 
                 # both
                 elif self.do_classifier_free_guidance and self.do_adversarial_guidance:
-
                     noise_pred_uncond, noise_pred_text, noise_pred_text_perturb = noise_pred.chunk(3)
 
                     signal_scale = self.pag_scale
                     if self.do_pag_adaptive_scaling:
-                        signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000-t)
-                        if signal_scale<0:
+                        signal_scale = self.pag_scale - self.pag_adaptive_scaling * (1000 - t)
+                        if signal_scale < 0:
                             signal_scale = 0
 
-                    noise_pred = noise_pred_text + (self.guidance_scale-1.0) * (noise_pred_text - noise_pred_uncond) + signal_scale * (noise_pred_text - noise_pred_text_perturb)
+                    noise_pred = (
+                        noise_pred_text
+                        + (self.guidance_scale - 1.0) * (noise_pred_text - noise_pred_uncond)
+                        + signal_scale * (noise_pred_text - noise_pred_text_perturb)
+                    )
 
                 if self.do_classifier_free_guidance and self.guidance_rescale > 0.0:
                     # Based on 3.4. in https://arxiv.org/pdf/2305.08891.pdf
@@ -1443,7 +1435,9 @@ class StableDiffusionPAGPipeline(
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[0]
+            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False, generator=generator)[
+                0
+            ]
             image, has_nsfw_concept = self.run_safety_checker(image, device, prompt_embeds.dtype)
         else:
             image = latents
@@ -1467,11 +1461,11 @@ class StableDiffusionPAGPipeline(
             drop_layers = self.pag_applied_layers_index
             for drop_layer in drop_layers:
                 try:
-                    if drop_layer[0] == 'd':
+                    if drop_layer[0] == "d":
                         down_layers[int(drop_layer[1])].processor = AttnProcessor2_0()
-                    elif drop_layer[0] == 'm':
+                    elif drop_layer[0] == "m":
                         mid_layers[int(drop_layer[1])].processor = AttnProcessor2_0()
-                    elif drop_layer[0] == 'u':
+                    elif drop_layer[0] == "u":
                         up_layers[int(drop_layer[1])].processor = AttnProcessor2_0()
                     else:
                         raise ValueError(f"Invalid layer type: {drop_layer[0]}")
