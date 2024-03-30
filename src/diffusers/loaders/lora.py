@@ -1111,7 +1111,7 @@ class LoraLoaderMixin:
                 # warn if adapter doesn't have parts specified by adapter_weights
                 for part_weight, part_name in zip(
                     [unet_lora_weight, text_encoder_lora_weight, text_encoder_2_lora_weight],
-                    ["uent", "text_encoder", "text_encoder_2"],
+                    ["unet", "text_encoder", "text_encoder_2"],
                 ):
                     if part_weight is not None and part_name not in invert_list_adapters[adapter_name]:
                         logger.warning(
