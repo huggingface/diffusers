@@ -231,7 +231,7 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
     def test_fp16_support(self):
         for order in [1, 2, 3]:
             for solver_type in ["bh1", "bh2"]:
-                for prediction_type in ["epsilon", "sample"]:
+                for prediction_type in ["epsilon", "sample", "v_prediction"]:
                     scheduler_class = self.scheduler_classes[0]
                     scheduler_config = self.get_scheduler_config(
                         thresholding=True,
