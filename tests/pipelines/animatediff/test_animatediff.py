@@ -18,7 +18,12 @@ from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import numpy_cosine_similarity_distance, require_torch_gpu, slow, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin, SDFunctionTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineFromPipeTesterMixin,
+    PipelineTesterMixin,
+    SDFunctionTesterMixin,
+)
 
 
 def to_np(tensor):
@@ -29,7 +34,7 @@ def to_np(tensor):
 
 
 class AnimateDiffPipelineFastTests(
-    IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, unittest.TestCase
+    IPAdapterTesterMixin, SDFunctionTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase
 ):
     pipeline_class = AnimateDiffPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -44,7 +49,6 @@ class AnimateDiffPipelineFastTests(
             "callback_on_step_end_tensor_inputs",
         ]
     )
-    test_from_pipe = True
 
     def get_dummy_components(self):
         torch.manual_seed(0)
