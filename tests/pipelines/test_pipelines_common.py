@@ -762,8 +762,6 @@ class PipelineTesterMixin:
 
     test_xformers_attention = True
 
-    test_from_pipe = False
-
     def get_generator(self, seed):
         device = torch_device if torch_device != "mps" else "cpu"
         generator = torch.Generator(device).manual_seed(seed)
