@@ -28,6 +28,7 @@ import shutil
 import warnings
 from pathlib import Path
 from typing import List, Optional
+from contextlib import nullcontext
 
 import numpy as np
 import torch
@@ -2192,13 +2193,12 @@ def main(args):
                 # run inference
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
-                inference_ctx = (
-                    contextlib.nullcontext()
-                    if "playground" in args.pretrained_model_name_or_path
-                    else torch.cuda.amp.autocast()
-                )
+                if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+                    autocast_ctx = nullcontext()
+                else:
+                    autocast_ctx = torch.autocast(accelerator.device.type)
 
-                with inference_ctx:
+                with autocast_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator).images[0]
                         for _ in range(args.num_validation_images)

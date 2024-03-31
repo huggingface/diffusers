@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import contextlib
+from contextlib import nullcontext
 import functools
 import gc
 import logging
@@ -125,11 +125,10 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         )
 
     image_logs = []
-    inference_ctx = (
-        contextlib.nullcontext()
-        if (is_final_validation or torch.backends.mps.is_available())
-        else torch.autocast("cuda")
-    )
+    if is_final_validation or torch.backends.mps.is_available():
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
 
     for validation_prompt, validation_image in zip(validation_prompts, validation_images):
         validation_image = Image.open(validation_image).convert("RGB")
@@ -138,7 +137,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step,
         images = []
 
         for _ in range(args.num_validation_images):
-            with inference_ctx:
+            with autocast_ctx:
                 image = pipeline(
                     prompt=validation_prompt, image=validation_image, num_inference_steps=20, generator=generator
                 ).images[0]

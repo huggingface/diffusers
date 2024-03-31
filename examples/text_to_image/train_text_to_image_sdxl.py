@@ -42,6 +42,7 @@ from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+from contextlib import nullcontext
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, StableDiffusionXLPipeline, UNet2DConditionModel
@@ -986,10 +987,10 @@ def main(args):
         model = model._orig_mod if is_compiled_module(model) else model
         return model
 
-    # Some configurations require autocast to be disabled.
-    enable_autocast = True
-    if torch.backends.mps.is_available():
-        enable_autocast = False
+    if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1224,10 +1225,7 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.autocast(
-                    accelerator.device.type,
-                    enabled=enable_autocast,
-                ):
+                with autocast_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
                         for _ in range(args.num_validation_images)
@@ -1282,7 +1280,8 @@ def main(args):
         if args.validation_prompt and args.num_validation_images > 0:
             pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            with torch.autocast(accelerator.device.type, enabled=enable_autocast):
+
+            with autocast_ctx:
                 images = [
                     pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                     for _ in range(args.num_validation_images)

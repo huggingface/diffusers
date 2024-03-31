@@ -46,6 +46,7 @@ from torchvision import transforms
 from torchvision.transforms.functional import crop
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+from contextlib import nullcontext
 
 import diffusers
 from diffusers import (
@@ -207,14 +208,12 @@ def log_validation(
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
     # Currently the context determination is a bit hand-wavy. We can improve it in the future if there's a better
     # way to condition it. Reference: https://github.com/huggingface/diffusers/pull/7126#issuecomment-1968523051
-    enable_autocast = True
     if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
-        enable_autocast = False
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
 
-    with torch.autocast(
-        accelerator.device.type,
-        enabled=enable_autocast,
-    ):
+    with autocast_ctx:
         images = [pipeline(**pipeline_args, generator=generator).images[0] for _ in range(args.num_validation_images)]
 
     for tracker in accelerator.trackers:

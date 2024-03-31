@@ -42,6 +42,7 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
+from contextlib import nullcontext
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
@@ -71,7 +72,7 @@ TORCH_DTYPE_MAPPING = {"fp32": torch.float32, "fp16": torch.float16, "bf16": tor
 
 
 def log_validation(
-    pipeline, args, accelerator, generator, global_step, is_final_validation=False, enable_autocast=True
+    pipeline, args, accelerator, generator, global_step, is_final_validation=False
 ):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
@@ -91,7 +92,12 @@ def log_validation(
         else Image.open(image_url_or_path).convert("RGB")
     )(args.val_image_url_or_path)
 
-    with torch.autocast(accelerator.device.type, enabled=enable_autocast):
+    if torch.backends.mps.is_available():
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
+
+    with autocast_ctx:
         edited_images = []
         # Run inference
         for val_img_idx in range(args.num_validation_images):
@@ -983,11 +989,6 @@ def main():
     if accelerator.is_main_process:
         accelerator.init_trackers("instruct-pix2pix-xl", config=vars(args))
 
-    # Some configurations require autocast to be disabled.
-    enable_autocast = True
-    if torch.backends.mps.is_available():
-        enable_autocast = False
-
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1200,7 +1201,6 @@ def main():
                         generator,
                         global_step,
                         is_final_validation=False,
-                        enable_autocast=enable_autocast,
                     )
 
                     if args.use_ema:
@@ -1250,7 +1250,6 @@ def main():
                 generator,
                 global_step,
                 is_final_validation=True,
-                enable_autocast=enable_autocast,
             )
 
     accelerator.end_training()
