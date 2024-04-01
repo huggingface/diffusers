@@ -1,4 +1,4 @@
-name: Nightly tests on main
+name: Nightly and release tests on main/release branch
 
 on:
   workflow_dispatch:
