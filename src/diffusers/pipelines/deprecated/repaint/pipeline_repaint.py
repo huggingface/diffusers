@@ -132,7 +132,7 @@ class RePaintPipeline(DiffusionPipeline):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
             output_type (`str`, `optional`, defaults to `"pil"`):
-                The output format of the generated image. Choose between `PIL.Image` or `np.array`.
+                The output format of the generated image. Choose between `PIL.Image`,`np.array`, or 'Torch.tensor' cast as numpy.
             return_dict (`bool`, *optional*, defaults to `True`):
                 Whether or not to return a [`ImagePipelineOutput`] instead of a plain tuple.
 
@@ -219,10 +219,14 @@ class RePaintPipeline(DiffusionPipeline):
                 image = self.scheduler.undo_step(image, t_last, generator)
             t_last = t
 
-        image = (image / 2 + 0.5).clamp(0, 1)
+        if output_type != "tensor":
+            image = (image / 2 + 0.5).clamp(0, 1)
+        
         image = image.cpu().permute(0, 2, 3, 1).numpy()
+        
         if output_type == "pil":
             image = self.numpy_to_pil(image)
+
 
         if not return_dict:
             return (image,)
