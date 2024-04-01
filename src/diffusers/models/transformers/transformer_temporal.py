@@ -312,7 +312,7 @@ class TransformerSpatioTemporalModel(nn.Module):
             batch_size, num_frames, -1, time_context.shape[-1]
         )[:, 0]
         time_context = time_context_first_timestep[:, None].broadcast_to(
-             batch_size, height * width, time_context.shape[-2], time_context.shape[-1]
+            batch_size, height * width, time_context.shape[-2], time_context.shape[-1]
         )
         time_context = time_context.reshape(batch_size * height * width, -1, time_context.shape[-1])
 
