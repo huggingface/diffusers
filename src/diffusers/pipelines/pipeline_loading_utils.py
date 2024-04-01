@@ -53,6 +53,7 @@ if is_accelerate_available():
     import accelerate
     from accelerate import dispatch_model
     from accelerate.hooks import remove_hook_from_module
+    from accelerate.utils import compute_module_sizes, get_max_memory
 
 
 INDEX_FILE = "diffusion_pytorch_model.bin"
@@ -479,6 +480,91 @@ def _assign_components_to_devices(
             device_memory[device_id] -= component_memory
 
     return deivce_id_component_mapping
+
+
+def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dict, library, max_memory, **kwargs):
+    # To avoid circular import problem.
+    from diffusers import pipelines
+
+    torch_dtype = kwargs.get("torch_dtype", torch.float32)
+
+    # Load each module in the pipeline on a meta device so that we can derive the device map.
+    init_empty_modules = {}
+    for name, (library_name, class_name) in init_dict.items():
+        if class_name.startswith("Flax"):
+            raise ValueError("Flax pipelines are not supported with `device_map`.")
+
+        # Define all importable classes
+        is_pipeline_module = hasattr(pipelines, library_name)
+        importable_classes = ALL_IMPORTABLE_CLASSES
+        loaded_sub_model = None
+
+        # Use passed sub model or load class_name from library_name
+        if name in passed_class_obj:
+            # if the model is in a pipeline module, then we load it from the pipeline
+            # check that passed_class_obj has correct parent class
+            maybe_raise_or_warn(
+                library_name,
+                library,
+                class_name,
+                importable_classes,
+                passed_class_obj,
+                name,
+                is_pipeline_module,
+            )
+            with accelerate.init_empty_weights():
+                loaded_sub_model = passed_class_obj[name]
+
+        else:
+            loaded_sub_model = _load_empty_model(
+                library_name=library_name,
+                class_name=class_name,
+                importable_classes=importable_classes,
+                pipelines=pipelines,
+                is_pipeline_module=is_pipeline_module,
+                pipeline_class=pipeline_class,
+                name=name,
+                torch_dtype=torch_dtype,
+                cached_folder=kwargs.get("cached_folder", None),
+                force_download=kwargs.get("force_download", None),
+                resume_download=kwargs.get("resume_download", None),
+                proxies=kwargs.get("proxies", None),
+                local_files_only=kwargs.get("local_files_only", None),
+                token=kwargs.get("token", None),
+                revision=kwargs.get("revision", None),
+            )
+
+        if loaded_sub_model is not None:
+            init_empty_modules[name] = loaded_sub_model
+
+    # determine device map
+    # Obtain a sorted dictionary for mapping the model-level components
+    # to their sizes.
+    module_sizes = {
+        module_name: compute_module_sizes(module, dtype=torch_dtype)[""]
+        for module_name, module in init_empty_modules.items()
+        if isinstance(module, torch.nn.Module)
+    }
+    module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
+
+    # Obtain maximum memory available per device (GPUs only).
+    max_memory = get_max_memory(max_memory)
+    max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
+    max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
+
+    # Obtain a dictionary mapping the model-level components to the available
+    # devices based on the maximum memory and the model sizes.
+    device_id_component_mapping = _assign_components_to_devices(
+        module_sizes, max_memory, device_mapping_strategy=device_map
+    )
+
+    # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
+    final_device_map = {}
+    for device_id, components in device_id_component_mapping.items():
+        for component in components:
+            final_device_map[component] = device_id
+
+    return final_device_map
 
 
 def load_sub_model(

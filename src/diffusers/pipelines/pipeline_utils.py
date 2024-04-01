@@ -71,10 +71,9 @@ from .pipeline_loading_utils import (
     CONNECTED_PIPES_KEYS,
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
-    _assign_components_to_devices,
     _fetch_class_library_tuple,
+    _get_final_device_map,
     _get_pipeline_class,
-    _load_empty_model,
     _unwrap_model,
     is_safetensors_compatible,
     load_sub_model,
@@ -86,7 +85,6 @@ from .pipeline_loading_utils import (
 
 if is_accelerate_available():
     import accelerate
-    from accelerate.utils import compute_module_sizes, get_max_memory
 
 
 LIBRARIES = []
@@ -825,86 +823,25 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         # import it here to avoid circular import
         from diffusers import pipelines
 
-        ###### 6. device map delegation ######
+        # 6. device map delegation
         final_device_map = None
         if device_map is not None:
-            # Load each module in the pipeline on a meta device so that we can derive the device map.
-            init_empty_modules = {}
-            for name, (library_name, class_name) in init_dict.items():
-                if class_name.startswith("Flax"):
-                    raise ValueError("Flax pipelines are not supported with `device_map`.")
-
-                # Define all importable classes
-                is_pipeline_module = hasattr(pipelines, library_name)
-                importable_classes = ALL_IMPORTABLE_CLASSES
-                loaded_sub_model = None
-
-                # Use passed sub model or load class_name from library_name
-                if name in passed_class_obj:
-                    # if the model is in a pipeline module, then we load it from the pipeline
-                    # check that passed_class_obj has correct parent class
-                    maybe_raise_or_warn(
-                        library_name,
-                        library,
-                        class_name,
-                        importable_classes,
-                        passed_class_obj,
-                        name,
-                        is_pipeline_module,
-                    )
-                    with accelerate.init_empty_weights():
-                        loaded_sub_model = passed_class_obj[name]
-
-                else:
-                    loaded_sub_model = _load_empty_model(
-                        library_name=library_name,
-                        class_name=class_name,
-                        importable_classes=importable_classes,
-                        pipelines=pipelines,
-                        is_pipeline_module=is_pipeline_module,
-                        pipeline_class=pipeline_class,
-                        name=name,
-                        torch_dtype=torch_dtype,
-                        cached_folder=cached_folder,
-                        force_download=force_download,
-                        resume_download=resume_download,
-                        proxies=proxies,
-                        local_files_only=local_files_only,
-                        token=token,
-                        revision=revision,
-                    )
-
-                if loaded_sub_model is not None:
-                    init_empty_modules[name] = loaded_sub_model
-
-            # determine device map
-            # Obtain a sorted dictionary for mapping the model-level components
-            # to their sizes.
-            module_sizes = {
-                module_name: compute_module_sizes(module, dtype=torch_dtype)[""]
-                for module_name, module in init_empty_modules.items()
-                if isinstance(module, torch.nn.Module)
-            }
-            module_sizes = dict(sorted(module_sizes.items(), key=lambda item: item[1], reverse=True))
-
-            # Obtain maximum memory available per device (GPUs only).
-            max_memory = get_max_memory(max_memory)
-            max_memory = dict(sorted(max_memory.items(), key=lambda item: item[1], reverse=True))
-            max_memory = {k: v for k, v in max_memory.items() if k != "cpu"}
-
-            # Obtain a dictionary mapping the model-level components to the available
-            # devices based on the maximum memory and the model sizes.
-            device_id_component_mapping = _assign_components_to_devices(
-                module_sizes, max_memory, device_mapping_strategy=device_map
+            final_device_map = _get_final_device_map(
+                device_map=device_map,
+                pipeline_class=pipeline_class,
+                passed_class_obj=passed_class_obj,
+                init_dict=init_dict,
+                library=library,
+                max_memory=max_memory,
+                torch_dtype=torch_dtype,
+                cached_folder=cached_folder,
+                force_download=force_download,
+                resume_download=resume_download,
+                proxies=proxies,
+                local_files_only=local_files_only,
+                token=token,
+                revision=revision,
             )
-
-            # Obtain the final device map, e.g., `{"unet": 0, "text_encoder": 1, "vae": 1, ...}`
-            final_device_map = {}
-            for device_id, components in device_id_component_mapping.items():
-                for component in components:
-                    final_device_map[component] = device_id
-
-        ###### End: device map delegation ######
 
         # 7. Load each module in the pipeline
         current_device_map = None
