@@ -320,7 +320,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
         temporal_pos_embed = get_1d_sincos_pos_embed(inner_dim, self.num_temporal_patches)
         temporal_pos_embed = torch.from_numpy(temporal_pos_embed).float().unsqueeze(0).requires_grad_(False)
-        self.register_buffer("temporal_pos_embed", temporal_pos_embed)
+        self.register_buffer("pos_embed_temporal", temporal_pos_embed)
 
         self.gradient_checkpointing = False
 
@@ -388,7 +388,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
                 encoder_hidden_states=encoder_hidden_states,
                 encoder_attention_mask=encoder_attention_mask,
                 timestep=timestep,
-                temporal_pos_embed=self.temporal_pos_embed if i == 0 else None,
+                temporal_pos_embed=self.pos_embed_temporal if i == 0 else None,
             )
 
         # 3. Output
