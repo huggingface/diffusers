@@ -381,9 +381,9 @@ def convert_ldm_unet_checkpoint(
 
         # TODO resnet time_mixer.mix_factor
         if f"input_blocks.{i}.0.time_mixer.mix_factor" in unet_state_dict:
-            new_checkpoint[
-                f"down_blocks.{block_id}.resnets.{layer_in_block_id}.time_mixer.mix_factor"
-            ] = unet_state_dict[f"input_blocks.{i}.0.time_mixer.mix_factor"]
+            new_checkpoint[f"down_blocks.{block_id}.resnets.{layer_in_block_id}.time_mixer.mix_factor"] = (
+                unet_state_dict[f"input_blocks.{i}.0.time_mixer.mix_factor"]
+            )
 
         if len(attentions):
             paths = renew_attention_paths(attentions)
@@ -478,9 +478,9 @@ def convert_ldm_unet_checkpoint(
             )
 
             if f"output_blocks.{i}.0.time_mixer.mix_factor" in unet_state_dict:
-                new_checkpoint[
-                    f"up_blocks.{block_id}.resnets.{layer_in_block_id}.time_mixer.mix_factor"
-                ] = unet_state_dict[f"output_blocks.{i}.0.time_mixer.mix_factor"]
+                new_checkpoint[f"up_blocks.{block_id}.resnets.{layer_in_block_id}.time_mixer.mix_factor"] = (
+                    unet_state_dict[f"output_blocks.{i}.0.time_mixer.mix_factor"]
+                )
 
             output_block_list = {k: sorted(v) for k, v in output_block_list.items()}
             if ["conv.bias", "conv.weight"] in output_block_list.values():
