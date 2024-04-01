@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-import contextlib
 import gc
 import hashlib
 import itertools
@@ -26,9 +25,9 @@ import random
 import re
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Optional
-from contextlib import nullcontext
 
 import numpy as np
 import torch
@@ -777,9 +776,9 @@ class TokenEmbeddingsHandler:
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
-            self.embeddings_settings[
-                f"original_embeddings_{idx}"
-            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            self.embeddings_settings[f"original_embeddings_{idx}"] = (
+                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            )
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)

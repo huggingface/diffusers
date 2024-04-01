@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 
 import argparse
-from contextlib import nullcontext
 import functools
 import gc
 import logging
@@ -22,6 +21,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import accelerate

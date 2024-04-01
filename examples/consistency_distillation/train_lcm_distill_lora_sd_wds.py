@@ -23,9 +23,9 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Union
-from contextlib import nullcontext
 
 import accelerate
 import numpy as np

@@ -24,9 +24,9 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Union
-from contextlib import nullcontext
 
 import accelerate
 import numpy as np
@@ -1366,7 +1366,7 @@ def main(args):
                     else:
                         autocast_ctx = torch.autocast(accelerator.device.type)
 
-                    with autocast_ctx: 
+                    with autocast_ctx:
                         # 1. Get teacher model prediction on noisy_model_input z_{t_{n + k}} and conditional embedding c
                         cond_teacher_output = teacher_unet(
                             noisy_model_input.to(weight_dtype),

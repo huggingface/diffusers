@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Optional
 
@@ -67,7 +68,7 @@ from diffusers.utils import (
     is_wandb_available,
 )
 from diffusers.utils.import_utils import is_xformers_available
-from contextlib import nullcontext
+
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
 check_min_version("0.28.0.dev0")
@@ -743,9 +744,9 @@ class TokenEmbeddingsHandler:
                 .to(dtype=self.dtype)
                 * std_token_embedding
             )
-            self.embeddings_settings[
-                f"original_embeddings_{idx}"
-            ] = text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            self.embeddings_settings[f"original_embeddings_{idx}"] = (
+                text_encoder.text_model.embeddings.token_embedding.weight.data.clone()
+            )
             self.embeddings_settings[f"std_token_embedding_{idx}"] = std_token_embedding
 
             inu = torch.ones((len(tokenizer),), dtype=torch.bool)

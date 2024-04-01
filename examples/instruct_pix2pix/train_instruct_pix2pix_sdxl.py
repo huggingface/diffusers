@@ -20,6 +20,7 @@ import math
 import os
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -42,7 +43,6 @@ from PIL import Image
 from torchvision import transforms
 from tqdm.auto import tqdm
 from transformers import AutoTokenizer, PretrainedConfig
-from contextlib import nullcontext
 
 import diffusers
 from diffusers import AutoencoderKL, DDPMScheduler, UNet2DConditionModel
@@ -71,9 +71,7 @@ WANDB_TABLE_COL_NAMES = ["file_name", "edited_image", "edit_prompt"]
 TORCH_DTYPE_MAPPING = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}
 
 
-def log_validation(
-    pipeline, args, accelerator, generator, global_step, is_final_validation=False
-):
+def log_validation(pipeline, args, accelerator, generator, global_step, is_final_validation=False):
     logger.info(
         f"Running validation... \n Generating {args.num_validation_images} images with prompt:"
         f" {args.validation_prompt}."
