@@ -513,6 +513,10 @@ def main():
         project_config=accelerator_project_config,
     )
 
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
+
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
     # Make one log on every process with the configuration for debugging.
