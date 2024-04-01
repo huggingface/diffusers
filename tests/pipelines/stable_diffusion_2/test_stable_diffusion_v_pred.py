@@ -45,6 +45,12 @@ enable_full_determinism()
 
 
 class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -254,6 +260,12 @@ class StableDiffusion2VPredictionPipelineFastTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class StableDiffusion2VPredictionPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()

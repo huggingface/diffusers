@@ -332,6 +332,11 @@ class PixArtAlphaPipelineIntegrationTests(unittest.TestCase):
     ckpt_id_512 = "PixArt-alpha/PixArt-XL-2-512x512"
     prompt = "A small cactus with a happy face in the Sahara desert."
 
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
