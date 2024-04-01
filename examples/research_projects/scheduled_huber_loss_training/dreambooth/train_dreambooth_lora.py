@@ -524,7 +524,7 @@ def parse_args(input_args=None):
         "--huber_schedule",
         type=str,
         default="exponential",
-        choices=["constant", "exponential", "snr"], #TODO: add snr
+        choices=["constant", "exponential", "snr"],
         help="The schedule to use for the huber losses parameter"
     )
     parser.add_argument(
@@ -1268,9 +1268,9 @@ def main(args):
                         alpha = - math.log(args.huber_c) / noise_scheduler.config.num_train_timesteps
                         huber_c = math.exp(-alpha * timestep)
                     elif args.huber_schedule == "snr":
-                        # TODO
-                        huber_c = args.huber_c # Placeholder
-                        pass
+                        alphas_cumprod = noise_scheduler.alphas_cumprod[timestep]
+                        sigmas = ((1.0 - alphas_cumprod) / alphas_cumprod) ** 0.5
+                        huber_c = (1 - args.huber_c) / (1 + sigmas)**2 + args.huber_c
                     elif args.huber_schedule == "constant":
                         huber_c = args.huber_c
                     else:
