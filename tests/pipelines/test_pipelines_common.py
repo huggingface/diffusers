@@ -131,11 +131,15 @@ class SDFunctionTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
+        inputs["output_type"] = "np"
+
         output = pipe(**inputs)[0]
 
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
+        inputs["output_type"] = "np"
+
         output_freeu = pipe(**inputs)[0]
 
         assert not np.allclose(
@@ -150,6 +154,8 @@ class SDFunctionTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
+        inputs["output_type"] = "np"
+
         output = pipe(**inputs)[0]
 
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
@@ -162,6 +168,8 @@ class SDFunctionTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
+        inputs["output_type"] = "np"
+
         output_no_freeu = pipe(**inputs)[0]
         assert np.allclose(
             output, output_no_freeu, atol=1e-2
