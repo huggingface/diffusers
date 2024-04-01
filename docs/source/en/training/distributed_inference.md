@@ -52,6 +52,60 @@ To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](h
 
 </Tip>
 
+### Using `device_map`
+
+<Tip warning={true}>
+
+🧪 This feature is experimental and its APIs might change in future. 
+
+</Tip>
+
+With 🤗 Accelerate, you can make use of a supported `device_map` strategy to distribute the model-level components of a pipeline across multiple devices. The section below explains a situation where performing distributed inference via `device_map` could be useful.
+
+Let's say you have two consumer GPUs each having 8GBs of VRAM. Using `enable_model_cpu_offload()` might not work best here because -
+
+* it works only on a single GPU
+* a single model might not fit on a single GPU `enable_sequential_cpu_offload()` might work but will be extremely slow. Here also we're limited to using a single GPU only.
+
+To use the "balanced" `device_map`, just pass `device_map="balanced"` when instantiating the pipeline:
+
+```diff
+from diffusers import DiffusionPipeline
+import torch
+
+pipeline = DiffusionPipeline.from_pretrained(
+-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True,
++    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16, use_safetensors=True, device_map="balanced"
+)
+image = pipeline("a dog").images[0]
+image
+```
+
+Pass a dictionary to enforce a restriction on the maximum GPU memory that can be used:
+
+```diff
+from diffusers import DiffusionPipeline
+import torch
+
+max_memory = {0:"1GB", 1:"1GB"}
+pipeline = DiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    torch_dtype=torch.float16, 
+    use_safetensors=True, 
+    device_map="balanced",
++    max_memory=max_memory
+)
+image = pipeline("a dog").images[0]
+image
+```
+
+Reset any `device_map` by calling `reset_device_map()` on the pipeline object.
+
+To be able to use methods like `to()`, `enable_sequential_cpu_offload()`, and `enable_model_cpu_offload()` on a supported pipeline that has been device-mapped, first call `reset_device_map()` on it and then use these methods.
+
+> [!NOTE]  
+> Currently, we support only "balanced" `device_map`. We plan to support more device mapping strategies in future.
+
 ## PyTorch Distributed
 
 PyTorch supports [`DistributedDataParallel`](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) which enables data parallelism.
