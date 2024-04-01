@@ -1199,10 +1199,6 @@ class StableDiffusionXLPipeline(
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
-                    else:
-                        raise ValueError(
-                            "For the given accelerator, there seems to be an unexpected problem in type-casting. Please file an issue on the PyTorch GitHub repository. See also: https://github.com/huggingface/diffusers/pull/7446/."
-                        )
 
                 if callback_on_step_end is not None:
                     callback_kwargs = {}
