@@ -30,7 +30,7 @@ from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_
 from diffusers.utils.testing_utils import enable_full_determinism, nightly, require_torch_gpu, torch_device
 
 from ..pipeline_params import TEXT_TO_IMAGE_BATCH_PARAMS, TEXT_TO_IMAGE_IMAGE_PARAMS, TEXT_TO_IMAGE_PARAMS
-from ..test_pipelines_common import PipelineTesterMixin
+from ..test_pipelines_common import PipelineFromPipeTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
@@ -43,7 +43,7 @@ def to_np(tensor):
     return tensor
 
 
-class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
+class TextToVideoZeroSDXLPipelineFastTests(PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase):
     pipeline_class = TextToVideoZeroSDXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
     batch_params = TEXT_TO_IMAGE_BATCH_PARAMS

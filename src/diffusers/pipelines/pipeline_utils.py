@@ -21,7 +21,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, get_args, get_origin
 
 import numpy as np
 import PIL.Image
@@ -43,7 +43,7 @@ from .. import __version__
 from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,
@@ -72,6 +72,7 @@ from .pipeline_loading_utils import (
     CUSTOM_PIPELINE_FILE_NAME,
     LOADABLE_CLASSES,
     _fetch_class_library_tuple,
+    _get_custom_pipeline_class,
     _get_pipeline_class,
     _unwrap_model,
     is_safetensors_compatible,
@@ -1475,6 +1476,18 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         return expected_modules, optional_parameters
 
+    @classmethod
+    def _get_signature_types(cls):
+        signature_types = {}
+        for k, v in inspect.signature(cls.__init__).parameters.items():
+            if inspect.isclass(v.annotation):
+                signature_types[k] = (v.annotation,)
+            elif get_origin(v.annotation) == Union:
+                signature_types[k] = get_args(v.annotation)
+            else:
+                logger.warning(f"cannot get type annotation for Parameter {k} of {cls}.")
+        return signature_types
+
     @property
     def components(self) -> Dict[str, Any]:
         r"""
@@ -1652,6 +1665,128 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
 
         for module in modules:
             module.set_attention_slice(slice_size)
+
+    @classmethod
+    def from_pipe(cls, pipeline, **kwargs):
+        r"""
+        Create a new pipeline from a given pipeline. This method is useful to create a new pipeline from the existing pipeline components without reallocating additional memory.
+
+        Arguments:
+            pipeline (`DiffusionPipeline`):
+                The pipeline from which to create a new pipeline.
+
+        Returns:
+            `DiffusionPipeline`:
+                A new pipeline with the same weights and configurations as `pipeline`.
+
+        Examples:
+
+        ```py
+        >>> from diffusers import StableDiffusionPipeline, StableDiffusionSAGPipeline
+
+        >>> pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+        >>> new_pipe = StableDiffusionSAGPipeline.from_pipe(pipe)
+        ```
+        """
+
+        original_config = dict(pipeline.config)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
+        # derive the pipeline class to instantiate
+        custom_pipeline = kwargs.pop("custom_pipeline", None)
+        custom_revision = kwargs.pop("custom_revision", None)
+
+        if custom_pipeline is not None:
+            pipeline_class = _get_custom_pipeline_class(custom_pipeline, revision=custom_revision)
+        else:
+            pipeline_class = cls
+
+        expected_modules, optional_kwargs = cls._get_signature_keys(pipeline_class)
+        # true_optional_modules are optional components with default value in signature so it is ok not to pass them to `__init__`
+        # e.g. `image_encoder` for StableDiffusionPipeline
+        parameters = inspect.signature(cls.__init__).parameters
+        true_optional_modules = set(
+            {k for k, v in parameters.items() if v.default != inspect._empty and k in expected_modules}
+        )
+
+        # get the class of each component based on its type hint
+        # e.g. {"unet": UNet2DConditionModel, "text_encoder": CLIPTextMode}
+        component_types = pipeline_class._get_signature_types()
+
+        pretrained_model_name_or_path = original_config.pop("_name_or_path", None)
+        # allow users pass modules in `kwargs` to override the original pipeline's components
+        passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
+
+        original_class_obj = {}
+        for name, component in pipeline.components.items():
+            if name in expected_modules and name not in passed_class_obj:
+                # for model components, we will not switch over if the class does not matches the type hint in the new pipeline's signature
+                if (
+                    not isinstance(component, ModelMixin)
+                    or type(component) in component_types[name]
+                    or (component is None and name in cls._optional_components)
+                ):
+                    original_class_obj[name] = component
+                else:
+                    logger.warn(
+                        f"component {name} is not switched over to new pipeline because type does not match the expected."
+                        f" {name} is {type(component)} while the new pipeline expect {component_types[name]}."
+                        f" please pass the component of the correct type to the new pipeline. `from_pipe(..., {name}={name})`"
+                    )
+
+        # allow users pass optional kwargs to override the original pipelines config attribute
+        passed_pipe_kwargs = {k: kwargs.pop(k) for k in optional_kwargs if k in kwargs}
+        original_pipe_kwargs = {
+            k: original_config[k]
+            for k in original_config.keys()
+            if k in optional_kwargs and k not in passed_pipe_kwargs
+        }
+
+        # config attribute that were not expected by pipeline is stored as its private attribute
+        # (i.e. when the original pipeline was also instantiated with `from_pipe` from another pipeline that has this config)
+        # in this case, we will pass them as optional arguments if they can be accepted by the new pipeline
+        additional_pipe_kwargs = [
+            k[1:]
+            for k in original_config.keys()
+            if k.startswith("_") and k[1:] in optional_kwargs and k[1:] not in passed_pipe_kwargs
+        ]
+        for k in additional_pipe_kwargs:
+            original_pipe_kwargs[k] = original_config.pop(f"_{k}")
+
+        pipeline_kwargs = {
+            **passed_class_obj,
+            **original_class_obj,
+            **passed_pipe_kwargs,
+            **original_pipe_kwargs,
+            **kwargs,
+        }
+
+        # store unused config as private attribute in the new pipeline
+        unused_original_config = {
+            f"{'' if k.startswith('_') else '_'}{k}": v for k, v in original_config.items() if k not in pipeline_kwargs
+        }
+
+        missing_modules = (
+            set(expected_modules)
+            - set(pipeline._optional_components)
+            - set(pipeline_kwargs.keys())
+            - set(true_optional_modules)
+        )
+
+        if len(missing_modules) > 0:
+            raise ValueError(
+                f"Pipeline {pipeline_class} expected {expected_modules}, but only {set(list(passed_class_obj.keys()) + list(original_class_obj.keys()))} were passed"
+            )
+
+        new_pipeline = pipeline_class(**pipeline_kwargs)
+        if pretrained_model_name_or_path is not None:
+            new_pipeline.register_to_config(_name_or_path=pretrained_model_name_or_path)
+        new_pipeline.register_to_config(**unused_original_config)
+
+        if torch_dtype is not None:
+            new_pipeline.to(dtype=torch_dtype)
+
+        return new_pipeline
 
 
 class StableDiffusionMixin:
