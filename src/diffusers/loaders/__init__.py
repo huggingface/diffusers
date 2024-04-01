@@ -54,12 +54,13 @@ if is_transformers_available():
 _import_structure = {}
 
 if is_torch_available():
-    _import_structure["single_file"] = ["FromOriginalControlnetMixin", "FromOriginalVAEMixin"]
+    _import_structure["autoencoder"] = ["FromOriginalVAEMixin"]
+
+    _import_structure["controlnet"] = ["FromOriginalControlNetMixin"]
     _import_structure["unet"] = ["UNet2DConditionLoadersMixin"]
     _import_structure["utils"] = ["AttnProcsLayers"]
-
     if is_transformers_available():
-        _import_structure["single_file"].extend(["FromSingleFileMixin"])
+        _import_structure["single_file"] = ["FromSingleFileMixin"]
         _import_structure["lora"] = ["LoraLoaderMixin", "StableDiffusionXLLoraLoaderMixin"]
         _import_structure["textual_inversion"] = ["TextualInversionLoaderMixin"]
         _import_structure["ip_adapter"] = ["IPAdapterMixin"]
@@ -69,7 +70,8 @@ _import_structure["peft"] = ["PeftAdapterMixin"]
 
 if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
     if is_torch_available():
-        from .single_file import FromOriginalControlnetMixin, FromOriginalVAEMixin
+        from .autoencoder import FromOriginalVAEMixin
+        from .controlnet import FromOriginalControlNetMixin
         from .unet import UNet2DConditionLoadersMixin
         from .utils import AttnProcsLayers
 

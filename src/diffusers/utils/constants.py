@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2024 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,7 @@ WEIGHTS_NAME = "diffusion_pytorch_model.bin"
 FLAX_WEIGHTS_NAME = "diffusion_flax_model.msgpack"
 ONNX_WEIGHTS_NAME = "model.onnx"
 SAFETENSORS_WEIGHTS_NAME = "diffusion_pytorch_model.safetensors"
+SAFETENSORS_FILE_EXTENSION = "safetensors"
 ONNX_EXTERNAL_WEIGHTS_NAME = "weights.pb"
 HUGGINGFACE_CO_RESOLVE_ENDPOINT = os.environ.get("HF_ENDPOINT", "https://huggingface.co")
 DIFFUSERS_DYNAMIC_MODULE_NAME = "diffusers_modules"

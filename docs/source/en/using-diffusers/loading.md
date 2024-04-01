@@ -1,4 +1,4 @@
-<!--Copyright 2023 The HuggingFace Team. All rights reserved.
+<!--Copyright 2024 The HuggingFace Team. All rights reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
 the License. You may obtain a copy of the License at
@@ -59,6 +59,23 @@ from diffusers import StableDiffusionImg2ImgPipeline
 repo_id = "runwayml/stable-diffusion-v1-5"
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained(repo_id)
 ```
+
+You can use the Space below to gauge the memory requirements of a pipeline you want to load beforehand without downloading the pipeline checkpoints:
+
+<div class="block dark:hidden">
+	<iframe 
+        src="https://diffusers-compute-pipeline-size.hf.space?__theme=light"
+        width="850"
+        height="1600"
+    ></iframe>
+</div>
+<div class="hidden dark:block">
+    <iframe 
+        src="https://diffusers-compute-pipeline-size.hf.space?__theme=dark"
+        width="850"
+        height="1600"
+    ></iframe>
+</div>
 
 ### Local pipeline
 

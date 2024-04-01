@@ -22,14 +22,14 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    python3 -m pip install --no-cache-dir \
-        torch \
-        torchvision \
-        torchaudio \
+RUN python3 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
+    python3 -m uv pip install --no-cache-dir \
+        torch==2.1.2 \
+        torchvision==0.16.2 \
+        torchaudio==2.1.2 \
         onnxruntime \
         --extra-index-url https://download.pytorch.org/whl/cpu && \
-    python3 -m pip install --no-cache-dir \
+    python3 -m uv pip install --no-cache-dir \
         accelerate \
         datasets \
         hf-doc-builder \

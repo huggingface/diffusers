@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -508,7 +508,7 @@ class WuerstchenPriorPipeline(DiffusionPipeline, LoraLoaderMixin):
         self.maybe_free_model_hooks()
 
         if output_type == "np":
-            latents = latents.cpu().numpy()
+            latents = latents.cpu().float().numpy()
 
         if not return_dict:
             return (latents,)

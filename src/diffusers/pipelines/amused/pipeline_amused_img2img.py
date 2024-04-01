@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -127,7 +127,7 @@ class AmusedImg2ImgPipeline(DiffusionPipeline):
                 on the amount of noise initially added. When `strength` is 1, added noise is maximum and the denoising
                 process runs for the full number of iterations specified in `num_inference_steps`. A value of 1
                 essentially ignores `image`.
-            num_inference_steps (`int`, *optional*, defaults to 16):
+            num_inference_steps (`int`, *optional*, defaults to 12):
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             guidance_scale (`float`, *optional*, defaults to 10.0):
@@ -191,7 +191,7 @@ class AmusedImg2ImgPipeline(DiffusionPipeline):
             negative_prompt_embeds is None and negative_encoder_hidden_states is not None
         ):
             raise ValueError(
-                "pass either both `negatve_prompt_embeds` and `negative_encoder_hidden_states` or neither"
+                "pass either both `negative_prompt_embeds` and `negative_encoder_hidden_states` or neither"
             )
 
         if (prompt is None and prompt_embeds is None) or (prompt is not None and prompt_embeds is not None):

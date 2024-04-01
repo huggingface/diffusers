@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import copy
+import gc
 import tempfile
 import unittest
 
@@ -48,14 +49,25 @@ from ..pipeline_params import (
     TEXT_TO_IMAGE_IMAGE_PARAMS,
     TEXT_TO_IMAGE_PARAMS,
 )
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin
+from ..test_pipelines_common import (
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    SDFunctionTesterMixin,
+    SDXLOptionalComponentsTesterMixin,
+)
 
 
 enable_full_determinism()
 
 
 class StableDiffusionXLPipelineFastTests(
-    PipelineLatentTesterMixin, PipelineTesterMixin, SDXLOptionalComponentsTesterMixin, unittest.TestCase
+    SDFunctionTesterMixin,
+    IPAdapterTesterMixin,
+    PipelineLatentTesterMixin,
+    PipelineTesterMixin,
+    SDXLOptionalComponentsTesterMixin,
+    unittest.TestCase,
 ):
     pipeline_class = StableDiffusionXLPipeline
     params = TEXT_TO_IMAGE_PARAMS
@@ -279,6 +291,12 @@ class StableDiffusionXLPipelineFastTests(
 
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5552, 0.5569, 0.4725, 0.4348, 0.4994, 0.4632, 0.5142, 0.5012, 0.4700])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     def test_attention_slicing_forward_pass(self):
         super().test_attention_slicing_forward_pass(expected_max_diff=3e-3)
@@ -938,37 +956,6 @@ class StableDiffusionXLPipelineFastTests(
 
         assert np.abs(image_slices[0] - image_slices[1]).max() < 1e-3
 
-    def test_stable_diffusion_xl_with_fused_qkv_projections(self):
-        device = "cpu"  # ensure determinism for the device-dependent torch.Generator
-        components = self.get_dummy_components()
-        sd_pipe = StableDiffusionXLPipeline(**components)
-        sd_pipe = sd_pipe.to(device)
-        sd_pipe.set_progress_bar_config(disable=None)
-
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        original_image_slice = image[0, -3:, -3:, -1]
-
-        sd_pipe.fuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice_fused = image[0, -3:, -3:, -1]
-
-        sd_pipe.unfuse_qkv_projections()
-        inputs = self.get_dummy_inputs(device)
-        image = sd_pipe(**inputs).images
-        image_slice_disabled = image[0, -3:, -3:, -1]
-
-        assert np.allclose(
-            original_image_slice, image_slice_fused, atol=1e-2, rtol=1e-2
-        ), "Fusion of QKV projections shouldn't affect the outputs."
-        assert np.allclose(
-            image_slice_fused, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Outputs, with QKV projection fusion enabled, shouldn't change when fused QKV projections are disabled."
-        assert np.allclose(
-            original_image_slice, image_slice_disabled, atol=1e-2, rtol=1e-2
-        ), "Original outputs should match when fused QKV projections are disabled."
-
     def test_pipeline_interrupt(self):
         components = self.get_dummy_components()
         sd_pipe = StableDiffusionXLPipeline(**components)
@@ -1024,6 +1011,16 @@ class StableDiffusionXLPipelineFastTests(
 
 @slow
 class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+    def tearDown(self):
+        super().tearDown()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def test_stable_diffusion_lcm(self):
         torch.manual_seed(0)
         unet = UNet2DConditionModel.from_pretrained(
@@ -1049,3 +1046,68 @@ class StableDiffusionXLPipelineIntegrationTests(unittest.TestCase):
         max_diff = numpy_cosine_similarity_distance(image.flatten(), expected_image.flatten())
 
         assert max_diff < 1e-2
+
+    def test_download_ckpt_diff_format_is_same(self):
+        ckpt_path = (
+            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+        )
+
+        pipe = StableDiffusionXLPipeline.from_single_file(ckpt_path, torch_dtype=torch.float16)
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image_ckpt = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
+
+        pipe = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        )
+        pipe.scheduler = DDIMScheduler.from_config(pipe.scheduler.config)
+        pipe.unet.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
+
+        generator = torch.Generator(device="cpu").manual_seed(0)
+        image = pipe("a turtle", num_inference_steps=2, generator=generator, output_type="np").images[0]
+
+        max_diff = numpy_cosine_similarity_distance(image.flatten(), image_ckpt.flatten())
+
+        assert max_diff < 6e-3
+
+    def test_single_file_component_configs(self):
+        pipe = StableDiffusionXLPipeline.from_pretrained(
+            "stabilityai/stable-diffusion-xl-base-1.0", torch_dtype=torch.float16
+        )
+        ckpt_path = (
+            "https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_base_1.0.safetensors"
+        )
+        single_file_pipe = StableDiffusionXLPipeline.from_single_file(
+            ckpt_path, variant="fp16", torch_dtype=torch.float16
+        )
+
+        for param_name, param_value in single_file_pipe.text_encoder.config.to_dict().items():
+            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
+                continue
+            assert pipe.text_encoder.config.to_dict()[param_name] == param_value
+
+        for param_name, param_value in single_file_pipe.text_encoder_2.config.to_dict().items():
+            if param_name in ["torch_dtype", "architectures", "_name_or_path"]:
+                continue
+            assert pipe.text_encoder_2.config.to_dict()[param_name] == param_value
+
+        PARAMS_TO_IGNORE = ["torch_dtype", "_name_or_path", "architectures", "_use_default_values"]
+        for param_name, param_value in single_file_pipe.unet.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            if param_name == "upcast_attention" and pipe.unet.config[param_name] is None:
+                pipe.unet.config[param_name] = False
+            assert (
+                pipe.unet.config[param_name] == param_value
+            ), f"{param_name} is differs between single file loading and pretrained loading"
+
+        for param_name, param_value in single_file_pipe.vae.config.items():
+            if param_name in PARAMS_TO_IGNORE:
+                continue
+            assert (
+                pipe.vae.config[param_name] == param_value
+            ), f"{param_name} is differs between single file loading and pretrained loading"

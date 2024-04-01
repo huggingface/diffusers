@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,7 +24,8 @@ from typing import Dict, List, Tuple
 import numpy as np
 import requests_mock
 import torch
-from huggingface_hub import delete_repo
+from huggingface_hub import ModelCard, delete_repo
+from huggingface_hub.utils import is_jinja_available
 from requests.exceptions import HTTPError
 
 from diffusers.models import UNet2DConditionModel
@@ -33,6 +34,7 @@ from diffusers.training_utils import EMAModel
 from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import (
     CaptureLogger,
+    get_python_version,
     require_python39_or_higher,
     require_torch_2,
     require_torch_accelerator_with_training,
@@ -430,6 +432,10 @@ class ModelTesterMixin:
 
     @require_python39_or_higher
     @require_torch_2
+    @unittest.skipIf(
+        get_python_version == (3, 12),
+        reason="Torch Dynamo isn't yet supported for Python 3.12.",
+    )
     def test_from_save_pretrained_dynamo(self):
         init_dict, _ = self.prepare_init_args_and_inputs_for_common()
         inputs = [init_dict, self.model_class]
@@ -732,3 +738,26 @@ class ModelPushToHubTester(unittest.TestCase):
 
         # Reset repo
         delete_repo(self.org_repo_id, token=TOKEN)
+
+    @unittest.skipIf(
+        not is_jinja_available(),
+        reason="Model card tests cannot be performed without Jinja installed.",
+    )
+    def test_push_to_hub_library_name(self):
+        model = UNet2DConditionModel(
+            block_out_channels=(32, 64),
+            layers_per_block=2,
+            sample_size=32,
+            in_channels=4,
+            out_channels=4,
+            down_block_types=("DownBlock2D", "CrossAttnDownBlock2D"),
+            up_block_types=("CrossAttnUpBlock2D", "UpBlock2D"),
+            cross_attention_dim=32,
+        )
+        model.push_to_hub(self.repo_id, token=TOKEN)
+
+        model_card = ModelCard.load(f"{USER}/{self.repo_id}", token=TOKEN).data
+        assert model_card.library_name == "diffusers"
+
+        # Reset repo
+        delete_repo(self.repo_id, token=TOKEN)

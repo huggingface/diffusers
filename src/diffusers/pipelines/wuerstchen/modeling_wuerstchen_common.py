@@ -1,24 +1,7 @@
-# Copyright (c) 2023 Dominic Rampas MIT License
-# Copyright 2023 The HuggingFace Team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import torch
 import torch.nn as nn
 
 from ...models.attention_processor import Attention
-from ...models.lora import LoRACompatibleConv, LoRACompatibleLinear
-from ...utils import USE_PEFT_BACKEND
 
 
 class WuerstchenLayerNorm(nn.LayerNorm):
@@ -34,7 +17,7 @@ class WuerstchenLayerNorm(nn.LayerNorm):
 class TimestepBlock(nn.Module):
     def __init__(self, c, c_timestep):
         super().__init__()
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        linear_cls = nn.Linear
         self.mapper = linear_cls(c_timestep, c * 2)
 
     def forward(self, x, t):
@@ -46,8 +29,8 @@ class ResBlock(nn.Module):
     def __init__(self, c, c_skip=0, kernel_size=3, dropout=0.0):
         super().__init__()
 
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        conv_cls = nn.Conv2d
+        linear_cls = nn.Linear
 
         self.depthwise = conv_cls(c + c_skip, c, kernel_size=kernel_size, padding=kernel_size // 2, groups=c)
         self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)
@@ -81,7 +64,7 @@ class AttnBlock(nn.Module):
     def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
         super().__init__()
 
-        linear_cls = nn.Linear if USE_PEFT_BACKEND else LoRACompatibleLinear
+        linear_cls = nn.Linear
 
         self.self_attn = self_attn
         self.norm = WuerstchenLayerNorm(c, elementwise_affine=False, eps=1e-6)

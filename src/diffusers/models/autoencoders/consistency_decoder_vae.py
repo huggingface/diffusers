@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,7 +31,7 @@ from ..attention_processor import (
     AttnProcessor,
 )
 from ..modeling_utils import ModelMixin
-from ..unet_2d import UNet2DModel
+from ..unets.unet_2d import UNet2DModel
 from .vae import DecoderOutput, DiagonalGaussianDistribution, Encoder
 
 
@@ -63,7 +63,8 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         ...     "runwayml/stable-diffusion-v1-5", vae=vae, torch_dtype=torch.float16
         ... ).to("cuda")
 
-        >>> pipe("horse", generator=torch.manual_seed(0)).images
+        >>> image = pipe("horse", generator=torch.manual_seed(0)).images[0]
+        >>> image
         ```
     """
 
@@ -72,6 +73,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         self,
         scaling_factor: float = 0.18215,
         latent_channels: int = 4,
+        sample_size: int = 32,
         encoder_act_fn: str = "silu",
         encoder_block_out_channels: Tuple[int, ...] = (128, 256, 512, 512),
         encoder_double_z: bool = True,
@@ -153,6 +155,16 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         self.use_slicing = False
         self.use_tiling = False
 
+        # only relevant if vae tiling is enabled
+        self.tile_sample_min_size = self.config.sample_size
+        sample_size = (
+            self.config.sample_size[0]
+            if isinstance(self.config.sample_size, (list, tuple))
+            else self.config.sample_size
+        )
+        self.tile_latent_min_size = int(sample_size / (2 ** (len(self.config.block_out_channels) - 1)))
+        self.tile_overlap_factor = 0.25
+
     # Copied from diffusers.models.autoencoders.autoencoder_kl.AutoencoderKL.enable_tiling
     def enable_tiling(self, use_tiling: bool = True):
         r"""
@@ -187,7 +199,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         self.use_slicing = False
 
     @property
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.attn_processors
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.attn_processors
     def attn_processors(self) -> Dict[str, AttentionProcessor]:
         r"""
         Returns:
@@ -211,7 +223,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
 
         return processors
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_attn_processor
     def set_attn_processor(self, processor: Union[AttentionProcessor, Dict[str, AttentionProcessor]]):
         r"""
         Sets the attention processor to use to compute attention.
@@ -246,7 +258,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    # Copied from diffusers.models.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
+    # Copied from diffusers.models.unets.unet_2d_condition.UNet2DConditionModel.set_default_attn_processor
     def set_default_attn_processor(self):
         """
         Disables custom attention processors and sets the default attention implementation.
@@ -272,7 +284,7 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         Args:
             x (`torch.FloatTensor`): Input batch of images.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether to return a [`~models.consistecy_decoder_vae.ConsistencyDecoderOoutput`] instead of a plain
+                Whether to return a [`~models.consistency_decoder_vae.ConsistencyDecoderVAEOutput`] instead of a plain
                 tuple.
 
         Returns:
@@ -305,6 +317,19 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
         return_dict: bool = True,
         num_inference_steps: int = 2,
     ) -> Union[DecoderOutput, Tuple[torch.FloatTensor]]:
+        """
+        Decodes the input latent vector `z` using the consistency decoder VAE model.
+
+        Args:
+            z (torch.FloatTensor): The input latent vector.
+            generator (Optional[torch.Generator]): The random number generator. Default is None.
+            return_dict (bool): Whether to return the output as a dictionary. Default is True.
+            num_inference_steps (int): The number of inference steps. Default is 2.
+
+        Returns:
+            Union[DecoderOutput, Tuple[torch.FloatTensor]]: The decoded output.
+
+        """
         z = (z * self.config.scaling_factor - self.means) / self.stds
 
         scale_factor = 2 ** (len(self.config.block_out_channels) - 1)
@@ -345,7 +370,9 @@ class ConsistencyDecoderVAE(ModelMixin, ConfigMixin):
             b[:, :, :, x] = a[:, :, :, -blend_extent + x] * (1 - x / blend_extent) + b[:, :, :, x] * (x / blend_extent)
         return b
 
-    def tiled_encode(self, x: torch.FloatTensor, return_dict: bool = True) -> ConsistencyDecoderVAEOutput:
+    def tiled_encode(
+        self, x: torch.FloatTensor, return_dict: bool = True
+    ) -> Union[ConsistencyDecoderVAEOutput, Tuple]:
         r"""Encode a batch of images using a tiled encoder.
 
         When this option is enabled, the VAE will split the input tensor into tiles to compute encoding in several

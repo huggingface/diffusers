@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 HuggingFace Inc.
+# Copyright 2024 HuggingFace Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -138,7 +138,7 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
             "generator": generator,
             "num_inference_steps": 1,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "max_iter_to_alter": 2,
             "thresholds": {0: 0.7},
         }
@@ -185,6 +185,9 @@ class StableDiffusionAttendAndExcitePipelineFastTests(
     def test_save_load_optional_components(self):
         super().test_save_load_optional_components(expected_max_difference=4e-4)
 
+    def test_karras_schedulers_shape(self):
+        super().test_karras_schedulers_shape(num_inference_steps_for_strength_for_iterations=3)
+
 
 @require_torch_gpu
 @nightly
@@ -201,6 +204,11 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
     def tearDownClass(cls):
         super().tearDownClass()
         torch.use_deterministic_algorithms(True)
+
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
 
     def tearDown(self):
         super().tearDown()
@@ -225,7 +233,7 @@ class StableDiffusionAttendAndExcitePipelineIntegrationTests(unittest.TestCase):
             generator=generator,
             num_inference_steps=5,
             max_iter_to_alter=5,
-            output_type="numpy",
+            output_type="np",
         ).images[0]
 
         expected_image = load_numpy(

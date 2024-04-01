@@ -1,4 +1,4 @@
-# Copyright 2023 TSAIL Team and The HuggingFace Team. All rights reserved.
+# Copyright 2024 TSAIL Team and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,7 +61,7 @@ def betas_for_alpha_bar(
             return math.exp(t * -12.0)
 
     else:
-        raise ValueError(f"Unsupported alpha_tranform_type: {alpha_transform_type}")
+        raise ValueError(f"Unsupported alpha_transform_type: {alpha_transform_type}")
 
     betas = []
     for i in range(num_diffusion_timesteps):
@@ -134,9 +134,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             The way the timesteps should be scaled. Refer to Table 2 of the [Common Diffusion Noise Schedules and
             Sample Steps are Flawed](https://huggingface.co/papers/2305.08891) for more information.
         steps_offset (`int`, defaults to 0):
-            An offset added to the inference steps. You can use a combination of `offset=1` and
-            `set_alpha_to_one=False` to make the last step use step 0 for the previous alpha product like in Stable
-            Diffusion.
+            An offset added to the inference steps, as required by some model families.
     """
 
     _compatibles = [e.name for e in KarrasDiffusionSchedulers]
@@ -165,6 +163,10 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         timestep_spacing: str = "linspace",
         steps_offset: int = 0,
     ):
+        if algorithm_type in ["dpmsolver", "sde-dpmsolver"]:
+            deprecation_message = f"algorithm_type {algorithm_type} is deprecated and will be removed in a future version. Choose from `dpmsolver++` or `sde-dpmsolver++` instead"
+            deprecate("algorithm_types dpmsolver and sde-dpmsolver", "1.0.0", deprecation_message)
+
         if trained_betas is not None:
             self.betas = torch.tensor(trained_betas, dtype=torch.float32)
         elif beta_schedule == "linear":
@@ -209,13 +211,13 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         self.model_outputs = [None] * solver_order
         self.lower_order_nums = 0
         self._step_index = None
-        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
         self.use_karras_sigmas = use_karras_sigmas
 
     @property
     def step_index(self):
         """
-        The index counter for current timestep. It will increae 1 after each scheduler step.
+        The index counter for current timestep. It will increase 1 after each scheduler step.
         """
         return self._step_index
 
@@ -231,7 +233,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         # Clipping the minimum of all lambda(t) for numerical stability.
         # This is critical for cosine (squaredcos_cap_v2) noise schedule.
-        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.lambda_min_clipped).item()
+        clipped_idx = torch.searchsorted(torch.flip(self.lambda_t, [0]), self.config.lambda_min_clipped).item()
         self.noisiest_timestep = self.config.num_train_timesteps - 1 - clipped_idx
 
         # "linspace", "leading", "trailing" corresponds to annotation of Table 2. of https://arxiv.org/abs/2305.08891
@@ -290,7 +292,7 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         # add an index counter for schedulers that allow duplicated timesteps
         self._step_index = None
-        self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
+        self.sigmas = self.sigmas.to("cpu")  # to avoid too much CPU/GPU communication
 
     # Copied from diffusers.schedulers.scheduling_ddpm.DDPMScheduler._threshold_sample
     def _threshold_sample(self, sample: torch.FloatTensor) -> torch.FloatTensor:
@@ -763,7 +765,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             )
         return x_t
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler._init_step_index
     def _init_step_index(self, timestep):
         if isinstance(timestep, torch.Tensor):
             timestep = timestep.to(self.timesteps.device)
@@ -783,13 +784,13 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
 
         self._step_index = step_index
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.step
     def step(
         self,
         model_output: torch.FloatTensor,
         timestep: int,
         sample: torch.FloatTensor,
         generator=None,
+        variance_noise: Optional[torch.FloatTensor] = None,
         return_dict: bool = True,
     ) -> Union[SchedulerOutput, Tuple]:
         """
@@ -805,6 +806,9 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
                 A current instance of a sample created by the diffusion process.
             generator (`torch.Generator`, *optional*):
                 A random number generator.
+            variance_noise (`torch.FloatTensor`):
+                Alternative to generating noise with `generator` by directly providing the noise for the variance
+                itself. Useful for methods such as [`CycleDiffusion`].
             return_dict (`bool`):
                 Whether or not to return a [`~schedulers.scheduling_utils.SchedulerOutput`] or `tuple`.
 
@@ -835,10 +839,12 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
             self.model_outputs[i] = self.model_outputs[i + 1]
         self.model_outputs[-1] = model_output
 
-        if self.config.algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+        if self.config.algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"] and variance_noise is None:
             noise = randn_tensor(
                 model_output.shape, generator=generator, device=model_output.device, dtype=model_output.dtype
             )
+        elif self.config.algorithm_type in ["sde-dpmsolver", "sde-dpmsolver++"]:
+            noise = variance_noise
         else:
             noise = None
 
@@ -876,7 +882,6 @@ class DPMSolverMultistepInverseScheduler(SchedulerMixin, ConfigMixin):
         """
         return sample
 
-    # Copied from diffusers.schedulers.scheduling_dpmsolver_multistep.DPMSolverMultistepScheduler.add_noise
     def add_noise(
         self,
         original_samples: torch.FloatTensor,

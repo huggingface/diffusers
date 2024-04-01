@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -172,7 +172,7 @@ class OnnxRuntimeModel:
         # load model from local directory
         if os.path.isdir(model_id):
             model = OnnxRuntimeModel.load_model(
-                os.path.join(model_id, model_file_name), provider=provider, sess_options=sess_options
+                Path(model_id, model_file_name).as_posix(), provider=provider, sess_options=sess_options
             )
             kwargs["model_save_dir"] = Path(model_id)
         # load model from hub

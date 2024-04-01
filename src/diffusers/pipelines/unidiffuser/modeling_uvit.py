@@ -10,7 +10,7 @@ from ...models.attention import FeedForward
 from ...models.attention_processor import Attention
 from ...models.embeddings import TimestepEmbedding, Timesteps, get_2d_sincos_pos_embed
 from ...models.normalization import AdaLayerNorm
-from ...models.transformer_2d import Transformer2DModelOutput
+from ...models.transformers.transformer_2d import Transformer2DModelOutput
 from ...utils import logging
 
 
@@ -752,7 +752,7 @@ class UTransformer2DModel(ModelMixin, ConfigMixin):
             cross_attention_kwargs (*optional*):
                 Keyword arguments to supply to the cross attention layers, if used.
             return_dict (`bool`, *optional*, defaults to `True`):
-                Whether or not to return a [`models.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
+                Whether or not to return a [`models.unets.unet_2d_condition.UNet2DConditionOutput`] instead of a plain tuple.
             hidden_states_is_embedding (`bool`, *optional*, defaults to `False`):
                 Whether or not hidden_states is an embedding directly usable by the transformer. In this case we will
                 ignore input handling (e.g. continuous, vectorized, etc.) and directly feed hidden_states into the

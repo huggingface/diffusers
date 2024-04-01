@@ -158,7 +158,7 @@ class UniDiffuserPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -199,7 +199,7 @@ class UniDiffuserPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "prompt_latents": latents.get("prompt_latents"),
             "vae_latents": latents.get("vae_latents"),
             "clip_latents": latents.get("clip_latents"),
@@ -574,6 +574,11 @@ class UniDiffuserPipelineFastTests(
 @nightly
 @require_torch_gpu
 class UniDiffuserPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -590,7 +595,7 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 8.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         if generate_latents:
             latents = self.get_fixed_latents(device, seed=seed)
@@ -690,6 +695,11 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class UniDiffuserPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -706,7 +716,7 @@ class UniDiffuserPipelineNightlyTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 8.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         if generate_latents:
             latents = self.get_fixed_latents(device, seed=seed)

@@ -32,6 +32,7 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
             "euler_at_final": False,
             "lambda_min_clipped": -float("inf"),
             "variance_type": None,
+            "final_sigmas_type": "sigma_min",
         }
 
         config.update(**kwargs)
@@ -211,6 +212,10 @@ class DPMSolverMultistepSchedulerTest(SchedulerCommonTest):
     def test_inference_steps(self):
         for num_inference_steps in [1, 2, 3, 5, 10, 50, 100, 999, 1000]:
             self.check_over_forward(num_inference_steps=num_inference_steps, time_step=0)
+
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
 
     def test_full_loop_no_noise(self):
         sample = self.full_loop()

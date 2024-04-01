@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:12.1.0-runtime-ubuntu20.04
 LABEL maintainer="Hugging Face"
 LABEL repository="diffusers"
 
@@ -22,14 +22,14 @@ RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # pre-install the heavy dependencies (these can later be overridden by the deps from setup.py)
-RUN python3 -m pip install --no-cache-dir --upgrade pip && \
-    python3 -m pip install --no-cache-dir \
+RUN python3 -m pip install --no-cache-dir --upgrade pip uv==0.1.11 && \
+    python3 -m uv pip install --no-cache-dir \
         torch \
         torchvision \
         torchaudio \
         "onnxruntime-gpu>=1.13.1" \
         --extra-index-url https://download.pytorch.org/whl/cu117 && \
-    python3 -m pip install --no-cache-dir \
+    python3 -m uv pip install --no-cache-dir \
         accelerate \
         datasets \
         hf-doc-builder \

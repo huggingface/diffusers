@@ -1,4 +1,4 @@
-# Copyright 2023 The HuggingFace Team. All rights reserved.
+# Copyright 2024 The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -349,6 +349,11 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         text_encoder_hidden_states = (
             torch.cat([prompt_embeds, negative_prompt_embeds]) if negative_prompt_embeds is not None else prompt_embeds
         )
+        effnet = (
+            torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
+            if self.do_classifier_free_guidance
+            else image_embeddings
+        )
 
         # 3. Determine latent shape of latents
         latent_height = int(image_embeddings.size(2) * self.config.latent_dim_scale)
@@ -371,11 +376,6 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
         self._num_timesteps = len(timesteps[:-1])
         for i, t in enumerate(self.progress_bar(timesteps[:-1])):
             ratio = t.expand(latents.size(0)).to(dtype)
-            effnet = (
-                torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
-                if self.do_classifier_free_guidance
-                else image_embeddings
-            )
             # 7. Denoise latents
             predicted_latents = self.decoder(
                 torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents,
@@ -423,9 +423,9 @@ class WuerstchenDecoderPipeline(DiffusionPipeline):
             latents = self.vqgan.config.scale_factor * latents
             images = self.vqgan.decode(latents).sample.clamp(0, 1)
             if output_type == "np":
-                images = images.permute(0, 2, 3, 1).cpu().numpy()
+                images = images.permute(0, 2, 3, 1).cpu().float().numpy()
             elif output_type == "pil":
-                images = images.permute(0, 2, 3, 1).cpu().numpy()
+                images = images.permute(0, 2, 3, 1).cpu().float().numpy()
                 images = self.numpy_to_pil(images)
         else:
             images = latents

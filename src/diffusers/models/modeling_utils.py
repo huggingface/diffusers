@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2023 The HuggingFace Inc. team.
+# Copyright 2024 The HuggingFace Inc. team.
 # Copyright (c) 2022, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +20,7 @@ import os
 import re
 from collections import OrderedDict
 from functools import partial
+from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union
 
 import safetensors
@@ -32,6 +33,7 @@ from .. import __version__
 from ..utils import (
     CONFIG_NAME,
     FLAX_WEIGHTS_NAME,
+    SAFETENSORS_FILE_EXTENSION,
     SAFETENSORS_WEIGHTS_NAME,
     WEIGHTS_NAME,
     _add_variant,
@@ -41,7 +43,7 @@ from ..utils import (
     is_torch_version,
     logging,
 )
-from ..utils.hub_utils import PushToHubMixin
+from ..utils.hub_utils import PushToHubMixin, load_or_create_model_card, populate_model_card
 
 
 logger = logging.get_logger(__name__)
@@ -102,10 +104,16 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
     Reads a checkpoint file, returning properly formatted errors if they arise.
     """
     try:
-        if os.path.basename(checkpoint_file) == _add_variant(WEIGHTS_NAME, variant):
-            return torch.load(checkpoint_file, map_location="cpu")
-        else:
+        file_extension = os.path.basename(checkpoint_file).split(".")[-1]
+        if file_extension == SAFETENSORS_FILE_EXTENSION:
             return safetensors.torch.load_file(checkpoint_file, device="cpu")
+        else:
+            weights_only_kwarg = {"weights_only": True} if is_torch_version(">=", "1.13") else {}
+            return torch.load(
+                checkpoint_file,
+                map_location="cpu",
+                **weights_only_kwarg,
+            )
     except Exception as e:
         try:
             with open(checkpoint_file) as f:
@@ -122,9 +130,7 @@ def load_state_dict(checkpoint_file: Union[str, os.PathLike], variant: Optional[
                     ) from e
         except (UnicodeDecodeError, ValueError):
             raise OSError(
-                f"Unable to load weights from checkpoint file for '{checkpoint_file}' "
-                f"at '{checkpoint_file}'. "
-                "If you tried to load a PyTorch model from a TF 2.0 checkpoint, please set from_tf=True."
+                f"Unable to load weights from checkpoint file for '{checkpoint_file}' " f"at '{checkpoint_file}'. "
             )
 
 
@@ -367,14 +373,19 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
         # Save the model
         if safe_serialization:
             safetensors.torch.save_file(
-                state_dict, os.path.join(save_directory, weights_name), metadata={"format": "pt"}
+                state_dict, Path(save_directory, weights_name).as_posix(), metadata={"format": "pt"}
             )
         else:
-            torch.save(state_dict, os.path.join(save_directory, weights_name))
+            torch.save(state_dict, Path(save_directory, weights_name).as_posix())
 
-        logger.info(f"Model weights saved in {os.path.join(save_directory, weights_name)}")
+        logger.info(f"Model weights saved in {Path(save_directory, weights_name).as_posix()}")
 
         if push_to_hub:
+            # Create a new empty model card and eventually tag it
+            model_card = load_or_create_model_card(repo_id, token=token)
+            model_card = populate_model_card(model_card)
+            model_card.save(Path(save_directory, "README.md").as_posix())
+
             self._upload_folder(
                 save_directory,
                 repo_id,
@@ -672,7 +683,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                             unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
 
                     if len(unexpected_keys) > 0:
-                        logger.warn(
+                        logger.warning(
                             f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
                         )
 
@@ -700,7 +711,7 @@ class ModelMixin(torch.nn.Module, PushToHubMixin):
                         # the weights so we don't have to do this again.
 
                         if "'Attention' object has no attribute" in str(e):
-                            logger.warn(
+                            logger.warning(
                                 f"Taking `{str(e)}` while using `accelerate.load_checkpoint_and_dispatch` to mean {pretrained_model_name_or_path}"
                                 " was saved with deprecated attention block weight names. We will load it with the deprecated attention block"
                                 " names and convert them on the fly to the new attention block format. Please re-save the model after this conversion,"
