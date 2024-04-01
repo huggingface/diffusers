@@ -308,7 +308,7 @@ class AmusedInpaintPipeline(DiffusionPipeline):
         latents = self.vqvae.quantize(latents)[2][2].reshape(latents_bsz, latents_height, latents_width)
 
         mask = self.mask_processor.preprocess(
-            mask_image, height // self.vae_scale_factor, width // self.vae_scale_factor
+            mask_image, int(height) // self.vae_scale_factor, int(width) // self.vae_scale_factor
         )
         mask = mask.reshape(mask.shape[0], latents_height, latents_width).bool().to(latents.device)
         latents[mask] = self.scheduler.config.mask_token_id

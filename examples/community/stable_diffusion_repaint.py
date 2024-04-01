@@ -558,7 +558,7 @@ class StableDiffusionRepaintPipeline(
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
         # and half precision
         mask = torch.nn.functional.interpolate(
-            mask, size=(height // self.vae_scale_factor, width // self.vae_scale_factor)
+            mask, size=(int(height) // self.vae_scale_factor, int(width) // self.vae_scale_factor)
         )
         mask = mask.to(device=device, dtype=dtype)
 

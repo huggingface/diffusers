@@ -556,7 +556,7 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
 
         depth_map = torch.nn.functional.interpolate(
             depth_map.unsqueeze(1),
-            size=(height // self.vae_scale_factor, width // self.vae_scale_factor),
+            size=(int(height) // self.vae_scale_factor, int(width) // self.vae_scale_factor),
             mode="bicubic",
             align_corners=False,
         )

@@ -253,7 +253,7 @@ class AmusedPipeline(DiffusionPipeline):
         micro_conds = micro_conds.unsqueeze(0)
         micro_conds = micro_conds.expand(2 * batch_size if guidance_scale > 1.0 else batch_size, -1)
 
-        shape = (batch_size, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        shape = (batch_size, int(height) // self.vae_scale_factor, int(width) // self.vae_scale_factor)
 
         if latents is None:
             latents = torch.full(

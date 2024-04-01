@@ -469,7 +469,7 @@ class LEditsPPPipelineStableDiffusion(
 
     # Modified from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_latents
     def prepare_latents(self, batch_size, num_channels_latents, height, width, dtype, device, latents):
-        # shape = (batch_size, num_channels_latents, height // self.vae_scale_factor, width // self.vae_scale_factor)
+        # shape = (batch_size, num_channels_latents, int(height) // self.vae_scale_factor, int(width) // self.vae_scale_factor)
 
         # if latents.shape != shape:
         #    raise ValueError(f"Unexpected latents shape, got {latents.shape}, expected {shape}")
