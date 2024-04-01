@@ -1060,7 +1060,12 @@ class SDXLLongPromptWeightingPipeline(
         batch_size *= num_images_per_prompt
 
         if image is None:
-            shape = (batch_size, num_channels_latents, int(height) // self.vae_scale_factor, int(width) // self.vae_scale_factor)
+            shape = (
+                batch_size,
+                num_channels_latents,
+                int(height) // self.vae_scale_factor,
+                int(width) // self.vae_scale_factor,
+            )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"
@@ -1140,7 +1145,12 @@ class SDXLLongPromptWeightingPipeline(
             return latents
 
         else:
-            shape = (batch_size, num_channels_latents, int(height) // self.vae_scale_factor, int(width) // self.vae_scale_factor)
+            shape = (
+                batch_size,
+                num_channels_latents,
+                int(height) // self.vae_scale_factor,
+                int(width) // self.vae_scale_factor,
+            )
             if isinstance(generator, list) and len(generator) != batch_size:
                 raise ValueError(
                     f"You have passed a list of generators of length {len(generator)}, but requested an effective batch"

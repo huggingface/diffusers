@@ -648,7 +648,9 @@ class StableDiffusionControlNetInpaintImg2ImgPipeline(DiffusionPipeline, StableD
         # resize the mask to latents shape as we concatenate the mask to the latents
         # we do that before converting to dtype to avoid breaking in case we're using cpu_offload
         # and half precision
-        mask_image = F.interpolate(mask_image, size=(int(height) // self.vae_scale_factor, int(width) // self.vae_scale_factor))
+        mask_image = F.interpolate(
+            mask_image, size=(int(height) // self.vae_scale_factor, int(width) // self.vae_scale_factor)
+        )
         mask_image = mask_image.to(device=device, dtype=dtype)
 
         # duplicate mask for each generation per prompt, using mps friendly method
