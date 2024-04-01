@@ -153,17 +153,42 @@ image
     <img src="https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/diffusers/load_attn_proc.png" />
 </div>
 
-<Tip>
-
-For both [`~loaders.LoraLoaderMixin.load_lora_weights`] and [`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`], you can pass the `cross_attention_kwargs={"scale": 0.5}` parameter to adjust how much of the LoRA weights to use. A value of `0` is the same as only using the base model weights, and a value of `1` is equivalent to using the fully finetuned LoRA.
-
-</Tip>
-
 To unload the LoRA weights, use the [`~loaders.LoraLoaderMixin.unload_lora_weights`] method to discard the LoRA weights and restore the model to its original weights:
 
 ```py
 pipeline.unload_lora_weights()
 ```
+
+### Adjust LoRA weight scale
+
+For both [`~loaders.LoraLoaderMixin.load_lora_weights`] and [`~loaders.UNet2DConditionLoadersMixin.load_attn_procs`], you can pass the `cross_attention_kwargs={"scale": 0.5}` parameter to adjust how much of the LoRA weights to use. A value of `0` is the same as only using the base model weights, and a value of `1` is equivalent to using the fully finetuned LoRA.
+
+For more granular control on the amount of LoRA weights used per layer, you can use [`~loaders.LoraLoaderMixin.set_adapters`] and pass a dictionary specifying by how much to scale the weights in each layer by.
+```python
+pipe = ... # create pipeline
+pipe.load_lora_weights(..., adapter_name="my_adapter") 
+scales = {
+    "text_encoder": 0.5,
+    "text_encoder_2": 0.5,  # only usable if pipe has a 2nd text encoder
+    "unet": {
+        "down": 0.9,  # all transformers in the down-part will use scale 0.9
+        # "mid"  # in this example "mid" is not given, therefore all transformers in the mid part will use the default scale 1.0
+        "up": {
+            "block_0": 0.6,  # all 3 transformers in the 0th block in the up-part will use scale 0.6
+            "block_1": [0.4, 0.8, 1.0],  # the 3 transformers in the 1st block in the up-part will use scales 0.4, 0.8 and 1.0 respectively
+        }
+    }
+}
+pipe.set_adapters("my_adapter", scales)
+```
+
+This also works with multiple adapters - see [this guide](https://huggingface.co/docs/diffusers/tutorials/using_peft_for_inference#customize-adapters-strength) for how to do it.
+
+<Tip warning={true}>
+
+Currently, [`~loaders.LoraLoaderMixin.set_adapters`] only supports scaling attention weights. If a LoRA has other parts (e.g., resnets or down-/upsamplers), they will keep a scale of 1.0.
+
+</Tip>
 
 ### Kohya and TheLastBen
 
