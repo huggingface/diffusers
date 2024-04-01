@@ -517,7 +517,7 @@ def parse_args(input_args=None):
         "--loss_type",
         type=str,
         default="l2",
-        choices=["l2", "huber", "huber_scheduled"],
+        choices=["l2", "huber", "huber_scheduled", "smooth_l1", "smooth_l1_scheduled"],
         help="The type of loss to use and whether it's timestep-scheduled. See Issue #7488 for more info."
     )
     parser.add_argument(
@@ -750,6 +750,12 @@ def conditional_loss(model_pred:torch.Tensor, target:torch.Tensor, reduction:str
         loss = F.mse_loss(model_pred, target, reduction=reduction)
     elif loss_type == 'huber' or loss_type == 'huber_scheduled':
         loss = 2 * huber_c * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
+        if reduction == "mean":
+            loss = torch.mean(loss)
+        elif reduction == "sum":
+            loss = torch.sum(loss)
+    elif loss_type == 'smooth_l1' or loss_type == 'smooth_l1_scheduled': # NOTE: Will unify in the next commits
+        loss = 2 * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
         if reduction == "mean":
             loss = torch.mean(loss)
         elif reduction == "sum":
@@ -1245,7 +1251,7 @@ def main(args):
                 noise = torch.randn_like(model_input)
                 bsz, channels, height, width = model_input.shape
                 # Sample a random timestep for each image
-                if args.loss_type == 'huber_scheduled':
+                if args.loss_type == 'huber_scheduled' or args.loss_type == 'smooth_l1_scheduled': #NOTE: Will unify scheduled and vanilla soon
                     timesteps = torch.randint(
                         0, noise_scheduler.config.num_train_timesteps, (1,), device='cpu'
                     )
@@ -1254,7 +1260,7 @@ def main(args):
                     alpha = - math.log(args.huber_c) / noise_scheduler.config.num_train_timesteps
                     huber_c = math.exp(-alpha * timestep)
                     timesteps = timesteps.repeat(bsz).to(model_input.device)
-                elif args.loss_type == 'huber':
+                elif args.loss_type == 'huber' or args.loss_type == 'smooth_l1':
                     # for fairness in comparison 
                     timesteps = torch.randint(
                         0, noise_scheduler.config.num_train_timesteps, (1,), device='cpu'
