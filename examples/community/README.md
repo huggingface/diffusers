@@ -85,14 +85,25 @@ This depth estimation pipeline processes a single input image through multiple d
 
 ```python
 import numpy as np
+import torch
 from PIL import Image
 from diffusers import DiffusionPipeline
 from diffusers.utils import load_image
 
+# Original DDIM version (higher quality)
 pipe = DiffusionPipeline.from_pretrained(
-    "Bingxin/Marigold",
+    "prs-eth/marigold-v1-0",
     custom_pipeline="marigold_depth_estimation"
     # torch_dtype=torch.float16,                # (optional) Run with half-precision (16-bit float).
+    # variant="fp16",                           # (optional) Use with `torch_dtype=torch.float16`, to directly load fp16 checkpoint
+)
+
+# (New) LCM version (faster speed)
+pipe = DiffusionPipeline.from_pretrained(
+    "prs-eth/marigold-lcm-v1-0",
+    custom_pipeline="marigold_depth_estimation"
+    # torch_dtype=torch.float16,                # (optional) Run with half-precision (16-bit float).
+    # variant="fp16",                           # (optional) Use with `torch_dtype=torch.float16`, to directly load fp16 checkpoint
 )
 
 pipe.to("cuda")
@@ -101,12 +112,21 @@ img_path_or_url = "https://share.phys.ethz.ch/~pf/bingkedata/marigold/pipeline_e
 image: Image.Image = load_image(img_path_or_url)
 
 pipeline_output = pipe(
-    image,                  # Input image.
+    image,                    # Input image.
+    # ----- recommended setting for DDIM version -----
     # denoising_steps=10,     # (optional) Number of denoising steps of each inference pass. Default: 10.
     # ensemble_size=10,       # (optional) Number of inference passes in the ensemble. Default: 10.
+    # ------------------------------------------------
+    
+    # ----- recommended setting for LCM version ------
+    # denoising_steps=4,
+    # ensemble_size=5,
+    # -------------------------------------------------
+    
     # processing_res=768,     # (optional) Maximum resolution of processing. If set to 0: will not resize at all. Defaults to 768.
     # match_input_res=True,   # (optional) Resize depth prediction to match input resolution.
     # batch_size=0,           # (optional) Inference batch size, no bigger than `num_ensemble`. If set to 0, the script will automatically decide the proper batch size. Defaults to 0.
+    # seed=2024,              # (optional) Random seed can be set to ensure additional reproducibility. Default: None (unseeded). Note: forcing --batch_size 1 helps to increase reproducibility. To ensure full reproducibility, deterministic mode needs to be used.
     # color_map="Spectral",   # (optional) Colormap used to colorize the depth map. Defaults to "Spectral". Set to `None` to skip colormap generation.
     # show_progress_bar=True, # (optional) If true, will show progress bars of the inference progress.
 )
@@ -3743,3 +3763,80 @@ onestep_image = pipe(prompt, num_inference_steps=1).images[0]
 # Multistep sampling
 multistep_image = pipe(prompt, num_inference_steps=4).images[0]
 ```
+
+# Perturbed-Attention Guidance
+
+[Project](https://ku-cvlab.github.io/Perturbed-Attention-Guidance/) / [arXiv](https://arxiv.org/abs/2403.17377) / [GitHub](https://github.com/KU-CVLAB/Perturbed-Attention-Guidance)
+
+This implementation is based on [Diffusers](https://huggingface.co/docs/diffusers/index). StableDiffusionPAGPipeline is a modification of StableDiffusionPipeline to support Perturbed-Attention Guidance (PAG).
+
+## Example Usage
+
+```
+import os
+import torch
+
+from accelerate.utils import set_seed
+
+from diffusers import StableDiffusionPipeline
+from diffusers.utils import load_image, make_image_grid
+from diffusers.utils.torch_utils import randn_tensor
+
+pipe = StableDiffusionPipeline.from_pretrained(
+    "runwayml/stable-diffusion-v1-5",
+    custom_pipeline="hyoungwoncho/sd_perturbed_attention_guidance",
+    torch_dtype=torch.float16
+)
+
+device="cuda"
+pipe = pipe.to(device)
+
+pag_scale = 5.0
+pag_applied_layers_index = ['m0']
+
+batch_size = 4
+seed=10
+
+base_dir = "./results/"
+grid_dir = base_dir + "/pag" + str(pag_scale) + "/"
+
+if not os.path.exists(grid_dir):
+    os.makedirs(grid_dir)
+
+set_seed(seed)
+
+latent_input = randn_tensor(shape=(batch_size,4,64,64),generator=None, device=device, dtype=torch.float16)
+
+output_baseline = pipe(
+    "",
+    width=512,
+    height=512,
+    num_inference_steps=50,
+    guidance_scale=0.0,
+    pag_scale=0.0,
+    pag_applied_layers_index=pag_applied_layers_index,
+    num_images_per_prompt=batch_size,
+    latents=latent_input
+).images
+
+output_pag = pipe(
+    "",
+    width=512,
+    height=512,
+    num_inference_steps=50,
+    guidance_scale=0.0,
+    pag_scale=5.0,
+    pag_applied_layers_index=pag_applied_layers_index,
+    num_images_per_prompt=batch_size,
+    latents=latent_input
+).images
+
+grid_image = make_image_grid(output_baseline + output_pag, rows=2, cols=batch_size)
+grid_image.save(grid_dir + "sample.png")
+```
+
+## PAG Parameters
+
+pag_scale : gudiance scale of PAG (ex: 5.0)
+
+pag_applied_layers_index : index of the layer to apply perturbation (ex: ['m0'])
