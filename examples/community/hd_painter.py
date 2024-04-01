@@ -260,9 +260,10 @@ class PAIntAAttnProcessor:
         # TODO: check if classifier_free_guidance is being used before splitting here
         if self.do_classifier_free_guidance:
             # Our scaling coefficients depend only on the conditional part, so we split the inputs
-            _cross_attention_input_hidden_states_unconditional, cross_attention_input_hidden_states_conditional = (
-                cross_attention_input_hidden_states.chunk(2)
-            )
+            (
+                _cross_attention_input_hidden_states_unconditional,
+                cross_attention_input_hidden_states_conditional,
+            ) = cross_attention_input_hidden_states.chunk(2)
 
             # Same split for the encoder_hidden_states i.e. the tokens
             # Since the SelfAttention processors don't get the encoder states as input, we inject them into the processor in the begining.
@@ -291,9 +292,11 @@ class PAIntAAttnProcessor:
                 batch_size, channel, height * width
             ).transpose(1, 2)
 
-        batch_size, sequence_length, _ = (
-            cross_attention_hidden_states.shape
-        )  # It is definitely a cross attention, so no need for an if block
+        (
+            batch_size,
+            sequence_length,
+            _,
+        ) = cross_attention_hidden_states.shape  # It is definitely a cross attention, so no need for an if block
         # TODO: change the attention_mask here
         attention_mask = attn2.prepare_attention_mask(
             None, sequence_length, batch_size
