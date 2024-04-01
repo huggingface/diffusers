@@ -749,7 +749,7 @@ def conditional_loss(model_pred:torch.Tensor, target:torch.Tensor, reduction:str
     if loss_type == 'l2':
         loss = F.mse_loss(model_pred, target, reduction=reduction)
     elif loss_type == 'huber' or loss_type == 'huber_scheduled':
-        loss = huber_c * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
+        loss = 2 * huber_c * (torch.sqrt((model_pred - target) ** 2 + huber_c**2) - huber_c)
         if reduction == "mean":
             loss = torch.mean(loss)
         elif reduction == "sum":
