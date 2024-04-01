@@ -72,6 +72,8 @@
       title: Control image brightness
     - local: using-diffusers/weighted_prompts
       title: Prompt weighting
+    - local: using-diffusers/from_pipe
+      title: Switch loaded pipelines
     - local: using-diffusers/freeu
       title: Improve generation quality with FreeU
     title: Techniques
