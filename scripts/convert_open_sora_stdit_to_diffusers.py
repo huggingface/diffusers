@@ -2,6 +2,9 @@ import argparse
 import os
 
 import torch
+from safetensors import safe_open
+
+
 
 from diffusers import Transformer3DModel
 
@@ -12,7 +15,11 @@ interpolation_scale = {256: 0.5, 512: 1}
 
 
 def main(args):
-    all_state_dict = torch.load(args.orig_ckpt_path, map_location="cpu")
+    # all_state_dict = torch.load(args.orig_ckpt_path, map_location="cpu")
+    all_state_dict = {}
+    with safe_open("model.safetensors", framework="pt", device="cpu") as f:
+        for k in f.keys():
+            all_state_dict[k] = f.get_tensor(k)
     state_dict = all_state_dict.pop("state_dict")
     converted_state_dict = {}
 
