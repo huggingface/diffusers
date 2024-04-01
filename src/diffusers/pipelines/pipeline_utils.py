@@ -397,7 +397,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
             raise ValueError(
-                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`."
+                "It seems like you have activated a device mapping strategy on the pipeline which doesn't allow explicit device placement using `to()`. You can call `reset_device_map()` first and then call `to()`."
             )
 
         # Display a warning in this case (the operation succeeds but the benefits are lost)
@@ -1087,7 +1087,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
             raise ValueError(
-                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_model_cpu_offload() isn't allowed."
+                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_model_cpu_offload() isn't allowed. You can call `reset_device_map()` first and then call `enable_model_cpu_offload()`."
             )
 
         if self.model_cpu_offload_seq is None:
@@ -1185,7 +1185,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
         is_pipeline_device_mapped = self.hf_device_map is not None and len(self.hf_device_map) > 1
         if is_pipeline_device_mapped:
             raise ValueError(
-                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_sequential_cpu_offload() isn't allowed."
+                "It seems like you have activated a device mapping strategy on the pipeline so calling `enable_sequential_cpu_offload() isn't allowed. You can call `reset_device_map()` first and then call `enable_sequential_cpu_offload()`."
             )
 
         torch_device = torch.device(device)
