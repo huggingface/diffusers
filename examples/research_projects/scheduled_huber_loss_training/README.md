@@ -12,4 +12,4 @@ See https://github.com/huggingface/diffusers/issues/7488 for the detailed descri
 
 ## Instructions
 
-The same usage as in the case of the corresponding vanilla Diffusers scripts https://github.com/huggingface/diffusers/examples/
+The same usage as in the case of the corresponding vanilla Diffusers scripts https://github.com/huggingface/diffusers/tree/main/examples
