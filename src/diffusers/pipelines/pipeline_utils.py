@@ -1722,7 +1722,7 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
             if name in expected_modules and name not in passed_class_obj:
                 # for model components, we will not switch over if the class does not matches the type hint in the new pipeline's signature
                 if (
-                    not isinstance(component, torch.nn.Module)
+                    not isinstance(component, ModelMixin)
                     or type(component) in component_types[name]
                     or (component is None and name in cls._optional_components)
                 ):
