@@ -2200,7 +2200,7 @@ class IPAdapterAttnProcessor(nn.Module):
         if ip_adapter_masks is not None:
             if len(ip_adapter_masks) != len(self.scale):
                 raise ValueError(
-                    f"Lenght of ip_adapter_masks array ({len(ip_adapter_masks)}) must match "
+                    f"Length of ip_adapter_masks array ({len(ip_adapter_masks)}) must match "
                     f"number of IP-Adapters ({len(self.scale)})"
                 )
         else:
