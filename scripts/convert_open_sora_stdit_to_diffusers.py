@@ -4,8 +4,6 @@ import os
 import torch
 from safetensors import safe_open
 
-
-
 from diffusers import Transformer3DModel
 
 

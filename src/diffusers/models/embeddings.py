@@ -235,7 +235,7 @@ class PatchEmbed3D(nn.Module):
             latent = self.norm(latent)
             latent = latent.transpose(1, 2).view(batch_size, self.emed_dim, num_frames, height, width)
 
-        latent = latent.flatten(3).permute(0, 2, 3, 1) # BCTHW -> BT(HW)C
+        latent = latent.flatten(3).permute(0, 2, 3, 1)  # BCTHW -> BT(HW)C
 
         # Interpolate positional embeddings if needed.
         # (For PixArt-Alpha: https://github.com/PixArt-alpha/PixArt-alpha/blob/0f55e922376d8b797edd44d25d0e7464b260dcab/diffusion/model/nets/PixArtMS.py#L162C151-L162C160)
@@ -252,7 +252,7 @@ class PatchEmbed3D(nn.Module):
             pos_embed = self.pos_embed
 
         latent = (latent + pos_embed).to(latent.dtype)
-        latent = latent.flatten(1, 2) # BT(H*W)C -> B(T*H*W)C
+        latent = latent.flatten(1, 2)  # BT(H*W)C -> B(T*H*W)C
         return latent
 
 

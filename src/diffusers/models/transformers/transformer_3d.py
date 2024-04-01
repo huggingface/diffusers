@@ -184,9 +184,11 @@ class Transformer3DBlock(nn.Module):
         attn_output = self.attn_temporal(temporal_hidden_states)
 
         # reshape (batch * num_spatial_patches, num_temporal_patches, dim) -> (batch, num_temporal_patches*num_spatial_patches, dim)
-        attn_output = attn_output.view(batch_size, self.num_spatial_patches, self.num_temporal_patches, -1).transpose(
-            1, 2
-        ).contiguous()
+        attn_output = (
+            attn_output.view(batch_size, self.num_spatial_patches, self.num_temporal_patches, -1)
+            .transpose(1, 2)
+            .contiguous()
+        )
         attn_output = attn_output.view(batch_size, self.num_temporal_patches * self.num_spatial_patches, -1)
 
         attn_output = gate_msa * attn_output
@@ -401,11 +403,25 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
         # unpatchify
         hidden_states = hidden_states.reshape(
-            shape=(-1, self.num_temporal_patches, height, width, self.patch_size[1], self.patch_size[2], self.out_channels)
+            shape=(
+                -1,
+                self.num_temporal_patches,
+                height,
+                width,
+                self.patch_size[1],
+                self.patch_size[2],
+                self.out_channels,
+            )
         )
         hidden_states = torch.einsum("nthwpqc->ncthpwq", hidden_states)
         output = hidden_states.reshape(
-            shape=(-1, self.out_channels, self.num_temporal_patches, height * self.patch_size[1], width * self.patch_size[2])
+            shape=(
+                -1,
+                self.out_channels,
+                self.num_temporal_patches,
+                height * self.patch_size[1],
+                width * self.patch_size[2],
+            )
         )
 
         if not return_dict:

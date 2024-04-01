@@ -76,8 +76,8 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             PriorTransformer,
             T5FilmDecoder,
             Transformer2DModel,
-            TransformerTemporalModel,
             Transformer3DModel,
+            TransformerTemporalModel,
         )
         from .unets import (
             I2VGenXLUNet,
