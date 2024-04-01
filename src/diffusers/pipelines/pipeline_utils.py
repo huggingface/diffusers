@@ -43,7 +43,7 @@ from .. import __version__
 from ..configuration_utils import ConfigMixin
 from ..models import AutoencoderKL
 from ..models.attention_processor import FusedAttnProcessor2_0
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, ModelMixin
 from ..schedulers.scheduling_utils import SCHEDULER_CONFIG_NAME
 from ..utils import (
     CONFIG_NAME,

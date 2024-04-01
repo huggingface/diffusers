@@ -94,7 +94,7 @@ You can see a pretty nice improvement in the output
   <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/from_pipe_out_sag_1.png"/>
 </div>
 
-now we have `stableDiffusionPipeline` and `StableDiffusionSAGPipeline` co-existing with the same loaded model components;  You can use them interchangeably without additional memory.
+Now we have both `stableDiffusionPipeline` and `StableDiffusionSAGPipeline` co-existing with the same loaded model components;  You can use them interchangeably without additional memory.
 
 ```
 print(
@@ -106,7 +106,7 @@ print(
 Max memory allocated: 4.406213283538818 GB
 ```
 
-Let's unload the IP adapter from the SAG pipeline. Please note that methods such as `load_ip_adapter` and `unload_ip_adapter` make changes to the model components that are stateful. So, when you use these methods on one pipeline, it will also affect all other pipelines that share the same model components.
+Let's unload the IP adapter from the SAG pipeline. It's important to note that methods like `load_ip_adapter` and `unload_ip_adapter` modify the state of the model components. Therefore, when you use these methods on one pipeline, it will affect all other pipelines that share the same model components.
 
 ```bash
 pipe_sag.unload_ip_adapter()
@@ -129,9 +129,11 @@ out_sd = pipe_sd(
 AttributeError: 'NoneType' object has no attribute 'image_projection_layers'
 ```
 
-Please keep in mind that we cannot guarantee that the pipeline methods will work properly on a new pipeline you created using the `from_pipe` method. For example, the `enable_model_cpu_offload` method installs hooks to the model components based on a unique offloading sequence for each pipeline. Therefore, if models are run in a different order in the new pipeline, the CPU offloading may not work correctly. We recommend always re-applying the pipeline method on the new pipeline created using the `from_pipe` method.
+Please note that the pipeline methods may not function properly on a new pipeline created using the `from_pipe` method. For instance, the `enable_model_cpu_offload` method installs hooks to the model components based on a unique offloading sequence for each pipeline. Therefore, if the models are executed in a different order in the new pipeline, the CPU offloading may not work correctly.
 
-You can also add or subtract model components let's now create a AnimateDiff pipeline with an additional `MotionAdapter` module
+To ensure proper functionality, we recommend re-applying the pipeline methods on the new pipeline created using the `from_pipe` method.
+
+You can also add or subtract model components when you create new pipelines. Let's now create a AnimateDiff pipeline with an additional `MotionAdapter` module
 
 ```bash
 from diffusers import AnimateDiffPipeline, MotionAdapter, DDIMScheduler
@@ -160,6 +162,14 @@ export_to_gif(out, "out_animate.gif")
 <div class="flex justify-center">
   <img class="rounded-xl" src="https://huggingface.co/datasets/YiYiXu/testing-images/resolve/main/from_pipe_out_animate_3.gif"/>
 </div>
+
+
+When creating multiple pipelines using the `from_pipe` method, it is important to note that the memory requirement will be determined by the pipeline with the highest memory usage. This means that regardless of the number of pipelines you create, the total memory requirement will always be the same as the highest memory requirement among the pipelines.
+
+For example, we have created three pipelines - `stableDiffusionPipeline`, `StableDiffusionSAGPipeline`, and `AnimateDiffPipeline` - and the `AnimateDiffPipeline` has the highest memory requirement, then the total memory usage will be based on the memory requirement of the `AnimateDiffPipeline`. 
+
+Therefore, creating additional pipelines will not add up to the total memory requirement. Each pipeline can be used interchangeably without any additional memory overhead.
+
 
 Did you know that you can use `from_pipe` with a community pipeline? Let me show you an example of using long negative prompt and prompt weighting!
 
