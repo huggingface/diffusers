@@ -38,6 +38,7 @@ if is_torch_available():
     _import_structure["transformers.prior_transformer"] = ["PriorTransformer"]
     _import_structure["transformers.t5_film_transformer"] = ["T5FilmDecoder"]
     _import_structure["transformers.transformer_2d"] = ["Transformer2DModel"]
+    _import_structure["transformers.transformer_3d"] = ["Transformer3DModel"]
     _import_structure["transformers.transformer_temporal"] = ["TransformerTemporalModel"]
     _import_structure["unets.unet_1d"] = ["UNet1DModel"]
     _import_structure["unets.unet_2d"] = ["UNet2DModel"]
@@ -76,6 +77,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
             T5FilmDecoder,
             Transformer2DModel,
             TransformerTemporalModel,
+            Transformer3DModel,
         )
         from .unets import (
             I2VGenXLUNet,
