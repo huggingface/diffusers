@@ -117,25 +117,25 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
     def enable_xformers_memory_efficient_attention(self, attention_op: Optional[Callable] = None):
         self.decoder_pipe.enable_xformers_memory_efficient_attention(attention_op)
 
-    def enable_model_cpu_offload(self, gpu_id=0):
+    def enable_model_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models to CPU using accelerate, reducing memory usage with a low impact on performance. Compared
         to `enable_sequential_cpu_offload`, this method moves one whole model at a time to the GPU when its `forward`
         method is called, and the model remains in GPU until the next model runs. Memory savings are lower than with
         `enable_sequential_cpu_offload`, but performance is much better due to the iterative execution of the `unet`.
         """
-        self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
-        self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id)
+        self.prior_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
+        self.decoder_pipe.enable_model_cpu_offload(gpu_id=gpu_id, device=device)
 
-    def enable_sequential_cpu_offload(self, gpu_id=0):
+    def enable_sequential_cpu_offload(self, gpu_id: Optional[int] = None, device: Union[torch.device, str] = "cuda"):
         r"""
         Offloads all models (`unet`, `text_encoder`, `vae`, and `safety checker` state dicts) to CPU using 🤗
         Accelerate, significantly reducing memory usage. Models are moved to a `torch.device('meta')` and loaded on a
         GPU only when their specific submodule's `forward` method is called. Offloading happens on a submodule basis.
         Memory savings are higher than using `enable_model_cpu_offload`, but performance is lower.
         """
-        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
-        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id)
+        self.prior_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
+        self.decoder_pipe.enable_sequential_cpu_offload(gpu_id=gpu_id, device=device)
 
     def progress_bar(self, iterable=None, total=None):
         self.prior_pipe.progress_bar(iterable=iterable, total=total)
@@ -242,7 +242,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             prior_callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `prior_callback_on_step_end` function. The tensors specified in the
                 list will be passed as `callback_kwargs` argument. You will only be able to include variables listed in
-                the `._callback_tensor_inputs` attribute of your pipeine class.
+                the `._callback_tensor_inputs` attribute of your pipeline class.
             callback_on_step_end (`Callable`, *optional*):
                 A function that calls at the end of each denoising steps during the inference. The function is called
                 with the following arguments: `callback_on_step_end(self: DiffusionPipeline, step: int, timestep: int,
@@ -251,7 +251,7 @@ class StableCascadeCombinedPipeline(DiffusionPipeline):
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
