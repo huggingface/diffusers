@@ -272,7 +272,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
             "attention_head_dim": 8,
             "out_channels": 4,
             "in_channels": 4,
-            "layers_per_block": 2,
+            "layers_per_block": 1,
             "sample_size": 32,
         }
         inputs_dict = self.dummy_input
@@ -571,7 +571,7 @@ class UNet2DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
         model.set_attn_processor(processor)
         model(**inputs_dict, cross_attention_kwargs={"number": 123}).sample
 
-        assert processor.counter == 12
+        assert processor.counter == 8
         assert processor.is_run
         assert processor.number == 123
 
