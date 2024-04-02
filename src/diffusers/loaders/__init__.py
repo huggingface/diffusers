@@ -74,7 +74,7 @@ if TYPE_CHECKING or DIFFUSERS_SLOW_IMPORT:
         from .autoencoder import FromOriginalVAEMixin
         from .controlnet import FromOriginalControlNetMixin
         from .single_file_model import FromOriginalModelMixin
-        from .unet import FromOriginalUNetMixin, UNet2DConditionLoadersMixin
+        from .unet import UNet2DConditionLoadersMixin
         from .utils import AttnProcsLayers
 
         if is_transformers_available():
