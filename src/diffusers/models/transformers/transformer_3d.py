@@ -322,7 +322,8 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
         self.caption_projection = PixArtAlphaTextProjection(in_features=caption_channels, hidden_size=inner_dim)
 
-        temporal_pos_embed = get_1d_sincos_pos_embed(inner_dim, self.num_temporal_patches)
+        interpolation_scale = max(self.config.sample_size[0] // 16, 1)
+        temporal_pos_embed = get_1d_sincos_pos_embed(inner_dim, self.num_temporal_patches, scale=interpolation_scale)
         temporal_pos_embed = torch.from_numpy(temporal_pos_embed).float().unsqueeze(0).requires_grad_(False)
         self.register_buffer("pos_embed_temporal", temporal_pos_embed)
 
