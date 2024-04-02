@@ -123,6 +123,7 @@ def main(args):
     converted_state_dict["proj_out.weight"] = state_dict.pop("final_layer.linear.weight")
     converted_state_dict["proj_out.bias"] = state_dict.pop("final_layer.linear.bias")
     converted_state_dict["scale_shift_table"] = state_dict.pop("final_layer.scale_shift_table")
+    converted_state_dict["pos_embed_temporal"] = state_dict.pop("pos_embed_temporal")
 
     # DiT XL/2
     transformer = Transformer3DModel(
