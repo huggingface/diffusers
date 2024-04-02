@@ -551,6 +551,14 @@ class PipelineFromPipeTesterMixin:
 
         # create original_pipeline_class(sd/sdxl)
         pipe_original = self.original_pipeline_class.from_pretrained(original_repo, **original_kwargs)
+        model_config_original = {}
+        for name, component in pipe_original.components.items():
+            if not hasattr(component, "config"):
+                continue
+            if hasattr(component.config, "to_dict"):
+                model_config_original[name] = component.config.to_dict()
+            else:
+                model_config_original[name] = dict(component.config)
 
         # original_pipeline_class(sd/sdxl) -> pipeline_class
         pipe_components = self.get_dummy_components()
@@ -568,11 +576,23 @@ class PipelineFromPipeTesterMixin:
                 original_pipe_additional_components[name] = component
 
         pipe_original_2 = self.original_pipeline_class.from_pipe(pipe, **original_pipe_additional_components)
+        model_config_original_2 = {}
+        for name, component in pipe_original_2.components.items():
+            if not hasattr(component, "config"):
+                continue
+            if hasattr(component.config, "to_dict"):
+                model_config_original_2[name] = component.config.to_dict()
+            else:
+                model_config_original_2[name] = dict(component.config)
 
         # compare the config
         original_config = {k: v for k, v in pipe_original.config.items() if not k.startswith("_")}
         original_config_2 = {k: v for k, v in pipe_original_2.config.items() if not k.startswith("_")}
         assert original_config_2 == original_config
+
+        assert set(model_config_original_2) == set(model_config_original)
+        for name, config_dict in model_config_original_2.items():
+            assert config_dict == model_config_original[name]
 
     def test_from_pipe_consistent_forward_pass(self, expected_max_diff=1e-3):
         components = self.get_dummy_components()
