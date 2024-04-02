@@ -90,8 +90,8 @@ def retrieve_timesteps(
         scheduler (`SchedulerMixin`):
             The scheduler to get timesteps from.
         num_inference_steps (`int`):
-            The number of diffusion steps used when generating samples with a pre-trained model. If used,
-            `timesteps` must be `None`.
+            The number of diffusion steps used when generating samples with a pre-trained model. If used, `timesteps`
+            must be `None`.
         device (`str` or `torch.device`, *optional*):
             The device to which the timesteps should be moved to. If `None`, the timesteps are not moved.
         timesteps (`List[int]`, *optional*):
@@ -694,9 +694,9 @@ class StableDiffusionPanoramaPipeline(
         circular_padding: bool = False,
     ) -> List[Tuple[int, int, int, int]]:
         """
-        Generates a list of views based on the given parameters.
-        Here, we define the mappings F_i (see Eq. 7 in the MultiDiffusion paper https://arxiv.org/abs/2302.08113).
-        If panorama's height/width < window_size, num_blocks of height/width should return 1.
+        Generates a list of views based on the given parameters. Here, we define the mappings F_i (see Eq. 7 in the
+        MultiDiffusion paper https://arxiv.org/abs/2302.08113). If panorama's height/width < window_size, num_blocks of
+        height/width should return 1.
 
         Args:
             panorama_height (int): The height of the panorama.
@@ -706,8 +706,8 @@ class StableDiffusionPanoramaPipeline(
             circular_padding (bool, optional): Whether to apply circular padding. Defaults to False.
 
         Returns:
-            List[Tuple[int, int, int, int]]: A list of tuples representing the views. Each tuple contains
-            four integers representing the start and end coordinates of the window in the panorama.
+            List[Tuple[int, int, int, int]]: A list of tuples representing the views. Each tuple contains four integers
+            representing the start and end coordinates of the window in the panorama.
 
         """
         panorama_height /= 8
@@ -800,8 +800,8 @@ class StableDiffusionPanoramaPipeline(
                 The number of denoising steps. More denoising steps usually lead to a higher quality image at the
                 expense of slower inference.
             timesteps (`List[int]`, *optional*):
-                The timesteps at which to generate the images. If not specified, then the default
-                timestep spacing strategy of the scheduler is used.
+                The timesteps at which to generate the images. If not specified, then the default timestep spacing
+                strategy of the scheduler is used.
             guidance_scale (`float`, *optional*, defaults to 7.5):
                 A higher guidance scale value encourages the model to generate images closely linked to the text
                 `prompt` at the expense of lower image quality. Guidance scale is enabled when `guidance_scale > 1`.
@@ -832,10 +832,10 @@ class StableDiffusionPanoramaPipeline(
             ip_adapter_image: (`PipelineImageInput`, *optional*):
                 Optional image input to work with IP Adapters.
             ip_adapter_image_embeds (`List[torch.FloatTensor]`, *optional*):
-                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of IP-adapters.
-                Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should contain the negative image embedding
-                if `do_classifier_free_guidance` is set to `True`.
-                If not provided, embeddings are computed from the `ip_adapter_image` input argument.
+                Pre-generated image embeddings for IP-Adapter. It should be a list of length same as number of
+                IP-adapters. Each element should be a tensor of shape `(batch_size, num_images, emb_dim)`. It should
+                contain the negative image embedding if `do_classifier_free_guidance` is set to `True`. If not
+                provided, embeddings are computed from the `ip_adapter_image` input argument.
             output_type (`str`, *optional*, defaults to `"pil"`):
                 The output format of the generated image. Choose between `PIL.Image` or `np.array`.
             return_dict (`bool`, *optional*, defaults to `True`):

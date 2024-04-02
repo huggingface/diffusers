@@ -35,8 +35,8 @@ class LEditsPPInversionPipelineOutput(BaseOutput):
             List of the cropped and resized input images as PIL images of length `batch_size` or NumPy array of shape `
             (batch_size, height, width, num_channels)`.
         vae_reconstruction_images (`List[PIL.Image.Image]` or `np.ndarray`)
-            List of VAE reconstruction of all input images as PIL images of length `batch_size` or NumPy array of shape `
-            (batch_size, height, width, num_channels)`.
+            List of VAE reconstruction of all input images as PIL images of length `batch_size` or NumPy array of shape
+            ` (batch_size, height, width, num_channels)`.
     """
 
     images: Union[List[PIL.Image.Image], np.ndarray]

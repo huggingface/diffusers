@@ -156,8 +156,8 @@ def get_tests_dir(append_path=None):
 # https://github.com/huggingface/accelerate/pull/1964
 def str_to_bool(value) -> int:
     """
-    Converts a string representation of truth to `True` (1) or `False` (0).
-    True values are `y`, `yes`, `t`, `true`, `on`, and `1`; False value are `n`, `no`, `f`, `false`, `off`, and `0`;
+    Converts a string representation of truth to `True` (1) or `False` (0). True values are `y`, `yes`, `t`, `true`,
+    `on`, and `1`; False value are `n`, `no`, `f`, `false`, `off`, and `0`;
     """
     value = value.lower()
     if value in ("y", "yes", "t", "true", "on", "1"):

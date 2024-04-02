@@ -191,10 +191,12 @@ class AmusedInpaintPipeline(DiffusionPipeline):
                 A kwargs dictionary that if specified is passed along to the [`AttentionProcessor`] as defined in
                 [`self.processor`](https://github.com/huggingface/diffusers/blob/main/src/diffusers/models/attention_processor.py).
             micro_conditioning_aesthetic_score (`int`, *optional*, defaults to 6):
-                The targeted aesthetic score according to the laion aesthetic classifier. See https://laion.ai/blog/laion-aesthetics/
-                and the micro-conditioning section of https://arxiv.org/abs/2307.01952.
+                The targeted aesthetic score according to the laion aesthetic classifier. See
+                https://laion.ai/blog/laion-aesthetics/ and the micro-conditioning section of
+                https://arxiv.org/abs/2307.01952.
             micro_conditioning_crop_coord (`Tuple[int]`, *optional*, defaults to (0, 0)):
-                The targeted height, width crop coordinates. See the micro-conditioning section of https://arxiv.org/abs/2307.01952.
+                The targeted height, width crop coordinates. See the micro-conditioning section of
+                https://arxiv.org/abs/2307.01952.
             temperature (`Union[int, Tuple[int, int], List[int]]`, *optional*, defaults to (2, 0)):
                 Configures the temperature scheduler on `self.scheduler` see `AmusedScheduler#set_timesteps`.
 
