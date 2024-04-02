@@ -101,8 +101,6 @@ class ResnetBlockCondNorm2D(nn.Module):
         self.output_scale_factor = output_scale_factor
         self.time_embedding_norm = time_embedding_norm
 
-        conv_cls = nn.Conv2d
-
         if groups_out is None:
             groups_out = groups
 
@@ -113,7 +111,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         else:
             raise ValueError(f" unsupported time_embedding_norm: {self.time_embedding_norm}")
 
-        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if self.time_embedding_norm == "ada_group":  # ada_group
             self.norm2 = AdaGroupNorm(temb_channels, out_channels, groups_out, eps=eps)
@@ -125,7 +123,7 @@ class ResnetBlockCondNorm2D(nn.Module):
         self.dropout = torch.nn.Dropout(dropout)
 
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
         self.nonlinearity = get_activation(non_linearity)
 
@@ -139,7 +137,7 @@ class ResnetBlockCondNorm2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = conv_cls(
+            self.conv_shortcut = nn.Conv2d(
                 in_channels,
                 conv_2d_out_channels,
                 kernel_size=1,
@@ -263,21 +261,18 @@ class ResnetBlock2D(nn.Module):
         self.time_embedding_norm = time_embedding_norm
         self.skip_time_act = skip_time_act
 
-        linear_cls = nn.Linear
-        conv_cls = nn.Conv2d
-
         if groups_out is None:
             groups_out = groups
 
         self.norm1 = torch.nn.GroupNorm(num_groups=groups, num_channels=in_channels, eps=eps, affine=True)
 
-        self.conv1 = conv_cls(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=1, padding=1)
 
         if temb_channels is not None:
             if self.time_embedding_norm == "default":
-                self.time_emb_proj = linear_cls(temb_channels, out_channels)
+                self.time_emb_proj = nn.Linear(temb_channels, out_channels)
             elif self.time_embedding_norm == "scale_shift":
-                self.time_emb_proj = linear_cls(temb_channels, 2 * out_channels)
+                self.time_emb_proj = nn.Linear(temb_channels, 2 * out_channels)
             else:
                 raise ValueError(f"unknown time_embedding_norm : {self.time_embedding_norm} ")
         else:
@@ -287,7 +282,7 @@ class ResnetBlock2D(nn.Module):
 
         self.dropout = torch.nn.Dropout(dropout)
         conv_2d_out_channels = conv_2d_out_channels or out_channels
-        self.conv2 = conv_cls(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(out_channels, conv_2d_out_channels, kernel_size=3, stride=1, padding=1)
 
         self.nonlinearity = get_activation(non_linearity)
 
@@ -313,7 +308,7 @@ class ResnetBlock2D(nn.Module):
 
         self.conv_shortcut = None
         if self.use_in_shortcut:
-            self.conv_shortcut = conv_cls(
+            self.conv_shortcut = nn.Conv2d(
                 in_channels,
                 conv_2d_out_channels,
                 kernel_size=1,

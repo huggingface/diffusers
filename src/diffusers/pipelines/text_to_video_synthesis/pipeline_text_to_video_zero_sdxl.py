@@ -411,14 +411,6 @@ class TextToVideoZeroSDXLPipeline(
         else:
             self.watermark = None
 
-        processor = (
-            CrossFrameAttnProcessor2_0(batch_size=2)
-            if hasattr(F, "scaled_dot_product_attention")
-            else CrossFrameAttnProcessor(batch_size=2)
-        )
-
-        self.unet.set_attn_processor(processor)
-
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.prepare_extra_step_kwargs
     def prepare_extra_step_kwargs(self, generator, eta):
         # prepare extra kwargs for the scheduler step, since not all schedulers have the same signature
@@ -1084,6 +1076,15 @@ class TextToVideoZeroSDXLPipeline(
 
         assert num_videos_per_prompt == 1
 
+        # set the processor
+        original_attn_proc = self.unet.attn_processors
+        processor = (
+            CrossFrameAttnProcessor2_0(batch_size=2)
+            if hasattr(F, "scaled_dot_product_attention")
+            else CrossFrameAttnProcessor(batch_size=2)
+        )
+        self.unet.set_attn_processor(processor)
+
         if isinstance(prompt, str):
             prompt = [prompt]
         if isinstance(negative_prompt, str):
@@ -1305,9 +1306,9 @@ class TextToVideoZeroSDXLPipeline(
 
         image = self.image_processor.postprocess(image, output_type=output_type)
 
-        # Offload last model to CPU manually for max memory savings
-        if hasattr(self, "final_offload_hook") and self.final_offload_hook is not None:
-            self.final_offload_hook.offload()
+        self.maybe_free_model_hooks()
+        # make sure to set the original attention processors back
+        self.unet.set_attn_processor(original_attn_proc)
 
         if not return_dict:
             return (image,)
