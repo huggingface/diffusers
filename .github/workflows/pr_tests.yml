@@ -132,7 +132,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_pipelines' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/pipelines
@@ -141,7 +141,7 @@ jobs:
       if: ${{ matrix.config.framework == 'pytorch_models' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx and not Dependency" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests/models tests/schedulers tests/others
@@ -150,7 +150,7 @@ jobs:
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
           tests
@@ -160,7 +160,7 @@ jobs:
       run: |
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m uv pip install peft
-        python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
+        python -m pytest -n 4 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
 
