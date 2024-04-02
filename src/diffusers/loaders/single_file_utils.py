@@ -47,8 +47,9 @@ CHECKPOINT_KEY_NAMES = {
     "playground-v2-5": "edm_mean",
     "inpainting": "model.diffusion_model.input_blocks.0.0.weight",
     "clip": "cond_stage_model.transformer.text_model.embeddings.position_ids",
+    "clip_sdxl": "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight",
     "open_clip": "cond_stage_model.model.token_embedding.weight",
-    "open_clip_sdxl": "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight",
+    "open_clip_sdxl": "conditioner.embedders.1.model.positional_embedding",
     "open_clip_sdxl_refiner": "conditioner.embedders.0.model.text_projection",
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
@@ -333,6 +334,13 @@ def infer_model_type(original_config, checkpoint, model_type=None):
 
 def is_clip_model(checkpoint):
     if CHECKPOINT_KEY_NAMES["clip"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_clip_sdxl_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["clip_sdxl"] in checkpoint:
         return True
 
     return False
@@ -1423,19 +1431,30 @@ def create_diffusers_clip_model_from_ldm(
     with ctx():
         model = cls(model_config)
 
+    position_embedding_dim = model.text_model.embeddings.position_embedding.weight.shape[-1]
+
     if is_clip_model(checkpoint):
+        diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
+
+    elif (
+        is_clip_sdxl_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["clip_sdxl"]].shape[-1] == position_embedding_dim
+    ):
         diffusers_format_checkpoint = convert_ldm_clip_checkpoint(checkpoint)
 
     elif is_open_clip_model(checkpoint):
         prefix = "cond_stage_model.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
-    elif is_open_clip_sdxl_model(checkpoint):
+    elif (
+        is_open_clip_sdxl_model(checkpoint)
+        and checkpoint[CHECKPOINT_KEY_NAMES["open_clip_sdxl"]].shape[-1] == position_embedding_dim
+    ):
         prefix = "conditioner.embedders.1.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
     elif is_open_clip_sdxl_refiner_model(checkpoint):
-        prefix = "conditioner.embedders.0.model"
+        prefix = "conditioner.embedders.0.model."
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
     else:
