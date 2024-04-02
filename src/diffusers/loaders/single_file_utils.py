@@ -49,6 +49,7 @@ CHECKPOINT_KEY_NAMES = {
     "clip": "cond_stage_model.transformer.text_model.embeddings.position_ids",
     "open_clip": "cond_stage_model.model.token_embedding.weight",
     "open_clip_sdxl": "conditioner.embedders.0.transformer.text_model.embeddings.position_embedding.weight",
+    "open_clip_sdxl_refiner": "conditioner.embedders.0.model.text_projection",
     "stable_cascade_stage_b": "down_blocks.1.0.channelwise.0.weight",
     "stable_cascade_stage_c": "clip_txt_mapper.weight",
 }
@@ -346,6 +347,13 @@ def is_open_clip_model(checkpoint):
 
 def is_open_clip_sdxl_model(checkpoint):
     if CHECKPOINT_KEY_NAMES["open_clip_sdxl"] in checkpoint:
+        return True
+
+    return False
+
+
+def is_open_clip_sdxl_refiner_model(checkpoint):
+    if CHECKPOINT_KEY_NAMES["open_clip_sdxl_refiner"] in checkpoint:
         return True
 
     return False
@@ -1423,7 +1431,11 @@ def create_diffusers_clip_model_from_ldm(
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
     elif is_open_clip_sdxl_model(checkpoint):
-        prefix = "conditioner.embedders.0.model."
+        prefix = "conditioner.embedders.1.model."
+        diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
+
+    elif is_open_clip_sdxl_refiner_model(checkpoint):
+        prefix = "conditioner.embedders.0.model"
         diffusers_format_checkpoint = convert_open_clip_checkpoint(model, checkpoint, prefix=prefix)
 
     else:
