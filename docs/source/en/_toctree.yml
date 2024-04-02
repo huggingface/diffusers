@@ -104,6 +104,8 @@
       title: Latent Consistency Model-LoRA
     - local: using-diffusers/inference_with_lcm
       title: Latent Consistency Model
+    - local: using-diffusers/inference_with_tcd_lora
+      title: Trajectory Consistency Distillation-LoRA
     - local: using-diffusers/svd
       title: Stable Video Diffusion
     title: Specific pipeline examples
@@ -304,6 +306,8 @@
       title: Latent Consistency Models
     - local: api/pipelines/latent_diffusion
       title: Latent Diffusion
+    - local: api/pipelines/ledits_pp
+      title: LEDITS++
     - local: api/pipelines/panorama
       title: MultiDiffusion
     - local: api/pipelines/musicldm
@@ -396,6 +400,10 @@
       title: DPMSolverSDEScheduler
     - local: api/schedulers/singlestep_dpm_solver
       title: DPMSolverSinglestepScheduler
+    - local: api/schedulers/edm_multistep_dpm_solver
+      title: EDMDPMSolverMultistepScheduler
+    - local: api/schedulers/edm_euler
+      title: EDMEulerScheduler
     - local: api/schedulers/euler_ancestral
       title: EulerAncestralDiscreteScheduler
     - local: api/schedulers/euler

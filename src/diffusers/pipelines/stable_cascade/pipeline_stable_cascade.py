@@ -100,8 +100,10 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         )
         self.register_to_config(latent_dim_scale=latent_dim_scale)
 
-    def prepare_latents(self, image_embeddings, num_images_per_prompt, dtype, device, generator, latents, scheduler):
-        batch_size, channels, height, width = image_embeddings.shape
+    def prepare_latents(
+        self, batch_size, image_embeddings, num_images_per_prompt, dtype, device, generator, latents, scheduler
+    ):
+        _, channels, height, width = image_embeddings.shape
         latents_shape = (
             batch_size * num_images_per_prompt,
             4,
@@ -289,7 +291,9 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         guidance_scale: float = 0.0,
         negative_prompt: Optional[Union[str, List[str]]] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
+        prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         negative_prompt_embeds: Optional[torch.FloatTensor] = None,
+        negative_prompt_embeds_pooled: Optional[torch.FloatTensor] = None,
         num_images_per_prompt: int = 1,
         generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
         latents: Optional[torch.FloatTensor] = None,
@@ -321,10 +325,17 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
             prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting. If not
                 provided, text embeddings will be generated from `prompt` input argument.
+            prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
+                Pre-generated pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt weighting.
+                If not provided, pooled text embeddings will be generated from `prompt` input argument.
             negative_prompt_embeds (`torch.FloatTensor`, *optional*):
                 Pre-generated negative text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
                 weighting. If not provided, negative_prompt_embeds will be generated from `negative_prompt` input
                 argument.
+            negative_prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
+                Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
+                weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt`
+                input argument.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -374,11 +385,23 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
         )
         if isinstance(image_embeddings, list):
             image_embeddings = torch.cat(image_embeddings, dim=0)
-        batch_size = image_embeddings.shape[0]
+
+        if prompt is not None and isinstance(prompt, str):
+            batch_size = 1
+        elif prompt is not None and isinstance(prompt, list):
+            batch_size = len(prompt)
+        else:
+            batch_size = prompt_embeds.shape[0]
+
+        # Compute the effective number of images per prompt
+        # We must account for the fact that the image embeddings from the prior can be generated with num_images_per_prompt > 1
+        # This results in a case where a single prompt is associated with multiple image embeddings
+        # Divide the number of image embeddings by the batch size to determine if this is the case.
+        num_images_per_prompt = num_images_per_prompt * (image_embeddings.shape[0] // batch_size)
 
         # 2. Encode caption
         if prompt_embeds is None and negative_prompt_embeds is None:
-            prompt_embeds, _, negative_prompt_embeds, _ = self.encode_prompt(
+            _, prompt_embeds_pooled, _, negative_prompt_embeds_pooled = self.encode_prompt(
                 prompt=prompt,
                 device=device,
                 batch_size=batch_size,
@@ -386,10 +409,16 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
                 do_classifier_free_guidance=self.do_classifier_free_guidance,
                 negative_prompt=negative_prompt,
                 prompt_embeds=prompt_embeds,
+                prompt_embeds_pooled=prompt_embeds_pooled,
                 negative_prompt_embeds=negative_prompt_embeds,
+                negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
             )
+
+        # The pooled embeds from the prior are pooled again before being passed to the decoder
         prompt_embeds_pooled = (
-            torch.cat([prompt_embeds, negative_prompt_embeds]) if self.do_classifier_free_guidance else prompt_embeds
+            torch.cat([prompt_embeds_pooled, negative_prompt_embeds_pooled])
+            if self.do_classifier_free_guidance
+            else prompt_embeds_pooled
         )
         effnet = (
             torch.cat([image_embeddings, torch.zeros_like(image_embeddings)])
@@ -402,7 +431,7 @@ class StableCascadeDecoderPipeline(DiffusionPipeline):
 
         # 5. Prepare latents
         latents = self.prepare_latents(
-            image_embeddings, num_images_per_prompt, dtype, device, generator, latents, self.scheduler
+            batch_size, image_embeddings, num_images_per_prompt, dtype, device, generator, latents, self.scheduler
         )
 
         # 6. Run denoising loop

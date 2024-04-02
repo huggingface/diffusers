@@ -21,6 +21,7 @@ import logging
 import math
 import os
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import accelerate
@@ -53,7 +54,7 @@ from diffusers.utils.torch_utils import is_compiled_module
 
 
 # Will error if the minimal version of diffusers is not installed. Remove at your own risks.
-check_min_version("0.27.0.dev0")
+check_min_version("0.28.0.dev0")
 
 logger = get_logger(__name__, log_level="INFO")
 
@@ -404,6 +405,10 @@ def main():
         project_config=accelerator_project_config,
     )
 
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
+
     generator = torch.Generator(device=accelerator.device).manual_seed(args.seed)
 
     if args.report_to == "wandb":
@@ -488,7 +493,7 @@ def main():
 
             xformers_version = version.parse(xformers.__version__)
             if xformers_version == version.parse("0.0.16"):
-                logger.warn(
+                logger.warning(
                     "xFormers 0.0.16 cannot be used for training in some GPUs. If you observe problems during training, please update xFormers to at least 0.0.17. See https://huggingface.co/docs/diffusers/main/en/optimization/xformers for more details."
                 )
             unet.enable_xformers_memory_efficient_attention()
@@ -943,9 +948,12 @@ def main():
                 # run inference
                 original_image = download_image(args.val_image_url)
                 edited_images = []
-                with torch.autocast(
-                    str(accelerator.device).replace(":0", ""), enabled=accelerator.mixed_precision == "fp16"
-                ):
+                if torch.backends.mps.is_available():
+                    autocast_ctx = nullcontext()
+                else:
+                    autocast_ctx = torch.autocast(accelerator.device.type)
+
+                with autocast_ctx:
                     for _ in range(args.num_validation_images):
                         edited_images.append(
                             pipeline(

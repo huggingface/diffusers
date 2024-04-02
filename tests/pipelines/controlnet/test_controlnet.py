@@ -35,6 +35,7 @@ from diffusers.pipelines.controlnet.pipeline_controlnet import MultiControlNetMo
 from diffusers.utils.import_utils import is_xformers_available
 from diffusers.utils.testing_utils import (
     enable_full_determinism,
+    get_python_version,
     load_image,
     load_numpy,
     numpy_cosine_similarity_distance,
@@ -211,7 +212,7 @@ class ControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": image,
         }
 
@@ -219,6 +220,12 @@ class ControlNetPipelineFastTests(
 
     def test_attention_slicing_forward_pass(self):
         return self._test_attention_slicing_forward_pass(expected_max_diff=2e-3)
+
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5234, 0.3333, 0.1745, 0.7605, 0.6224, 0.4637, 0.6989, 0.7526, 0.4665])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
 
     @unittest.skipIf(
         torch_device != "cuda" or not is_xformers_available(),
@@ -302,7 +309,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet1 = ControlNetModel(
@@ -402,7 +409,7 @@ class StableDiffusionMultiControlNetPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -454,6 +461,12 @@ class StableDiffusionMultiControlNetPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.2422, 0.3425, 0.4048, 0.5351, 0.3503, 0.2419, 0.4645, 0.4570, 0.3804])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -493,6 +506,15 @@ class StableDiffusionMultiControlNetPipelineFastTests(
 
         assert np.abs(image - output_1.images).max() < 1e-3
 
+        # multiple prompts, multiple image conditioning
+        inputs = self.get_dummy_inputs(device)
+        inputs["prompt"] = [inputs["prompt"], inputs["prompt"], inputs["prompt"], inputs["prompt"]]
+        inputs["image"] = [inputs["image"], inputs["image"], inputs["image"], inputs["image"]]
+        output_2 = sd_pipe(**inputs)
+        image = output_2.images
+
+        assert image.shape == (4, 64, 64, 3)
+
 
 class StableDiffusionMultiControlNetOneModelPipelineFastTests(
     IPAdapterTesterMixin, PipelineTesterMixin, PipelineKarrasSchedulerTesterMixin, unittest.TestCase
@@ -519,7 +541,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 
         def init_weights(m):
             if isinstance(m, torch.nn.Conv2d):
-                torch.nn.init.normal(m.weight)
+                torch.nn.init.normal_(m.weight)
                 m.bias.data.fill_(1.0)
 
         controlnet = ControlNetModel(
@@ -602,7 +624,7 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
             "image": images,
         }
 
@@ -658,6 +680,12 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
     def test_inference_batch_single_identical(self):
         self._test_inference_batch_single_identical(expected_max_diff=2e-3)
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5264, 0.3203, 0.1602, 0.8235, 0.6332, 0.4593, 0.7226, 0.7777, 0.4780])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_save_pretrained_raise_not_implemented_exception(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
@@ -674,6 +702,11 @@ class StableDiffusionMultiControlNetOneModelPipelineFastTests(
 @slow
 @require_torch_gpu
 class ControlNetPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -992,6 +1025,10 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 
     @require_python39_or_higher
     @require_torch_2
+    @unittest.skipIf(
+        get_python_version == (3, 12),
+        reason="Torch Dynamo isn't yet supported for Python 3.12.",
+    )
     def test_stable_diffusion_compile(self):
         run_test_in_subprocess(test_case=self, target_func=_test_stable_diffusion_compile, inputs=None)
 
@@ -1092,6 +1129,13 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
         for param_name, param_value in single_file_pipe.controlnet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
+
+            # This parameter doesn't appear to be loaded from the config.
+            # So when it is registered to config, it remains a tuple as this is the default in the class definition
+            # from_pretrained, does load from config and converts to a list when registering to config
+            if param_name == "conditioning_embedding_out_channels" and isinstance(param_value, tuple):
+                param_value = list(param_value)
+
             assert (
                 pipe.controlnet.config[param_name] == param_value
             ), f"{param_name} differs between single file loading and pretrained loading"
@@ -1114,6 +1158,11 @@ class ControlNetPipelineSlowTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class StableDiffusionMultiControlNetPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

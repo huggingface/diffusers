@@ -43,13 +43,15 @@ from diffusers.utils.testing_utils import (
 )
 
 from ..pipeline_params import TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS, TEXT_GUIDED_IMAGE_INPAINTING_PARAMS
-from ..test_pipelines_common import PipelineLatentTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import PipelineFromPipeTesterMixin, PipelineLatentTesterMixin, PipelineTesterMixin
 
 
 enable_full_determinism()
 
 
-class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class StableDiffusionDiffEditPipelineFastTests(
+    PipelineLatentTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase
+):
     pipeline_class = StableDiffusionDiffEditPipeline
     params = TEXT_GUIDED_IMAGE_INPAINTING_PARAMS - {"height", "width", "image"} | {"image_latents"}
     batch_params = TEXT_GUIDED_IMAGE_INPAINTING_BATCH_PARAMS - {"image"} | {"image_latents"}
@@ -143,7 +145,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
             "num_inference_steps": 2,
             "inpaint_strength": 1.0,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return inputs
@@ -165,7 +167,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
             "num_maps_per_mask": 2,
             "mask_encode_strength": 1.0,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return inputs
@@ -186,7 +188,7 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
             "inpaint_strength": 1.0,
             "guidance_scale": 6.0,
             "decode_latents": True,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -293,6 +295,11 @@ class StableDiffusionDiffEditPipelineFastTests(PipelineLatentTesterMixin, Pipeli
 @require_torch_gpu
 @nightly
 class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -365,6 +372,11 @@ class StableDiffusionDiffEditPipelineIntegrationTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class StableDiffusionDiffEditPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -417,7 +429,7 @@ class StableDiffusionDiffEditPipelineNightlyTests(unittest.TestCase):
             negative_prompt=source_prompt,
             inpaint_strength=0.7,
             num_inference_steps=25,
-            output_type="numpy",
+            output_type="np",
         ).images[0]
 
         expected_image = (

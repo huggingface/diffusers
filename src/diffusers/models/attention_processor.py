@@ -20,10 +20,10 @@ import torch.nn.functional as F
 from torch import nn
 
 from ..image_processor import IPAdapterMaskProcessor
-from ..utils import USE_PEFT_BACKEND, deprecate, logging
+from ..utils import deprecate, logging
 from ..utils.import_utils import is_xformers_available
 from ..utils.torch_utils import maybe_allow_in_graph
-from .lora import LoRACompatibleLinear, LoRALinearLayer
+from .lora import LoRALinearLayer
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -181,28 +181,22 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        if USE_PEFT_BACKEND:
-            linear_cls = nn.Linear
-        else:
-            linear_cls = LoRACompatibleLinear
-
-        self.linear_cls = linear_cls
-        self.to_q = linear_cls(query_dim, self.inner_dim, bias=bias)
+        self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
-            self.to_k = linear_cls(self.cross_attention_dim, self.inner_dim, bias=bias)
-            self.to_v = linear_cls(self.cross_attention_dim, self.inner_dim, bias=bias)
+            self.to_k = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
+            self.to_v = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
         else:
             self.to_k = None
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = linear_cls(added_kv_proj_dim, self.inner_dim)
-            self.add_v_proj = linear_cls(added_kv_proj_dim, self.inner_dim)
+            self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
+            self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
 
         self.to_out = nn.ModuleList([])
-        self.to_out.append(linear_cls(self.inner_dim, self.out_dim, bias=out_bias))
+        self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
@@ -427,7 +421,7 @@ class Attention(nn.Module):
         # If doesn't apply LoRA do `add_k_proj` or `add_v_proj`
         is_lora_activated.pop("add_k_proj", None)
         is_lora_activated.pop("add_v_proj", None)
-        # 2. else it is not posssible that only some layers have LoRA activated
+        # 2. else it is not possible that only some layers have LoRA activated
         if not all(is_lora_activated.values()):
             raise ValueError(
                 f"Make sure that either all layers or no layers have LoRA activated, but have {is_lora_activated}"
@@ -709,7 +703,7 @@ class Attention(nn.Module):
             out_features = concatenated_weights.shape[0]
 
             # create a new single projection layer and copy over the weights.
-            self.to_qkv = self.linear_cls(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
+            self.to_qkv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_qkv.weight.copy_(concatenated_weights)
             if self.use_bias:
                 concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
@@ -720,7 +714,7 @@ class Attention(nn.Module):
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
-            self.to_kv = self.linear_cls(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
+            self.to_kv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_kv.weight.copy_(concatenated_weights)
             if self.use_bias:
                 concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
@@ -741,11 +735,14 @@ class AttnProcessor:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
-        residual = hidden_states
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
 
-        args = () if USE_PEFT_BACKEND else (scale,)
+        residual = hidden_states
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -764,15 +761,15 @@ class AttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, *args)
+        query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, *args)
-        value = attn.to_v(encoder_hidden_states, *args)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
 
         query = attn.head_to_batch_dim(query)
         key = attn.head_to_batch_dim(key)
@@ -783,7 +780,7 @@ class AttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, *args)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -914,11 +911,14 @@ class AttnAddedKVProcessor:
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
-        residual = hidden_states
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
 
-        args = () if USE_PEFT_BACKEND else (scale,)
+        residual = hidden_states
 
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
@@ -932,17 +932,17 @@ class AttnAddedKVProcessor:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, *args)
+        query = attn.to_q(hidden_states)
         query = attn.head_to_batch_dim(query)
 
-        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states, *args)
-        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states, *args)
+        encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
+        encoder_hidden_states_value_proj = attn.add_v_proj(encoder_hidden_states)
         encoder_hidden_states_key_proj = attn.head_to_batch_dim(encoder_hidden_states_key_proj)
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states, *args)
-            value = attn.to_v(hidden_states, *args)
+            key = attn.to_k(hidden_states)
+            value = attn.to_v(hidden_states)
             key = attn.head_to_batch_dim(key)
             value = attn.head_to_batch_dim(value)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=1)
@@ -956,7 +956,7 @@ class AttnAddedKVProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, *args)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -984,11 +984,14 @@ class AttnAddedKVProcessor2_0:
         hidden_states: torch.FloatTensor,
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.Tensor:
-        residual = hidden_states
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
 
-        args = () if USE_PEFT_BACKEND else (scale,)
+        residual = hidden_states
 
         hidden_states = hidden_states.view(hidden_states.shape[0], hidden_states.shape[1], -1).transpose(1, 2)
         batch_size, sequence_length, _ = hidden_states.shape
@@ -1002,7 +1005,7 @@ class AttnAddedKVProcessor2_0:
 
         hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, *args)
+        query = attn.to_q(hidden_states)
         query = attn.head_to_batch_dim(query, out_dim=4)
 
         encoder_hidden_states_key_proj = attn.add_k_proj(encoder_hidden_states)
@@ -1011,8 +1014,8 @@ class AttnAddedKVProcessor2_0:
         encoder_hidden_states_value_proj = attn.head_to_batch_dim(encoder_hidden_states_value_proj, out_dim=4)
 
         if not attn.only_cross_attention:
-            key = attn.to_k(hidden_states, *args)
-            value = attn.to_v(hidden_states, *args)
+            key = attn.to_k(hidden_states)
+            value = attn.to_v(hidden_states)
             key = attn.head_to_batch_dim(key, out_dim=4)
             value = attn.head_to_batch_dim(value, out_dim=4)
             key = torch.cat([encoder_hidden_states_key_proj, key], dim=2)
@@ -1029,7 +1032,7 @@ class AttnAddedKVProcessor2_0:
         hidden_states = hidden_states.transpose(1, 2).reshape(batch_size, -1, residual.shape[1])
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, *args)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1132,11 +1135,14 @@ class XFormersAttnProcessor:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
-        residual = hidden_states
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
 
-        args = () if USE_PEFT_BACKEND else (scale,)
+        residual = hidden_states
 
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -1165,15 +1171,15 @@ class XFormersAttnProcessor:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        query = attn.to_q(hidden_states, *args)
+        query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, *args)
-        value = attn.to_v(encoder_hidden_states, *args)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
 
         query = attn.head_to_batch_dim(query).contiguous()
         key = attn.head_to_batch_dim(key).contiguous()
@@ -1186,7 +1192,7 @@ class XFormersAttnProcessor:
         hidden_states = attn.batch_to_head_dim(hidden_states)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, *args)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1217,8 +1223,13 @@ class AttnProcessor2_0:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -1242,16 +1253,15 @@ class AttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        args = () if USE_PEFT_BACKEND else (scale,)
-        query = attn.to_q(hidden_states, *args)
+        query = attn.to_q(hidden_states)
 
         if encoder_hidden_states is None:
             encoder_hidden_states = hidden_states
         elif attn.norm_cross:
             encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
 
-        key = attn.to_k(encoder_hidden_states, *args)
-        value = attn.to_v(encoder_hidden_states, *args)
+        key = attn.to_k(encoder_hidden_states)
+        value = attn.to_v(encoder_hidden_states)
 
         inner_dim = key.shape[-1]
         head_dim = inner_dim // attn.heads
@@ -1271,7 +1281,7 @@ class AttnProcessor2_0:
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, *args)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1288,9 +1298,9 @@ class AttnProcessor2_0:
 
 class FusedAttnProcessor2_0:
     r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    It uses fused projection layers. For self-attention modules, all projection matrices (i.e., query,
-    key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). It uses
+    fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
+    For cross-attention modules, key and value projection matrices are fused.
 
     <Tip warning={true}>
 
@@ -1312,8 +1322,13 @@ class FusedAttnProcessor2_0:
         encoder_hidden_states: Optional[torch.FloatTensor] = None,
         attention_mask: Optional[torch.FloatTensor] = None,
         temb: Optional[torch.FloatTensor] = None,
-        scale: float = 1.0,
+        *args,
+        **kwargs,
     ) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         residual = hidden_states
         if attn.spatial_norm is not None:
             hidden_states = attn.spatial_norm(hidden_states, temb)
@@ -1337,17 +1352,16 @@ class FusedAttnProcessor2_0:
         if attn.group_norm is not None:
             hidden_states = attn.group_norm(hidden_states.transpose(1, 2)).transpose(1, 2)
 
-        args = () if USE_PEFT_BACKEND else (scale,)
         if encoder_hidden_states is None:
-            qkv = attn.to_qkv(hidden_states, *args)
+            qkv = attn.to_qkv(hidden_states)
             split_size = qkv.shape[-1] // 3
             query, key, value = torch.split(qkv, split_size, dim=-1)
         else:
             if attn.norm_cross:
                 encoder_hidden_states = attn.norm_encoder_hidden_states(encoder_hidden_states)
-            query = attn.to_q(hidden_states, *args)
+            query = attn.to_q(hidden_states)
 
-            kv = attn.to_kv(encoder_hidden_states, *args)
+            kv = attn.to_kv(encoder_hidden_states)
             split_size = kv.shape[-1] // 2
             key, value = torch.split(kv, split_size, dim=-1)
 
@@ -1368,7 +1382,7 @@ class FusedAttnProcessor2_0:
         hidden_states = hidden_states.to(query.dtype)
 
         # linear proj
-        hidden_states = attn.to_out[0](hidden_states, *args)
+        hidden_states = attn.to_out[0](hidden_states)
         # dropout
         hidden_states = attn.to_out[1](hidden_states)
 
@@ -1859,7 +1873,7 @@ class LoRAAttnProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
         self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
 
-    def __call__(self, attn: Attention, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def __call__(self, attn: Attention, hidden_states: torch.FloatTensor, **kwargs) -> torch.FloatTensor:
         self_cls_name = self.__class__.__name__
         deprecate(
             self_cls_name,
@@ -1877,7 +1891,7 @@ class LoRAAttnProcessor(nn.Module):
 
         attn._modules.pop("processor")
         attn.processor = AttnProcessor()
-        return attn.processor(attn, hidden_states, *args, **kwargs)
+        return attn.processor(attn, hidden_states, **kwargs)
 
 
 class LoRAAttnProcessor2_0(nn.Module):
@@ -1920,7 +1934,7 @@ class LoRAAttnProcessor2_0(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
         self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
 
-    def __call__(self, attn: Attention, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def __call__(self, attn: Attention, hidden_states: torch.FloatTensor, **kwargs) -> torch.FloatTensor:
         self_cls_name = self.__class__.__name__
         deprecate(
             self_cls_name,
@@ -1938,7 +1952,7 @@ class LoRAAttnProcessor2_0(nn.Module):
 
         attn._modules.pop("processor")
         attn.processor = AttnProcessor2_0()
-        return attn.processor(attn, hidden_states, *args, **kwargs)
+        return attn.processor(attn, hidden_states, **kwargs)
 
 
 class LoRAXFormersAttnProcessor(nn.Module):
@@ -1999,7 +2013,7 @@ class LoRAXFormersAttnProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(cross_attention_dim or v_hidden_size, v_hidden_size, v_rank, network_alpha)
         self.to_out_lora = LoRALinearLayer(out_hidden_size, out_hidden_size, out_rank, network_alpha)
 
-    def __call__(self, attn: Attention, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def __call__(self, attn: Attention, hidden_states: torch.FloatTensor, **kwargs) -> torch.FloatTensor:
         self_cls_name = self.__class__.__name__
         deprecate(
             self_cls_name,
@@ -2017,7 +2031,7 @@ class LoRAXFormersAttnProcessor(nn.Module):
 
         attn._modules.pop("processor")
         attn.processor = XFormersAttnProcessor()
-        return attn.processor(attn, hidden_states, *args, **kwargs)
+        return attn.processor(attn, hidden_states, **kwargs)
 
 
 class LoRAAttnAddedKVProcessor(nn.Module):
@@ -2058,7 +2072,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
         self.to_v_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
         self.to_out_lora = LoRALinearLayer(hidden_size, hidden_size, rank, network_alpha)
 
-    def __call__(self, attn: Attention, hidden_states: torch.FloatTensor, *args, **kwargs) -> torch.FloatTensor:
+    def __call__(self, attn: Attention, hidden_states: torch.FloatTensor, **kwargs) -> torch.FloatTensor:
         self_cls_name = self.__class__.__name__
         deprecate(
             self_cls_name,
@@ -2076,12 +2090,12 @@ class LoRAAttnAddedKVProcessor(nn.Module):
 
         attn._modules.pop("processor")
         attn.processor = AttnAddedKVProcessor()
-        return attn.processor(attn, hidden_states, *args, **kwargs)
+        return attn.processor(attn, hidden_states, **kwargs)
 
 
 class IPAdapterAttnProcessor(nn.Module):
     r"""
-    Attention processor for Multiple IP-Adapater.
+    Attention processor for Multiple IP-Adapters.
 
     Args:
         hidden_size (`int`):
@@ -2135,8 +2149,8 @@ class IPAdapterAttnProcessor(nn.Module):
                 encoder_hidden_states, ip_hidden_states = encoder_hidden_states
             else:
                 deprecation_message = (
-                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
-                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                    "You have passed a tensor as `encoder_hidden_states`. This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to suppress this warning."
                 )
                 deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
                 end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
@@ -2236,7 +2250,7 @@ class IPAdapterAttnProcessor(nn.Module):
 
 class IPAdapterAttnProcessor2_0(torch.nn.Module):
     r"""
-    Attention processor for IP-Adapater for PyTorch 2.0.
+    Attention processor for IP-Adapter for PyTorch 2.0.
 
     Args:
         hidden_size (`int`):
@@ -2295,8 +2309,8 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                 encoder_hidden_states, ip_hidden_states = encoder_hidden_states
             else:
                 deprecation_message = (
-                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
-                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                    "You have passed a tensor as `encoder_hidden_states`. This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to suppress this warning."
                 )
                 deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
                 end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]

@@ -21,6 +21,7 @@ import torch
 import torch.nn as nn
 
 from ...configuration_utils import ConfigMixin, register_to_config
+from ...loaders.unet import FromOriginalUNetMixin
 from ...utils import BaseOutput
 from ..attention_processor import Attention
 from ..modeling_utils import ModelMixin
@@ -40,11 +41,11 @@ class SDCascadeLayerNorm(nn.LayerNorm):
 class SDCascadeTimestepBlock(nn.Module):
     def __init__(self, c, c_timestep, conds=[]):
         super().__init__()
-        linear_cls = nn.Linear
-        self.mapper = linear_cls(c_timestep, c * 2)
+
+        self.mapper = nn.Linear(c_timestep, c * 2)
         self.conds = conds
         for cname in conds:
-            setattr(self, f"mapper_{cname}", linear_cls(c_timestep, c * 2))
+            setattr(self, f"mapper_{cname}", nn.Linear(c_timestep, c * 2))
 
     def forward(self, x, t):
         t = t.chunk(len(self.conds) + 1, dim=1)
@@ -93,12 +94,11 @@ class GlobalResponseNorm(nn.Module):
 class SDCascadeAttnBlock(nn.Module):
     def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
         super().__init__()
-        linear_cls = nn.Linear
 
         self.self_attn = self_attn
         self.norm = SDCascadeLayerNorm(c, elementwise_affine=False, eps=1e-6)
         self.attention = Attention(query_dim=c, heads=nhead, dim_head=c // nhead, dropout=dropout, bias=True)
-        self.kv_mapper = nn.Sequential(nn.SiLU(), linear_cls(c_cond, c))
+        self.kv_mapper = nn.Sequential(nn.SiLU(), nn.Linear(c_cond, c))
 
     def forward(self, x, kv):
         kv = self.kv_mapper(kv)
@@ -134,7 +134,7 @@ class StableCascadeUNetOutput(BaseOutput):
     sample: torch.FloatTensor = None
 
 
-class StableCascadeUNet(ModelMixin, ConfigMixin):
+class StableCascadeUNet(ModelMixin, ConfigMixin, FromOriginalUNetMixin):
     _supports_gradient_checkpointing = True
 
     @register_to_config
@@ -186,7 +186,8 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
             block_out_channels (Tuple[int], defaults to (2048, 2048)):
                 Tuple of output channels for each block.
             num_attention_heads (Tuple[int], defaults to (32, 32)):
-                Number of attention heads in each attention block. Set to -1 to if block types in a layer do not have attention.
+                Number of attention heads in each attention block. Set to -1 to if block types in a layer do not have
+                attention.
             down_num_layers_per_block (Tuple[int], defaults to [8, 24]):
                 Number of layers in each down block.
             up_num_layers_per_block (Tuple[int], defaults to [24, 8]):
@@ -197,10 +198,9 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                 Number of 1x1 Convolutional layers to repeat in each up block.
             block_types_per_layer (Tuple[Tuple[str]], optional,
                 defaults to (
-                    ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"),
-                    ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock")
-                ):
-                Block types used in each layer of the up/down blocks.
+                    ("SDCascadeResBlock", "SDCascadeTimestepBlock", "SDCascadeAttnBlock"), ("SDCascadeResBlock",
+                    "SDCascadeTimestepBlock", "SDCascadeAttnBlock")
+                ): Block types used in each layer of the up/down blocks.
             clip_text_in_channels (`int`, *optional*, defaults to `None`):
                 Number of input channels for CLIP based text conditioning.
             clip_text_pooled_in_channels (`int`, *optional*, defaults to 1280):
@@ -520,9 +520,11 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                         if isinstance(block, SDCascadeResBlock):
                             skip = level_outputs[i] if k == 0 and i > 0 else None
                             if skip is not None and (x.size(-1) != skip.size(-1) or x.size(-2) != skip.size(-2)):
+                                orig_type = x.dtype
                                 x = torch.nn.functional.interpolate(
                                     x.float(), skip.shape[-2:], mode="bilinear", align_corners=True
                                 )
+                                x = x.to(orig_type)
                             x = torch.utils.checkpoint.checkpoint(
                                 create_custom_forward(block), x, skip, use_reentrant=False
                             )
@@ -546,9 +548,11 @@ class StableCascadeUNet(ModelMixin, ConfigMixin):
                         if isinstance(block, SDCascadeResBlock):
                             skip = level_outputs[i] if k == 0 and i > 0 else None
                             if skip is not None and (x.size(-1) != skip.size(-1) or x.size(-2) != skip.size(-2)):
+                                orig_type = x.dtype
                                 x = torch.nn.functional.interpolate(
                                     x.float(), skip.shape[-2:], mode="bilinear", align_corners=True
                                 )
+                                x = x.to(orig_type)
                             x = block(x, skip)
                         elif isinstance(block, SDCascadeAttnBlock):
                             x = block(x, clip)

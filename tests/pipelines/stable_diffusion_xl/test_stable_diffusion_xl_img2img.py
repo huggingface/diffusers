@@ -311,6 +311,12 @@ class StableDiffusionXLImg2ImgPipelineFastTests(
         # make sure that it's equal
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.5174, 0.4512, 0.5006, 0.6273, 0.5160, 0.6825, 0.6655, 0.5840, 0.5675])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_stable_diffusion_xl_img2img_tiny_autoencoder(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -779,7 +785,14 @@ class StableDiffusionXLImg2ImgRefinerOnlyPipelineFastTests(
 
 @slow
 class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
+        # clean up the VRAM after each test
         super().tearDown()
         gc.collect()
         torch.cuda.empty_cache()
@@ -838,9 +851,11 @@ class StableDiffusionXLImg2ImgIntegrationTests(unittest.TestCase):
         for param_name, param_value in single_file_pipe.unet.config.items():
             if param_name in PARAMS_TO_IGNORE:
                 continue
+            if param_name == "upcast_attention" and pipe.unet.config[param_name] is None:
+                pipe.unet.config[param_name] = False
             assert (
                 pipe.unet.config[param_name] == param_value
-            ), f"{param_name} differs between single file loading and pretrained loading"
+            ), f"{param_name} is differs between single file loading and pretrained loading"
 
         for param_name, param_value in single_file_pipe.vae.config.items():
             if param_name in PARAMS_TO_IGNORE:

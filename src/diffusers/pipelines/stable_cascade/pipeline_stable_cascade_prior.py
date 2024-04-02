@@ -64,7 +64,9 @@ class StableCascadePriorPipelineOutput(BaseOutput):
 
     image_embeddings: Union[torch.FloatTensor, np.ndarray]
     prompt_embeds: Union[torch.FloatTensor, np.ndarray]
+    prompt_embeds_pooled: Union[torch.FloatTensor, np.ndarray]
     negative_prompt_embeds: Union[torch.FloatTensor, np.ndarray]
+    negative_prompt_embeds_pooled: Union[torch.FloatTensor, np.ndarray]
 
 
 class StableCascadePriorPipeline(DiffusionPipeline):
@@ -78,7 +80,8 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         prior ([`StableCascadeUNet`]):
             The Stable Cascade prior to approximate the image embedding from the text and/or image embedding.
         text_encoder ([`CLIPTextModelWithProjection`]):
-            Frozen text-encoder ([laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)).
+            Frozen text-encoder
+            ([laion/CLIP-ViT-bigG-14-laion2B-39B-b160k](https://huggingface.co/laion/CLIP-ViT-bigG-14-laion2B-39B-b160k)).
         feature_extractor ([`~transformers.CLIPImageProcessor`]):
             Model that extracts features from generated images to be used as inputs for the `image_encoder`.
         image_encoder ([`CLIPVisionModelWithProjection`]):
@@ -305,6 +308,16 @@ class StableCascadePriorPipeline(DiffusionPipeline):
                     f" {negative_prompt_embeds.shape}."
                 )
 
+        if prompt_embeds is not None and prompt_embeds_pooled is None:
+            raise ValueError(
+                "If `prompt_embeds` are provided, `prompt_embeds_pooled` must also be provided. Make sure to generate `prompt_embeds_pooled` from the same text encoder that was used to generate `prompt_embeds`"
+            )
+
+        if negative_prompt_embeds is not None and negative_prompt_embeds_pooled is None:
+            raise ValueError(
+                "If `negative_prompt_embeds` are provided, `negative_prompt_embeds_pooled` must also be provided. Make sure to generate `prompt_embeds_pooled` from the same text encoder that was used to generate `prompt_embeds`"
+            )
+
         if prompt_embeds_pooled is not None and negative_prompt_embeds_pooled is not None:
             if prompt_embeds_pooled.shape != negative_prompt_embeds_pooled.shape:
                 raise ValueError(
@@ -339,7 +352,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
     def num_timesteps(self):
         return self._num_timesteps
 
-    def get_t_condioning(self, t, alphas_cumprod):
+    def get_timestep_ratio_conditioning(self, t, alphas_cumprod):
         s = torch.tensor([0.003])
         clamp_range = [0, 1]
         min_var = torch.cos(s / (1 + s) * torch.pi * 0.5) ** 2
@@ -408,11 +421,11 @@ class StableCascadePriorPipeline(DiffusionPipeline):
                 argument.
             negative_prompt_embeds_pooled (`torch.FloatTensor`, *optional*):
                 Pre-generated negative pooled text embeddings. Can be used to easily tweak text inputs, *e.g.* prompt
-                weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt` input
-                argument.
+                weighting. If not provided, negative_prompt_embeds_pooled will be generated from `negative_prompt`
+                input argument.
             image_embeds (`torch.FloatTensor`, *optional*):
-                Pre-generated image embeddings. Can be used to easily tweak image inputs, *e.g.* prompt weighting.
-                If not provided, image embeddings will be generated from `image` input argument if existing.
+                Pre-generated image embeddings. Can be used to easily tweak image inputs, *e.g.* prompt weighting. If
+                not provided, image embeddings will be generated from `image` input argument if existing.
             num_images_per_prompt (`int`, *optional*, defaults to 1):
                 The number of images to generate per prompt.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
@@ -440,9 +453,9 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         Examples:
 
         Returns:
-            [`StableCascadePriorPipelineOutput`] or `tuple` [`StableCascadePriorPipelineOutput`] if
-            `return_dict` is True, otherwise a `tuple`. When returning a tuple, the first element is a list with the
-            generated image embeddings.
+            [`StableCascadePriorPipelineOutput`] or `tuple` [`StableCascadePriorPipelineOutput`] if `return_dict` is
+            True, otherwise a `tuple`. When returning a tuple, the first element is a list with the generated image
+            embeddings.
         """
 
         # 0. Define commonly used variables
@@ -558,7 +571,7 @@ class StableCascadePriorPipeline(DiffusionPipeline):
         for i, t in enumerate(self.progress_bar(timesteps)):
             if not isinstance(self.scheduler, DDPMWuerstchenScheduler):
                 if len(alphas_cumprod) > 0:
-                    timestep_ratio = self.get_t_condioning(t.long().cpu(), alphas_cumprod)
+                    timestep_ratio = self.get_timestep_ratio_conditioning(t.long().cpu(), alphas_cumprod)
                     timestep_ratio = timestep_ratio.expand(latents.size(0)).to(dtype).to(device)
                 else:
                     timestep_ratio = t.float().div(self.scheduler.timesteps[-1]).expand(latents.size(0)).to(dtype)
@@ -609,6 +622,18 @@ class StableCascadePriorPipeline(DiffusionPipeline):
             )  # float() as bfloat16-> numpy doesnt work
 
         if not return_dict:
-            return (latents, prompt_embeds, negative_prompt_embeds)
+            return (
+                latents,
+                prompt_embeds,
+                prompt_embeds_pooled,
+                negative_prompt_embeds,
+                negative_prompt_embeds_pooled,
+            )
 
-        return StableCascadePriorPipelineOutput(latents, prompt_embeds, negative_prompt_embeds)
+        return StableCascadePriorPipelineOutput(
+            image_embeddings=latents,
+            prompt_embeds=prompt_embeds,
+            prompt_embeds_pooled=prompt_embeds_pooled,
+            negative_prompt_embeds=negative_prompt_embeds,
+            negative_prompt_embeds_pooled=negative_prompt_embeds_pooled,
+        )

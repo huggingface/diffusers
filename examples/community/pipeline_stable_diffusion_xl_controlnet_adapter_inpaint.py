@@ -206,7 +206,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
             dimensions: ``batch x channels x height x width``.
     """
 
-    # checkpoint. TOD(Yiyi) - need to clean this up later
+    # checkpoint. #TODO(Yiyi) - need to clean this up later
     if image is None:
         raise ValueError("`image` input cannot be undefined.")
 
@@ -277,7 +277,7 @@ def prepare_mask_and_masked_image(image, mask, height, width, return_image: bool
         # images are in latent space and thus can't
         # be masked set masked_image to None
         # we assume that the checkpoint is not an inpainting
-        # checkpoint. TOD(Yiyi) - need to clean this up later
+        # checkpoint. #TODO(Yiyi) - need to clean this up later
         masked_image = None
     else:
         masked_image = image * (mask < 0.5)
@@ -1073,7 +1073,7 @@ class StableDiffusionXLControlNetAdapterInpaintPipeline(
                 # because `num_inference_steps` might be even given that every timestep
                 # (except the highest one) is duplicated. If `num_inference_steps` is even it would
                 # mean that we cut the timesteps in the middle of the denoising step
-                # (between 1st and 2nd devirative) which leads to incorrect results. By adding 1
+                # (between 1st and 2nd derivative) which leads to incorrect results. By adding 1
                 # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
                 num_inference_steps = num_inference_steps + 1
 
