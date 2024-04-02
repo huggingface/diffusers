@@ -26,10 +26,12 @@ from diffusers import (
     DDIMScheduler,
     DiffusionPipeline,
     StableDiffusionPipeline,
+    StableDiffusionXLPipeline,
     UNet2DConditionModel,
 )
 from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import IPAdapterMixin
+from diffusers.models.attention_processor import AttnProcessor
 from diffusers.models.unets.unet_3d_condition import UNet3DConditionModel
 from diffusers.models.unets.unet_i2vgen_xl import I2VGenXLUNet
 from diffusers.models.unets.unet_motion_model import UNetMotionModel
@@ -509,6 +511,186 @@ class PipelineLatentTesterMixin:
             out_vae_np = vae_pipe(**self.get_dummy_inputs_by_type(torch_device, input_image_type="np"))[0]
 
             assert out_vae_np.shape == out_np.shape
+
+
+@require_torch
+class PipelineFromPipeTesterMixin:
+    @property
+    def original_pipeline_class(self):
+        if "xl" in self.pipeline_class.__name__.lower():
+            original_pipeline_class = StableDiffusionXLPipeline
+        else:
+            original_pipeline_class = StableDiffusionPipeline
+
+        return original_pipeline_class
+
+    def get_dummy_inputs_pipe(self, device, seed=0):
+        inputs = self.get_dummy_inputs(device, seed=seed)
+        inputs["output_type"] = "np"
+        inputs["return_dict"] = False
+        return inputs
+
+    def get_dummy_inputs_for_pipe_original(self, device, seed=0):
+        inputs = {}
+        for k, v in self.get_dummy_inputs_pipe(device, seed=seed).items():
+            if k in set(inspect.signature(self.original_pipeline_class.__call__).parameters.keys()):
+                inputs[k] = v
+        return inputs
+
+    def test_from_pipe_consistent_config(self):
+        if self.original_pipeline_class == StableDiffusionPipeline:
+            original_repo = "hf-internal-testing/tiny-stable-diffusion-pipe"
+            original_kwargs = {"requires_safety_checker": False}
+        elif self.original_pipeline_class == StableDiffusionXLPipeline:
+            original_repo = "hf-internal-testing/tiny-stable-diffusion-xl-pipe"
+            original_kwargs = {"requires_aesthetics_score": True, "force_zeros_for_empty_prompt": False}
+        else:
+            raise ValueError(
+                "original_pipeline_class must be either StableDiffusionPipeline or StableDiffusionXLPipeline"
+            )
+
+        # create original_pipeline_class(sd/sdxl)
+        pipe_original = self.original_pipeline_class.from_pretrained(original_repo, **original_kwargs)
+
+        # original_pipeline_class(sd/sdxl) -> pipeline_class
+        pipe_components = self.get_dummy_components()
+        pipe_additional_components = {}
+        for name, component in pipe_components.items():
+            if name not in pipe_original.components:
+                pipe_additional_components[name] = component
+
+        pipe = self.pipeline_class.from_pipe(pipe_original, **pipe_additional_components)
+
+        # pipeline_class -> original_pipeline_class(sd/sdxl)
+        original_pipe_additional_components = {}
+        for name, component in pipe_original.components.items():
+            if name not in pipe.components or not isinstance(component, pipe.components[name].__class__):
+                original_pipe_additional_components[name] = component
+
+        pipe_original_2 = self.original_pipeline_class.from_pipe(pipe, **original_pipe_additional_components)
+
+        # compare the config
+        original_config = {k: v for k, v in pipe_original.config.items() if not k.startswith("_")}
+        original_config_2 = {k: v for k, v in pipe_original_2.config.items() if not k.startswith("_")}
+        assert original_config_2 == original_config
+
+    def test_from_pipe_consistent_forward_pass(self, expected_max_diff=1e-3):
+        components = self.get_dummy_components()
+        original_expected_modules, _ = self.original_pipeline_class._get_signature_keys(self.original_pipeline_class)
+
+        # pipeline components that are also expected to be in the original pipeline
+        original_pipe_components = {}
+        # additional components that are not in the pipeline, but expected in the original pipeline
+        original_pipe_additional_components = {}
+        # additional components that are in the pipeline, but not expected in the original pipeline
+        current_pipe_additional_components = {}
+
+        for name, component in components.items():
+            if name in original_expected_modules:
+                original_pipe_components[name] = component
+            else:
+                current_pipe_additional_components[name] = component
+        for name in original_expected_modules:
+            if name not in original_pipe_components:
+                if name in self.original_pipeline_class._optional_components:
+                    original_pipe_additional_components[name] = None
+                else:
+                    raise ValueError(f"missing required module for {self.original_pipeline_class.__class__}: {name}")
+
+        pipe_original = self.original_pipeline_class(**original_pipe_components, **original_pipe_additional_components)
+        for component in pipe_original.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe_original.to(torch_device)
+        pipe_original.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs_for_pipe_original(torch_device)
+        output_original = pipe_original(**inputs)[0]
+
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs_pipe(torch_device)
+        output = pipe(**inputs)[0]
+
+        pipe_from_original = self.pipeline_class.from_pipe(pipe_original, **current_pipe_additional_components)
+        pipe_from_original.to(torch_device)
+        pipe_from_original.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs_pipe(torch_device)
+        output_from_original = pipe_from_original(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_from_original)).max()
+        self.assertLess(
+            max_diff,
+            expected_max_diff,
+            "The outputs of the pipelines created with `from_pipe` and `__init__` are different.",
+        )
+
+        inputs = self.get_dummy_inputs_for_pipe_original(torch_device)
+        output_original_2 = pipe_original(**inputs)[0]
+
+        max_diff = np.abs(to_np(output_original) - to_np(output_original_2)).max()
+        self.assertLess(max_diff, expected_max_diff, "`from_pipe` should not change the output of original pipeline.")
+
+        for component in pipe_original.components.values():
+            if hasattr(component, "attn_processors"):
+                assert all(
+                    type(proc) == AttnProcessor for proc in component.attn_processors.values()
+                ), "`from_pipe` changed the attention processor in original pipeline."
+
+    @unittest.skipIf(
+        torch_device != "cuda" or not is_accelerate_available() or is_accelerate_version("<", "0.14.0"),
+        reason="CPU offload is only available with CUDA and `accelerate v0.14.0` or higher",
+    )
+    def test_from_pipe_consistent_forward_pass_cpu_offload(self, expected_max_diff=1e-3):
+        components = self.get_dummy_components()
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.enable_model_cpu_offload()
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs_pipe(torch_device)
+        output = pipe(**inputs)[0]
+
+        original_expected_modules, _ = self.original_pipeline_class._get_signature_keys(self.original_pipeline_class)
+        # pipeline components that are also expected to be in the original pipeline
+        original_pipe_components = {}
+        # additional components that are not in the pipeline, but expected in the original pipeline
+        original_pipe_additional_components = {}
+        # additional components that are in the pipeline, but not expected in the original pipeline
+        current_pipe_additional_components = {}
+        for name, component in components.items():
+            if name in original_expected_modules:
+                original_pipe_components[name] = component
+            else:
+                current_pipe_additional_components[name] = component
+        for name in original_expected_modules:
+            if name not in original_pipe_components:
+                if name in self.original_pipeline_class._optional_components:
+                    original_pipe_additional_components[name] = None
+                else:
+                    raise ValueError(f"missing required module for {self.original_pipeline_class.__class__}: {name}")
+
+        pipe_original = self.original_pipeline_class(**original_pipe_components, **original_pipe_additional_components)
+        for component in pipe_original.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe_original.set_progress_bar_config(disable=None)
+        pipe_from_original = self.pipeline_class.from_pipe(pipe_original, **current_pipe_additional_components)
+        pipe_from_original.enable_model_cpu_offload()
+        pipe_from_original.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs_pipe(torch_device)
+        output_from_original = pipe_from_original(**inputs)[0]
+
+        max_diff = np.abs(to_np(output) - to_np(output_from_original)).max()
+        self.assertLess(
+            max_diff,
+            expected_max_diff,
+            "The outputs of the pipelines created with `from_pipe` and `__init__` are different.",
+        )
 
 
 @require_torch
@@ -1144,20 +1326,24 @@ class PipelineTesterMixin:
         self.assertLess(
             max_diff, expected_max_diff, "running CPU offloading 2nd time should not affect the inference results"
         )
-        offloaded_modules = [
-            v
+        offloaded_modules = {
+            k: v
             for k, v in pipe.components.items()
             if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
-        ]
-        (
-            self.assertTrue(all(v.device.type == "cpu" for v in offloaded_modules)),
-            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'cpu']}",
+        }
+        self.assertTrue(
+            all(v.device.type == "cpu" for v in offloaded_modules.values()),
+            f"Not offloaded: {[k for k, v in offloaded_modules.items() if v.device.type != 'cpu']}",
         )
 
-        offloaded_modules_with_hooks = [v for v in offloaded_modules if hasattr(v, "_hf_hook")]
-        (
-            self.assertTrue(all(isinstance(v, accelerate.hooks.CpuOffload) for v in offloaded_modules_with_hooks)),
-            f"Not installed correct hook: {[v for v in offloaded_modules_with_hooks if not isinstance(v, accelerate.hooks.CpuOffload)]}",
+        offloaded_modules_with_incorrect_hooks = {}
+        for k, v in offloaded_modules.items():
+            if hasattr(v, "_hf_hook") and not isinstance(v._hf_hook, accelerate.hooks.CpuOffload):
+                offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook)
+
+        self.assertTrue(
+            len(offloaded_modules_with_incorrect_hooks) == 0,
+            f"Not installed correct hook: {offloaded_modules_with_incorrect_hooks}",
         )
 
     @unittest.skipIf(
@@ -1181,7 +1367,7 @@ class PipelineTesterMixin:
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload = pipe(**inputs)[0]
 
-        pipe.nable_sequential_cpu_offload()
+        pipe.enable_sequential_cpu_offload()
         inputs = self.get_dummy_inputs(generator_device)
         output_with_offload_twice = pipe(**inputs)[0]
 
@@ -1189,22 +1375,23 @@ class PipelineTesterMixin:
         self.assertLess(
             max_diff, expected_max_diff, "running sequential offloading second time should have the inference results"
         )
-        offloaded_modules = [
-            v
+        offloaded_modules = {
+            k: v
             for k, v in pipe.components.items()
             if isinstance(v, torch.nn.Module) and k not in pipe._exclude_from_cpu_offload
-        ]
-        (
-            self.assertTrue(all(v.device.type == "meta" for v in offloaded_modules)),
-            f"Not offloaded: {[v for v in offloaded_modules if v.device.type != 'meta']}",
+        }
+        self.assertTrue(
+            all(v.device.type == "meta" for v in offloaded_modules.values()),
+            f"Not offloaded: {[k for k, v in offloaded_modules.items() if v.device.type != 'meta']}",
         )
+        offloaded_modules_with_incorrect_hooks = {}
+        for k, v in offloaded_modules.items():
+            if hasattr(v, "_hf_hook") and not isinstance(v._hf_hook, accelerate.hooks.AlignDevicesHook):
+                offloaded_modules_with_incorrect_hooks[k] = type(v._hf_hook)
 
-        offloaded_modules_with_hooks = [v for v in offloaded_modules if hasattr(v, "_hf_hook")]
-        (
-            self.assertTrue(
-                all(isinstance(v, accelerate.hooks.AlignDevicesHook) for v in offloaded_modules_with_hooks)
-            ),
-            f"Not installed correct hook: {[v for v in offloaded_modules_with_hooks if not isinstance(v, accelerate.hooks.AlignDevicesHook)]}",
+        self.assertTrue(
+            len(offloaded_modules_with_incorrect_hooks) == 0,
+            f"Not installed correct hook: {offloaded_modules_with_incorrect_hooks}",
         )
 
     @unittest.skipIf(

@@ -17,7 +17,7 @@ from diffusers import (
 from diffusers.utils import is_xformers_available, logging
 from diffusers.utils.testing_utils import floats_tensor, torch_device
 
-from ..test_pipelines_common import IPAdapterTesterMixin, PipelineTesterMixin
+from ..test_pipelines_common import IPAdapterTesterMixin, PipelineFromPipeTesterMixin, PipelineTesterMixin
 
 
 def to_np(tensor):
@@ -27,7 +27,7 @@ def to_np(tensor):
     return tensor
 
 
-class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, unittest.TestCase):
+class PIAPipelineFastTests(IPAdapterTesterMixin, PipelineTesterMixin, PipelineFromPipeTesterMixin, unittest.TestCase):
     pipeline_class = PIAPipeline
     params = frozenset(
         [
