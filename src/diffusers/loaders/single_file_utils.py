@@ -1147,7 +1147,7 @@ def convert_ldm_clip_checkpoint(checkpoint):
         for prefix in remove_prefixes:
             if key.startswith(prefix):
                 diffusers_key = key.replace(prefix, "")
-                text_model_dict[diffusers_key] = checkpoint[key]
+                text_model_dict[diffusers_key] = checkpoint.pop(key)
 
     return text_model_dict
 
