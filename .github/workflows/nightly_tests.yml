@@ -1,6 +1,7 @@
-name: Nightly tests on main
+name: Nightly and release tests on main/release branch
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "0 0 * * *" # every day at midnight
 
@@ -245,6 +246,8 @@ jobs:
   run_flax_tpu_tests:
     name: Nightly Flax TPU Tests
     runs-on: docker-tpu
+    if: github.event_name == 'schedule'
+    
     container:
       image: diffusers/diffusers-flax-tpu
       options: --shm-size "16gb" --ipc host -v /mnt/hf_cache:/mnt/cache/ --privileged
@@ -355,6 +358,7 @@ jobs:
   run_nightly_tests_apple_m1:
     name: Nightly PyTorch MPS tests on MacOS
     runs-on: [ self-hosted, apple-m1 ]
+    if: github.event_name == 'schedule'
 
     steps:
       - name: Checkout diffusers
