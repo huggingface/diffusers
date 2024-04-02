@@ -703,7 +703,7 @@ class Attention(nn.Module):
             out_features = concatenated_weights.shape[0]
 
             # create a new single projection layer and copy over the weights.
-            self.to_qkv = self.nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
+            self.to_qkv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_qkv.weight.copy_(concatenated_weights)
             if self.use_bias:
                 concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
@@ -714,7 +714,7 @@ class Attention(nn.Module):
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
-            self.to_kv = self.nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
+            self.to_kv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_kv.weight.copy_(concatenated_weights)
             if self.use_bias:
                 concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
