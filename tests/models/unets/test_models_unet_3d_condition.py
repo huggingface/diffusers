@@ -164,6 +164,7 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
     def test_feed_forward_chunking(self):
         init_dict, inputs_dict = self.prepare_init_args_and_inputs_for_common()
+        init_dict["block_out_channels"] = (32, 64)
         init_dict["norm_num_groups"] = 32
 
         model = self.model_class(**init_dict)
