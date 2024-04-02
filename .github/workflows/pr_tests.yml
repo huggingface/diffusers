@@ -148,6 +148,7 @@ jobs:
     - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
+        apt-get update && apt-get install libsndfile1-dev libgl1 -y
         python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
