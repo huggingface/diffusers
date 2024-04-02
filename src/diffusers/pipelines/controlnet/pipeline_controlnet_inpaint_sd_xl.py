@@ -1023,7 +1023,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 # because `num_inference_steps` might be even given that every timestep
                 # (except the highest one) is duplicated. If `num_inference_steps` is even it would
                 # mean that we cut the timesteps in the middle of the denoising step
-                # (between 1st and 2nd devirative) which leads to incorrect results. By adding 1
+                # (between 1st and 2nd derivative) which leads to incorrect results. By adding 1
                 # we ensure that the denoising process always ends after the 2nd derivate step of the scheduler
                 num_inference_steps = num_inference_steps + 1
 
@@ -1314,7 +1314,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
 
         Examples:
 
@@ -1602,10 +1602,7 @@ class StableDiffusionXLControlNetInpaintPipeline(
                 1.0 - float(i / len(timesteps) < s or (i + 1) / len(timesteps) > e)
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
-            if isinstance(self.controlnet, MultiControlNetModel):
-                controlnet_keep.append(keeps)
-            else:
-                controlnet_keep.append(keeps[0])
+            controlnet_keep.append(keeps if isinstance(controlnet, MultiControlNetModel) else keeps[0])
 
         # 9. Prepare extra step kwargs. TODO: Logic should ideally just be moved out of the pipeline
         height, width = latents.shape[-2:]
