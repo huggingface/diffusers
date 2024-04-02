@@ -270,7 +270,7 @@ class KandinskyV22Img2ImgPipelineIntegrationTests(unittest.TestCase):
         pipeline = KandinskyV22Img2ImgPipeline.from_pretrained(
             "kandinsky-community/kandinsky-2-2-decoder", torch_dtype=torch.float16
         )
-        pipeline = pipeline.enable_model_cpu_offload()
+        pipeline.enable_model_cpu_offload()
 
         pipeline.set_progress_bar_config(disable=None)
 
