@@ -93,15 +93,17 @@ pipeline = DiffusionPipeline.from_pretrained(
     torch_dtype=torch.float16, 
     use_safetensors=True, 
     device_map="balanced",
-+    max_memory=max_memory
++   max_memory=max_memory
 )
 image = pipeline("a dog").images[0]
 image
 ```
 
-Reset any `device_map` by calling `reset_device_map()` on the pipeline object.
+By default, Diffusers will use the maximum memory of all devices (i.e., all GPUs). If the models don't fit on the GPUs, they will be offloaded to the CPU. If the CPU doesn't have enough memory, you might see an error.
 
-To be able to use methods like `to()`, `enable_sequential_cpu_offload()`, and `enable_model_cpu_offload()` on a supported pipeline that has been device-mapped, first call `reset_device_map()` on it and then use these methods.
+You can reset any `device_map` of a pipeline by calling `reset_device_map()` on the pipeline object.
+
+To use methods like `to()`, `enable_sequential_cpu_offload()`, and `enable_model_cpu_offload()` on a supported pipeline that has been device-mapped, first call `reset_device_map()` on it and then use these methods.
 
 > [!NOTE]  
 > Currently, we support only "balanced" `device_map`. We plan to support more device mapping strategies in future.
