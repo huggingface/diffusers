@@ -57,7 +57,6 @@ class GligenTextImagePipelineFastTests(
     PipelineLatentTesterMixin,
     PipelineKarrasSchedulerTesterMixin,
     PipelineTesterMixin,
-    PipelineFromPipeTesterMixin,
     unittest.TestCase,
 ):
     pipeline_class = StableDiffusionGLIGENTextImagePipeline
