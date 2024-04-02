@@ -279,7 +279,7 @@ class IPAdapterTesterMixin:
         self.assertLess(
             max_diff_without_adapter_scale,
             expected_max_diff,
-            "Output without ip-adapter must be same as normal inference",
+            f"Output without ip-adapter must be same as normal inference, exppected {output_without_adapter}, got {output_without_adapter_scale}",
         )
         self.assertGreater(
             max_diff_with_adapter_scale, 1e-2, "Output with ip-adapter must be different from normal inference"
