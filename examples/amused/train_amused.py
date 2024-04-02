@@ -430,6 +430,9 @@ def main(args):
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     if accelerator.is_main_process:
         os.makedirs(args.output_dir, exist_ok=True)

@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Optional
 
@@ -1844,7 +1845,12 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.cuda.amp.autocast():
+            if torch.backends.mps.is_available():
+                autocast_ctx = nullcontext()
+            else:
+                autocast_ctx = torch.autocast(accelerator.device.type)
+
+                with autocast_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator).images[0]
                         for _ in range(args.num_validation_images)

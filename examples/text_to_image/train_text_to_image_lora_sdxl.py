@@ -21,6 +21,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import datasets
@@ -979,13 +980,6 @@ def main(args):
     if accelerator.is_main_process:
         accelerator.init_trackers("text2image-fine-tune", config=vars(args))
 
-    # Some configurations require autocast to be disabled.
-    enable_autocast = True
-    if torch.backends.mps.is_available() or (
-        accelerator.mixed_precision == "fp16" or accelerator.mixed_precision == "bf16"
-    ):
-        enable_autocast = False
-
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1211,11 +1205,12 @@ def main(args):
                 # run inference
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
+                if torch.backends.mps.is_available():
+                    autocast_ctx = nullcontext()
+                else:
+                    autocast_ctx = torch.autocast(accelerator.device.type)
 
-                with torch.autocast(
-                    accelerator.device.type,
-                    enabled=enable_autocast,
-                ):
+                with autocast_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator).images[0]
                         for _ in range(args.num_validation_images)

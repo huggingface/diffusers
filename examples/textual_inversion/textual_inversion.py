@@ -20,6 +20,7 @@ import os
 import random
 import shutil
 import warnings
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -143,7 +144,12 @@ def log_validation(text_encoder, tokenizer, unet, vae, args, accelerator, weight
     generator = None if args.seed is None else torch.Generator(device=accelerator.device).manual_seed(args.seed)
     images = []
     for _ in range(args.num_validation_images):
-        with torch.autocast("cuda"):
+        if torch.backends.mps.is_available():
+            autocast_ctx = nullcontext()
+        else:
+            autocast_ctx = torch.autocast(accelerator.device.type)
+
+        with autocast_ctx:
             image = pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
         images.append(image)
 
@@ -599,6 +605,10 @@ def main():
         log_with=args.report_to,
         project_config=accelerator_project_config,
     )
+
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
 
     if args.report_to == "wandb":
         if not is_wandb_available():

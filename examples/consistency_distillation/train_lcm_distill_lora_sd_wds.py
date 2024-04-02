@@ -23,6 +23,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 from typing import List, Union
 
@@ -238,6 +239,10 @@ class SDText2ImageDataset:
 
 def log_validation(vae, unet, args, accelerator, weight_dtype, step):
     logger.info("Running validation... ")
+    if torch.backends.mps.is_available():
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type, dtype=weight_dtype)
 
     unet = accelerator.unwrap_model(unet)
     pipeline = StableDiffusionPipeline.from_pretrained(
@@ -274,7 +279,7 @@ def log_validation(vae, unet, args, accelerator, weight_dtype, step):
 
     for _, prompt in enumerate(validation_prompts):
         images = []
-        with torch.autocast("cuda", dtype=weight_dtype):
+        with autocast_ctx:
             images = pipeline(
                 prompt=prompt,
                 num_inference_steps=4,
@@ -1172,6 +1177,11 @@ def main(args):
     ).input_ids.to(accelerator.device)
     uncond_prompt_embeds = text_encoder(uncond_input_ids)[0]
 
+    if torch.backends.mps.is_available():
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
+
     # 16. Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
 
@@ -1300,7 +1310,7 @@ def main(args):
                 # estimates to predict the data point in the augmented PF-ODE trajectory corresponding to the next ODE
                 # solver timestep.
                 with torch.no_grad():
-                    with torch.autocast("cuda"):
+                    with autocast_ctx:
                         # 1. Get teacher model prediction on noisy_model_input z_{t_{n + k}} and conditional embedding c
                         cond_teacher_output = teacher_unet(
                             noisy_model_input.to(weight_dtype),
@@ -1359,7 +1369,7 @@ def main(args):
                 # 9. Get target LCM prediction on x_prev, w, c, t_n (timesteps)
                 # Note that we do not use a separate target network for LCM-LoRA distillation.
                 with torch.no_grad():
-                    with torch.autocast("cuda", dtype=weight_dtype):
+                    with autocast_ctx:
                         target_noise_pred = unet(
                             x_prev.float(),
                             timesteps,

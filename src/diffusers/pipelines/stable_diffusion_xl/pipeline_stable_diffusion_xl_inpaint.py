@@ -1726,10 +1726,6 @@ class StableDiffusionXLInpaintPipeline(
                     if torch.backends.mps.is_available():
                         # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                         latents = latents.to(latents_dtype)
-                    else:
-                        raise ValueError(
-                            "For the given accelerator, there seems to be an unexpected problem in type-casting. Please file an issue on the PyTorch GitHub repository. See also: https://github.com/huggingface/diffusers/pull/7446/."
-                        )
 
                 if num_channels_unet == 4:
                     init_latents_proper = image_latents
@@ -1785,10 +1781,6 @@ class StableDiffusionXLInpaintPipeline(
                 if torch.backends.mps.is_available():
                     # some platforms (eg. apple mps) misbehave due to a pytorch bug: https://github.com/pytorch/pytorch/pull/99272
                     self.vae = self.vae.to(latents.dtype)
-                else:
-                    raise ValueError(
-                        "For the given accelerator, there seems to be an unexpected problem in type-casting. Please file an issue on the PyTorch GitHub repository. See also: https://github.com/huggingface/diffusers/pull/7446/."
-                    )
 
             # unscale/denormalize the latents
             # denormalize with the mean and std if available and not None
