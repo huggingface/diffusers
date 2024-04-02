@@ -329,13 +329,6 @@ class TextToVideoZeroPipeline(DiffusionPipeline, StableDiffusionMixin, TextualIn
             safety_checker=safety_checker,
             feature_extractor=feature_extractor,
         )
-        processor = (
-            CrossFrameAttnProcessor2_0(batch_size=2)
-            if hasattr(F, "scaled_dot_product_attention")
-            else CrossFrameAttnProcessor(batch_size=2)
-        )
-        self.unet.set_attn_processor(processor)
-
         if safety_checker is None and requires_safety_checker:
             logger.warning(
                 f"You have disabled the safety checker for {self.__class__} by passing `safety_checker=None`. Ensure"
@@ -616,6 +609,15 @@ class TextToVideoZeroPipeline(DiffusionPipeline, StableDiffusionMixin, TextualIn
 
         assert num_videos_per_prompt == 1
 
+        # set the processor
+        original_attn_proc = self.unet.attn_processors
+        processor = (
+            CrossFrameAttnProcessor2_0(batch_size=2)
+            if hasattr(F, "scaled_dot_product_attention")
+            else CrossFrameAttnProcessor(batch_size=2)
+        )
+        self.unet.set_attn_processor(processor)
+
         if isinstance(prompt, str):
             prompt = [prompt]
         if isinstance(negative_prompt, str):
@@ -739,6 +741,8 @@ class TextToVideoZeroPipeline(DiffusionPipeline, StableDiffusionMixin, TextualIn
 
         # Offload all models
         self.maybe_free_model_hooks()
+        # make sure to set the original attention processors back
+        self.unet.set_attn_processor(original_attn_proc)
 
         if not return_dict:
             return (image, has_nsfw_concept)
