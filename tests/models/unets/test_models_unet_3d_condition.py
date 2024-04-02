@@ -59,14 +59,15 @@ class UNet3DConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.Test
 
     def prepare_init_args_and_inputs_for_common(self):
         init_dict = {
-            "block_out_channels": (32, 64),
+            "block_out_channels": (16, 32),
+            "norm_num_groups": 16,
             "down_block_types": (
                 "CrossAttnDownBlock3D",
                 "DownBlock3D",
             ),
             "up_block_types": ("UpBlock3D", "CrossAttnUpBlock3D"),
             "cross_attention_dim": 32,
-            "attention_head_dim": 8,
+            "attention_head_dim": 4,
             "out_channels": 4,
             "in_channels": 4,
             "layers_per_block": 1,
