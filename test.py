@@ -36,4 +36,4 @@ pipe = OpenSoraPipeline(
 )
 
 prompt = ""
-out = pipe(prompt, num_inference_steps=1)
+out = pipe(prompt, num_inference_steps=1, min_guidance_scale=1.0, max_guidance_scale=3.0)

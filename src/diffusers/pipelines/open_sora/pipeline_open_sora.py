@@ -79,6 +79,14 @@ class OpenSoraPipelineOutput(BaseOutput):
     frames: Union[List[List[PIL.Image.Image]], np.ndarray, torch.FloatTensor]
 
 
+def _append_dims(x, target_dims):
+    """Appends dimensions to the end of a tensor until it has target_dims dimensions."""
+    dims_to_append = target_dims - x.ndim
+    if dims_to_append < 0:
+        raise ValueError(f"input has {x.ndim} dims but target_dims is {target_dims}, which is less")
+    return x[(...,) + (None,) * dims_to_append]
+
+
 # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
 def tensor2vid(video: torch.Tensor, processor: VaeImageProcessor, output_type: str = "np"):
     batch_size, channels, num_frames, height, width = video.shape
@@ -656,6 +664,8 @@ class OpenSoraPipeline(DiffusionPipeline):
         num_inference_steps: int = 20,
         timesteps: List[int] = None,
         guidance_scale: float = 4.5,
+        min_guidance_scale: Optional[float] = None,
+        max_guidance_scale: Optional[float] = None,
         num_images_per_prompt: Optional[int] = 1,
         height: Optional[int] = None,
         width: Optional[int] = None,
@@ -828,6 +838,14 @@ class OpenSoraPipeline(DiffusionPipeline):
 
         # 7. Denoising loop
         num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+
+        # 8. Prepare guidance scale
+        # TODO: Hacky for testing, make this cleaner
+        if min_guidance_scale is not None and max_guidance_scale is not None:
+            guidance_scale = torch.linspace(min_guidance_scale, max_guidance_scale, num_frames).unsqueeze(0)
+            guidance_scale = guidance_scale.to(device, latents.dtype)
+            guidance_scale = guidance_scale.repeat(batch_size * num_images_per_prompt, 1)
+            guidance_scale = _append_dims(guidance_scale, latents.ndim).transpose(1, 2)
 
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
