@@ -1194,17 +1194,21 @@ def convert_open_clip_checkpoint(
             )
 
         if key.endswith(".in_proj_weight"):
-            weight_value = checkpoint[key]
+            weight_value = checkpoint.pop(key)
 
-            text_model_dict[diffusers_key + ".q_proj.weight"] = weight_value[:text_proj_dim, :]
-            text_model_dict[diffusers_key + ".k_proj.weight"] = weight_value[text_proj_dim : text_proj_dim * 2, :]
-            text_model_dict[diffusers_key + ".v_proj.weight"] = weight_value[text_proj_dim * 2 :, :]
+            text_model_dict[diffusers_key + ".q_proj.weight"] = weight_value[:text_proj_dim, :].clone().detach()
+            text_model_dict[diffusers_key + ".k_proj.weight"] = (
+                weight_value[text_proj_dim : text_proj_dim * 2, :].clone().detach()
+            )
+            text_model_dict[diffusers_key + ".v_proj.weight"] = weight_value[text_proj_dim * 2 :, :].clone().detach()
 
         elif key.endswith(".in_proj_bias"):
-            weight_value = checkpoint[key]
-            text_model_dict[diffusers_key + ".q_proj.bias"] = weight_value[:text_proj_dim]
-            text_model_dict[diffusers_key + ".k_proj.bias"] = weight_value[text_proj_dim : text_proj_dim * 2]
-            text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :]
+            weight_value = checkpoint.pop(key)
+            text_model_dict[diffusers_key + ".q_proj.bias"] = weight_value[:text_proj_dim].clone().detach()
+            text_model_dict[diffusers_key + ".k_proj.bias"] = (
+                weight_value[text_proj_dim : text_proj_dim * 2].clone().detach()
+            )
+            text_model_dict[diffusers_key + ".v_proj.bias"] = weight_value[text_proj_dim * 2 :].clone().detach()
         else:
             text_model_dict[diffusers_key] = checkpoint[key]
 
@@ -1472,6 +1476,10 @@ def create_diffusers_clip_model_from_ldm(
 
     if torch_dtype is not None:
         model.to(torch_dtype)
+
+    for name, param in model.named_parameters():
+        if param.is_meta:
+            print(name)
 
     model.eval()
 

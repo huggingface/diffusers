@@ -70,6 +70,7 @@ def load_single_file_sub_model(
     )
 
     diffusers_module = importlib.import_module(__name__.split(".")[0])
+    is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
     is_diffusers_single_file_model = issubclass(class_obj, diffusers_module.FromOriginalModelMixin)
 
     if is_diffusers_single_file_model:
@@ -106,13 +107,21 @@ def load_single_file_sub_model(
             **kwargs,
         )
 
-    else:
+    elif is_diffusers_model:
         load_method = getattr(class_obj, "from_pretrained")
         loaded_sub_model = load_method(
             pretrained_model_name_or_path,
             subfolder=name,
             local_files_only=local_files_only,
             torch_dtype=torch_dtype,
+        )
+
+    else:
+        load_method = getattr(class_obj, "from_pretrained")
+        loaded_sub_model = load_method(
+            pretrained_model_name_or_path,
+            subfolder=name,
+            local_files_only=local_files_only,
         )
 
     return loaded_sub_model
