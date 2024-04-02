@@ -170,6 +170,7 @@ class BasicTransformerBlock(nn.Module):
         # 1. Normalization layers.
         self.norm1, self.norm2, self.norm3 = self._init_normalization_layers(
             norm_type=norm_type,
+            dim=dim,
             num_embeds_ada_norm=num_embeds_ada_norm,
             ada_norm_continous_conditioning_embedding_dim=ada_norm_continous_conditioning_embedding_dim,
             norm_eps=norm_eps,
