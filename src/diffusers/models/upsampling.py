@@ -18,8 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..utils import USE_PEFT_BACKEND
-from .lora import LoRACompatibleConv
+from ..utils import deprecate
 from .normalization import RMSNorm
 
 
@@ -111,7 +110,6 @@ class Upsample2D(nn.Module):
         self.use_conv_transpose = use_conv_transpose
         self.name = name
         self.interpolate = interpolate
-        conv_cls = nn.Conv2d if USE_PEFT_BACKEND else LoRACompatibleConv
 
         if norm_type == "ln_norm":
             self.norm = nn.LayerNorm(channels, eps, elementwise_affine)
@@ -132,7 +130,7 @@ class Upsample2D(nn.Module):
         elif use_conv:
             if kernel_size is None:
                 kernel_size = 3
-            conv = conv_cls(self.channels, self.out_channels, kernel_size=kernel_size, padding=padding, bias=bias)
+            conv = nn.Conv2d(self.channels, self.out_channels, kernel_size=kernel_size, padding=padding, bias=bias)
 
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if name == "conv":
@@ -141,11 +139,12 @@ class Upsample2D(nn.Module):
             self.Conv2d_0 = conv
 
     def forward(
-        self,
-        hidden_states: torch.FloatTensor,
-        output_size: Optional[int] = None,
-        scale: float = 1.0,
+        self, hidden_states: torch.FloatTensor, output_size: Optional[int] = None, *args, **kwargs
     ) -> torch.FloatTensor:
+        if len(args) > 0 or kwargs.get("scale", None) is not None:
+            deprecation_message = "The `scale` argument is deprecated and will be ignored. Please remove it, as passing it will raise an error in the future. `scale` should directly be passed while calling the underlying pipeline component i.e., via `cross_attention_kwargs`."
+            deprecate("scale", "1.0.0", deprecation_message)
+
         assert hidden_states.shape[1] == self.channels
 
         if self.norm is not None:
@@ -180,15 +179,9 @@ class Upsample2D(nn.Module):
         # TODO(Suraj, Patrick) - clean up after weight dicts are correctly renamed
         if self.use_conv:
             if self.name == "conv":
-                if isinstance(self.conv, LoRACompatibleConv) and not USE_PEFT_BACKEND:
-                    hidden_states = self.conv(hidden_states, scale)
-                else:
-                    hidden_states = self.conv(hidden_states)
+                hidden_states = self.conv(hidden_states)
             else:
-                if isinstance(self.Conv2d_0, LoRACompatibleConv) and not USE_PEFT_BACKEND:
-                    hidden_states = self.Conv2d_0(hidden_states, scale)
-                else:
-                    hidden_states = self.Conv2d_0(hidden_states)
+                hidden_states = self.Conv2d_0(hidden_states)
 
         return hidden_states
 

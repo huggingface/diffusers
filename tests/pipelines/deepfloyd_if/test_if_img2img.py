@@ -55,7 +55,7 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
             "image": image,
             "generator": generator,
             "num_inference_steps": 2,
-            "output_type": "numpy",
+            "output_type": "np",
         }
 
         return inputs
@@ -94,6 +94,12 @@ class IFImg2ImgPipelineFastTests(PipelineTesterMixin, IFPipelineTesterMixin, uni
 @slow
 @require_torch_gpu
 class IFImg2ImgPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        # clean up the VRAM before each test
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         # clean up the VRAM after each test
         super().tearDown()
@@ -108,6 +114,10 @@ class IFImg2ImgPipelineSlowTests(unittest.TestCase):
         )
         pipe.unet.set_attn_processor(AttnAddedKVProcessor())
         pipe.enable_model_cpu_offload()
+
+        torch.cuda.reset_max_memory_allocated()
+        torch.cuda.empty_cache()
+        torch.cuda.reset_peak_memory_stats()
 
         image = floats_tensor((1, 3, 64, 64), rng=random.Random(0)).to(torch_device)
         generator = torch.Generator(device="cpu").manual_seed(0)

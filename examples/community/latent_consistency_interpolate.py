@@ -9,7 +9,7 @@ from diffusers.image_processor import VaeImageProcessor
 from diffusers.loaders import FromSingleFileMixin, LoraLoaderMixin, TextualInversionLoaderMixin
 from diffusers.models import AutoencoderKL, UNet2DConditionModel
 from diffusers.models.lora import adjust_lora_scale_text_encoder
-from diffusers.pipelines.pipeline_utils import DiffusionPipeline
+from diffusers.pipelines.pipeline_utils import DiffusionPipeline, StableDiffusionMixin
 from diffusers.pipelines.stable_diffusion import StableDiffusionPipelineOutput, StableDiffusionSafetyChecker
 from diffusers.schedulers import LCMScheduler
 from diffusers.utils import (
@@ -190,7 +190,7 @@ def slerp(
 
 
 class LatentConsistencyModelWalkPipeline(
-    DiffusionPipeline, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
+    DiffusionPipeline, StableDiffusionMixin, TextualInversionLoaderMixin, LoraLoaderMixin, FromSingleFileMixin
 ):
     r"""
     Pipeline for text-to-image generation using a latent consistency model.
@@ -272,67 +272,6 @@ class LatentConsistencyModelWalkPipeline(
         self.vae_scale_factor = 2 ** (len(self.vae.config.block_out_channels) - 1)
         self.image_processor = VaeImageProcessor(vae_scale_factor=self.vae_scale_factor)
         self.register_to_config(requires_safety_checker=requires_safety_checker)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_slicing
-    def enable_vae_slicing(self):
-        r"""
-        Enable sliced VAE decoding. When this option is enabled, the VAE will split the input tensor in slices to
-        compute decoding in several steps. This is useful to save some memory and allow larger batch sizes.
-        """
-        self.vae.enable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_slicing
-    def disable_vae_slicing(self):
-        r"""
-        Disable sliced VAE decoding. If `enable_vae_slicing` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_slicing()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_vae_tiling
-    def enable_vae_tiling(self):
-        r"""
-        Enable tiled VAE decoding. When this option is enabled, the VAE will split the input tensor into tiles to
-        compute decoding and encoding in several steps. This is useful for saving a large amount of memory and to allow
-        processing larger images.
-        """
-        self.vae.enable_tiling()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_vae_tiling
-    def disable_vae_tiling(self):
-        r"""
-        Disable tiled VAE decoding. If `enable_vae_tiling` was previously enabled, this method will go back to
-        computing decoding in one step.
-        """
-        self.vae.disable_tiling()
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.enable_freeu
-    def enable_freeu(self, s1: float, s2: float, b1: float, b2: float):
-        r"""Enables the FreeU mechanism as in https://arxiv.org/abs/2309.11497.
-
-        The suffixes after the scaling factors represent the stages where they are being applied.
-
-        Please refer to the [official repository](https://github.com/ChenyangSi/FreeU) for combinations of the values
-        that are known to work well for different pipelines such as Stable Diffusion v1, v2, and Stable Diffusion XL.
-
-        Args:
-            s1 (`float`):
-                Scaling factor for stage 1 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            s2 (`float`):
-                Scaling factor for stage 2 to attenuate the contributions of the skip features. This is done to
-                mitigate "oversmoothing effect" in the enhanced denoising process.
-            b1 (`float`): Scaling factor for stage 1 to amplify the contributions of backbone features.
-            b2 (`float`): Scaling factor for stage 2 to amplify the contributions of backbone features.
-        """
-        if not hasattr(self, "unet"):
-            raise ValueError("The pipeline must have `unet` for using FreeU.")
-        self.unet.enable_freeu(s1=s1, s2=s2, b1=b1, b2=b2)
-
-    # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.disable_freeu
-    def disable_freeu(self):
-        """Disables the FreeU mechanism if enabled."""
-        self.unet.disable_freeu()
 
     # Copied from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion.StableDiffusionPipeline.encode_prompt
     def encode_prompt(
@@ -787,7 +726,7 @@ class LatentConsistencyModelWalkPipeline(
             callback_on_step_end_tensor_inputs (`List`, *optional*):
                 The list of tensor inputs for the `callback_on_step_end` function. The tensors specified in the list
                 will be passed as `callback_kwargs` argument. You will only be able to include variables listed in the
-                `._callback_tensor_inputs` attribute of your pipeine class.
+                `._callback_tensor_inputs` attribute of your pipeline class.
             embedding_interpolation_type (`str`, *optional*, defaults to `"lerp"`):
                 The type of interpolation to use for interpolating between text embeddings. Choose between `"lerp"` and `"slerp"`.
             latent_interpolation_type (`str`, *optional*, defaults to `"slerp"`):
@@ -840,7 +779,7 @@ class LatentConsistencyModelWalkPipeline(
         else:
             batch_size = prompt_embeds.shape[0]
         if batch_size < 2:
-            raise ValueError(f"`prompt` must have length of atleast 2 but found {batch_size}")
+            raise ValueError(f"`prompt` must have length of at least 2 but found {batch_size}")
         if num_images_per_prompt != 1:
             raise ValueError("`num_images_per_prompt` must be `1` as no other value is supported yet")
         if prompt_embeds is not None:
@@ -944,7 +883,7 @@ class LatentConsistencyModelWalkPipeline(
                 ) as batch_progress_bar:
                     for batch_index in range(0, bs, process_batch_size):
                         batch_inference_latents = inference_latents[batch_index : batch_index + process_batch_size]
-                        batch_inference_embedddings = inference_embeddings[
+                        batch_inference_embeddings = inference_embeddings[
                             batch_index : batch_index + process_batch_size
                         ]
 
@@ -953,7 +892,7 @@ class LatentConsistencyModelWalkPipeline(
                         )
                         timesteps = self.scheduler.timesteps
 
-                        current_bs = batch_inference_embedddings.shape[0]
+                        current_bs = batch_inference_embeddings.shape[0]
                         w = torch.tensor(self.guidance_scale - 1).repeat(current_bs)
                         w_embedding = self.get_guidance_scale_embedding(
                             w, embedding_dim=self.unet.config.time_cond_proj_dim
@@ -962,14 +901,14 @@ class LatentConsistencyModelWalkPipeline(
                         # 10. Perform inference for current batch
                         with self.progress_bar(total=num_inference_steps) as progress_bar:
                             for index, t in enumerate(timesteps):
-                                batch_inference_latents = batch_inference_latents.to(batch_inference_embedddings.dtype)
+                                batch_inference_latents = batch_inference_latents.to(batch_inference_embeddings.dtype)
 
                                 # model prediction (v-prediction, eps, x)
                                 model_pred = self.unet(
                                     batch_inference_latents,
                                     t,
                                     timestep_cond=w_embedding,
-                                    encoder_hidden_states=batch_inference_embedddings,
+                                    encoder_hidden_states=batch_inference_embeddings,
                                     cross_attention_kwargs=self.cross_attention_kwargs,
                                     return_dict=False,
                                 )[0]
@@ -985,8 +924,8 @@ class LatentConsistencyModelWalkPipeline(
                                     callback_outputs = callback_on_step_end(self, index, t, callback_kwargs)
 
                                     batch_inference_latents = callback_outputs.pop("latents", batch_inference_latents)
-                                    batch_inference_embedddings = callback_outputs.pop(
-                                        "prompt_embeds", batch_inference_embedddings
+                                    batch_inference_embeddings = callback_outputs.pop(
+                                        "prompt_embeds", batch_inference_embeddings
                                     )
                                     w_embedding = callback_outputs.pop("w_embedding", w_embedding)
                                     denoised = callback_outputs.pop("denoised", denoised)
@@ -1000,7 +939,7 @@ class LatentConsistencyModelWalkPipeline(
                                         step_idx = index // getattr(self.scheduler, "order", 1)
                                         callback(step_idx, t, batch_inference_latents)
 
-                        denoised = denoised.to(batch_inference_embedddings.dtype)
+                        denoised = denoised.to(batch_inference_embeddings.dtype)
 
                         # Note: This is not supported because you would get black images in your latent walk if
                         #       NSFW concept is detected

@@ -63,7 +63,7 @@ class DDIMPipelineFastTests(PipelineTesterMixin, unittest.TestCase):
             "batch_size": 1,
             "generator": generator,
             "num_inference_steps": 2,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -113,7 +113,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         ddim.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddim(generator=generator, eta=0.0, output_type="numpy").images
+        image = ddim(generator=generator, eta=0.0, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
 
@@ -133,7 +133,7 @@ class DDIMPipelineIntegrationTests(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
 

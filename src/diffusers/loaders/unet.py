@@ -31,7 +31,7 @@ from ..models.embeddings import (
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -42,6 +42,12 @@ from ..utils import (
     set_adapter_layers,
     set_weights_and_activate_adapters,
 )
+from .single_file_utils import (
+    convert_stable_cascade_unet_single_file_to_diffusers,
+    infer_stable_cascade_single_file_config,
+    load_single_file_model_checkpoint,
+)
+from .unet_loader_utils import _maybe_expand_lora_scales
 from .utils import AttnProcsLayers
 
 
@@ -209,7 +215,7 @@ class UNet2DConditionLoadersMixin:
                     subfolder=subfolder,
                     user_agent=user_agent,
                 )
-                state_dict = torch.load(model_file, map_location="cpu")
+                state_dict = load_state_dict(model_file)
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
@@ -345,7 +351,7 @@ class UNet2DConditionLoadersMixin:
         is_model_cpu_offload = False
         is_sequential_cpu_offload = False
 
-        # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `lora_lora_weights_into_unet`
+        # For PEFT backend the Unet is already offloaded at this stage as it is handled inside `load_lora_weights_into_unet`
         if not USE_PEFT_BACKEND:
             if _pipeline is not None:
                 for _, component in _pipeline.components.items():
@@ -384,7 +390,7 @@ class UNet2DConditionLoadersMixin:
             is_text_encoder_present = any(key.startswith(self.text_encoder_name) for key in state_dict.keys())
             if is_text_encoder_present:
                 warn_message = "The state_dict contains LoRA params corresponding to the text encoder which are not being used here. To use both UNet and text encoder related LoRA params, use [`pipe.load_lora_weights()`](https://huggingface.co/docs/diffusers/main/en/api/loaders#diffusers.loaders.LoraLoaderMixin.load_lora_weights)."
-                logger.warn(warn_message)
+                logger.warning(warn_message)
             unet_keys = [k for k in state_dict.keys() if k.startswith(self.unet_name)]
             state_dict = {k.replace(f"{self.unet_name}.", ""): v for k, v in state_dict.items() if k in unet_keys}
 
@@ -559,7 +565,7 @@ class UNet2DConditionLoadersMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        weights: Optional[Union[List[float], float]] = None,
+        weights: Optional[Union[float, Dict, List[float], List[Dict], List[None]]] = None,
     ):
         """
         Set the currently active adapters for use in the UNet.
@@ -592,15 +598,22 @@ class UNet2DConditionLoadersMixin:
 
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
 
-        if weights is None:
-            weights = [1.0] * len(adapter_names)
-        elif isinstance(weights, float):
+        # Expand weights into a list, one entry per adapter
+        # examples for e.g. 2 adapters:  [{...}, 7] -> [7,7] ; None -> [None, None]
+        if not isinstance(weights, list):
             weights = [weights] * len(adapter_names)
 
         if len(adapter_names) != len(weights):
             raise ValueError(
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
             )
+
+        # Set None values to default of 1.0
+        # e.g. [{...}, 7] -> [{...}, 7] ; [None, None] -> [1.0, 1.0]
+        weights = [w if w is not None else 1.0 for w in weights]
+
+        # e.g. [{...}, 7] -> [{expanded dict...}, 7]
+        weights = _maybe_expand_lora_scales(self, weights)
 
         set_weights_and_activate_adapters(self, adapter_names, weights)
 
@@ -896,3 +909,103 @@ class UNet2DConditionLoadersMixin:
         self.config.encoder_hid_dim_type = "ip_image_proj"
 
         self.to(dtype=self.dtype, device=self.device)
+
+
+class FromOriginalUNetMixin:
+    """
+    Load pretrained UNet model weights saved in the `.ckpt` or `.safetensors` format into a [`StableCascadeUNet`].
+    """
+
+    @classmethod
+    @validate_hf_hub_args
+    def from_single_file(cls, pretrained_model_link_or_path, **kwargs):
+        r"""
+        Instantiate a [`StableCascadeUNet`] from pretrained StableCascadeUNet weights saved in the original `.ckpt` or
+        `.safetensors` format. The pipeline is set in evaluation mode (`model.eval()`) by default.
+
+        Parameters:
+            pretrained_model_link_or_path (`str` or `os.PathLike`, *optional*):
+                Can be either:
+                    - A link to the `.ckpt` file (for example
+                      `"https://huggingface.co/<repo_id>/blob/main/<path_to_file>.ckpt"`) on the Hub.
+                    - A path to a *file* containing all pipeline weights.
+            config: (`dict`, *optional*):
+                Dictionary containing the configuration of the model:
+            torch_dtype (`str` or `torch.dtype`, *optional*):
+                Override the default `torch.dtype` and load the model with another dtype. If `"auto"` is passed, the
+                dtype is automatically derived from the model's weights.
+            force_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to force the (re-)download of the model weights and configuration files, overriding the
+                cached versions if they exist.
+            cache_dir (`Union[str, os.PathLike]`, *optional*):
+                Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
+                is not used.
+            resume_download (`bool`, *optional*, defaults to `False`):
+                Whether or not to resume downloading the model weights and configuration files. If set to `False`, any
+                incompletely downloaded files are deleted.
+            proxies (`Dict[str, str]`, *optional*):
+                A dictionary of proxy servers to use by protocol or endpoint, for example, `{'http': 'foo.bar:3128',
+                'http://hostname': 'foo.bar:4012'}`. The proxies are used on each request.
+            local_files_only (`bool`, *optional*, defaults to `False`):
+                Whether to only load local model weights and configuration files or not. If set to True, the model
+                won't be downloaded from the Hub.
+            token (`str` or *bool*, *optional*):
+                The token to use as HTTP bearer authorization for remote files. If `True`, the token generated from
+                `diffusers-cli login` (stored in `~/.huggingface`) is used.
+            revision (`str`, *optional*, defaults to `"main"`):
+                The specific model version to use. It can be a branch name, a tag name, a commit id, or any identifier
+                allowed by Git.
+            kwargs (remaining dictionary of keyword arguments, *optional*):
+                Can be used to overwrite load and saveable variables of the model.
+
+        """
+        class_name = cls.__name__
+        if class_name != "StableCascadeUNet":
+            raise ValueError("FromOriginalUNetMixin is currently only compatible with StableCascadeUNet")
+
+        config = kwargs.pop("config", None)
+        resume_download = kwargs.pop("resume_download", False)
+        force_download = kwargs.pop("force_download", False)
+        proxies = kwargs.pop("proxies", None)
+        token = kwargs.pop("token", None)
+        cache_dir = kwargs.pop("cache_dir", None)
+        local_files_only = kwargs.pop("local_files_only", None)
+        revision = kwargs.pop("revision", None)
+        torch_dtype = kwargs.pop("torch_dtype", None)
+
+        checkpoint = load_single_file_model_checkpoint(
+            pretrained_model_link_or_path,
+            resume_download=resume_download,
+            force_download=force_download,
+            proxies=proxies,
+            token=token,
+            cache_dir=cache_dir,
+            local_files_only=local_files_only,
+            revision=revision,
+        )
+
+        if config is None:
+            config = infer_stable_cascade_single_file_config(checkpoint)
+            model_config = cls.load_config(**config, **kwargs)
+        else:
+            model_config = config
+
+        ctx = init_empty_weights if is_accelerate_available() else nullcontext
+        with ctx():
+            model = cls.from_config(model_config, **kwargs)
+
+        diffusers_format_checkpoint = convert_stable_cascade_unet_single_file_to_diffusers(checkpoint)
+        if is_accelerate_available():
+            unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+            if len(unexpected_keys) > 0:
+                logger.warn(
+                    f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
+                )
+
+        else:
+            model.load_state_dict(diffusers_format_checkpoint)
+
+        if torch_dtype is not None:
+            model.to(torch_dtype)
+
+        return model

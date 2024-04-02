@@ -117,7 +117,7 @@ class StableDiffusionImageVariationPipelineFastTests(
             "generator": generator,
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -164,6 +164,11 @@ class StableDiffusionImageVariationPipelineFastTests(
 @slow
 @require_torch_gpu
 class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -274,6 +279,11 @@ class StableDiffusionImageVariationPipelineSlowTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -293,7 +303,7 @@ class StableDiffusionImageVariationPipelineNightlyTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 50,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

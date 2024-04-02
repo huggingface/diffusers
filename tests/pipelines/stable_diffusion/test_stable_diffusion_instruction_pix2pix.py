@@ -131,7 +131,7 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
             "num_inference_steps": 2,
             "guidance_scale": 6.0,
             "image_guidance_scale": 1,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -271,6 +271,11 @@ class StableDiffusionInstructPix2PixPipelineFastTests(
 @slow
 @require_torch_gpu
 class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -288,7 +293,7 @@ class StableDiffusionInstructPix2PixPipelineSlowTests(unittest.TestCase):
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
             "image_guidance_scale": 1.0,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 

@@ -66,32 +66,32 @@ body:
         Questions on DiffusionPipeline (Saving, Loading, From pretrained, ...):
 
         Questions on pipelines:
-        - Stable Diffusion @yiyixuxu @DN6 @sayakpaul @patrickvonplaten
-        - Stable Diffusion XL @yiyixuxu @sayakpaul @DN6 @patrickvonplaten
-        - Kandinsky @yiyixuxu @patrickvonplaten
-        - ControlNet @sayakpaul @yiyixuxu @DN6 @patrickvonplaten
-        - T2I Adapter @sayakpaul @yiyixuxu @DN6 @patrickvonplaten
-        - IF @DN6 @patrickvonplaten
-        - Text-to-Video / Video-to-Video @DN6 @sayakpaul @patrickvonplaten
-        - Wuerstchen @DN6 @patrickvonplaten
+        - Stable Diffusion @yiyixuxu @DN6 @sayakpaul 
+        - Stable Diffusion XL @yiyixuxu @sayakpaul @DN6 
+        - Kandinsky @yiyixuxu 
+        - ControlNet @sayakpaul @yiyixuxu @DN6 
+        - T2I Adapter @sayakpaul @yiyixuxu @DN6 
+        - IF @DN6 
+        - Text-to-Video / Video-to-Video @DN6 @sayakpaul 
+        - Wuerstchen @DN6 
         - Other: @yiyixuxu @DN6
 
         Questions on models:
-        - UNet @DN6 @yiyixuxu @sayakpaul @patrickvonplaten
-        - VAE @sayakpaul @DN6 @yiyixuxu @patrickvonplaten
-        - Transformers/Attention @DN6 @yiyixuxu @sayakpaul @DN6 @patrickvonplaten
+        - UNet @DN6 @yiyixuxu @sayakpaul 
+        - VAE @sayakpaul @DN6 @yiyixuxu 
+        - Transformers/Attention @DN6 @yiyixuxu @sayakpaul @DN6 
 
-        Questions on Schedulers: @yiyixuxu @patrickvonplaten
+        Questions on Schedulers: @yiyixuxu 
 
-        Questions on LoRA: @sayakpaul @patrickvonplaten
+        Questions on LoRA: @sayakpaul 
 
-        Questions on Textual Inversion: @sayakpaul @patrickvonplaten
+        Questions on Textual Inversion: @sayakpaul 
 
         Questions on Training: 
-        - DreamBooth @sayakpaul @patrickvonplaten
-        - Text-to-Image Fine-tuning @sayakpaul @patrickvonplaten
-        - Textual Inversion @sayakpaul @patrickvonplaten
-        - ControlNet @sayakpaul @patrickvonplaten
+        - DreamBooth @sayakpaul 
+        - Text-to-Image Fine-tuning @sayakpaul 
+        - Textual Inversion @sayakpaul 
+        - ControlNet @sayakpaul 
 
         Questions on Tests: @DN6 @sayakpaul @yiyixuxu 
 
@@ -99,7 +99,7 @@ body:
 
         Questions on JAX- and MPS-related things: @pcuenca
 
-        Questions on audio pipelines: @DN6 @patrickvonplaten
+        Questions on audio pipelines: @DN6 
         
 
         

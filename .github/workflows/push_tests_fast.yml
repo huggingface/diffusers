@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths:
+      - "src/diffusers/**.py"
+      - "examples/**.py"
+      - "tests/**.py"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -65,15 +69,18 @@ jobs:
     - name: Install dependencies
       run: |
         apt-get update && apt-get install libsndfile1-dev libgl1 -y
-        python -m pip install -e .[quality,test]
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install -e [quality,test]
 
     - name: Environment
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python utils/print_env.py
 
     - name: Run fast PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch' }}
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "not Flax and not Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -82,6 +89,7 @@ jobs:
     - name: Run fast Flax TPU tests
       if: ${{ matrix.config.framework == 'flax' }}
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Flax" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -90,6 +98,7 @@ jobs:
     - name: Run fast ONNXRuntime CPU tests
       if: ${{ matrix.config.framework == 'onnxruntime' }}
       run: |
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           -s -v -k "Onnx" \
           --make-reports=tests_${{ matrix.config.report }} \
@@ -98,7 +107,8 @@ jobs:
     - name: Run example PyTorch CPU tests
       if: ${{ matrix.config.framework == 'pytorch_examples' }}
       run: |
-        python -m pip install peft
+        python -m venv /opt/venv && export PATH="/opt/venv/bin:$PATH"
+        python -m uv pip install peft
         python -m pytest -n 2 --max-worker-restart=0 --dist=loadfile \
           --make-reports=tests_${{ matrix.config.report }} \
           examples
