@@ -14,9 +14,9 @@ specific language governing permissions and limitations under the License.
 
 [[open-in-colab]]
 
-Prompts are important because they describe what you want a diffusion model to generate. The best prompts are detailed, specific, and well-structured to help the model realize your vision. But sometimes crafting a great prompt may not be enough because there are aspects of diffusion that cannot be controlled by a prompt alone. This is where you need to boost your prompt with other techniques, such as prompt enhancing and prompt weighting, to get the results you want.
+Prompts are important because they describe what you want a diffusion model to generate. The best prompts are detailed, specific, and well-structured to help the model realize your vision. But crafting a great prompt takes time and effort and sometimes it may not be enough because language and words can be imprecise. This is where you need to boost your prompt with other techniques, such as prompt enhancing and prompt weighting, to get the results you want.
 
-This guide will show you how you can use these prompt techniques to generate high-quality images and adjust the weight of certain keywords in a prompt.
+This guide will show you how you can use these prompt techniques to generate high-quality images with lower effort and adjust the weight of certain keywords in a prompt.
 
 ## Prompt engineering
 
@@ -45,9 +45,9 @@ New diffusion models do a pretty good job of generating high-quality images from
 Prompt enhancing is a technique for improving prompt quality by using a combination of:
 
 - [*Offset noise*](https://www.crosslabs.org//blog/diffusion-with-offset-noise) improves the contrast in bright and dark images and creates better lighting overall. This is available as a [LoRA](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/sd_xl_offset_example-lora_1.0.safetensors) from [stabilityai/stable-diffusion-xl-base-1.0](https://hf.co/stabilityai/stable-diffusion-xl-base-1.0).
-- GPT2 to enhance the prompt with a list of words you want. This means curating a list of specific keywords and forcing the model to use those words in a prompt. As a result, you can use a very basic prompt and still get very high-quality results without spending too much effort creating a super detailed prompt.
+- GPT2 enhances the original prompt with a list of words you want. This means curating a list of specific keywords and forcing the model to use those words in the original prompt. As a result, you can use a very basic prompt and still get very high-quality results without spending too much effort. For example, your prompt can be "a cat" and GPT2 can improve it to "cinematic photo of cat, 35mm photograph, film, professional, 4k, highly detailed, breathtaking, hyperrealistic, stunning, ultra, dynamic".
 
-You can start by defining certain styles and list of words you want to improve a prompt with.
+You can start by defining certain styles and a list of words to enhance a prompt with.
 
 ```py
 import torch
@@ -73,7 +73,7 @@ words = [
 ]
 ```
 
-You may have noticed in the `words` list, there are certain words that can be paired together to create something more meaningful. For example, the words "high" and "quality" can be combined to create "high quality". Let's pair these words together and remove the words that can't be paired together.
+You may have noticed in the `words` list, there are certain words that can be paired together to create something more meaningful. For example, the words "high" and "quality" can be combined to create "high quality". Let's pair these words together and remove the words that can't be paired.
 
 ```py
 word_pairs = ["highly detailed", "high quality", "enhanced quality", "perfect composition", "dynamic light"]
@@ -98,7 +98,7 @@ def find_and_order_pairs(s, pairs):
     return ordered_pairs, remaining_s
 ```
 
-Next, implement a custom [`~transformers.LogitsProcessor`] class that assigns tokens in the `words` list a value of 0 and assigns tokens not in the `words` list a negative value so they aren't picked during generation. This way, generation is biased towards the words in the `words` list. In addition, after a word from the list is used it is also assigned a negative value so it doesn't get used again.
+Next, implement a custom [`~transformers.LogitsProcessor`] class that assigns tokens in the `words` list a value of 0 and assigns tokens not in the `words` list a negative value so they aren't picked during generation. This way, generation is biased towards words in the `words` list. After a word from the list is used, it is also assigned a negative value so it isn't picked again.
 
 ```py
 class CustomLogitsProcessor(LogitsProcessor):
@@ -119,7 +119,7 @@ processor = CustomLogitsProcessor(bias)
 processor_list = LogitsProcessorList([processor])
 ```
 
-Concatenate the prompt and the `anime` style prompt defined in the `styles` dictionary earlier.
+Combine the prompt and the `anime` style prompt defined in the `styles` dictionary earlier.
 
 ```py
 prompt = "a road beside a river with trees and a village, studio ghibli style"
@@ -130,7 +130,7 @@ prompt
 "anime artwork of a road beside a river with trees and a village, studio ghibli style, anime style, key visual, vibrant, studio anime, highly detailed"
 ```
 
-Load a GPT2 tokenizer and model from the [Gustavosta/MagicPrompt-Stable-Diffusion](https://huggingface.co/Gustavosta/MagicPrompt-Stable-Diffusion) checkpoint to enhance the prompt.
+Load a GPT2 tokenizer and model from the [Gustavosta/MagicPrompt-Stable-Diffusion](https://huggingface.co/Gustavosta/MagicPrompt-Stable-Diffusion) checkpoint (this specific checkpoint is trained to generate prompts) to enhance the prompt.
 
 ```py
 tokenizer = GPT2Tokenizer.from_pretrained("Gustavosta/MagicPrompt-Stable-Diffusion")
@@ -162,7 +162,7 @@ with torch.no_grad():
     )
 ```
 
-Then you can combine the input prompt and the generated prompt. Feel free to take a look at what the generated prompt (`generated_part`) is, the word pairs that were found (`pairs`), and the remaining words (`words`). This is all packed together in the `enhanced_prompt` that the model uses.
+Then you can combine the input prompt and the generated prompt. Feel free to take a look at what the generated prompt (`generated_part`) is, the word pairs that were found (`pairs`), and the remaining words (`words`). This is all packed together in the `enhanced_prompt`.
 
 ```py
 output_tokens = [tokenizer.decode(generated_id, skip_special_tokens=True) for generated_id in generated_ids]
@@ -174,7 +174,7 @@ enhanced_prompt
 "anime artwork of a road beside a river with trees and a village, studio ghibli style, anime style, key visual, vibrant, studio anime, highly detailed, high quality, beautiful, hyper, ultra"
 ```
 
-Finally, load a pipeline and the offset noise LoRA with a low weight to generate an image with the enhanced prompt.
+Finally, load a pipeline and the offset noise LoRA with a *low weight* to generate an image with the enhanced prompt.
 
 ```py
 pipeline = StableDiffusionXLPipeline.from_pretrained(
