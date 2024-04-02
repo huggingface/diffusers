@@ -133,11 +133,15 @@ class SDFunctionTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
+        inputs["output_type"] = "np"
+
         output = pipe(**inputs)[0]
 
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
+        inputs["output_type"] = "np"
+
         output_freeu = pipe(**inputs)[0]
 
         assert not np.allclose(
@@ -152,6 +156,8 @@ class SDFunctionTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
+        inputs["output_type"] = "np"
+
         output = pipe(**inputs)[0]
 
         pipe.enable_freeu(s1=0.9, s2=0.2, b1=1.2, b2=1.4)
@@ -164,6 +170,8 @@ class SDFunctionTesterMixin:
 
         inputs = self.get_dummy_inputs(torch_device)
         inputs["return_dict"] = False
+        inputs["output_type"] = "np"
+
         output_no_freeu = pipe(**inputs)[0]
         assert np.allclose(
             output, output_no_freeu, atol=1e-2
@@ -1029,7 +1037,7 @@ class PipelineTesterMixin:
         max_diff = np.abs(to_np(output_batch[0][0]) - to_np(output[0][0])).max()
         assert max_diff < expected_max_diff
 
-    def test_dict_tuple_outputs_equivalent(self, expected_max_difference=1e-4):
+    def test_dict_tuple_outputs_equivalent(self, expected_slice=None, expected_max_difference=1e-4):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
         for component in pipe.components.values():
@@ -1040,10 +1048,21 @@ class PipelineTesterMixin:
         pipe.set_progress_bar_config(disable=None)
 
         generator_device = "cpu"
-        output = pipe(**self.get_dummy_inputs(generator_device))[0]
+        if expected_slice is None:
+            output = pipe(**self.get_dummy_inputs(generator_device))[0]
+        else:
+            output = expected_slice
+
         output_tuple = pipe(**self.get_dummy_inputs(generator_device), return_dict=False)[0]
 
-        max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
+        if expected_slice is None:
+            max_diff = np.abs(to_np(output) - to_np(output_tuple)).max()
+        else:
+            if output_tuple.ndim != 5:
+                max_diff = np.abs(to_np(output) - to_np(output_tuple)[0, -3:, -3:, -1].flatten()).max()
+            else:
+                max_diff = np.abs(to_np(output) - to_np(output_tuple)[0, -3:, -3:, -1, -1].flatten()).max()
+
         self.assertLess(max_diff, expected_max_difference)
 
     def test_components_function(self):
