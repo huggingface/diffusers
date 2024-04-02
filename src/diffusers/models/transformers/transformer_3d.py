@@ -171,9 +171,11 @@ class Transformer3DBlock(nn.Module):
 
         # 2. Temporal Self-Attention
         # reshape (batch, num_temporal_patches*num_spatial_patches, dim) -> (batch * num_spatial_patches, num_temporal_patches, dim)
-        temporal_hidden_states = hidden_states.view(
-            batch_size, self.num_temporal_patches, self.num_spatial_patches, -1
-        ).transpose(1, 2)
+        temporal_hidden_states = (
+            hidden_states.view(batch_size, self.num_temporal_patches, self.num_spatial_patches, -1)
+            .transpose(1, 2)
+            .contiguous()
+        )
         temporal_hidden_states = temporal_hidden_states.view(
             batch_size * self.num_spatial_patches, self.num_temporal_patches, -1
         )
@@ -372,6 +374,7 @@ class Transformer3DModel(ModelMixin, ConfigMixin):
 
         # 1. Input
         height, width = hidden_states.shape[-2] // self.patch_size[1], hidden_states.shape[-1] // self.patch_size[2]
+        # import ipdb; ipdb.set_trace()
         hidden_states = self.pos_embed(hidden_states)
 
         batch_size = hidden_states.shape[0]

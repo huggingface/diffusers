@@ -16,9 +16,11 @@ import html
 import inspect
 import re
 import urllib.parse as ul
+from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
+import PIL.Image
 import torch
 from transformers import T5EncoderModel, T5Tokenizer
 
@@ -27,6 +29,7 @@ from ...models import AutoencoderKL, Transformer3DModel
 from ...schedulers import DPMSolverMultistepScheduler
 from ...utils import (
     BACKENDS_MAPPING,
+    BaseOutput,
     deprecate,
     is_bs4_available,
     is_ftfy_available,
@@ -60,6 +63,20 @@ EXAMPLE_DOC_STRING = """
         >>> image = pipe(prompt).images[0]
         ```
 """
+
+
+@dataclass
+class OpenSoraPipelineOutput(BaseOutput):
+    r"""
+    Output class for Stable Video Diffusion pipeline.
+
+    Args:
+        frames (`[List[List[PIL.Image.Image]]`, `np.ndarray`, `torch.FloatTensor`]):
+            List of denoised PIL images of length `batch_size` or numpy array or torch tensor
+            of shape `(batch_size, num_frames, height, width, num_channels)`.
+    """
+
+    frames: Union[List[List[PIL.Image.Image]], np.ndarray, torch.FloatTensor]
 
 
 # Copied from diffusers.pipelines.animatediff.pipeline_animatediff.tensor2vid
@@ -655,6 +672,7 @@ class OpenSoraPipeline(DiffusionPipeline):
         callback_steps: int = 1,
         clean_caption: bool = True,
         max_sequence_length: int = 120,
+        decode_chunk_size: int = 4,
         **kwargs,
     ) -> Union[ImagePipelineOutput, Tuple]:
         """
@@ -862,17 +880,15 @@ class OpenSoraPipeline(DiffusionPipeline):
                         callback(step_idx, t, latents)
 
         if not output_type == "latent":
-            image = self.vae.decode(latents / self.vae.config.scaling_factor, return_dict=False)[0]
+            frames = self.decode_latents(latents, num_frames, decode_chunk_size)
+            frames = tensor2vid(frames, self.image_processor, output_type=output_type)
         else:
-            image = latents
-
-        if not output_type == "latent":
-            image = self.image_processor.postprocess(image, output_type=output_type)
+            frames = latents
 
         # Offload all models
         self.maybe_free_model_hooks()
 
         if not return_dict:
-            return (image,)
+            return (frames,)
 
-        return ImagePipelineOutput(images=image)
+        return OpenSoraPipelineOutput(frames=frames)
