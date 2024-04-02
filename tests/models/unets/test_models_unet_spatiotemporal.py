@@ -26,6 +26,7 @@ from diffusers.utils.testing_utils import (
     floats_tensor,
     torch_all_close,
     torch_device,
+    skip_mps
 )
 
 from ..test_modeling_common import ModelTesterMixin, UNetTesterMixin
@@ -35,7 +36,7 @@ logger = logging.get_logger(__name__)
 
 enable_full_determinism()
 
-
+@skip_mps
 class UNetSpatioTemporalConditionModelTests(ModelTesterMixin, UNetTesterMixin, unittest.TestCase):
     model_class = UNetSpatioTemporalConditionModel
     main_input_name = "sample"
