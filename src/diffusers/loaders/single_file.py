@@ -24,7 +24,7 @@ from .single_file_utils import (
     fetch_diffusers_config,
     fetch_original_config,
     is_clip_model_in_single_file,
-    load_single_file_model_checkpoint,
+    load_single_file_checkpoint,
 )
 
 
@@ -243,7 +243,7 @@ class FromSingleFileMixin:
         local_dir = kwargs.pop("local_dir", None)
         local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
 
-        checkpoint = load_single_file_model_checkpoint(
+        checkpoint = load_single_file_checkpoint(
             pretrained_model_link_or_path,
             resume_download=resume_download,
             force_download=force_download,

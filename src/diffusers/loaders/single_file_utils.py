@@ -233,7 +233,7 @@ def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
     return repo_id, weights_name
 
 
-def load_single_file_model_checkpoint(
+def load_single_file_checkpoint(
     pretrained_model_link_or_path,
     resume_download=False,
     force_download=False,

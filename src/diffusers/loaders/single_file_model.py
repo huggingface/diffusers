@@ -20,7 +20,7 @@ from .single_file_utils import (
     create_diffusers_unet_from_ldm,
     create_diffusers_unet_from_stable_cascade,
     create_diffusers_vae_from_ldm,
-    load_single_file_model_checkpoint,
+    load_single_file_checkpoint,
 )
 
 
@@ -118,7 +118,7 @@ class FromOriginalModelMixin:
         torch_dtype = kwargs.pop("torch_dtype", None)
 
         if checkpoint is None:
-            checkpoint = load_single_file_model_checkpoint(
+            checkpoint = load_single_file_checkpoint(
                 pretrained_model_link_or_path,
                 resume_download=resume_download,
                 force_download=force_download,
