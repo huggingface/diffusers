@@ -1670,7 +1670,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
         r"""
-        Create a new pipeline from a given pipeline. This method is useful to create a new pipeline from the existing pipeline components without reallocating additional memory.
+        Create a new pipeline from a given pipeline. This method is useful to create a new pipeline from the existing
+        pipeline components without reallocating additional memory.
 
         Arguments:
             pipeline (`DiffusionPipeline`):
