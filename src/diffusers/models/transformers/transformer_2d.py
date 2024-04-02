@@ -117,9 +117,6 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         self.attention_head_dim = attention_head_dim
         inner_dim = num_attention_heads * attention_head_dim
 
-        conv_cls = nn.Conv2d
-        linear_cls = nn.Linear
-
         # 1. Transformer2DModel can process both standard continuous images of shape `(batch_size, num_channels, width, height)` as well as quantized image embeddings of shape `(batch_size, num_image_vectors)`
         # Define whether input is continuous or discrete depending on configuration
         self.is_input_continuous = (in_channels is not None) and (patch_size is None)
@@ -159,9 +156,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
             self.norm = torch.nn.GroupNorm(num_groups=norm_num_groups, num_channels=in_channels, eps=1e-6, affine=True)
             if use_linear_projection:
-                self.proj_in = linear_cls(in_channels, inner_dim)
+                self.proj_in = nn.Linear(in_channels, inner_dim)
             else:
-                self.proj_in = conv_cls(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
+                self.proj_in = nn.Conv2d(in_channels, inner_dim, kernel_size=1, stride=1, padding=0)
         elif self.is_input_vectorized:
             assert sample_size is not None, "Transformer2DModel over discrete input must provide sample_size"
             assert num_vector_embeds is not None, "Transformer2DModel over discrete input must provide num_embed"
@@ -222,9 +219,9 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         if self.is_input_continuous:
             # TODO: should use out_channels for continuous projections
             if use_linear_projection:
-                self.proj_out = linear_cls(inner_dim, in_channels)
+                self.proj_out = nn.Linear(inner_dim, in_channels)
             else:
-                self.proj_out = conv_cls(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
+                self.proj_out = nn.Conv2d(inner_dim, in_channels, kernel_size=1, stride=1, padding=0)
         elif self.is_input_vectorized:
             self.norm_out = nn.LayerNorm(inner_dim)
             self.out = nn.Linear(inner_dim, self.num_vector_embeds - 1)
