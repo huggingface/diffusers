@@ -41,11 +41,11 @@ class SDCascadeLayerNorm(nn.LayerNorm):
 class SDCascadeTimestepBlock(nn.Module):
     def __init__(self, c, c_timestep, conds=[]):
         super().__init__()
-        linear_cls = nn.Linear
-        self.mapper = linear_cls(c_timestep, c * 2)
+
+        self.mapper = nn.Linear(c_timestep, c * 2)
         self.conds = conds
         for cname in conds:
-            setattr(self, f"mapper_{cname}", linear_cls(c_timestep, c * 2))
+            setattr(self, f"mapper_{cname}", nn.Linear(c_timestep, c * 2))
 
     def forward(self, x, t):
         t = t.chunk(len(self.conds) + 1, dim=1)
@@ -94,12 +94,11 @@ class GlobalResponseNorm(nn.Module):
 class SDCascadeAttnBlock(nn.Module):
     def __init__(self, c, c_cond, nhead, self_attn=True, dropout=0.0):
         super().__init__()
-        linear_cls = nn.Linear
 
         self.self_attn = self_attn
         self.norm = SDCascadeLayerNorm(c, elementwise_affine=False, eps=1e-6)
         self.attention = Attention(query_dim=c, heads=nhead, dim_head=c // nhead, dropout=dropout, bias=True)
-        self.kv_mapper = nn.Sequential(nn.SiLU(), linear_cls(c_cond, c))
+        self.kv_mapper = nn.Sequential(nn.SiLU(), nn.Linear(c_cond, c))
 
     def forward(self, x, kv):
         kv = self.kv_mapper(kv)
