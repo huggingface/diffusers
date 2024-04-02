@@ -148,112 +148,52 @@ class BasicTransformerBlock(nn.Module):
         attention_out_bias: bool = True,
     ):
         super().__init__()
-        self.only_cross_attention = only_cross_attention
 
+        self._validate_arguments(norm_type, num_embeds_ada_norm, positional_embeddings, num_positional_embeddings)
+
+        self.only_cross_attention = only_cross_attention
         # We keep these boolean flags for backward-compatibility.
         self.use_ada_layer_norm_zero = (num_embeds_ada_norm is not None) and norm_type == "ada_norm_zero"
         self.use_ada_layer_norm = (num_embeds_ada_norm is not None) and norm_type == "ada_norm"
         self.use_ada_layer_norm_single = norm_type == "ada_norm_single"
         self.use_layer_norm = norm_type == "layer_norm"
         self.use_ada_layer_norm_continuous = norm_type == "ada_norm_continuous"
-
-        if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
-            raise ValueError(
-                f"`norm_type` is set to {norm_type}, but `num_embeds_ada_norm` is not defined. Please make sure to"
-                f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
-            )
-
         self.norm_type = norm_type
         self.num_embeds_ada_norm = num_embeds_ada_norm
 
-        if positional_embeddings and (num_positional_embeddings is None):
-            raise ValueError(
-                "If `positional_embedding` type is defined, `num_positition_embeddings` must also be defined."
-            )
-
+        # 0. Position embedding.
         if positional_embeddings == "sinusoidal":
             self.pos_embed = SinusoidalPositionalEmbedding(dim, max_seq_length=num_positional_embeddings)
         else:
             self.pos_embed = None
 
-        # Define 3 blocks. Each block has its own normalization layer.
-        # 1. Self-Attn
-        if norm_type == "ada_norm":
-            self.norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
-        elif norm_type == "ada_norm_zero":
-            self.norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
-        elif norm_type == "ada_norm_continuous":
-            self.norm1 = AdaLayerNormContinuous(
-                dim,
-                ada_norm_continous_conditioning_embedding_dim,
-                norm_elementwise_affine,
-                norm_eps,
-                ada_norm_bias,
-                "rms_norm",
-            )
-        else:
-            self.norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
-
-        self.attn1 = Attention(
-            query_dim=dim,
-            heads=num_attention_heads,
-            dim_head=attention_head_dim,
-            dropout=dropout,
-            bias=attention_bias,
-            cross_attention_dim=cross_attention_dim if only_cross_attention else None,
-            upcast_attention=upcast_attention,
-            out_bias=attention_out_bias,
+        # 1. Normalization layers.
+        self.norm1, self.norm2, self.norm3 = self._init_normalization_layers(
+            norm_type=norm_type,
+            num_embeds_ada_norm=num_embeds_ada_norm,
+            ada_norm_continous_conditioning_embedding_dim=ada_norm_continous_conditioning_embedding_dim,
+            norm_eps=norm_eps,
+            ada_norm_bias=ada_norm_bias,
+            cross_attention_dim=cross_attention_dim,
+            double_self_attention=double_self_attention,
+            norm_elementwise_affine=norm_elementwise_affine,
         )
 
-        # 2. Cross-Attn
-        if cross_attention_dim is not None or double_self_attention:
-            # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
-            # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
-            # the second cross attention block.
-            if norm_type == "ada_norm":
-                self.norm2 = AdaLayerNorm(dim, num_embeds_ada_norm)
-            elif norm_type == "ada_norm_continuous":
-                self.norm2 = AdaLayerNormContinuous(
-                    dim,
-                    ada_norm_continous_conditioning_embedding_dim,
-                    norm_elementwise_affine,
-                    norm_eps,
-                    ada_norm_bias,
-                    "rms_norm",
-                )
-            else:
-                self.norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+        # 2. Attention layers.
+        self.attn1, self.attn2 = self._init_attention_layers(
+            dim=dim,
+            num_attention_heads=num_attention_heads,
+            attention_head_dim=attention_head_dim,
+            dropout=dropout,
+            attention_bias=attention_bias,
+            cross_attention_dim=cross_attention_dim,
+            only_cross_attention=only_cross_attention,
+            upcast_attention=upcast_attention,
+            attention_out_bias=attention_out_bias,
+            double_self_attention=double_self_attention,
+        )
 
-            self.attn2 = Attention(
-                query_dim=dim,
-                cross_attention_dim=cross_attention_dim if not double_self_attention else None,
-                heads=num_attention_heads,
-                dim_head=attention_head_dim,
-                dropout=dropout,
-                bias=attention_bias,
-                upcast_attention=upcast_attention,
-                out_bias=attention_out_bias,
-            )  # is self-attn if encoder_hidden_states is none
-        else:
-            self.norm2 = None
-            self.attn2 = None
-
-        # 3. Feed-forward
-        if norm_type == "ada_norm_continuous":
-            self.norm3 = AdaLayerNormContinuous(
-                dim,
-                ada_norm_continous_conditioning_embedding_dim,
-                norm_elementwise_affine,
-                norm_eps,
-                ada_norm_bias,
-                "layer_norm",
-            )
-
-        elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm", "ada_norm_continuous"]:
-            self.norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
-        elif norm_type == "layer_norm_i2vgen":
-            self.norm3 = None
-
+        # 3. Feedfoward layers.
         self.ff = FeedForward(
             dim,
             dropout=dropout,
@@ -274,6 +214,124 @@ class BasicTransformerBlock(nn.Module):
         # let chunk size default to None
         self._chunk_size = None
         self._chunk_dim = 0
+
+    def _validate_arguments(self, norm_type, num_embeds_ada_norm, positional_embeddings, num_positional_embeddings):
+        if norm_type in ("ada_norm", "ada_norm_zero") and num_embeds_ada_norm is None:
+            raise ValueError(
+                f"`norm_type` is set to {norm_type}, but `num_embeds_ada_norm` is not defined. Please make sure to"
+                f" define `num_embeds_ada_norm` if setting `norm_type` to {norm_type}."
+            )
+
+        if positional_embeddings and (num_positional_embeddings is None):
+            raise ValueError(
+                "If `positional_embedding` type is defined, `num_positition_embeddings` must also be defined."
+            )
+
+    def _init_normalization_layers(
+        self,
+        norm_type,
+        dim,
+        num_embeds_ada_norm,
+        ada_norm_continous_conditioning_embedding_dim,
+        norm_eps,
+        ada_norm_bias,
+        cross_attention_dim,
+        double_self_attention,
+        norm_elementwise_affine,
+    ):
+        if norm_type == "ada_norm":
+            norm1 = AdaLayerNorm(dim, num_embeds_ada_norm)
+        elif norm_type == "ada_norm_zero":
+            norm1 = AdaLayerNormZero(dim, num_embeds_ada_norm)
+        elif norm_type == "ada_norm_continuous":
+            norm1 = AdaLayerNormContinuous(
+                dim,
+                ada_norm_continous_conditioning_embedding_dim,
+                norm_elementwise_affine,
+                norm_eps,
+                ada_norm_bias,
+                "rms_norm",
+            )
+        else:
+            norm1 = nn.LayerNorm(dim, elementwise_affine=norm_elementwise_affine, eps=norm_eps)
+
+        if cross_attention_dim is not None or double_self_attention:
+            # We currently only use AdaLayerNormZero for self attention where there will only be one attention block.
+            # I.e. the number of returned modulation chunks from AdaLayerZero would not make sense if returned during
+            # the second cross attention block.
+            if norm_type == "ada_norm":
+                norm2 = AdaLayerNorm(dim, num_embeds_ada_norm)
+            elif norm_type == "ada_norm_continuous":
+                norm2 = AdaLayerNormContinuous(
+                    dim,
+                    ada_norm_continous_conditioning_embedding_dim,
+                    norm_elementwise_affine,
+                    norm_eps,
+                    ada_norm_bias,
+                    "rms_norm",
+                )
+            else:
+                norm2 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+
+        else:
+            norm2 = None
+
+        if norm_type == "ada_norm_continuous":
+            norm3 = AdaLayerNormContinuous(
+                dim,
+                ada_norm_continous_conditioning_embedding_dim,
+                norm_elementwise_affine,
+                norm_eps,
+                ada_norm_bias,
+                "layer_norm",
+            )
+
+        elif norm_type in ["ada_norm_zero", "ada_norm", "layer_norm", "ada_norm_continuous"]:
+            norm3 = nn.LayerNorm(dim, norm_eps, norm_elementwise_affine)
+        elif norm_type == "layer_norm_i2vgen":
+            norm3 = None
+
+        return norm1, norm2, norm3
+
+    def _init_attention_layers(
+        self,
+        dim,
+        num_attention_heads,
+        attention_head_dim,
+        dropout,
+        attention_bias,
+        cross_attention_dim,
+        only_cross_attention,
+        upcast_attention,
+        attention_out_bias,
+        double_self_attention,
+    ):
+        attn1 = Attention(
+            query_dim=dim,
+            heads=num_attention_heads,
+            dim_head=attention_head_dim,
+            dropout=dropout,
+            bias=attention_bias,
+            cross_attention_dim=cross_attention_dim if only_cross_attention else None,
+            upcast_attention=upcast_attention,
+            out_bias=attention_out_bias,
+        )
+
+        if cross_attention_dim is not None or double_self_attention:
+            attn2 = Attention(
+                query_dim=dim,
+                cross_attention_dim=cross_attention_dim if not double_self_attention else None,
+                heads=num_attention_heads,
+                dim_head=attention_head_dim,
+                dropout=dropout,
+                bias=attention_bias,
+                upcast_attention=upcast_attention,
+                out_bias=attention_out_bias,
+            )  # is self-attn if encoder_hidden_states is none
+        else:
+            attn2 = None
+
+        return attn1, attn2
 
     def set_chunk_feed_forward(self, chunk_size: Optional[int], dim: int = 0):
         # Sets chunk feed-forward
