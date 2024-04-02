@@ -576,15 +576,23 @@ class PipelineFromPipeTesterMixin:
 
     def test_from_pipe_consistent_forward_pass(self, expected_max_diff=1e-3):
         components = self.get_dummy_components()
-        original_expected_modules, _ = self.original_pipeline_class._get_signature_keys(self.original_pipeline_class)
 
+        pipe = self.pipeline_class(**components)
+        for component in pipe.components.values():
+            if hasattr(component, "set_default_attn_processor"):
+                component.set_default_attn_processor()
+        pipe.to(torch_device)
+        pipe.set_progress_bar_config(disable=None)
+        inputs = self.get_dummy_inputs_pipe(torch_device)
+        output = pipe(**inputs)[0]
+
+        original_expected_modules, _ = self.original_pipeline_class._get_signature_keys(self.original_pipeline_class)
         # pipeline components that are also expected to be in the original pipeline
         original_pipe_components = {}
         # additional components that are not in the pipeline, but expected in the original pipeline
         original_pipe_additional_components = {}
         # additional components that are in the pipeline, but not expected in the original pipeline
         current_pipe_additional_components = {}
-
         for name, component in components.items():
             if name in original_expected_modules:
                 original_pipe_components[name] = component
@@ -605,15 +613,6 @@ class PipelineFromPipeTesterMixin:
         pipe_original.set_progress_bar_config(disable=None)
         inputs = self.get_dummy_inputs_for_pipe_original(torch_device)
         output_original = pipe_original(**inputs)[0]
-
-        pipe = self.pipeline_class(**components)
-        for component in pipe.components.values():
-            if hasattr(component, "set_default_attn_processor"):
-                component.set_default_attn_processor()
-        pipe.to(torch_device)
-        pipe.set_progress_bar_config(disable=None)
-        inputs = self.get_dummy_inputs_pipe(torch_device)
-        output = pipe(**inputs)[0]
 
         pipe_from_original = self.pipeline_class.from_pipe(pipe_original, **current_pipe_additional_components)
         pipe_from_original.to(torch_device)
