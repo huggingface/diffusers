@@ -883,13 +883,6 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
         for u in self.up_blocks:
             u.freeze_base_params()
 
-    @torch.no_grad()
-    def _check_if_vae_compatible(self, vae: AutoencoderKL):
-        condition_downscale_factor = 2 ** (len(self.config.ctrl_conditioning_embedding_out_channels) - 1)
-        vae_downscale_factor = 2 ** (len(vae.config.block_out_channels) - 1)
-        compatible = condition_downscale_factor == vae_downscale_factor
-        return compatible, condition_downscale_factor, vae_downscale_factor
-
     def _set_gradient_checkpointing(self, module, value=False):
         if hasattr(module, "gradient_checkpointing"):
             module.gradient_checkpointing = value

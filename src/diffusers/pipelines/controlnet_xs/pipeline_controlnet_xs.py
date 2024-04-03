@@ -161,16 +161,6 @@ class StableDiffusionControlNetXSPipeline(
                 " checker. If you do not want to use the safety checker, you can pass `'safety_checker=None'` instead."
             )
 
-        (
-            vae_compatible,
-            cnxs_condition_downsample_factor,
-            vae_downsample_factor,
-        ) = unet._check_if_vae_compatible(vae)
-        if not vae_compatible:
-            raise ValueError(
-                f"The downsampling factors of the VAE ({vae_downsample_factor}) and the conditioning part of ControlNetXSAddon model ({cnxs_condition_downsample_factor}) need to be equal. Consider building the ControlNetXSAddon model with different `conditioning_embedding_out_channels`."
-            )
-
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
