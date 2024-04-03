@@ -180,6 +180,10 @@ class UniPCMultistepSchedulerTest(SchedulerCommonTest):
         for prediction_type in ["epsilon", "v_prediction"]:
             self.check_over_configs(prediction_type=prediction_type)
 
+    def test_rescale_betas_zero_snr(self):
+        for rescale_betas_zero_snr in [True, False]:
+            self.check_over_configs(rescale_betas_zero_snr=rescale_betas_zero_snr)
+
     def test_solver_order_and_type(self):
         for solver_type in ["bh1", "bh2"]:
             for order in [1, 2, 3]:
