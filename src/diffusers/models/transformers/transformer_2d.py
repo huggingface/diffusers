@@ -409,16 +409,11 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             hidden_states = self.latent_image_embedding(hidden_states)
         elif self.is_input_patches:
             height, width = hidden_states.shape[-2] // self.patch_size, hidden_states.shape[-1] // self.patch_size
-            hidden_states, timestep, embedded_timestep = self._operate_on_patched_inputs(
-                hidden_states, timestep, added_cond_kwargs
+            hidden_states, encoder_hidden_states, timestep, embedded_timestep = self._operate_on_patched_inputs(
+                hidden_states, encoder_hidden_states, timestep, added_cond_kwargs
             )
 
         # 2. Blocks
-        if self.is_input_patches and self.caption_projection is not None:
-            batch_size = hidden_states.shape[0]
-            encoder_hidden_states = self.caption_projection(encoder_hidden_states)
-            encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
-
         for block in self.transformer_blocks:
             if self.training and self.gradient_checkpointing:
 
@@ -492,7 +487,8 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
 
         return hidden_states, inner_dim
 
-    def _operate_on_patched_inputs(self, hidden_states, timestep, added_cond_kwargs):
+    def _operate_on_patched_inputs(self, hidden_states, encoder_hidden_states, timestep, added_cond_kwargs):
+        batch_size = hidden_states.shape[0]
         hidden_states = self.pos_embed(hidden_states)
         embedded_timestep = None
 
@@ -501,12 +497,15 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
                 raise ValueError(
                     "`added_cond_kwargs` cannot be None when using additional conditions for `adaln_single`."
                 )
-            batch_size = hidden_states.shape[0]
             timestep, embedded_timestep = self.adaln_single(
                 timestep, added_cond_kwargs, batch_size=batch_size, hidden_dtype=hidden_states.dtype
             )
 
-        return hidden_states, timestep, embedded_timestep
+        if self.caption_projection is not None:
+            encoder_hidden_states = self.caption_projection(encoder_hidden_states)
+            encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.shape[-1])
+
+        return hidden_states, encoder_hidden_states, timestep, embedded_timestep
 
     def _get_output_for_continuous_inputs(self, hidden_states, residual, batch_size, height, width, inner_dim):
         if not self.use_linear_projection:
