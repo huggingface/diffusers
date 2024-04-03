@@ -21,7 +21,7 @@ from packaging import version
 from ..utils import is_transformers_available, logging
 from .single_file_utils import (
     create_diffusers_clip_model_from_ldm,
-    fetch_diffusers_config,
+    fetch_diffusers_pretrained_model_name,
     fetch_original_config,
     is_clip_model_in_single_file,
     load_single_file_checkpoint,
@@ -270,9 +270,10 @@ class FromSingleFileMixin:
             cache_dir=cache_dir,
             load_connected_pipeline=load_connected_pipeline,
         )
-        default_pipeline_config = fetch_diffusers_config(checkpoint)
+        default_pretrained_model_name_or_path = fetch_diffusers_pretrained_model_name(checkpoint)
+
         config_file = hf_hub_download(
-            default_pipeline_config["pretrained_model_name_or_path"],
+            default_pretrained_model_name_or_path,
             filename=cls.config_name,
             cache_dir=cache_dir,
             revision=revision,
@@ -280,9 +281,7 @@ class FromSingleFileMixin:
             force_download=force_download,
             resume_download=resume_download,
             token=token,
-            local_files_only=local_files_only,
         )
-
         config_dict = pipeline_class._dict_from_json_file(config_file)
         # pop out "_ignore_files" as it is only needed for download
         config_dict.pop("_ignore_files", None)
@@ -322,7 +321,7 @@ class FromSingleFileMixin:
                     checkpoint=checkpoint,
                     library_name=library_name,
                     class_name=class_name,
-                    pretrained_model_name_or_path=default_pipeline_config["pretrained_model_name_or_path"],
+                    pretrained_model_name_or_path=default_pretrained_model_name_or_path,
                     is_pipeline_module=is_pipeline_module,
                     pipelines=pipelines,
                     name=name,
@@ -357,7 +356,7 @@ class FromSingleFileMixin:
                     "The `load_safety_checker` argument is deprecated and will be removed in a future version. "
                     "Please pass the arguments `safety_checker` and `feature_extractor` directly to `from_single_file`"
                     "If no safety checker components are provided, the safety checker will be loaded based"
-                    f"on the default config for the {pipeline_class.__name__}: {default_pipeline_config['pretrained_model_name_or_path']}."
+                    f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
                 )
             )
             safety_checker_components = _legacy_load_safety_checker(local_files_only, torch_dtype)
@@ -370,7 +369,7 @@ class FromSingleFileMixin:
                     "The `scheduler_type` argument is deprecated and will be ignored. "
                     "Please pass an instance of a Scheduler object directly to the `scheduler` in `from_single_file`."
                     "If no scheduler is provided, it will be loaded based"
-                    f"on the default config for the {pipeline_class.__name__}: {default_pipeline_config['pretrained_model_name_or_path']}."
+                    f"on the default config for the {pipeline_class.__name__}: {default_pretrained_model_name_or_path}."
                 )
             )
 

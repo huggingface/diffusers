@@ -56,20 +56,34 @@ CHECKPOINT_KEY_NAMES = {
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
-    "xl_base": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-base-1.0"},
-    "xl_refiner": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-refiner-1.0"},
-    "xl_inpaint": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"},
-    "playground-v2-5": {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
-    "upscale": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
-    "inpainting": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-inpainting"},
-    "inpainting_v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-inpainting"},
-    "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v11p_sd15_canny"},
-    "v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-1"},
-    "v1": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
-    "stable_cascade_stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade"},
-    "stable_cascade_stage_b_lite": {"pretrained_model_name_or_path": "stabilityai/stable-cascade"},
-    "stable_cascade_stage_c": {"pretrained_model_name_or_path": "stabilityai/stable-cascade-prior"},
-    "stable_cascade_stage_c_lite": {"pretrained_model_name_or_path": "stabilityai/stable-cascade-prior"},
+    "xl_base": "stabilityai/stable-diffusion-xl-base-1.0",
+    "xl_refiner": "stabilityai/stable-diffusion-xl-refiner-1.0",
+    "xl_inpaint": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+    "playground-v2-5": "playgroundai/playground-v2.5-1024px-aesthetic",
+    "upscale": "stabilityai/stable-diffusion-x4-upscaler",
+    "inpainting": "runwayml/stable-diffusion-inpainting",
+    "inpainting_v2": "stabilityai/stable-diffusion-2-inpainting",
+    "controlnet": "lllyasviel/control_v111p_sd15_canny",
+    "v2": "stabilityai/stable-diffusion-2-1",
+    "v1": "runwayml/stable-diffusion-v1-5",
+    "stable_cascade_stage_b": "stabilityai/stable-cascade",
+    "stable_cascade_stage_b_lite": "stabilityai/stable-cascade",
+    "stable_cascade_stage_c": "stabilityai/stable-cascade-prior",
+    "stable_cascade_stage_c_lite": "stabilityai/stable-cascade-prior",
+}
+
+DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
+    "xl_base": 1024,
+    "xl_refiner": 1024,
+    "xl_inpaint": 1024,
+    "playground-v2-5": 1024,
+    "upscale": 512,
+    "inpainting": 512,
+    "inpainting_v2": 512,
+    "controlnet": 512,
+    "v2": 768,
+    "v2_base": 512,
+    "v1": 512,
 }
 
 SCHEDULER_DEFAULT_CONFIG = {
@@ -85,7 +99,6 @@ SCHEDULER_DEFAULT_CONFIG = {
     "steps_offset": 1,
     "timestep_spacing": "leading",
 }
-
 
 STABLE_CASCADE_DEFAULT_CONFIGS = {
     "stage_c": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior"},
@@ -188,15 +201,6 @@ DIFFUSERS_TO_LDM_MAPPING = {
     },
 }
 
-LDM_VAE_KEY = "first_stage_model."
-LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
-PLAYGROUND_VAE_SCALING_FACTOR = 0.5
-LDM_UNET_KEY = "model.diffusion_model."
-LDM_CONTROLNET_KEY = "control_model."
-LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
-OPEN_CLIP_PREFIX = "conditioner.embedders.0.model."
-LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
-
 SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
     "cond_stage_model.model.transformer.resblocks.23.attn.in_proj_bias",
     "cond_stage_model.model.transformer.resblocks.23.attn.in_proj_weight",
@@ -213,6 +217,14 @@ SD_2_TEXT_ENCODER_KEYS_TO_IGNORE = [
     "cond_stage_model.model.text_projection",
 ]
 
+LDM_VAE_KEY = "first_stage_model."
+LDM_VAE_DEFAULT_SCALING_FACTOR = 0.18215
+PLAYGROUND_VAE_SCALING_FACTOR = 0.5
+LDM_UNET_KEY = "model.diffusion_model."
+LDM_CONTROLNET_KEY = "control_model."
+LDM_CLIP_PREFIX_TO_REMOVE = ["cond_stage_model.transformer.", "conditioner.embedders.0.transformer."]
+OPEN_CLIP_PREFIX = "conditioner.embedders.0.model."
+LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
 
 VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
 
@@ -300,38 +312,6 @@ def fetch_original_config(checkpoint, original_config_file, local_files_only=Fal
     return original_config
 
 
-def infer_model_type(original_config, checkpoint, model_type=None):
-    if model_type is not None:
-        return model_type
-
-    has_cond_stage_config = (
-        "cond_stage_config" in original_config["model"]["params"]
-        and original_config["model"]["params"]["cond_stage_config"] is not None
-    )
-    has_network_config = (
-        "network_config" in original_config["model"]["params"]
-        and original_config["model"]["params"]["network_config"] is not None
-    )
-
-    if has_cond_stage_config:
-        model_type = original_config["model"]["params"]["cond_stage_config"]["target"].split(".")[-1]
-
-    elif has_network_config:
-        context_dim = original_config["model"]["params"]["network_config"]["params"]["context_dim"]
-        if "edm_mean" in checkpoint and "edm_std" in checkpoint:
-            model_type = "Playground"
-        elif context_dim == 2048:
-            model_type = "SDXL"
-        else:
-            model_type = "SDXL-Refiner"
-    else:
-        raise ValueError("Unable to infer model type from config")
-
-    logger.debug(f"No `model_type` given, `model_type` inferred as: {model_type}")
-
-    return model_type
-
-
 def is_clip_model(checkpoint):
     if CHECKPOINT_KEY_NAMES["clip"] in checkpoint:
         return True
@@ -379,74 +359,59 @@ def is_clip_model_in_single_file(class_obj, checkpoint):
     return False
 
 
-def fetch_diffusers_config(checkpoint, subfolder=None):
+def infer_diffusers_model_type(checkpoint):
     if (
         CHECKPOINT_KEY_NAMES["inpainting"] in checkpoint
         and checkpoint[CHECKPOINT_KEY_NAMES["inpainting"]].shape[1] == 9
     ):
         if CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
-            model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["inpainting_v2"]
+            model_type = "inpainting_v2"
         else:
-            model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["inpainting"]
+            model_type = "inpainting"
 
     elif CHECKPOINT_KEY_NAMES["v2"] in checkpoint and checkpoint[CHECKPOINT_KEY_NAMES["v2"]].shape[-1] == 1024:
-        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["v2"]
+        model_type = "v2"
 
     elif CHECKPOINT_KEY_NAMES["playground-v2-5"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["playground-v2-5"]
+        model_type = "playground-v2-5"
 
     elif CHECKPOINT_KEY_NAMES["xl_base"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["xl_base"]
+        model_type = "xl_base"
 
     elif CHECKPOINT_KEY_NAMES["xl_refiner"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["xl_refiner"]
+        model_type = "xl_refiner"
 
     elif CHECKPOINT_KEY_NAMES["upscale"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["upscale"]
+        model_type = "upscale"
 
     elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
-        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["controlnet"]
+        model_type = "controlnet"
 
     else:
-        model_config = DIFFUSERS_DEFAULT_PIPELINE_PATHS["v1"]
+        model_type = "v1"
 
-    if subfolder:
-        model_config["subfolder"] = subfolder
+    return model_type
 
-    return model_config
+
+def fetch_diffusers_pretrained_model_name(checkpoint, subfolder=None):
+    model_type = infer_diffusers_model_type(checkpoint)
+    model_path = DIFFUSERS_DEFAULT_PIPELINE_PATHS[model_type]
+
+    return model_path
 
 
 def get_default_scheduler_config():
     return SCHEDULER_DEFAULT_CONFIG
 
 
-def set_image_size(pipeline_class_name, original_config, checkpoint, image_size=None, model_type=None):
+def set_image_size(checkpoint, image_size=None):
     if image_size:
         return image_size
 
-    global_step = checkpoint["global_step"] if "global_step" in checkpoint else None
-    model_type = infer_model_type(original_config, checkpoint, model_type)
+    model_type = infer_diffusers_model_type(checkpoint)
+    image_size = DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP[model_type]
 
-    if pipeline_class_name == "StableDiffusionUpscalePipeline":
-        image_size = original_config["model"]["params"]["unet_config"]["params"]["image_size"]
-        return image_size
-
-    elif model_type in ["SDXL", "SDXL-Refiner", "Playground"]:
-        image_size = 1024
-        return image_size
-
-    elif (
-        "parameterization" in original_config["model"]["params"]
-        and original_config["model"]["params"]["parameterization"] == "v"
-    ):
-        # NOTE: For stable diffusion 2 base one has to pass `image_size==512`
-        # as it relies on a brittle global step parameter here
-        image_size = 512 if global_step == 875000 else 768
-        return image_size
-
-    else:
-        image_size = 512
-        return image_size
+    return image_size
 
 
 # Copied from diffusers.pipelines.stable_diffusion.convert_from_ckpt.conv_attn_to_linear
@@ -534,7 +499,7 @@ def infer_stable_cascade_single_file_config(checkpoint):
     return STABLE_CASCADE_DEFAULT_CONFIGS[config_type]
 
 
-def create_unet_diffusers_config(original_config, image_size: int):
+def create_unet_diffusers_config_from_ldm(original_config, image_size: int):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
@@ -638,7 +603,7 @@ def create_unet_diffusers_config(original_config, image_size: int):
 
 def create_controlnet_diffusers_config(original_config, image_size: int):
     unet_params = original_config["model"]["params"]["control_stage_config"]["params"]
-    diffusers_unet_config = create_unet_diffusers_config(original_config, image_size=image_size)
+    diffusers_unet_config = create_unet_diffusers_config_from_ldm(original_config, image_size=image_size)
 
     controlnet_config = {
         "conditioning_channels": unet_params["hint_channels"],
@@ -659,7 +624,9 @@ def create_controlnet_diffusers_config(original_config, image_size: int):
     return controlnet_config
 
 
-def create_vae_diffusers_config(original_config, image_size, scaling_factor=None, latents_mean=None, latents_std=None):
+def create_vae_diffusers_config_from_ldm(
+    original_config, image_size, scaling_factor=None, latents_mean=None, latents_std=None
+):
     """
     Creates a config for the diffusers based on the config of the LDM model.
     """
@@ -1266,20 +1233,16 @@ def create_diffusers_unet_from_ldm(
     extract_ema = kwargs.pop("extract_ema", False)
 
     if original_config is not None:
-        model_type = kwargs.get("model_type", None)
-        model_type = infer_model_type(original_config, checkpoint, model_type=model_type)
-
         image_size = kwargs.get("image_size", None)
-        image_size = set_image_size(cls, original_config, checkpoint, image_size=image_size, model_type=model_type)
-
-        model_config = create_unet_diffusers_config(original_config, image_size=image_size)
+        image_size = set_image_size(checkpoint, image_size=image_size)
+        model_config = create_unet_diffusers_config_from_ldm(original_config, image_size=image_size)
 
     elif config is not None:
         model_config = config
 
     else:
-        config = fetch_diffusers_config(checkpoint, subfolder="unet")
-        model_config = cls.load_config(**config)
+        pretrained_model_name = fetch_diffusers_pretrained_model_name(checkpoint)
+        model_config = cls.load_config(pretrained_model_name_or_path=pretrained_model_name, subfolder="unet")
 
     if num_in_channels is not None:
         deprecate("num_in_channels", "in_channels", "1.0.0")
@@ -1328,8 +1291,8 @@ def create_diffusers_controlnet_from_ldm(
         model_config = config
 
     else:
-        config = fetch_diffusers_config(checkpoint)
-        model_config = cls.load_config(**config)
+        pretrained_model_name = fetch_diffusers_pretrained_model_name(checkpoint)
+        model_config = cls.load_config(pretrained_model_name_or_path=pretrained_model_name)
 
     if num_in_channels is not None:
         # TODO: Add deprecation warning
@@ -1369,7 +1332,7 @@ def create_diffusers_vae_from_ldm(
     if original_config is not None:
         scaling_factor = kwargs.get("scaling_factor", None)
         image_size = kwargs.get("image_size", None)
-        image_size = set_image_size(cls, original_config, checkpoint, image_size=image_size)
+        image_size = set_image_size(checkpoint, image_size=image_size)
 
         if "edm_mean" in checkpoint and "edm_std" in checkpoint:
             latent_mean = checkpoint["edm_mean"]
@@ -1378,7 +1341,7 @@ def create_diffusers_vae_from_ldm(
             latent_mean = None
             latent_std = None
 
-        model_config = create_vae_diffusers_config(
+        model_config = create_vae_diffusers_config_from_ldm(
             original_config,
             image_size=image_size,
             scaling_factor=scaling_factor,
@@ -1390,8 +1353,8 @@ def create_diffusers_vae_from_ldm(
         model_config = config
 
     else:
-        config = fetch_diffusers_config(checkpoint, subfolder="vae")
-        model_config = cls.load_config(**config)
+        pretrained_model_name = fetch_diffusers_pretrained_model_name(checkpoint)
+        model_config = cls.load_config(pretrained_model_name_or_path=pretrained_model_name, subfolder="vae")
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
@@ -1425,8 +1388,10 @@ def create_diffusers_clip_model_from_ldm(
     **kwargs,
 ):
     if config is None:
-        config = fetch_diffusers_config(checkpoint, subfolder=subfolder)
-        model_config = cls.config_class.from_pretrained(**config, **kwargs)
+        pretrained_model_name = fetch_diffusers_pretrained_model_name(checkpoint)
+        model_config = cls.config_class.from_pretrained(
+            pretrained_model_name_or_path=pretrained_model_name, subfolder=subfolder, **kwargs
+        )
 
     else:
         model_config = config
@@ -1476,10 +1441,6 @@ def create_diffusers_clip_model_from_ldm(
 
     if torch_dtype is not None:
         model.to(torch_dtype)
-
-    for name, param in model.named_parameters():
-        if param.is_meta:
-            print(name)
 
     model.eval()
 
