@@ -452,19 +452,23 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
         # 3. Output
         if self.is_input_continuous:
             output = self._get_output_for_continuous_inputs(
-                hidden_states, residual, batch_size, height, width, inner_dim
+                hidden_states=hidden_states,
+                residual=residual,
+                batch_size=batch_size,
+                height=height,
+                width=width,
+                inner_dim=inner_dim,
             )
         elif self.is_input_vectorized:
-            hidden_states = self.norm_out(hidden_states)
-            logits = self.out(hidden_states)
-            # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
-            logits = logits.permute(0, 2, 1)
-            # log(p(x_0))
-            output = F.log_softmax(logits.double(), dim=1).float()
-
-        if self.is_input_patches:
+            output = self._get_output_for_vectorized_inputs(hidden_states)
+        elif self.is_input_patches:
             output = self._get_output_for_patched_inputs(
-                hidden_states, timestep, class_labels, embedded_timestep, height=height, width=width
+                hidden_states=hidden_states,
+                timestep=timestep,
+                class_labels=class_labels,
+                embedded_timestep=embedded_timestep,
+                height=height,
+                width=width,
             )
 
         if not return_dict:
@@ -520,6 +524,15 @@ class Transformer2DModel(ModelMixin, ConfigMixin):
             )
 
         output = hidden_states + residual
+        return output
+
+    def _get_output_for_vectorized_inputs(self, hidden_states):
+        hidden_states = self.norm_out(hidden_states)
+        logits = self.out(hidden_states)
+        # (batch, self.num_vector_embeds - 1, self.num_latent_pixels)
+        logits = logits.permute(0, 2, 1)
+        # log(p(x_0))
+        output = F.log_softmax(logits.double(), dim=1).float()
         return output
 
     def _get_output_for_patched_inputs(
