@@ -491,7 +491,7 @@ def _assign_components_to_devices(
                 deivce_id_component_mapping[device_id] = [component]
             else:
                 deivce_id_component_mapping[device_id].append(component)
-            
+
             # Update the device memory.
             device_memory[device_id] -= component_memory
             current_device_index += 1

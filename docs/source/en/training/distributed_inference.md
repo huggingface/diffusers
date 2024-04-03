@@ -57,16 +57,16 @@ To learn more, take a look at the [Distributed Inference with 🤗 Accelerate](h
 > [!WARNING]
 > This feature is experimental and its APIs might change in the future. 
 
-With Accelerate, you can use the `device_map` to determine how to distribute the model-level components of a pipeline across multiple devices. This is useful in situations where you have more than one GPU.
+With Accelerate, you can use the `device_map` to determine how to distribute the models of a pipeline across multiple devices. This is useful in situations where you have more than one GPU.
 
 For example, if you have two 8GB GPUs, then using [`~DiffusionPipeline.enable_model_cpu_offload`] may not work so well because:
 
 * it only works on a single GPU
 * a single model might not fit on a single GPU ([`~DiffusionPipeline.enable_sequential_cpu_offload`] might work but it will be extremely slow and it is also limited to a single GPU)
 
-To make use of both GPUs, you can use the "balanced" device placement strategy which evenly splits the model across all available GPUs.
+To make use of both GPUs, you can use the "balanced" device placement strategy which splits the models across all available GPUs.
 
-> [TIP]
+> [!TIP]
 > Only the "balanced" strategy is supported at the moment, and we plan to support additional mapping strategies in the future.
 
 ```diff
@@ -80,6 +80,9 @@ pipeline = DiffusionPipeline.from_pretrained(
 image = pipeline("a dog").images[0]
 image
 ```
+
+> [!WARNING]  
+> Currently, we support only "balanced" `device_map`. We plan to support more device mapping strategies in future.
 
 You can also pass a dictionary to enforce the maximum GPU memory that can be used on each device:
 
@@ -105,9 +108,7 @@ Call `reset_device_map` to reset the `device_map` of a pipeline. This is also ne
 
 ```py
 pipeline.reset_device_map()
-
-> [!NOTE]  
-> Currently, we support only "balanced" `device_map`. We plan to support more device mapping strategies in future.
+```
 
 ## PyTorch Distributed
 
