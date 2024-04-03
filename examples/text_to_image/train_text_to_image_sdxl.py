@@ -23,6 +23,7 @@ import math
 import os
 import random
 import shutil
+from contextlib import nullcontext
 from pathlib import Path
 
 import accelerate
@@ -603,6 +604,10 @@ def main(args):
         project_config=accelerator_project_config,
     )
 
+    # Disable AMP for MPS.
+    if torch.backends.mps.is_available():
+        accelerator.native_amp = False
+
     if args.report_to == "wandb":
         if not is_wandb_available():
             raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
@@ -986,12 +991,10 @@ def main(args):
         model = model._orig_mod if is_compiled_module(model) else model
         return model
 
-    # Some configurations require autocast to be disabled.
-    enable_autocast = True
-    if torch.backends.mps.is_available() or (
-        accelerator.mixed_precision == "fp16" or accelerator.mixed_precision == "bf16"
-    ):
-        enable_autocast = False
+    if torch.backends.mps.is_available() or "playground" in args.pretrained_model_name_or_path:
+        autocast_ctx = nullcontext()
+    else:
+        autocast_ctx = torch.autocast(accelerator.device.type)
 
     # Train!
     total_batch_size = args.train_batch_size * accelerator.num_processes * args.gradient_accumulation_steps
@@ -1226,10 +1229,7 @@ def main(args):
                 generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
                 pipeline_args = {"prompt": args.validation_prompt}
 
-                with torch.autocast(
-                    accelerator.device.type,
-                    enabled=enable_autocast,
-                ):
+                with autocast_ctx:
                     images = [
                         pipeline(**pipeline_args, generator=generator, num_inference_steps=25).images[0]
                         for _ in range(args.num_validation_images)
@@ -1284,7 +1284,8 @@ def main(args):
         if args.validation_prompt and args.num_validation_images > 0:
             pipeline = pipeline.to(accelerator.device)
             generator = torch.Generator(device=accelerator.device).manual_seed(args.seed) if args.seed else None
-            with torch.autocast(accelerator.device.type, enabled=enable_autocast):
+
+            with autocast_ctx:
                 images = [
                     pipeline(args.validation_prompt, num_inference_steps=25, generator=generator).images[0]
                     for _ in range(args.num_validation_images)
