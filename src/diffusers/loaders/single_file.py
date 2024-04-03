@@ -48,6 +48,12 @@ def load_single_file_sub_model(
     local_dir=None,
     local_dir_use_symlinks="auto",
     torch_dtype=None,
+    cache_dir=None,
+    revision=None,
+    proxies=None,
+    force_download=None,
+    resume_download=None,
+    token=None,
     **kwargs,
 ):
     if is_pipeline_module:
@@ -70,21 +76,28 @@ def load_single_file_sub_model(
     )
 
     diffusers_module = importlib.import_module(__name__.split(".")[0])
-    is_diffusers_model = issubclass(class_obj, diffusers_module.ModelMixin)
     is_diffusers_single_file_model = issubclass(class_obj, diffusers_module.FromOriginalModelMixin)
 
     if is_diffusers_single_file_model:
+        load_method = getattr(class_obj, "from_single_file")
         if original_config is None:
             config = class_obj.load_config(
                 pretrained_model_name_or_path,
                 subfolder=name,
                 local_files_only=local_files_only,
+                local_dir=local_dir,
+                local_dir_use_symlinks=local_dir_use_symlinks,
+                cache_dir=cache_dir,
+                revision=revision,
+                proxies=proxies,
+                force_download=force_download,
+                resume_download=resume_download,
+                token=token,
                 **kwargs,
             )
         else:
             config = None
 
-        load_method = getattr(class_obj, "from_single_file")
         loaded_sub_model = load_method(
             checkpoint=checkpoint,
             original_config=original_config,
@@ -94,10 +107,29 @@ def load_single_file_sub_model(
         )
 
     elif is_transformers_model and is_clip_model_in_single_file(class_obj, checkpoint):
-        load_method = create_diffusers_clip_model_from_ldm
-        config = class_obj.config_class.from_pretrained(pretrained_model_name_or_path, subfolder=name, **kwargs)
+        if local_dir is not None:
+            # CLIP models are transformers models and do not make use of `local_dir` when downloading files from the hub
+            # here we manually download the config to the appropriate directory if `local_dir` is provided
+            pretrained_model_name_or_path = hf_hub_download(
+                pretrained_model_name_or_path,
+                subfolder=name,
+                filename="config.json",
+                local_dir=local_dir,
+                local_dir_use_symlinks=local_dir_use_symlinks,
+                local_files_only=local_files_only,
+                cache_dir=cache_dir,
+                revision=revision,
+                proxies=proxies,
+                force_download=force_download,
+                resume_download=resume_download,
+                token=token,
+            )
+            config = class_obj.config_class.from_pretrained(pretrained_model_name_or_path, **kwargs)
 
-        loaded_sub_model = load_method(
+        else:
+            config = class_obj.config_class.from_pretrained(pretrained_model_name_or_path, subfolder=name, **kwargs)
+
+        loaded_sub_model = create_diffusers_clip_model_from_ldm(
             class_obj,
             checkpoint=checkpoint,
             subfolder=name,
@@ -107,21 +139,15 @@ def load_single_file_sub_model(
             **kwargs,
         )
 
-    elif is_diffusers_model:
-        load_method = getattr(class_obj, "from_pretrained")
-        loaded_sub_model = load_method(
-            pretrained_model_name_or_path,
-            subfolder=name,
-            local_files_only=local_files_only,
-            torch_dtype=torch_dtype,
-        )
-
     else:
         load_method = getattr(class_obj, "from_pretrained")
         loaded_sub_model = load_method(
             pretrained_model_name_or_path,
             subfolder=name,
             local_files_only=local_files_only,
+            local_dir=local_dir,
+            local_dir_use_symlinks=local_dir_use_symlinks,
+            torch_dtype=torch_dtype,
         )
 
     return loaded_sub_model
@@ -141,6 +167,38 @@ def _legacy_load_safety_checker(local_files_only, torch_dtype):
     )
 
     return {"safety_checker": safety_checker, "feature_extractor": feature_extractor}
+
+
+def _map_component_types_to_config_dict(component_types):
+    diffusers_module = importlib.import_module(__name__.split(".")[0])
+    config_dict = {}
+    component_types.pop("self", None)
+
+    if is_transformers_available():
+        transformers_version = version.parse(version.parse(transformers.__version__).base_version)
+    else:
+        transformers_version = "N/A"
+
+    for component_name, component_value in component_types.items():
+        is_diffusers_model = issubclass(component_value, diffusers_module.ModelMixin)
+        is_scheduler = issubclass(component_value, diffusers_module.SchedulerMixin)
+
+        is_transformers_model = (
+            is_transformers_available()
+            and issubclass(component_value, PreTrainedModel)
+            and transformers_version >= version.parse("4.20.0")
+        )
+
+        if is_diffusers_model:
+            config_dict[component_name] = ["diffusers", component_value[0].__name__]
+        elif is_scheduler:
+            config_dict[component_name] = ["diffusers", component_value.__name__]
+        elif is_transformers_model:
+            config_dict[component_name] = ["transformers", component_value.__name__]
+        else:
+            config_dict[component_name] = [None, None]
+
+    return config_dict
 
 
 class FromSingleFileMixin:
@@ -187,6 +245,8 @@ class FromSingleFileMixin:
             original_config_file (`str`, *optional*):
                 The path to the original config file that was used to train the model. If not provided, the config file
                 will be inferred from the checkpoint file.
+            config (`str`, *optional*):
+                A path to a folder containing model config files in Diffusers format.
             model_type (`str`, *optional*):
                 The type of model to load. If not provided, the model type will be inferred from the checkpoint file.
             image_size (`int`, *optional*):
@@ -244,7 +304,6 @@ class FromSingleFileMixin:
         local_files_only = kwargs.pop("local_files_only", False)
         revision = kwargs.pop("revision", None)
         torch_dtype = kwargs.pop("torch_dtype", None)
-        load_connected_pipeline = kwargs.pop("load_connected_pipeline", False)
         local_dir = kwargs.pop("local_dir", None)
         local_dir_use_symlinks = kwargs.pop("local_dir_use_symlinks", "auto")
 
@@ -269,27 +328,35 @@ class FromSingleFileMixin:
 
         from ..pipelines.pipeline_utils import _get_pipeline_class
 
-        pipeline_class = _get_pipeline_class(
-            cls,
-            config=None,
-            cache_dir=cache_dir,
-            load_connected_pipeline=load_connected_pipeline,
-        )
+        pipeline_class = _get_pipeline_class(cls, config=None)
         default_pretrained_model_name_or_path = fetch_diffusers_pretrained_model_name(checkpoint)
 
-        config_file = hf_hub_download(
-            default_pretrained_model_name_or_path,
-            filename=cls.config_name,
-            cache_dir=cache_dir,
-            revision=revision,
-            proxies=proxies,
-            force_download=force_download,
-            resume_download=resume_download,
-            token=token,
-        )
-        config_dict = pipeline_class._dict_from_json_file(config_file)
-        # pop out "_ignore_files" as it is only needed for download
-        config_dict.pop("_ignore_files", None)
+        if original_config is not None and local_files_only:
+            # If operating in a state where local_files_only=True and an original config file is provided
+            # we cannot fetch the model_index.json from the hub to create the Pipeline config dict
+            # In such a case we dynamically create the config dict based on the type hints of the components
+
+            # We should deprecate this behavior as it is not very reliable and can lead to errors
+            component_types = pipeline_class._get_signature_types()
+            config_dict = _map_component_types_to_config_dict(component_types)
+            config_dict["_class_name"] = pipeline_class.__name__
+
+        else:
+            config_file = hf_hub_download(
+                default_pretrained_model_name_or_path,
+                filename=cls.config_name,
+                cache_dir=cache_dir,
+                revision=revision,
+                proxies=proxies,
+                force_download=force_download,
+                resume_download=resume_download,
+                local_dir=local_dir,
+                local_dir_use_symlinks=local_dir_use_symlinks,
+                token=token,
+            )
+            config_dict = pipeline_class._dict_from_json_file(config_file)
+            # pop out "_ignore_files" as it is only needed for download
+            config_dict.pop("_ignore_files", None)
 
         expected_modules, optional_kwargs = pipeline_class._get_signature_keys(cls)
         passed_class_obj = {k: kwargs.pop(k) for k in expected_modules if k in kwargs}
@@ -335,6 +402,12 @@ class FromSingleFileMixin:
                     local_dir=local_dir,
                     local_dir_use_symlinks=local_dir_use_symlinks,
                     local_files_only=local_files_only,
+                    cache_dir=cache_dir,
+                    revision=revision,
+                    proxies=proxies,
+                    force_download=force_download,
+                    resume_download=resume_download,
+                    token=token,
                     **kwargs,
                 )
 

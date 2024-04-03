@@ -24,12 +24,9 @@ import requests
 import yaml
 
 from ..models.modeling_utils import load_state_dict
-from ..utils import deprecate, is_accelerate_available, is_transformers_available, logging
+from ..utils import deprecate, is_accelerate_available, logging
 from ..utils.hub_utils import _get_model_file
 
-
-if is_transformers_available():
-    pass
 
 if is_accelerate_available():
     from accelerate import init_empty_weights
@@ -387,6 +384,30 @@ def infer_diffusers_model_type(checkpoint):
     elif CHECKPOINT_KEY_NAMES["controlnet"] in checkpoint:
         model_type = "controlnet"
 
+    elif (
+        CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"]].shape[0] == 1536
+    ):
+        model_type = "stable_cascade_stage_c_lite"
+
+    elif (
+        CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_c"]].shape[0] == 2048
+    ):
+        model_type = "stable_cascade_stage_c"
+
+    elif (
+        CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"]].shape[-1] == 576
+    ):
+        model_type = "stable_cascade_stage_b_lite"
+
+    elif (
+        CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"] in checkpoint
+        and checkpoint[CHECKPOINT_KEY_NAMES["stable_cascade_stage_b"]].shape[-1] == 640
+    ):
+        model_type = "stable_cascade_stage_b"
+
     else:
         model_type = "v1"
 
@@ -601,7 +622,7 @@ def create_unet_diffusers_config_from_ldm(original_config, image_size: int):
     return config
 
 
-def create_controlnet_diffusers_config(original_config, image_size: int):
+def create_controlnet_diffusers_config_from_ldm(original_config, image_size: int):
     unet_params = original_config["model"]["params"]["control_stage_config"]["params"]
     diffusers_unet_config = create_unet_diffusers_config_from_ldm(original_config, image_size=image_size)
 
@@ -1116,6 +1137,8 @@ def convert_ldm_clip_checkpoint(checkpoint):
                 diffusers_key = key.replace(prefix, "")
                 text_model_dict[diffusers_key] = checkpoint.pop(key)
 
+    return text_model_dict
+
 
 def convert_open_clip_checkpoint(
     text_model,
@@ -1287,7 +1310,7 @@ def create_diffusers_controlnet_from_ldm(
         image_size = kwargs.get("image_size", None)
         image_size = set_image_size(cls, config, checkpoint, image_size=image_size)
 
-        model_config = create_controlnet_diffusers_config(original_config, image_size=image_size)
+        model_config = create_controlnet_diffusers_config_from_ldm(original_config, image_size=image_size)
 
     elif config is not None:
         model_config = config
