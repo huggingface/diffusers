@@ -476,7 +476,7 @@ def _assign_components_to_devices(
     device_cycle = device_ids + device_ids[::-1]
     device_memory = device_memory.copy()
 
-    deivce_id_component_mapping = {}
+    device_id_component_mapping = {}
     current_device_index = 0
     for component in module_sizes:
         device_id = device_cycle[current_device_index % len(device_cycle)]
@@ -485,18 +485,18 @@ def _assign_components_to_devices(
 
         # If the GPU doesn't fit the current component offload to the CPU.
         if component_memory > curr_device_memory:
-            deivce_id_component_mapping["cpu"] = [component]
+            device_id_component_mapping["cpu"] = [component]
         else:
-            if device_id not in deivce_id_component_mapping:
-                deivce_id_component_mapping[device_id] = [component]
+            if device_id not in device_id_component_mapping:
+                device_id_component_mapping[device_id] = [component]
             else:
-                deivce_id_component_mapping[device_id].append(component)
+                device_id_component_mapping[device_id].append(component)
 
             # Update the device memory.
             device_memory[device_id] -= component_memory
             current_device_index += 1
 
-    return deivce_id_component_mapping
+    return device_id_component_mapping
 
 
 def _get_final_device_map(device_map, pipeline_class, passed_class_obj, init_dict, library, max_memory, **kwargs):
