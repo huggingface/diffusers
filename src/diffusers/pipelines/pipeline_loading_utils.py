@@ -491,11 +491,10 @@ def _assign_components_to_devices(
                 deivce_id_component_mapping[device_id] = [component]
             else:
                 deivce_id_component_mapping[device_id].append(component)
-        current_device_index += 1
-
-        # Update the device memory.
-        if "cpu" not in deivce_id_component_mapping:
+            
+            # Update the device memory.
             device_memory[device_id] -= component_memory
+            current_device_index += 1
 
     return deivce_id_component_mapping
 
