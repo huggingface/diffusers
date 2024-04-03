@@ -83,27 +83,12 @@ DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
     "v1": 512,
 }
 
-SCHEDULER_DEFAULT_CONFIG = {
-    "beta_schedule": "scaled_linear",
-    "beta_start": 0.00085,
-    "beta_end": 0.012,
-    "interpolation_type": "linear",
-    "num_train_timesteps": 1000,
-    "prediction_type": "epsilon",
-    "sample_max_value": 1.0,
-    "set_alpha_to_one": False,
-    "skip_prk_steps": True,
-    "steps_offset": 1,
-    "timestep_spacing": "leading",
-}
-
 STABLE_CASCADE_DEFAULT_CONFIGS = {
     "stage_c": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior"},
     "stage_c_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "prior_lite"},
     "stage_b": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder"},
     "stage_b_lite": {"pretrained_model_name_or_path": "diffusers/stable-cascade-configs", "subfolder": "decoder_lite"},
 }
-
 
 DIFFUSERS_TO_LDM_MAPPING = {
     "unet": {
@@ -226,7 +211,18 @@ LDM_OPEN_CLIP_TEXT_PROJECTION_DIM = 1024
 VALID_URL_PREFIXES = ["https://huggingface.co/", "huggingface.co/", "hf.co/", "https://hf.co/"]
 
 
+def is_valid_url(url):
+    result = urlparse(url)
+    if result.scheme and result.netloc:
+        return True
+
+    return False
+
+
 def _extract_repo_id_and_weights_name(pretrained_model_name_or_path):
+    if not is_valid_url(pretrained_model_name_or_path):
+        raise ValueError("Invalid `pretrained_model_name_or_path` provided. Please set it to a valid URL.")
+
     pattern = r"([^/]+)/([^/]+)/(?:blob/main/)?(.+)"
     weights_name = None
     repo_id = (None,)
@@ -255,10 +251,11 @@ def load_single_file_checkpoint(
     revision=None,
 ):
     if os.path.isfile(pretrained_model_link_or_path):
-        checkpoint = load_state_dict(pretrained_model_link_or_path)
+        pretrained_model_link_or_path = pretrained_model_link_or_path
+
     else:
         repo_id, weights_name = _extract_repo_id_and_weights_name(pretrained_model_link_or_path)
-        checkpoint_path = _get_model_file(
+        pretrained_model_link_or_path = _get_model_file(
             repo_id,
             weights_name=weights_name,
             force_download=force_download,
@@ -271,7 +268,8 @@ def load_single_file_checkpoint(
             token=token,
             revision=revision,
         )
-        checkpoint = load_state_dict(checkpoint_path)
+
+    checkpoint = load_state_dict(pretrained_model_link_or_path)
 
     # some checkpoints contain the model state dict under a "state_dict" key
     while "state_dict" in checkpoint:
@@ -280,14 +278,7 @@ def load_single_file_checkpoint(
     return checkpoint
 
 
-def fetch_original_config(checkpoint, original_config_file, local_files_only=False):
-    def is_valid_url(url):
-        result = urlparse(url)
-        if result.scheme and result.netloc:
-            return True
-
-        return False
-
+def fetch_original_config(original_config_file, local_files_only=False):
     if os.path.isfile(original_config_file):
         with open(original_config_file, "r") as fp:
             original_config_file = fp.read()
@@ -419,10 +410,6 @@ def fetch_diffusers_pretrained_model_name(checkpoint, subfolder=None):
     model_path = DIFFUSERS_DEFAULT_PIPELINE_PATHS[model_type]
 
     return model_path
-
-
-def get_default_scheduler_config():
-    return SCHEDULER_DEFAULT_CONFIG
 
 
 def set_image_size(checkpoint, image_size=None):
