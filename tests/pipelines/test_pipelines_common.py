@@ -48,7 +48,7 @@ from ..models.autoencoders.test_models_vae import (
     get_consistency_vae_config,
 )
 from ..models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
-from ..others.test_utils import TOKEN, USER, is_staging_test
+from ..others.test_utils import TOKEN, USER, is_staging_test, skip_mps
 
 
 def to_np(tensor):
@@ -125,6 +125,8 @@ class SDFunctionTesterMixin:
                 zeros = torch.zeros(shape).to(torch_device)
                 pipe.vae.decode(zeros)
 
+    # MPS currently doesn't support ComplexFloats, which are required for freeU - see https://github.com/huggingface/diffusers/issues/7569.
+    @skip_mps
     def test_freeu_enabled(self):
         components = self.get_dummy_components()
         pipe = self.pipeline_class(**components)
