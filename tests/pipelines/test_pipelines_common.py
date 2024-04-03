@@ -39,7 +39,7 @@ from diffusers.pipelines.pipeline_utils import StableDiffusionMixin
 from diffusers.schedulers import KarrasDiffusionSchedulers
 from diffusers.utils import logging
 from diffusers.utils.import_utils import is_accelerate_available, is_accelerate_version, is_xformers_available
-from diffusers.utils.testing_utils import CaptureLogger, require_torch, torch_device
+from diffusers.utils.testing_utils import CaptureLogger, require_torch, skip_mps, torch_device
 
 from ..models.autoencoders.test_models_vae import (
     get_asym_autoencoder_kl_config,
@@ -48,7 +48,7 @@ from ..models.autoencoders.test_models_vae import (
     get_consistency_vae_config,
 )
 from ..models.unets.test_models_unet_2d_condition import create_ip_adapter_state_dict
-from ..others.test_utils import TOKEN, USER, is_staging_test, skip_mps
+from ..others.test_utils import TOKEN, USER, is_staging_test
 
 
 def to_np(tensor):
