@@ -53,20 +53,29 @@ CHECKPOINT_KEY_NAMES = {
 }
 
 DIFFUSERS_DEFAULT_PIPELINE_PATHS = {
-    "xl_base": "stabilityai/stable-diffusion-xl-base-1.0",
-    "xl_refiner": "stabilityai/stable-diffusion-xl-refiner-1.0",
-    "xl_inpaint": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
-    "playground-v2-5": "playgroundai/playground-v2.5-1024px-aesthetic",
-    "upscale": "stabilityai/stable-diffusion-x4-upscaler",
-    "inpainting": "runwayml/stable-diffusion-inpainting",
-    "inpainting_v2": "stabilityai/stable-diffusion-2-inpainting",
-    "controlnet": "lllyasviel/control_v111p_sd15_canny",
-    "v2": "stabilityai/stable-diffusion-2-1",
-    "v1": "runwayml/stable-diffusion-v1-5",
-    "stable_cascade_stage_b": "stabilityai/stable-cascade",
-    "stable_cascade_stage_b_lite": "stabilityai/stable-cascade",
-    "stable_cascade_stage_c": "stabilityai/stable-cascade-prior",
-    "stable_cascade_stage_c_lite": "stabilityai/stable-cascade-prior",
+    "xl_base": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-base-1.0"},
+    "xl_refiner": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-xl-refiner-1.0"},
+    "xl_inpaint": {"pretrained_model_name_or_path": "diffusers/stable-diffusion-xl-1.0-inpainting-0.1"},
+    "playground-v2-5": {"pretrained_model_name_or_path": "playgroundai/playground-v2.5-1024px-aesthetic"},
+    "upscale": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-x4-upscaler"},
+    "inpainting": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-inpainting"},
+    "inpainting_v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-inpainting"},
+    "controlnet": {"pretrained_model_name_or_path": "lllyasviel/control_v111p_sd15_canny"},
+    "v2": {"pretrained_model_name_or_path": "stabilityai/stable-diffusion-2-1"},
+    "v1": {"pretrained_model_name_or_path": "runwayml/stable-diffusion-v1-5"},
+    "stable_cascade_stage_b": {"pretrained_model_name_or_path": "stabilityai/stable-cascade", "subfolder": "decoder"},
+    "stable_cascade_stage_b_lite": {
+        "pretrained_model_name_or_path": "stabilityai/stable-cascade",
+        "subfolder": "decoder_lite",
+    },
+    "stable_cascade_stage_c": {
+        "pretrained_model_name_or_path": "stabilityai/stable-cascade-prior",
+        "subfolder": "prior",
+    },
+    "stable_cascade_stage_c_lite": {
+        "pretrained_model_name_or_path": "stabilityai/stable-cascade-prior",
+        "subfolder": "prior_lite",
+    },
 }
 
 DIFFUSERS_TO_LDM_DEFAULT_IMAGE_SIZE_MAP = {
@@ -405,7 +414,7 @@ def infer_diffusers_model_type(checkpoint):
     return model_type
 
 
-def fetch_diffusers_pretrained_model_name(checkpoint, subfolder=None):
+def fetch_diffusers_config(checkpoint):
     model_type = infer_diffusers_model_type(checkpoint)
     model_path = DIFFUSERS_DEFAULT_PIPELINE_PATHS[model_type]
 
@@ -1249,8 +1258,8 @@ def create_diffusers_unet_from_ldm(
         model_config = config
 
     else:
-        pretrained_model_name = fetch_diffusers_pretrained_model_name(checkpoint)
-        model_config = cls.load_config(pretrained_model_name_or_path=pretrained_model_name, subfolder="unet")
+        config = fetch_diffusers_config(checkpoint)
+        model_config = cls.load_config(**config, subfolder="unet")
 
     if num_in_channels is not None:
         deprecate("num_in_channels", "in_channels", "1.0.0")
@@ -1303,8 +1312,8 @@ def create_diffusers_controlnet_from_ldm(
         model_config = config
 
     else:
-        pretrained_model_name = fetch_diffusers_pretrained_model_name(checkpoint)
-        model_config = cls.load_config(pretrained_model_name_or_path=pretrained_model_name)
+        config = fetch_diffusers_config(checkpoint)
+        model_config = cls.load_config(**config)
 
     if num_in_channels is not None:
         # TODO: Add deprecation warning
@@ -1369,8 +1378,8 @@ def create_diffusers_vae_from_ldm(
         model_config = config
 
     else:
-        pretrained_model_name = fetch_diffusers_pretrained_model_name(checkpoint)
-        model_config = cls.load_config(pretrained_model_name_or_path=pretrained_model_name, subfolder="vae")
+        config = fetch_diffusers_config(checkpoint)
+        model_config = cls.load_config(**config, subfolder="vae")
 
     ctx = init_empty_weights if is_accelerate_available() else nullcontext
     with ctx():
@@ -1408,10 +1417,8 @@ def create_diffusers_clip_model_from_ldm(
     **kwargs,
 ):
     if config is None:
-        pretrained_model_name = fetch_diffusers_pretrained_model_name(checkpoint)
-        model_config = cls.config_class.from_pretrained(
-            pretrained_model_name_or_path=pretrained_model_name, subfolder=subfolder, **kwargs
-        )
+        config = fetch_diffusers_config(checkpoint)
+        model_config = cls.config_class.from_pretrained(**config, **kwargs)
 
     else:
         model_config = config
