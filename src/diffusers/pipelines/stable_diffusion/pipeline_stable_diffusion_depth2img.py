@@ -548,8 +548,15 @@ class StableDiffusionDepth2ImgPipeline(DiffusionPipeline, TextualInversionLoader
             pixel_values = pixel_values.to(device=device)
             # The DPT-Hybrid model uses batch-norm layers which are not compatible with fp16.
             # So we use `torch.autocast` here for half precision inference.
-            context_manger = torch.autocast("cuda", dtype=dtype) if device.type == "cuda" else contextlib.nullcontext()
-            with context_manger:
+            if torch.backends.mps.is_available():
+                autocast_ctx = contextlib.nullcontext()
+                logger.warning(
+                    "The DPT-Hybrid model uses batch-norm layers which are not compatible with fp16, but autocast is not yet supported on MPS."
+                )
+            else:
+                autocast_ctx = torch.autocast(device.type, dtype=dtype)
+
+            with autocast_ctx:
                 depth_map = self.depth_estimator(pixel_values).predicted_depth
         else:
             depth_map = depth_map.to(device=device, dtype=dtype)

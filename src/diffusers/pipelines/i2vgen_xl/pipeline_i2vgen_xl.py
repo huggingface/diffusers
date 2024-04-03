@@ -43,10 +43,14 @@ EXAMPLE_DOC_STRING = """
         >>> from diffusers import I2VGenXLPipeline
         >>> from diffusers.utils import export_to_gif, load_image
 
-        >>> pipeline = I2VGenXLPipeline.from_pretrained("ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16")
+        >>> pipeline = I2VGenXLPipeline.from_pretrained(
+        ...     "ali-vilab/i2vgen-xl", torch_dtype=torch.float16, variant="fp16"
+        ... )
         >>> pipeline.enable_model_cpu_offload()
 
-        >>> image_url = "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"
+        >>> image_url = (
+        ...     "https://huggingface.co/datasets/diffusers/docs-images/resolve/main/i2vgen_xl_images/img_0009.png"
+        ... )
         >>> image = load_image(image_url).convert("RGB")
 
         >>> prompt = "Papers were floating in the air on a table in the library"
@@ -59,7 +63,7 @@ EXAMPLE_DOC_STRING = """
         ...     num_inference_steps=50,
         ...     negative_prompt=negative_prompt,
         ...     guidance_scale=9.0,
-        ...     generator=generator
+        ...     generator=generator,
         ... ).frames[0]
         >>> video_path = export_to_gif(frames, "i2v.gif")
         ```
@@ -95,7 +99,8 @@ class I2VGenXLPipelineOutput(BaseOutput):
 
      Args:
          frames (`torch.Tensor`, `np.ndarray`, or List[List[PIL.Image.Image]]):
-             List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing denoised
+             List of video outputs - It can be a nested list of length `batch_size,` with each sub-list containing
+             denoised
      PIL image sequences of length `num_frames.` It can also be a NumPy array or Torch tensor of shape
     `(batch_size, num_frames, channels, height, width)`
     """
@@ -551,7 +556,8 @@ class I2VGenXLPipeline(
             width (`int`, *optional*, defaults to `self.unet.config.sample_size * self.vae_scale_factor`):
                 The width in pixels of the generated image.
             target_fps (`int`, *optional*):
-                Frames per second. The rate at which the generated images shall be exported to a video after generation. This is also used as a "micro-condition" while generation.
+                Frames per second. The rate at which the generated images shall be exported to a video after
+                generation. This is also used as a "micro-condition" while generation.
             num_frames (`int`, *optional*):
                 The number of video frames to generate.
             num_inference_steps (`int`, *optional*):
@@ -568,9 +574,9 @@ class I2VGenXLPipeline(
             num_videos_per_prompt (`int`, *optional*):
                 The number of images to generate per prompt.
             decode_chunk_size (`int`, *optional*):
-                The number of frames to decode at a time. The higher the chunk size, the higher the temporal consistency
-                between frames, but also the higher the memory consumption. By default, the decoder will decode all frames at once
-                for maximal quality. Reduce `decode_chunk_size` to reduce memory usage.
+                The number of frames to decode at a time. The higher the chunk size, the higher the temporal
+                consistency between frames, but also the higher the memory consumption. By default, the decoder will
+                decode all frames at once for maximal quality. Reduce `decode_chunk_size` to reduce memory usage.
             generator (`torch.Generator` or `List[torch.Generator]`, *optional*):
                 A [`torch.Generator`](https://pytorch.org/docs/stable/generated/torch.Generator.html) to make
                 generation deterministic.
