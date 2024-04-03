@@ -77,7 +77,7 @@ jobs:
         config:
           - name: Fast PyTorch Pipeline CPU tests
             framework: pytorch_pipelines
-            runner: [ self-hosted, intel-cpu, 8-cpu, ci ]
+            runner: [ self-hosted, intel-cpu, 32-cpu, 256-ram, ci ]
             image: diffusers/diffusers-pytorch-cpu
             report: torch_cpu_pipelines
           - name: Fast PyTorch Models & Schedulers CPU tests
