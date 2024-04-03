@@ -67,17 +67,18 @@ class IPAdapterMixin:
                     - A [torch state
                       dict](https://pytorch.org/tutorials/beginner/saving_loading_models.html#what-is-a-state-dict).
             subfolder (`str` or `List[str]`):
-                The subfolder location of a model file within a larger model repository on the Hub or locally.
-                If a list is passed, it should have the same length as `weight_name`.
+                The subfolder location of a model file within a larger model repository on the Hub or locally. If a
+                list is passed, it should have the same length as `weight_name`.
             weight_name (`str` or `List[str]`):
                 The name of the weight file to load. If a list is passed, it should have the same length as
                 `weight_name`.
             image_encoder_folder (`str`, *optional*, defaults to `image_encoder`):
                 The subfolder location of the image encoder within a larger model repository on the Hub or locally.
-                Pass `None` to not load the image encoder. If the image encoder is located in a folder inside `subfolder`,
-                you only need to pass the name of the folder that contains image encoder weights, e.g. `image_encoder_folder="image_encoder"`.
-                If the image encoder is located in a folder other than `subfolder`, you should pass the path to the folder that contains image encoder weights,
-                for example, `image_encoder_folder="different_subfolder/image_encoder"`.
+                Pass `None` to not load the image encoder. If the image encoder is located in a folder inside
+                `subfolder`, you only need to pass the name of the folder that contains image encoder weights, e.g.
+                `image_encoder_folder="image_encoder"`. If the image encoder is located in a folder other than
+                `subfolder`, you should pass the path to the folder that contains image encoder weights, for example,
+                `image_encoder_folder="different_subfolder/image_encoder"`.
             cache_dir (`Union[str, os.PathLike]`, *optional*):
                 Path to a directory where a downloaded pretrained model configuration is cached if the standard cache
                 is not used.

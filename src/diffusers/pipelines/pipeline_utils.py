@@ -538,7 +538,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
                 allowed by Git.
             custom_revision (`str`, *optional*):
                 The specific model version to use. It can be a branch name, a tag name, or a commit id similar to
-                `revision` when loading a custom pipeline from the Hub. Defaults to the latest stable 🤗 Diffusers version.
+                `revision` when loading a custom pipeline from the Hub. Defaults to the latest stable 🤗 Diffusers
+                version.
             mirror (`str`, *optional*):
                 Mirror source to resolve accessibility issues if you’re downloading a model in China. We do not
                 guarantee the timeliness or safety of the source, and you should refer to the mirror site for more
@@ -1669,7 +1670,8 @@ class DiffusionPipeline(ConfigMixin, PushToHubMixin):
     @classmethod
     def from_pipe(cls, pipeline, **kwargs):
         r"""
-        Create a new pipeline from a given pipeline. This method is useful to create a new pipeline from the existing pipeline components without reallocating additional memory.
+        Create a new pipeline from a given pipeline. This method is useful to create a new pipeline from the existing
+        pipeline components without reallocating additional memory.
 
         Arguments:
             pipeline (`DiffusionPipeline`):
@@ -1851,8 +1853,8 @@ class StableDiffusionMixin:
 
     def fuse_qkv_projections(self, unet: bool = True, vae: bool = True):
         """
-        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query,
-        key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+        Enables fused QKV projections. For self-attention modules, all projection matrices (i.e., query, key, value)
+        are fused. For cross-attention modules, key and value projection matrices are fused.
 
         <Tip warning={true}>
 
