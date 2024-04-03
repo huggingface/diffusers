@@ -212,8 +212,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
     ):
         super().__init__()
 
-        self.sample_size = sample_size
-
         time_embedding_input_dim = base_block_out_channels[0]
         time_embedding_dim = base_block_out_channels[0] * 4
 
@@ -226,12 +224,13 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
                 f"Must provide the same number of `block_out_channels` as `down_block_types`. `block_out_channels`: {block_out_channels}. `down_block_types`: {down_block_types}."
             )
 
-        transformer_layers_per_block = repeat_if_not_list(
-            transformer_layers_per_block, repetitions=len(down_block_types)
-        )
-        cross_attention_dim = repeat_if_not_list(cross_attention_dim, repetitions=len(down_block_types))
+        if not isinstance(transformer_layers_per_block, (list, tuple)):
+            transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
+        if not isinstance(cross_attention_dim, (list, tuple)):
+            cross_attention_dim = [cross_attention_dim] * len(down_block_types)
         # see https://github.com/huggingface/diffusers/issues/2011#issuecomment-1547958131 for why `ControlNetXSAddon` takes `num_attention_heads` instead of `attention_head_dim`
-        num_attention_heads = repeat_if_not_list(num_attention_heads, repetitions=len(down_block_types))
+        if not isinstance(num_attention_heads, (list, tuple)):
+            num_attention_heads = [num_attention_heads] * len(down_block_types)
 
         if len(num_attention_heads) != len(down_block_types):
             raise ValueError(
@@ -250,8 +249,6 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             self.time_embedding = TimestepEmbedding(time_embedding_input_dim, time_embedding_dim)
         else:
             self.time_embedding = None
-
-        self.time_embed_act = None
 
         self.down_blocks = nn.ModuleList([])
         self.up_connections = nn.ModuleList([])
@@ -272,7 +269,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             is_final_block = i == len(down_block_types) - 1
 
             self.down_blocks.append(
-                self.get_down_block(
+                self.get_down_block_addon(
                     base_in_channels=base_in_channels,
                     base_out_channels=base_out_channels,
                     ctrl_in_channels=ctrl_in_channels,
@@ -289,7 +286,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             )
 
         # mid
-        self.mid_block = self.get_mid_block(
+        self.mid_block = self.get_mid_block_addon(
             base_channels=base_block_out_channels[-1],
             ctrl_channels=block_out_channels[-1],
             temb_channels=time_embedding_dim,
@@ -317,7 +314,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             ctrl_skip_channels_ = [ctrl_skip_channels.pop() for _ in range(3)]
 
             self.up_connections.append(
-                self.get_up_connections(
+                self.get_up_block_addon(
                     out_channels=base_out_channels,
                     prev_output_channel=prev_base_output_channel,
                     ctrl_skip_channels=ctrl_skip_channels_,
@@ -325,7 +322,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
             )
 
     @staticmethod
-    def get_down_block(
+    def get_down_block_addon(
         base_in_channels: int,
         base_out_channels: int,
         ctrl_in_channels: int,
@@ -415,7 +412,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         return down_block_components
 
     @staticmethod
-    def get_mid_block(
+    def get_mid_block_addon(
         base_channels: int,
         ctrl_channels: int,
         temb_channels: Optional[int] = None,
@@ -451,7 +448,7 @@ class ControlNetXSAddon(ModelMixin, ConfigMixin):
         )
 
     @staticmethod
-    def get_up_connections(
+    def get_up_block_addon(
         out_channels: int,
         prev_output_channel: int,
         ctrl_skip_channels: List[int],
@@ -608,12 +605,16 @@ class UNetControlNetXSModel(ModelMixin, ConfigMixin):
                 "As `UNetControlNetXSModel` currently only supports StableDiffusion and StableDiffusion-XL, `addition_embed_type` must be `None` or `'text_time'`."
             )
 
-        transformer_layers_per_block = repeat_if_not_list(
-            transformer_layers_per_block, repetitions=len(down_block_types)
-        )
-        cross_attention_dim = repeat_if_not_list(cross_attention_dim, repetitions=len(down_block_types))
-        base_num_attention_heads = repeat_if_not_list(num_attention_heads, repetitions=len(down_block_types))
-        ctrl_num_attention_heads = repeat_if_not_list(ctrl_num_attention_heads, repetitions=len(down_block_types))
+        if not isinstance(transformer_layers_per_block, (list, tuple)):
+            transformer_layers_per_block = [transformer_layers_per_block] * len(down_block_types)
+        if not isinstance(cross_attention_dim, (list, tuple)):
+            cross_attention_dim = [cross_attention_dim] * len(down_block_types)
+        if not isinstance(num_attention_heads, (list, tuple)):
+            num_attention_heads = [num_attention_heads] * len(down_block_types)
+        if not isinstance(ctrl_num_attention_heads, (list, tuple)):
+            ctrl_num_attention_heads = [ctrl_num_attention_heads] * len(down_block_types)
+
+        base_num_attention_heads = num_attention_heads
 
         self.in_channels = 4
 
@@ -1950,7 +1951,3 @@ def find_largest_factor(number, max_factor):
         if residual == 0:
             return factor
         factor -= 1
-
-
-def repeat_if_not_list(value, repetitions):
-    return value if isinstance(value, (tuple, list)) else [value] * repetitions

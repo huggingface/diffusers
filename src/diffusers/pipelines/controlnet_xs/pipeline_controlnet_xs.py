@@ -452,7 +452,6 @@ class StableDiffusionControlNetXSPipeline(
         self,
         prompt,
         image,
-        callback_steps,
         negative_prompt=None,
         prompt_embeds=None,
         negative_prompt_embeds=None,
@@ -461,11 +460,6 @@ class StableDiffusionControlNetXSPipeline(
         control_guidance_end=1.0,
         callback_on_step_end_tensor_inputs=None,
     ):
-        if callback_steps is not None and (not isinstance(callback_steps, int) or callback_steps <= 0):
-            raise ValueError(
-                f"`callback_steps` has to be a positive integer but is {callback_steps} of type"
-                f" {type(callback_steps)}."
-            )
         if callback_on_step_end_tensor_inputs is not None and not all(
             k in self._callback_tensor_inputs for k in callback_on_step_end_tensor_inputs
         ):
@@ -659,7 +653,6 @@ class StableDiffusionControlNetXSPipeline(
         clip_skip: Optional[int] = None,
         callback_on_step_end: Optional[Callable[[int, int, Dict], None]] = None,
         callback_on_step_end_tensor_inputs: List[str] = ["latents"],
-        **kwargs,
     ):
         r"""
         The call function to the pipeline for generation.
@@ -744,29 +737,12 @@ class StableDiffusionControlNetXSPipeline(
                 "not-safe-for-work" (nsfw) content.
         """
 
-        callback = kwargs.pop("callback", None)
-        callback_steps = kwargs.pop("callback_steps", None)
-
-        if callback is not None:
-            deprecate(
-                "callback",
-                "1.0.0",
-                "Passing `callback` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-        if callback_steps is not None:
-            deprecate(
-                "callback_steps",
-                "1.0.0",
-                "Passing `callback_steps` as an input argument to `__call__` is deprecated, consider using `callback_on_step_end`",
-            )
-
         unet = self.unet._orig_mod if is_compiled_module(self.unet) else self.unet
 
         # 1. Check inputs. Raise error if not correct
         self.check_inputs(
             prompt,
             image,
-            callback_steps,
             negative_prompt,
             prompt_embeds,
             negative_prompt_embeds,
@@ -818,20 +794,17 @@ class StableDiffusionControlNetXSPipeline(
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds])
 
         # 4. Prepare image
-        if isinstance(unet, UNetControlNetXSModel):
-            image = self.prepare_image(
-                image=image,
-                width=width,
-                height=height,
-                batch_size=batch_size * num_images_per_prompt,
-                num_images_per_prompt=num_images_per_prompt,
-                device=device,
-                dtype=unet.dtype,
-                do_classifier_free_guidance=do_classifier_free_guidance,
-            )
-            height, width = image.shape[-2:]
-        else:
-            assert False
+        image = self.prepare_image(
+            image=image,
+            width=width,
+            height=height,
+            batch_size=batch_size * num_images_per_prompt,
+            num_images_per_prompt=num_images_per_prompt,
+            device=device,
+            dtype=unet.dtype,
+            do_classifier_free_guidance=do_classifier_free_guidance,
+        )
+        height, width = image.shape[-2:]
 
         # 5. Prepare timesteps
         self.scheduler.set_timesteps(num_inference_steps, device=device)
@@ -900,12 +873,8 @@ class StableDiffusionControlNetXSPipeline(
                     prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
                     negative_prompt_embeds = callback_outputs.pop("negative_prompt_embeds", negative_prompt_embeds)
 
-                # call the callback, if provided
                 if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
                     progress_bar.update()
-                    if callback is not None and i % callback_steps == 0:
-                        step_idx = i // getattr(self.scheduler, "order", 1)
-                        callback(step_idx, t, latents)
 
         # If we do sequential model offloading, let's offload unet and controlnet
         # manually for max memory savings
