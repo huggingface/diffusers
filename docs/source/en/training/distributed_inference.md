@@ -112,6 +112,19 @@ Call [`~DiffusionPipeline.reset_device_map`] to reset the `device_map` of a pipe
 pipeline.reset_device_map()
 ```
 
+Once a pipeline has been device-mapped, you can also access its device map via `hf_device_map`:
+
+```py
+print(pipeline.hf_device_map)
+```
+
+An example device map would look like so:
+
+
+```bash
+{'unet': 1, 'vae': 1, 'safety_checker': 0, 'text_encoder': 0}
+```
+
 ## PyTorch Distributed
 
 PyTorch supports [`DistributedDataParallel`](https://pytorch.org/docs/stable/generated/torch.nn.parallel.DistributedDataParallel.html) which enables data parallelism.
