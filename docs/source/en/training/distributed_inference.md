@@ -102,6 +102,8 @@ image = pipeline("a dog").images[0]
 image
 ```
 
+If a device is not present in `max_memory`, then it will be completely ignored and will not participate in the device placement. 
+
 By default, Diffusers uses the maximum memory of all devices. If the models don't fit on the GPUs, they are offloaded to the CPU. If the CPU doesn't have enough memory, then you might see an error.
 
 Call `reset_device_map` to reset the `device_map` of a pipeline. This is also necessary if you want to use methods like `to()`, [`~DiffusionPipeline.enable_sequential_cpu_offload`], and [`~DiffusionPipeline.enable_model_cpu_offload`] on a pipeline that was device-mapped.
