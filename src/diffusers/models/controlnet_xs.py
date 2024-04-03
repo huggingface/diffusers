@@ -24,7 +24,6 @@ from ..configuration_utils import ConfigMixin, register_to_config
 from ..utils import BaseOutput, is_torch_version, logging
 from ..utils.torch_utils import apply_freeu
 from .attention_processor import Attention, AttentionProcessor
-from .autoencoders import AutoencoderKL
 from .embeddings import TimestepEmbedding, Timesteps
 from .modeling_utils import ModelMixin
 from .unets.unet_2d_blocks import (
