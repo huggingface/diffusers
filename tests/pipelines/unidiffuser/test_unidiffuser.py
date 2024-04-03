@@ -206,6 +206,12 @@ class UniDiffuserPipelineFastTests(
         }
         return inputs
 
+    def test_dict_tuple_outputs_equivalent(self):
+        expected_slice = None
+        if torch_device == "cpu":
+            expected_slice = np.array([0.7489, 0.3722, 0.4475, 0.5630, 0.5923, 0.4992, 0.3936, 0.5844, 0.4975])
+        super().test_dict_tuple_outputs_equivalent(expected_slice=expected_slice)
+
     def test_unidiffuser_default_joint_v0(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
         components = self.get_dummy_components()
@@ -574,6 +580,11 @@ class UniDiffuserPipelineFastTests(
 @nightly
 @require_torch_gpu
 class UniDiffuserPipelineSlowTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -690,6 +701,11 @@ class UniDiffuserPipelineSlowTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class UniDiffuserPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()

@@ -105,10 +105,21 @@ def numpy_cosine_similarity_distance(a, b):
     return distance
 
 
-def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_name="expected_slice"):
+def print_tensor_test(
+    tensor,
+    limit_to_slices=None,
+    max_torch_print=None,
+    filename="test_corrections.txt",
+    expected_tensor_name="expected_slice",
+):
+    if max_torch_print:
+        torch.set_printoptions(threshold=10_000)
+
     test_name = os.environ.get("PYTEST_CURRENT_TEST")
     if not torch.is_tensor(tensor):
         tensor = torch.from_numpy(tensor)
+    if limit_to_slices:
+        tensor = tensor[0, -3:, -3:, -1]
 
     tensor_str = str(tensor.detach().cpu().flatten().to(torch.float32)).replace("\n", "")
     # format is usually:
@@ -117,7 +128,7 @@ def print_tensor_test(tensor, filename="test_corrections.txt", expected_tensor_n
     test_file, test_class, test_fn = test_name.split("::")
     test_fn = test_fn.split()[0]
     with open(filename, "a") as f:
-        print(";".join([test_file, test_class, test_fn, output_str]), file=f)
+        print("::".join([test_file, test_class, test_fn, output_str]), file=f)
 
 
 def get_tests_dir(append_path=None):
@@ -145,8 +156,8 @@ def get_tests_dir(append_path=None):
 # https://github.com/huggingface/accelerate/pull/1964
 def str_to_bool(value) -> int:
     """
-    Converts a string representation of truth to `True` (1) or `False` (0).
-    True values are `y`, `yes`, `t`, `true`, `on`, and `1`; False value are `n`, `no`, `f`, `false`, `off`, and `0`;
+    Converts a string representation of truth to `True` (1) or `False` (0). True values are `y`, `yes`, `t`, `true`,
+    `on`, and `1`; False value are `n`, `no`, `f`, `false`, `off`, and `0`;
     """
     value = value.lower()
     if value in ("y", "yes", "t", "true", "on", "1"):
