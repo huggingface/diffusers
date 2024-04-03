@@ -74,37 +74,24 @@ def _maybe_expand_lora_scales_for_one_adapter(
 
     E.g. turns
     ```python
-    scales = {
-        'down': 2,
-        'mid': 3,
-        'up': {
-            'block_0': 4,
-            'block_1': [5, 6, 7]
-        }
-    }
-    blocks_with_transformer = {
-        'down': [1,2],
-        'up': [0,1]
-    }
-    transformer_per_block = {
-        'down': 2,
-        'up': 3
-    }
+    scales = {"down": 2, "mid": 3, "up": {"block_0": 4, "block_1": [5, 6, 7]}}
+    blocks_with_transformer = {"down": [1, 2], "up": [0, 1]}
+    transformer_per_block = {"down": 2, "up": 3}
     ```
     into
     ```python
     {
-        'down.block_1.0': 2,
-        'down.block_1.1': 2,
-        'down.block_2.0': 2,
-        'down.block_2.1': 2,
-        'mid': 3,
-        'up.block_0.0': 4,
-        'up.block_0.1': 4,
-        'up.block_0.2': 4,
-        'up.block_1.0': 5,
-        'up.block_1.1': 6,
-        'up.block_1.2': 7,
+        "down.block_1.0": 2,
+        "down.block_1.1": 2,
+        "down.block_2.0": 2,
+        "down.block_2.1": 2,
+        "mid": 3,
+        "up.block_0.0": 4,
+        "up.block_0.1": 4,
+        "up.block_0.2": 4,
+        "up.block_1.0": 5,
+        "up.block_1.1": 6,
+        "up.block_1.2": 7,
     }
     ```
     """
