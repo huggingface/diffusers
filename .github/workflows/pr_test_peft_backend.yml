@@ -73,7 +73,7 @@ jobs:
 
     name: LoRA - ${{ matrix.lib-versions }}
 
-    runs-on: docker-cpu
+    runs-on: [ self-hosted, intel-cpu, 8-cpu, ci ]
 
     container:
       image: diffusers/diffusers-pytorch-cpu
