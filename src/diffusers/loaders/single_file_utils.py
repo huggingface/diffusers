@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-""" Conversion script for the Stable Diffusion checkpoints."""
+"""Conversion script for the Stable Diffusion checkpoints."""
 
 import os
 import re
@@ -1116,8 +1116,6 @@ def convert_ldm_clip_checkpoint(checkpoint):
                 diffusers_key = key.replace(prefix, "")
                 text_model_dict[diffusers_key] = checkpoint.pop(key)
 
-    return text_model_dict
-
 
 def convert_open_clip_checkpoint(
     text_model,
@@ -1255,6 +1253,10 @@ def create_diffusers_unet_from_ldm(
     diffusers_format_checkpoint = convert_ldm_unet_checkpoint(checkpoint, model_config, extract_ema=extract_ema)
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
         if len(unexpected_keys) > 0:
             logger.warn(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
@@ -1305,6 +1307,10 @@ def create_diffusers_controlnet_from_ldm(
     diffusers_format_checkpoint = convert_controlnet_checkpoint(checkpoint, model_config)
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
         if len(unexpected_keys) > 0:
             logger.warn(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
@@ -1363,6 +1369,10 @@ def create_diffusers_vae_from_ldm(
     diffusers_format_checkpoint = convert_ldm_vae_checkpoint(checkpoint, model_config)
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
         if len(unexpected_keys) > 0:
             logger.warn(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"
@@ -1431,6 +1441,10 @@ def create_diffusers_clip_model_from_ldm(
 
     if is_accelerate_available():
         unexpected_keys = load_model_dict_into_meta(model, diffusers_format_checkpoint, dtype=torch_dtype)
+        if model._keys_to_ignore_on_load_unexpected is not None:
+            for pat in model._keys_to_ignore_on_load_unexpected:
+                unexpected_keys = [k for k in unexpected_keys if re.search(pat, k) is None]
+
         if len(unexpected_keys) > 0:
             logger.warn(
                 f"Some weights of the model checkpoint were not used when initializing {cls.__name__}: \n {[', '.join(unexpected_keys)]}"

@@ -469,7 +469,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline, StableDiffusionMixin):
                 )
 
         if len(gligen_phrases) != len(gligen_boxes):
-            ValueError(
+            raise ValueError(
                 "length of `gligen_phrases` and `gligen_boxes` has to be same, but"
                 f" got: `gligen_phrases` {len(gligen_phrases)} != `gligen_boxes` {len(gligen_boxes)}"
             )
@@ -680,7 +680,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline, StableDiffusionMixin):
         timesteps = self.scheduler.timesteps
 
         # 5. Prepare latent variables
-        num_channels_latents = self.unet.in_channels
+        num_channels_latents = self.unet.config.in_channels
         latents = self.prepare_latents(
             batch_size * num_images_per_prompt,
             num_channels_latents,
@@ -713,7 +713,7 @@ class StableDiffusionGLIGENPipeline(DiffusionPipeline, StableDiffusionMixin):
         boxes = torch.zeros(max_objs, 4, device=device, dtype=self.text_encoder.dtype)
         boxes[:n_objs] = torch.tensor(gligen_boxes)
         text_embeddings = torch.zeros(
-            max_objs, self.unet.cross_attention_dim, device=device, dtype=self.text_encoder.dtype
+            max_objs, self.unet.config.cross_attention_dim, device=device, dtype=self.text_encoder.dtype
         )
         text_embeddings[:n_objs] = _text_embeddings
         # Generate a mask for each object that is entity described by phrases

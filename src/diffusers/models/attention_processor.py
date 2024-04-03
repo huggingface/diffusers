@@ -181,25 +181,22 @@ class Attention(nn.Module):
                 f"unknown cross_attention_norm: {cross_attention_norm}. Should be None, 'layer_norm' or 'group_norm'"
             )
 
-        linear_cls = nn.Linear
-
-        self.linear_cls = linear_cls
-        self.to_q = linear_cls(query_dim, self.inner_dim, bias=bias)
+        self.to_q = nn.Linear(query_dim, self.inner_dim, bias=bias)
 
         if not self.only_cross_attention:
             # only relevant for the `AddedKVProcessor` classes
-            self.to_k = linear_cls(self.cross_attention_dim, self.inner_dim, bias=bias)
-            self.to_v = linear_cls(self.cross_attention_dim, self.inner_dim, bias=bias)
+            self.to_k = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
+            self.to_v = nn.Linear(self.cross_attention_dim, self.inner_dim, bias=bias)
         else:
             self.to_k = None
             self.to_v = None
 
         if self.added_kv_proj_dim is not None:
-            self.add_k_proj = linear_cls(added_kv_proj_dim, self.inner_dim)
-            self.add_v_proj = linear_cls(added_kv_proj_dim, self.inner_dim)
+            self.add_k_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
+            self.add_v_proj = nn.Linear(added_kv_proj_dim, self.inner_dim)
 
         self.to_out = nn.ModuleList([])
-        self.to_out.append(linear_cls(self.inner_dim, self.out_dim, bias=out_bias))
+        self.to_out.append(nn.Linear(self.inner_dim, self.out_dim, bias=out_bias))
         self.to_out.append(nn.Dropout(dropout))
 
         # set attention processor
@@ -424,7 +421,7 @@ class Attention(nn.Module):
         # If doesn't apply LoRA do `add_k_proj` or `add_v_proj`
         is_lora_activated.pop("add_k_proj", None)
         is_lora_activated.pop("add_v_proj", None)
-        # 2. else it is not posssible that only some layers have LoRA activated
+        # 2. else it is not possible that only some layers have LoRA activated
         if not all(is_lora_activated.values()):
             raise ValueError(
                 f"Make sure that either all layers or no layers have LoRA activated, but have {is_lora_activated}"
@@ -706,7 +703,7 @@ class Attention(nn.Module):
             out_features = concatenated_weights.shape[0]
 
             # create a new single projection layer and copy over the weights.
-            self.to_qkv = self.linear_cls(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
+            self.to_qkv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_qkv.weight.copy_(concatenated_weights)
             if self.use_bias:
                 concatenated_bias = torch.cat([self.to_q.bias.data, self.to_k.bias.data, self.to_v.bias.data])
@@ -717,7 +714,7 @@ class Attention(nn.Module):
             in_features = concatenated_weights.shape[1]
             out_features = concatenated_weights.shape[0]
 
-            self.to_kv = self.linear_cls(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
+            self.to_kv = nn.Linear(in_features, out_features, bias=self.use_bias, device=device, dtype=dtype)
             self.to_kv.weight.copy_(concatenated_weights)
             if self.use_bias:
                 concatenated_bias = torch.cat([self.to_k.bias.data, self.to_v.bias.data])
@@ -1301,9 +1298,9 @@ class AttnProcessor2_0:
 
 class FusedAttnProcessor2_0:
     r"""
-    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0).
-    It uses fused projection layers. For self-attention modules, all projection matrices (i.e., query,
-    key, value) are fused. For cross-attention modules, key and value projection matrices are fused.
+    Processor for implementing scaled dot-product attention (enabled by default if you're using PyTorch 2.0). It uses
+    fused projection layers. For self-attention modules, all projection matrices (i.e., query, key, value) are fused.
+    For cross-attention modules, key and value projection matrices are fused.
 
     <Tip warning={true}>
 
@@ -2098,7 +2095,7 @@ class LoRAAttnAddedKVProcessor(nn.Module):
 
 class IPAdapterAttnProcessor(nn.Module):
     r"""
-    Attention processor for Multiple IP-Adapater.
+    Attention processor for Multiple IP-Adapters.
 
     Args:
         hidden_size (`int`):
@@ -2152,8 +2149,8 @@ class IPAdapterAttnProcessor(nn.Module):
                 encoder_hidden_states, ip_hidden_states = encoder_hidden_states
             else:
                 deprecation_message = (
-                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
-                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                    "You have passed a tensor as `encoder_hidden_states`. This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to suppress this warning."
                 )
                 deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
                 end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]
@@ -2253,7 +2250,7 @@ class IPAdapterAttnProcessor(nn.Module):
 
 class IPAdapterAttnProcessor2_0(torch.nn.Module):
     r"""
-    Attention processor for IP-Adapater for PyTorch 2.0.
+    Attention processor for IP-Adapter for PyTorch 2.0.
 
     Args:
         hidden_size (`int`):
@@ -2312,8 +2309,8 @@ class IPAdapterAttnProcessor2_0(torch.nn.Module):
                 encoder_hidden_states, ip_hidden_states = encoder_hidden_states
             else:
                 deprecation_message = (
-                    "You have passed a tensor as `encoder_hidden_states`.This is deprecated and will be removed in a future release."
-                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to supress this warning."
+                    "You have passed a tensor as `encoder_hidden_states`. This is deprecated and will be removed in a future release."
+                    " Please make sure to update your script to pass `encoder_hidden_states` as a tuple to suppress this warning."
                 )
                 deprecate("encoder_hidden_states not a tuple", "1.0.0", deprecation_message, standard_warn=False)
                 end_pos = encoder_hidden_states.shape[1] - self.num_tokens[0]

@@ -35,10 +35,10 @@ DYNAMIC_MAP = {
 
 def convert_state_dict(unet_state_dict):
     """
-    Convert the state dict of a U-Net model to match the key format expected by Kandinsky3UNet model.
     Args:
-        unet_model (torch.nn.Module): The original U-Net model.
-        unet_kandi3_model (torch.nn.Module): The Kandinsky3UNet model to match keys with.
+    Convert the state dict of a U-Net model to match the key format expected by Kandinsky3UNet model.
+        unet_model (torch.nn.Module): The original U-Net model. unet_kandi3_model (torch.nn.Module): The Kandinsky3UNet
+        model to match keys with.
 
     Returns:
         OrderedDict: The converted state dictionary.

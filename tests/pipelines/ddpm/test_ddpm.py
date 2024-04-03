@@ -50,10 +50,10 @@ class DDPMPipelineFastTests(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=2, output_type="np").images
 
         generator = torch.Generator(device=device).manual_seed(0)
-        image_from_tuple = ddpm(generator=generator, num_inference_steps=2, output_type="numpy", return_dict=False)[0]
+        image_from_tuple = ddpm(generator=generator, num_inference_steps=2, output_type="np", return_dict=False)[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_from_tuple_slice = image_from_tuple[0, -3:, -3:, -1]
@@ -75,10 +75,10 @@ class DDPMPipelineFastTests(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, num_inference_steps=2, output_type="numpy").images
+        image = ddpm(generator=generator, num_inference_steps=2, output_type="np").images
 
         generator = torch.manual_seed(0)
-        image_eps = ddpm(generator=generator, num_inference_steps=2, output_type="numpy")[0]
+        image_eps = ddpm(generator=generator, num_inference_steps=2, output_type="np")[0]
 
         image_slice = image[0, -3:, -3:, -1]
         image_eps_slice = image_eps[0, -3:, -3:, -1]
@@ -102,7 +102,7 @@ class DDPMPipelineIntegrationTests(unittest.TestCase):
         ddpm.set_progress_bar_config(disable=None)
 
         generator = torch.manual_seed(0)
-        image = ddpm(generator=generator, output_type="numpy").images
+        image = ddpm(generator=generator, output_type="np").images
 
         image_slice = image[0, -3:, -3:, -1]
 

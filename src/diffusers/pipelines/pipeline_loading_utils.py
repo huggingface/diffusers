@@ -292,6 +292,39 @@ def get_class_obj_and_candidates(
     return class_obj, class_candidates
 
 
+def _get_custom_pipeline_class(
+    custom_pipeline,
+    repo_id=None,
+    hub_revision=None,
+    class_name=None,
+    cache_dir=None,
+    revision=None,
+):
+    if custom_pipeline.endswith(".py"):
+        path = Path(custom_pipeline)
+        # decompose into folder & file
+        file_name = path.name
+        custom_pipeline = path.parent.absolute()
+    elif repo_id is not None:
+        file_name = f"{custom_pipeline}.py"
+        custom_pipeline = repo_id
+    else:
+        file_name = CUSTOM_PIPELINE_FILE_NAME
+
+    if repo_id is not None and hub_revision is not None:
+        # if we load the pipeline code from the Hub
+        # make sure to overwrite the `revision`
+        revision = hub_revision
+
+    return get_class_from_dynamic_module(
+        custom_pipeline,
+        module_file=file_name,
+        class_name=class_name,
+        cache_dir=cache_dir,
+        revision=revision,
+    )
+
+
 def _get_pipeline_class(
     class_obj,
     config=None,
@@ -304,25 +337,10 @@ def _get_pipeline_class(
     revision=None,
 ):
     if custom_pipeline is not None:
-        if custom_pipeline.endswith(".py"):
-            path = Path(custom_pipeline)
-            # decompose into folder & file
-            file_name = path.name
-            custom_pipeline = path.parent.absolute()
-        elif repo_id is not None:
-            file_name = f"{custom_pipeline}.py"
-            custom_pipeline = repo_id
-        else:
-            file_name = CUSTOM_PIPELINE_FILE_NAME
-
-        if repo_id is not None and hub_revision is not None:
-            # if we load the pipeline code from the Hub
-            # make sure to overwrite the `revision`
-            revision = hub_revision
-
-        return get_class_from_dynamic_module(
+        return _get_custom_pipeline_class(
             custom_pipeline,
-            module_file=file_name,
+            repo_id=repo_id,
+            hub_revision=hub_revision,
             class_name=class_name,
             cache_dir=cache_dir,
             revision=revision,

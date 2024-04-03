@@ -31,7 +31,7 @@ from ..models.embeddings import (
     IPAdapterPlusImageProjection,
     MultiIPAdapterImageProjection,
 )
-from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta
+from ..models.modeling_utils import _LOW_CPU_MEM_USAGE_DEFAULT, load_model_dict_into_meta, load_state_dict
 from ..utils import (
     USE_PEFT_BACKEND,
     _get_model_file,
@@ -46,6 +46,7 @@ from .single_file_utils import (
     create_diffusers_unet_from_ldm,
     create_diffusers_unet_from_stable_cascade,
 )
+from .unet_loader_utils import _maybe_expand_lora_scales
 from .utils import AttnProcsLayers
 
 
@@ -219,7 +220,7 @@ class UNet2DConditionLoadersMixin:
                     subfolder=subfolder,
                     user_agent=user_agent,
                 )
-                state_dict = torch.load(model_file, map_location="cpu")
+                state_dict = load_state_dict(model_file)
         else:
             state_dict = pretrained_model_name_or_path_or_dict
 
@@ -569,7 +570,7 @@ class UNet2DConditionLoadersMixin:
     def set_adapters(
         self,
         adapter_names: Union[List[str], str],
-        weights: Optional[Union[List[float], float]] = None,
+        weights: Optional[Union[float, Dict, List[float], List[Dict], List[None]]] = None,
     ):
         """
         Set the currently active adapters for use in the UNet.
@@ -602,15 +603,22 @@ class UNet2DConditionLoadersMixin:
 
         adapter_names = [adapter_names] if isinstance(adapter_names, str) else adapter_names
 
-        if weights is None:
-            weights = [1.0] * len(adapter_names)
-        elif isinstance(weights, float):
+        # Expand weights into a list, one entry per adapter
+        # examples for e.g. 2 adapters:  [{...}, 7] -> [7,7] ; None -> [None, None]
+        if not isinstance(weights, list):
             weights = [weights] * len(adapter_names)
 
         if len(adapter_names) != len(weights):
             raise ValueError(
                 f"Length of adapter names {len(adapter_names)} is not equal to the length of their weights {len(weights)}."
             )
+
+        # Set None values to default of 1.0
+        # e.g. [{...}, 7] -> [{...}, 7] ; [None, None] -> [1.0, 1.0]
+        weights = [w if w is not None else 1.0 for w in weights]
+
+        # e.g. [{...}, 7] -> [{expanded dict...}, 7]
+        weights = _maybe_expand_lora_scales(self, weights)
 
         set_weights_and_activate_adapters(self, adapter_names, weights)
 

@@ -369,6 +369,12 @@ class StableDiffusionPipelineFastTests(
 
         assert np.abs(image_slice_1.flatten() - image_slice_2.flatten()).max() < 1e-4
 
+    def test_ip_adapter_single(self):
+        expected_pipe_slice = None
+        if torch_device == "cpu":
+            expected_pipe_slice = np.array([0.3203, 0.4555, 0.4711, 0.3505, 0.3973, 0.4650, 0.5137, 0.3392, 0.4045])
+        return super().test_ip_adapter_single(expected_pipe_slice=expected_pipe_slice)
+
     def test_stable_diffusion_ddim_factor_8(self):
         device = "cpu"  # ensure determinism for the device-dependent torch.Generator
 
@@ -774,7 +780,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             "generator": generator,
             "num_inference_steps": 3,
             "guidance_scale": 7.5,
-            "output_type": "numpy",
+            "output_type": "np",
         }
         return inputs
 
@@ -949,7 +955,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=2,
-            output_type="numpy",
+            output_type="np",
         )
         image_chunked = output_chunked.images
 
@@ -965,7 +971,7 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
             generator=generator,
             guidance_scale=7.5,
             num_inference_steps=2,
-            output_type="numpy",
+            output_type="np",
         )
         image = output.images
 
@@ -1237,6 +1243,11 @@ class StableDiffusionPipelineSlowTests(unittest.TestCase):
 @slow
 @require_torch_gpu
 class StableDiffusionPipelineCkptTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
@@ -1275,6 +1286,11 @@ class StableDiffusionPipelineCkptTests(unittest.TestCase):
 @nightly
 @require_torch_gpu
 class StableDiffusionPipelineNightlyTests(unittest.TestCase):
+    def setUp(self):
+        super().setUp()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     def tearDown(self):
         super().tearDown()
         gc.collect()
